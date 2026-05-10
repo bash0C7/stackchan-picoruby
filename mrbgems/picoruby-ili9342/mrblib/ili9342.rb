@@ -129,25 +129,19 @@ class ILI9342
     hi = (rgb565 >> 8) & 0xFF
     lo = rgb565 & 0xFF
     chunk = [hi, lo] * 256
-    @cs.write(0)
-    @dc.write(0)
-    @spi.write(CMD_RAMWR)
-    @dc.write(1)
     full_chunks, leftover_pairs = (@width * @height).divmod(256)
-    full_chunks.times { @spi.write(*chunk) }
-    @spi.write(*([hi, lo] * leftover_pairs)) if leftover_pairs > 0
-    @cs.write(1)
+    write_pixels do
+      full_chunks.times { @spi.write(*chunk) }
+      @spi.write(*([hi, lo] * leftover_pairs)) if leftover_pairs > 0
+    end
   end
 
   def draw_pixel(x, y, rgb565)
     return if x < 0 || x >= @width || y < 0 || y >= @height
     set_window(x, y, x, y)
-    @cs.write(0)
-    @dc.write(0)
-    @spi.write(CMD_RAMWR)
-    @dc.write(1)
-    @spi.write((rgb565 >> 8) & 0xFF, rgb565 & 0xFF)
-    @cs.write(1)
+    write_pixels do
+      @spi.write((rgb565 >> 8) & 0xFF, rgb565 & 0xFF)
+    end
   end
 
   def draw_rect(x, y, w, h, rgb565, fill: false)
@@ -163,12 +157,9 @@ class ILI9342
       hi = (rgb565 >> 8) & 0xFF
       lo = rgb565 & 0xFF
       count = (x1 - x0 + 1) * (y1 - y0 + 1)
-      @cs.write(0)
-      @dc.write(0)
-      @spi.write(CMD_RAMWR)
-      @dc.write(1)
-      count.times { @spi.write(hi, lo) }
-      @cs.write(1)
+      write_pixels do
+        count.times { @spi.write(hi, lo) }
+      end
     else
       draw_line(x0, y0, x1, y0, rgb565)
       draw_line(x0, y1, x1, y1, rgb565)
@@ -249,6 +240,17 @@ class ILI9342
   def set_window(x0, y0, x1, y1)
     write_command(CMD_CASET, [(x0 >> 8) & 0xFF, x0 & 0xFF, (x1 >> 8) & 0xFF, x1 & 0xFF])
     write_command(CMD_RASET, [(y0 >> 8) & 0xFF, y0 & 0xFF, (y1 >> 8) & 0xFF, y1 & 0xFF])
+  end
+
+  # Begin RAMWR transaction, yield to block that writes pixel bytes via @spi,
+  # then end transaction. Shared CS/DC pattern for fill / draw_rect / draw_pixel.
+  def write_pixels
+    @cs.write(0)
+    @dc.write(0)
+    @spi.write(CMD_RAMWR)
+    @dc.write(1)
+    yield
+    @cs.write(1)
   end
 
   def plot_ellipse_points(cx, cy, dx, dy, rgb565, fill)
