@@ -131,8 +131,8 @@ class ILI9342
     chunk = [hi, lo] * 256
     full_chunks, leftover_pairs = (@width * @height).divmod(256)
     write_pixels do
-      full_chunks.times { @spi.write(*chunk) }
-      @spi.write(*([hi, lo] * leftover_pairs)) if leftover_pairs > 0
+      full_chunks.times { @spi.write(chunk) }
+      @spi.write([hi, lo] * leftover_pairs) if leftover_pairs > 0
     end
   end
 
