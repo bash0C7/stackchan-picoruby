@@ -92,15 +92,7 @@ class ILI9342
   end
 
   def fill(rgb565)
-    set_window(0, 0, @width - 1, @height - 1)
-    hi = (rgb565 >> 8) & 0xFF
-    lo = rgb565 & 0xFF
-    chunk = [hi, lo] * 256
-    full_chunks, leftover_pairs = (@width * @height).divmod(256)
-    write_pixels do
-      full_chunks.times { @spi.write(chunk) }
-      @spi.write([hi, lo] * leftover_pairs) if leftover_pairs > 0
-    end
+    fill_window(0, 0, @width - 1, @height - 1, rgb565)
   end
 
   def draw_pixel(x, y, rgb565)
@@ -120,13 +112,7 @@ class ILI9342
     return if x0 > x1 || y0 > y1
 
     if fill
-      set_window(x0, y0, x1, y1)
-      hi = (rgb565 >> 8) & 0xFF
-      lo = rgb565 & 0xFF
-      count = (x1 - x0 + 1) * (y1 - y0 + 1)
-      write_pixels do
-        count.times { @spi.write(hi, lo) }
-      end
+      fill_window(x0, y0, x1, y1, rgb565)
     else
       draw_line(x0, y0, x1, y0, rgb565)
       draw_line(x0, y1, x1, y1, rgb565)
@@ -218,6 +204,25 @@ class ILI9342
     @dc.write(1)
     yield
     @cs.write(1)
+  end
+
+  # Fill the address-window rectangle with one repeated RGB565 colour.
+  # Uses 256-pair chunks so per-spi.write overhead is amortised — one DMA
+  # transaction per chunk instead of one per pixel. The byte stream emitted
+  # is identical to the per-pixel form.
+  CHUNK_PAIRS = 256
+
+  def fill_window(x0, y0, x1, y1, rgb565)
+    set_window(x0, y0, x1, y1)
+    hi = (rgb565 >> 8) & 0xFF
+    lo = rgb565 & 0xFF
+    chunk = [hi, lo] * CHUNK_PAIRS
+    pair_count = (x1 - x0 + 1) * (y1 - y0 + 1)
+    full_chunks, leftover_pairs = pair_count.divmod(CHUNK_PAIRS)
+    write_pixels do
+      full_chunks.times { @spi.write(chunk) }
+      @spi.write([hi, lo] * leftover_pairs) if leftover_pairs > 0
+    end
   end
 
   def plot_ellipse_points(cx, cy, dx, dy, rgb565, fill)
