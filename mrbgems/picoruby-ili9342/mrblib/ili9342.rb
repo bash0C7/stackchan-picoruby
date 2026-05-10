@@ -151,6 +151,39 @@ class ILI9342
     @cs.write(1)
   end
 
+  def draw_rect(x, y, w, h, rgb565, fill: false)
+    return if w <= 0 || h <= 0
+    x0 = [x, 0].max
+    y0 = [y, 0].max
+    x1 = [x + w - 1, @width - 1].min
+    y1 = [y + h - 1, @height - 1].min
+    return if x0 > x1 || y0 > y1
+
+    if fill
+      set_window(x0, y0, x1, y1)
+      hi = (rgb565 >> 8) & 0xFF
+      lo = rgb565 & 0xFF
+      count = (x1 - x0 + 1) * (y1 - y0 + 1)
+      @cs.write(0)
+      @dc.write(0)
+      @spi.write(CMD_RAMWR)
+      @dc.write(1)
+      count.times { @spi.write(hi, lo) }
+      @cs.write(1)
+    else
+      draw_line(x0, y0, x1, y0, rgb565)
+      draw_line(x0, y1, x1, y1, rgb565)
+      draw_line(x0, y0, x0, y1, rgb565)
+      draw_line(x1, y0, x1, y1, rgb565)
+    end
+  end
+
+  # Temporary stub — replaced with Bresenham in Task 12.
+  def draw_line(x0, y0, x1, y1, rgb565)
+    draw_pixel(x0, y0, rgb565)
+    draw_pixel(x1, y1, rgb565)
+  end
+
   private
 
   def set_window(x0, y0, x1, y1)
