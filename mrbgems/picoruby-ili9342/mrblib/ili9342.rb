@@ -201,11 +201,67 @@ class ILI9342
     end
   end
 
+  def draw_ellipse(cx, cy, rx, ry, rgb565, fill: false)
+    return if rx <= 0 || ry <= 0
+
+    rx2 = rx * rx
+    ry2 = ry * ry
+    two_rx2 = 2 * rx2
+    two_ry2 = 2 * ry2
+
+    # Region 1
+    x = 0
+    y = ry
+    px = 0
+    py = two_rx2 * y
+    p = (ry2 - rx2 * ry + rx2 / 4.0).round
+    plot_ellipse_points(cx, cy, x, y, rgb565, fill)
+    while px < py
+      x += 1
+      px += two_ry2
+      if p < 0
+        p += ry2 + px
+      else
+        y -= 1
+        py -= two_rx2
+        p += ry2 + px - py
+      end
+      plot_ellipse_points(cx, cy, x, y, rgb565, fill)
+    end
+
+    # Region 2
+    p = (ry2 * (x + 0.5)**2 + rx2 * (y - 1)**2 - rx2 * ry2).round
+    while y > 0
+      y -= 1
+      py -= two_rx2
+      if p > 0
+        p += rx2 - py
+      else
+        x += 1
+        px += two_ry2
+        p += rx2 - py + px
+      end
+      plot_ellipse_points(cx, cy, x, y, rgb565, fill)
+    end
+  end
+
   private
 
   def set_window(x0, y0, x1, y1)
     write_command(CMD_CASET, [(x0 >> 8) & 0xFF, x0 & 0xFF, (x1 >> 8) & 0xFF, x1 & 0xFF])
     write_command(CMD_RASET, [(y0 >> 8) & 0xFF, y0 & 0xFF, (y1 >> 8) & 0xFF, y1 & 0xFF])
+  end
+
+  def plot_ellipse_points(cx, cy, dx, dy, rgb565, fill)
+    if fill
+      draw_line(cx - dx, cy + dy, cx + dx, cy + dy, rgb565)
+      draw_line(cx - dx, cy - dy, cx + dx, cy - dy, rgb565)
+    else
+      draw_pixel(cx + dx, cy + dy, rgb565)
+      draw_pixel(cx - dx, cy + dy, rgb565)
+      draw_pixel(cx + dx, cy - dy, rgb565)
+      draw_pixel(cx - dx, cy - dy, rgb565)
+    end
   end
 
   def hardware_reset
