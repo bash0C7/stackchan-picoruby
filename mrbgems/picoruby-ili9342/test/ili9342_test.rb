@@ -233,3 +233,30 @@ class ILI9342DrawLineTest < Test::Unit::TestCase
     assert_equal 5, bytes.count(ILI9342::CMD_RAMWR)
   end
 end
+
+class ILI9342DrawEllipseTest < Test::Unit::TestCase
+  def setup
+    @spi = FakeSPI.new
+    @display = ILI9342.new(spi: @spi, dc_pin: FakeGPIO.new(2), cs_pin: FakeGPIO.new(3),
+                           rst_pin: FakeGPIO.new(4), bl_pin: FakeGPIO.new(5),
+                           width: 320, height: 240)
+    @spi.reset_log!
+  end
+
+  def test_outline_ellipse_writes_at_least_perimeter_pixels
+    @display.draw_ellipse(50, 50, 10, 5, 0xFFFF, fill: false)
+    pixel_count = @spi.writes.count(ILI9342::CMD_RAMWR)
+    # Rough estimate: perimeter ~= 2*pi*sqrt((rx^2 + ry^2)/2) ≈ 50
+    assert pixel_count >= 24, "outline must write at least 24 pixels for r=10/5"
+    assert pixel_count <= 80, "and not more than 80"
+  end
+
+  def test_filled_ellipse_writes_more_pixels_than_outline
+    @display.draw_ellipse(50, 50, 10, 5, 0xFFFF, fill: false)
+    outline_count = @spi.writes.count(ILI9342::CMD_RAMWR)
+    @spi.reset_log!
+    @display.draw_ellipse(50, 50, 10, 5, 0xFFFF, fill: true)
+    fill_count = @spi.writes.count(ILI9342::CMD_RAMWR)
+    assert fill_count > outline_count, "filled ellipse must write more pixels than outline"
+  end
+end
