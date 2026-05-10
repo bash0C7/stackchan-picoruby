@@ -284,7 +284,7 @@ class ILI9342
     @cs.write(0)
     @dc.write(0)
     @spi.write(cmd & 0xFF)
-    if payload && !payload.empty?
+    unless payload.empty?
       @dc.write(1)
       @spi.write(*payload)
     end
