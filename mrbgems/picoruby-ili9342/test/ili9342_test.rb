@@ -56,6 +56,13 @@ class ILI9342InitTest < Test::Unit::TestCase
     assert_equal landscape_madctl, bytes[idx + 1],
                  "Landscape MADCTL value must follow 0x36 command"
   end
+
+  def test_init_sends_madctl_exactly_once
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    madctl_count = bytes.count(ILI9342::CMD_MADCTL)
+    assert_equal 1, madctl_count,
+                 "MADCTL (0x36) must be sent exactly once during init — currently #{madctl_count}. The duplicate comes from both INIT_COMMANDS and set_rotation; remove from INIT_COMMANDS."
+  end
 end
 
 class ILI9342ColorTest < Test::Unit::TestCase
