@@ -66,6 +66,40 @@ class ILI9342InitTest < Test::Unit::TestCase
     assert_equal 1, madctl_count,
                  "MADCTL (0x36) command must be issued exactly once during init — currently #{madctl_count}. The duplicate comes from both INIT_COMMANDS and set_rotation; remove from INIT_COMMANDS."
   end
+
+  # ---- ILI9342C datasheet compliance (audit-ili9342c-datasheet-2026-05-10.md) ----
+
+  def test_init_starts_with_extc_unlock
+    # ILI9342C §8.3.24 SETEXTC: Level-2 commands (anything in 0xB0..0xFF range)
+    # are NOP unless preceded by 0xC8 with payload [0xFF, 0x93, 0x42].
+    # See audit doc: docs/audit-ili9342c-datasheet-2026-05-10.md
+    first_cmd = @spi.command_bytes.first
+    assert_equal 0xC8, first_cmd,
+                 "First command sent must be SETEXTC (0xC8) to unlock Level-2. Currently first = #{first_cmd&.to_s(16)}"
+    extc_pos = @spi.command_positions.first
+    extc_payload = @spi.writes[(extc_pos + 1)..(extc_pos + 3)]
+    assert_equal [0xFF, 0x93, 0x42], extc_payload,
+                 "SETEXTC payload must be [0xFF, 0x93, 0x42]. Got #{extc_payload.inspect}"
+  end
+
+  def test_init_omits_ili9341_only_commands
+    # These 0xCF/0xED/0xE8/0xCB/0xF7/0xEA/0xF2 bytes are present in the
+    # ILI9341 reference init but are NOT in the ILI9342C command list
+    # (datasheet §8.1). Per Note 1 they would be silently NOP'd; they are
+    # dead bytes that lie about driver intent.
+    ili9341_only = [0xCF, 0xED, 0xE8, 0xCB, 0xF7, 0xEA, 0xF2]
+    leaked = @spi.command_bytes & ili9341_only
+    assert_equal [], leaked,
+                 "Init must not contain ILI9341-only commands (#{leaked.map { |b| b.to_s(16) }.inspect}); these don't exist in ILI9342C and are dead bytes."
+  end
+
+  def test_init_omits_set_gpio_command
+    # 0xC7 in ILI9341 = VCOM Control 2; in ILI9342C = Set GPIO0~7 Status
+    # (datasheet §8.3.23). Sending [0x86] would write GPO[7:0] = 1000_0110
+    # to chip GPIOs — wrong intent on this chip.
+    refute_includes @spi.command_bytes, 0xC7,
+                    "0xC7 (Set GPIO0~7 Status on ILI9342C) must not appear in init"
+  end
 end
 
 class ILI9342ColorTest < Test::Unit::TestCase
