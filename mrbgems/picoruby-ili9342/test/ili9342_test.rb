@@ -23,6 +23,7 @@ class ILI9342InitTest < Test::Unit::TestCase
     @cs  = FakeGPIO.new(3)
     @rst = FakeGPIO.new(4)
     @bl  = FakeGPIO.new(5)
+    @spi.dc_pin = @dc  # let FakeSPI tag command bytes (writes while DC=LOW)
     @display = ILI9342.new(spi: @spi, dc_pin: @dc, cs_pin: @cs,
                            rst_pin: @rst, bl_pin: @bl,
                            width: 320, height: 240, rotation: :landscape)
@@ -49,19 +50,21 @@ class ILI9342InitTest < Test::Unit::TestCase
   end
 
   def test_init_sends_madctl_for_landscape
-    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
-    idx = bytes.index(0x36)
-    assert idx, "MADCTL (0x36) must be sent during init"
-    landscape_madctl = ILI9342::MADCTL_LANDSCAPE
-    assert_equal landscape_madctl, bytes[idx + 1],
+    # Locate the MADCTL command (DC=LOW write of 0x36) using command_bytes
+    # rather than scanning raw writes — that avoids false matches against
+    # literal 0x36 bytes that happen to appear inside data payloads such as
+    # the gamma correction tables.
+    cb_idx = @spi.command_bytes.index(ILI9342::CMD_MADCTL)
+    assert cb_idx, "MADCTL (0x36) command must be issued during init"
+    writes_idx = @spi.command_positions[cb_idx]
+    assert_equal ILI9342::MADCTL_LANDSCAPE, @spi.writes[writes_idx + 1],
                  "Landscape MADCTL value must follow 0x36 command"
   end
 
   def test_init_sends_madctl_exactly_once
-    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
-    madctl_count = bytes.count(ILI9342::CMD_MADCTL)
+    madctl_count = @spi.command_bytes.count(ILI9342::CMD_MADCTL)
     assert_equal 1, madctl_count,
-                 "MADCTL (0x36) must be sent exactly once during init — currently #{madctl_count}. The duplicate comes from both INIT_COMMANDS and set_rotation; remove from INIT_COMMANDS."
+                 "MADCTL (0x36) command must be issued exactly once during init — currently #{madctl_count}. The duplicate comes from both INIT_COMMANDS and set_rotation; remove from INIT_COMMANDS."
   end
 end
 

@@ -48,10 +48,9 @@ class ILI9342
     # VCOM Control 2
     [0xC7, [0x86],                                                       0],
 
-    # Memory Access Control (MADCTL) — landscape default, BGR
-    # 0x08 = MX=0 MY=0 MV=0 ML=0 BGR=1 MH=0
-    # CoreS3 native is landscape 320x240 with swap_xy=false, so MADCTL=0x08
-    [CMD_MADCTL, [0x08],                                                 0],
+    # NOTE: MADCTL (0x36) is intentionally NOT in this sequence — it is set
+    # via set_rotation() called from initialize, which respects the user's
+    # rotation: keyword argument.
 
     # Pixel Format Set: 16-bit RGB565 (DPI/DBI = 0x55)
     [CMD_COLMOD, [0x55],                                                 0],
