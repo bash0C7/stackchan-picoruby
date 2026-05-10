@@ -125,7 +125,26 @@ class ILI9342
     @rotation = sym
   end
 
+  def fill(rgb565)
+    set_window(0, 0, @width - 1, @height - 1)
+    write_command(CMD_RAMWR)
+    hi = (rgb565 >> 8) & 0xFF
+    lo = rgb565 & 0xFF
+    chunk = ([hi, lo] * 256)  # 512 bytes per chunk to keep SPI buffer manageable
+    @cs.write(0)
+    @dc.write(1)
+    full_chunks, leftover_pairs = (@width * @height).divmod(256)
+    full_chunks.times { @spi.write(*chunk) }
+    @spi.write(*([hi, lo] * leftover_pairs)) if leftover_pairs > 0
+    @cs.write(1)
+  end
+
   private
+
+  def set_window(x0, y0, x1, y1)
+    write_command(CMD_CASET, [(x0 >> 8) & 0xFF, x0 & 0xFF, (x1 >> 8) & 0xFF, x1 & 0xFF])
+    write_command(CMD_RASET, [(y0 >> 8) & 0xFF, y0 & 0xFF, (y1 >> 8) & 0xFF, y1 & 0xFF])
+  end
 
   def hardware_reset
     @rst.write(1)
