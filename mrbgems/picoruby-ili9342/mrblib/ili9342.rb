@@ -79,6 +79,18 @@ class ILI9342
     [CMD_DISPON, [],                                                   100],
   ].freeze
 
+  module Color
+    BLACK = 0x0000
+    WHITE = 0xFFFF
+    RED   = 0xF800
+    GREEN = 0x07E0
+    BLUE  = 0x001F
+  end
+
+  def self.rgb(r, g, b)
+    ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3)
+  end
+
   def initialize(spi:, dc_pin:, cs_pin:, rst_pin:, bl_pin:, width:, height:, rotation: :landscape)
     @spi    = spi
     @dc     = dc_pin
