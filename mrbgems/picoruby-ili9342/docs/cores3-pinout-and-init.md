@@ -14,6 +14,18 @@ LCD: **2.0" IPS 320×240, ILI9342 controller**, SPI mode 2, BGR pixel order.
 > well-known ILI9341/ILI9342 reference init from the controller datasheet,
 > used as a documented fallback. Bytes can be tuned later when we flash
 > hardware (Task 16).
+>
+> **2026-05-10 audit update**: Cross-checked INIT_COMMANDS against the
+> official Ilitek ILI9342C datasheet (V100). See
+> `audit-ili9342c-datasheet-2026-05-10.md` (sibling file) for the per-byte
+> verdict. Summary: Level-1 commands (SWRESET / SLPOUT / MADCTL / COLMOD /
+> CASET / RASET / RAMWR / GAMSET / INVON / DISPON) are all datasheet-
+> verified and correct. Level-2 commands (the entire C0/C1/C5/C7/B1/B6/E0/E1
+> block plus 0xCF/0xED/0xE8/0xCB/0xF7/0xEA/0xF2) are **NOT validated against
+> ILI9342C** — six of them don't exist in the chip's command set, several
+> have wrong parameter counts vs ILI9342C, and the entire group is silently
+> NOP'd on real silicon because the driver does not send the required
+> `EXTC unlock (C8h FF,93,42)` first.
 
 ## Pin numbers (CoreS3)
 
