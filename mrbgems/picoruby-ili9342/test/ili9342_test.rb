@@ -75,3 +75,32 @@ class ILI9342ColorTest < Test::Unit::TestCase
     assert_equal 0x001F, ILI9342.rgb(0, 0, 255)
   end
 end
+
+class ILI9342FillTest < Test::Unit::TestCase
+  def setup
+    @spi = FakeSPI.new
+    @display = ILI9342.new(spi: @spi, dc_pin: FakeGPIO.new(2), cs_pin: FakeGPIO.new(3),
+                           rst_pin: FakeGPIO.new(4), bl_pin: FakeGPIO.new(5),
+                           width: 320, height: 240)
+    @spi.reset_log!
+  end
+
+  def test_fill_writes_caset_raset_ramwr_then_pixel_payload
+    @display.fill(ILI9342::Color::RED)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+
+    assert_includes bytes, ILI9342::CMD_CASET, "CASET must be issued before fill"
+    assert_includes bytes, ILI9342::CMD_RASET, "RASET must be issued before fill"
+    assert_includes bytes, ILI9342::CMD_RAMWR, "RAMWR must be issued before pixel payload"
+  end
+
+  def test_fill_writes_correct_pixel_count
+    @display.fill(ILI9342::Color::BLUE)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    ramwr_idx = bytes.index(ILI9342::CMD_RAMWR)
+    payload   = bytes[(ramwr_idx + 1)..-1]
+    expected_payload_bytes = 320 * 240 * 2
+    assert_equal expected_payload_bytes, payload.size,
+                 "320*240*2 bytes of pixel data must follow RAMWR"
+  end
+end
