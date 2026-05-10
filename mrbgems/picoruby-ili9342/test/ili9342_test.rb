@@ -57,3 +57,21 @@ class ILI9342InitTest < Test::Unit::TestCase
                  "Landscape MADCTL value must follow 0x36 command"
   end
 end
+
+class ILI9342ColorTest < Test::Unit::TestCase
+  def test_color_constants
+    assert_equal 0x0000, ILI9342::Color::BLACK
+    assert_equal 0xFFFF, ILI9342::Color::WHITE
+    assert_equal 0xF800, ILI9342::Color::RED
+    assert_equal 0x07E0, ILI9342::Color::GREEN
+    assert_equal 0x001F, ILI9342::Color::BLUE
+  end
+
+  def test_rgb_helper
+    assert_equal 0x0000, ILI9342.rgb(0, 0, 0)
+    assert_equal 0xFFFF, ILI9342.rgb(255, 255, 255)
+    assert_equal 0xF800, ILI9342.rgb(255, 0, 0)
+    assert_equal 0x07E0, ILI9342.rgb(0, 255, 0)
+    assert_equal 0x001F, ILI9342.rgb(0, 0, 255)
+  end
+end
