@@ -29,3 +29,11 @@ Replace `<SCK>` etc. with concrete CoreS3 pin numbers from `docs/cores3-pinout-a
 ## Examples
 
 See `examples/` for `black_fill.rb`, `color_cycle.rb`, `face_neutral.rb`, `face_smile.rb`, `face_joy.rb`, `avatar_demo.rb`.
+
+## Performance baseline (CoreS3, mruby VM, 40 MHz SPI)
+
+| Operation | Avg over 5 runs |
+| --- | --- |
+| `fill()` full-screen 320×240 | _TBD — pending hardware run of `examples/benchmark_fill.rb`_ |
+
+Measured by `examples/benchmark_fill.rb`. If `fill` becomes a bottleneck for animation, the chunked-write path is the C-port candidate (see future spec).
