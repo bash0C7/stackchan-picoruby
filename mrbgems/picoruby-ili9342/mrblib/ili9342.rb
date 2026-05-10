@@ -9,73 +9,40 @@ class ILI9342
   MADCTL_LANDSCAPE_FLIP = 0xC8  # MY+MX+BGR (180° rotation)
   MADCTL_PORTRAIT_FLIP  = 0xA8  # MV+MY+BGR (rotate 90° CCW)
 
-  # Commands
-  CMD_SWRESET = 0x01
-  CMD_SLPOUT  = 0x11
-  CMD_DISPON  = 0x29
-  CMD_CASET   = 0x2A
-  CMD_RASET   = 0x2B
-  CMD_RAMWR   = 0x2C
-  CMD_MADCTL  = 0x36
-  CMD_COLMOD  = 0x3A
+  # Commands — only those actually emitted by the driver. References point
+  # to the Ilitek ILI9342C datasheet V100 sections.
+  CMD_SWRESET = 0x01  # §8.2.2  Software Reset
+  CMD_SLPOUT  = 0x11  # §8.2.12 Sleep OUT
+  CMD_INVON   = 0x21  # §8.2.16 Display Inversion ON (CoreS3 panel needs invert)
+  CMD_DISPON  = 0x29  # §8.2.19 Display ON
+  CMD_CASET   = 0x2A  # §8.2.20 Column Address Set
+  CMD_RASET   = 0x2B  # §8.2.21 Page Address Set
+  CMD_RAMWR   = 0x2C  # §8.2.22 Memory Write
+  CMD_MADCTL  = 0x36  # §8.2.29 Memory Access Control
+  CMD_COLMOD  = 0x3A  # §8.2.33 COLMOD: Pixel Format Set
+  CMD_SETEXTC = 0xC8  # §8.3.24 Set EXTC — unlocks Level-2 commands
 
-  # Verified CoreS3 init sequence — see docs/cores3-pinout-and-init.md.
-  # Mirrors ESP-IDF esp_lcd_new_panel_ili9341 / LovyanGFX Panel_ILI9341::init().
+  # SETEXTC payload that unlocks Level-2 commands. Until this is sent, every
+  # command in the 0xB0..0xFF range is treated as NOP. See §8.3.x where each
+  # Level-2 command is annotated "Set EXTC(C8h)=FF,93,42 to enable this command".
+  SETEXTC_UNLOCK_PAYLOAD = [0xFF, 0x93, 0x42].freeze
+
+  # Minimal ILI9342C-compliant init. Only datasheet-verified Level-1 bytes
+  # plus the Level-2 unlock prologue. Power / VCOM / frame-rate / gamma are
+  # NOT customised here — those fall back to the chip's hardware-reset
+  # defaults (sane per datasheet, see audit doc).
+  #
+  # MADCTL (0x36) is intentionally absent: set_rotation() is the sole owner
+  # so the user's `rotation:` kwarg is respected.
+  #
   # Each entry: [cmd_byte, [payload_bytes...], delay_ms]
   INIT_COMMANDS = [
+    [CMD_SETEXTC, SETEXTC_UNLOCK_PAYLOAD,                                0],
     [CMD_SWRESET, [],                                                  120],
     [CMD_SLPOUT,  [],                                                  120],
-
-    # Power Control B
-    [0xCF, [0x00, 0xC1, 0x30],                                           0],
-    # Power on sequence control
-    [0xED, [0x64, 0x03, 0x12, 0x81],                                     0],
-    # Driver timing control A
-    [0xE8, [0x85, 0x00, 0x78],                                           0],
-    # Power Control A
-    [0xCB, [0x39, 0x2C, 0x00, 0x34, 0x02],                               0],
-    # Pump ratio control
-    [0xF7, [0x20],                                                       0],
-    # Driver timing control B
-    [0xEA, [0x00, 0x00],                                                 0],
-
-    # Power Control 1
-    [0xC0, [0x23],                                                       0],  # VRH = 4.60V
-    # Power Control 2
-    [0xC1, [0x10],                                                       0],
-    # VCOM Control 1
-    [0xC5, [0x3E, 0x28],                                                 0],
-    # VCOM Control 2
-    [0xC7, [0x86],                                                       0],
-
-    # NOTE: MADCTL (0x36) is intentionally NOT in this sequence — it is set
-    # via set_rotation() called from initialize, which respects the user's
-    # rotation: keyword argument.
-
-    # Pixel Format Set: 16-bit RGB565 (DPI/DBI = 0x55)
-    [CMD_COLMOD, [0x55],                                                 0],
-
-    # Frame Rate Control: 70 Hz default
-    [0xB1, [0x00, 0x18],                                                 0],
-    # Display Function Control
-    [0xB6, [0x08, 0x82, 0x27],                                           0],
-
-    # Enable 3G (gamma correction disabled)
-    [0xF2, [0x00],                                                       0],
-    # Gamma curve selected (Gamma 2.2)
-    [0x26, [0x01],                                                       0],
-
-    # Positive Gamma Correction
-    [0xE0, [0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08, 0x4E,
-            0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00],             0],
-    # Negative Gamma Correction
-    [0xE1, [0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31,
-            0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F],             0],
-
-    # Display inversion ON (upstream calls esp_lcd_panel_invert_color(panel, true))
-    [0x21, [],                                                           0],
-
-    [CMD_DISPON, [],                                                   100],
+    [CMD_COLMOD,  [0x55],                                                0],  # 16-bit RGB565
+    [CMD_INVON,   [],                                                    0],  # CoreS3 panel inverts
+    [CMD_DISPON,  [],                                                  100],
   ].freeze
 
   module Color
