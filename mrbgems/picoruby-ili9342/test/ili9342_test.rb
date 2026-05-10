@@ -103,4 +103,40 @@ class ILI9342FillTest < Test::Unit::TestCase
     assert_equal expected_payload_bytes, payload.size,
                  "320*240*2 bytes of pixel data must follow RAMWR"
   end
+
+  def test_fill_keeps_cs_asserted_across_ramwr_and_pixel_data
+    cs = FakeGPIO.new(3)
+    spi = FakeSPI.new
+    display = ILI9342.new(spi: spi, dc_pin: FakeGPIO.new(2), cs_pin: cs,
+                          rst_pin: FakeGPIO.new(4), bl_pin: FakeGPIO.new(5),
+                          width: 320, height: 240)
+    cs.history.clear
+    spi.reset_log!
+
+    display.fill(ILI9342::Color::RED)
+
+    # Locate the RAMWR command in the SPI write log.
+    bytes = spi.writes.select { |b| b.is_a?(Integer) }
+    ramwr_idx = bytes.index(ILI9342::CMD_RAMWR)
+    assert ramwr_idx, "RAMWR (0x2C) must appear in fill SPI log"
+
+    # The CS history is recorded chronologically with the SPI writes interleaved
+    # by call order. Simpler invariant: between fill's first @cs.write(0) and
+    # final @cs.write(1), CS must NOT pulse high then low again. Count the
+    # 1→0 transitions: there should be EXACTLY ONE for the entire RAMWR+pixel
+    # phase of fill (not two — one for write_command's CS toggle, one for the
+    # bulk write).
+    levels = cs.history.map(&:last)
+    transitions_to_low = 0
+    prev = 1  # CS rests high after init
+    levels.each do |v|
+      transitions_to_low += 1 if prev == 1 && v == 0
+      prev = v
+    end
+    # set_window in fill calls write_command twice (CASET, RASET), each = 1 transition
+    # then RAMWR + pixel data should be a SINGLE transition (currently 2: write_command + manual)
+    # So expected after fix: 3 total (CASET, RASET, RAMWR-and-pixels)
+    assert_equal 3, transitions_to_low,
+                 "fill should toggle CS exactly 3 times: CASET, RASET, RAMWR+pixels combined. Found #{transitions_to_low} (4+ means CS bounced between RAMWR and pixel data — real hardware would discard pixels)"
+  end
 end

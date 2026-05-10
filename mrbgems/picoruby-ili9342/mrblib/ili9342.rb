@@ -127,11 +127,12 @@ class ILI9342
 
   def fill(rgb565)
     set_window(0, 0, @width - 1, @height - 1)
-    write_command(CMD_RAMWR)
     hi = (rgb565 >> 8) & 0xFF
     lo = rgb565 & 0xFF
-    chunk = ([hi, lo] * 256)  # 512 bytes per chunk to keep SPI buffer manageable
+    chunk = [hi, lo] * 256
     @cs.write(0)
+    @dc.write(0)
+    @spi.write(CMD_RAMWR)
     @dc.write(1)
     full_chunks, leftover_pairs = (@width * @height).divmod(256)
     full_chunks.times { @spi.write(*chunk) }
