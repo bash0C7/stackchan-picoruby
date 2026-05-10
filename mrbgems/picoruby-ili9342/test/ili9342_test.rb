@@ -15,3 +15,45 @@ class HarnessTest < Test::Unit::TestCase
     assert_equal [[:write, 1], [:write, 0]], gpio.history
   end
 end
+
+class ILI9342InitTest < Test::Unit::TestCase
+  def setup
+    @spi = FakeSPI.new
+    @dc  = FakeGPIO.new(2)
+    @cs  = FakeGPIO.new(3)
+    @rst = FakeGPIO.new(4)
+    @bl  = FakeGPIO.new(5)
+    @display = ILI9342.new(spi: @spi, dc_pin: @dc, cs_pin: @cs,
+                           rst_pin: @rst, bl_pin: @bl,
+                           width: 320, height: 240, rotation: :landscape)
+  end
+
+  def test_reset_pin_pulsed
+    history = @rst.history.map(&:last)
+    assert_equal [1, 0, 1], history.first(3),
+                 "RST should go high → low → high during init"
+  end
+
+  def test_dc_low_for_command_then_high_for_data
+    # First command (SLPOUT or SWRESET) should set DC low before SPI write,
+    # then DC high before payload bytes (if any).
+    assert @dc.history.size >= 2,
+           "DC pin should toggle multiple times during init"
+    assert_equal 0, @dc.history.first.last,
+                 "First DC level must be LOW (command)"
+  end
+
+  def test_init_sends_disp_on
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    assert_includes bytes, 0x29, "DISPON (0x29) must be sent during init"
+  end
+
+  def test_init_sends_madctl_for_landscape
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    idx = bytes.index(0x36)
+    assert idx, "MADCTL (0x36) must be sent during init"
+    landscape_madctl = ILI9342::MADCTL_LANDSCAPE
+    assert_equal landscape_madctl, bytes[idx + 1],
+                 "Landscape MADCTL value must follow 0x36 command"
+  end
+end
