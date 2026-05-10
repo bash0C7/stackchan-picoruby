@@ -178,10 +178,27 @@ class ILI9342
     end
   end
 
-  # Temporary stub — replaced with Bresenham in Task 12.
   def draw_line(x0, y0, x1, y1, rgb565)
-    draw_pixel(x0, y0, rgb565)
-    draw_pixel(x1, y1, rgb565)
+    dx = (x1 - x0).abs
+    dy = -(y1 - y0).abs
+    sx = x0 < x1 ? 1 : -1
+    sy = y0 < y1 ? 1 : -1
+    err = dx + dy
+    x = x0
+    y = y0
+    loop do
+      draw_pixel(x, y, rgb565)
+      break if x == x1 && y == y1
+      e2 = err * 2
+      if e2 >= dy
+        err += dy
+        x += sx
+      end
+      if e2 <= dx
+        err += dx
+        y += sy
+      end
+    end
   end
 
   private
