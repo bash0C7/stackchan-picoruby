@@ -140,6 +140,17 @@ class ILI9342
     @cs.write(1)
   end
 
+  def draw_pixel(x, y, rgb565)
+    return if x < 0 || x >= @width || y < 0 || y >= @height
+    set_window(x, y, x, y)
+    @cs.write(0)
+    @dc.write(0)
+    @spi.write(CMD_RAMWR)
+    @dc.write(1)
+    @spi.write((rgb565 >> 8) & 0xFF, rgb565 & 0xFF)
+    @cs.write(1)
+  end
+
   private
 
   def set_window(x0, y0, x1, y1)
