@@ -1,5 +1,16 @@
 # picoruby-ili9342 — Datasheet audit (2026-05-10)
 
+> **Resolution status (same day):** Option 3 from the "Recommended
+> follow-ups" section was applied. `INIT_COMMANDS` is now the minimal
+> datasheet-verifiable subset (SETEXTC unlock + SWRESET + SLPOUT +
+> COLMOD + INVON + DISPON); MADCTL is owned by `set_rotation`. The
+> SPI cs_pin double-ownership bug surfaced during this audit was also
+> fixed (cs_pin: dropped from `SPI.new` calls in examples and docs).
+> Power / VCOM / Frame Rate / Gamma are deliberately NOT customised:
+> chip POR defaults are used until first-light measurements justify
+> specific values.
+
+
 Cross-check of `mrblib/ili9342.rb` `INIT_COMMANDS` and primitives against
 the **official Ilitek ILI9342C datasheet, Version V100**, 235 pages.
 

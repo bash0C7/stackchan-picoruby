@@ -76,70 +76,33 @@ the backlight is normally already on after USB power-up.
 > the direct SPI driver. Task 5+ should treat reset as "external" (caller's
 > responsibility) and document the AW9523 dependency in the mrbgem README.
 
-## Init command sequence
+## Init command sequence (current — post 2026-05-10 audit rewrite)
 
-ILI9342 / ILI9341 standard datasheet sequence (used by ESP-IDF
-`esp_lcd_new_panel_ili9341`). Each entry is `[cmd_byte, [payload...], delay_ms]`.
+After cross-checking against the official ILI9342C datasheet V100, the
+ILI9341-derived init was replaced with the minimal datasheet-verifiable
+subset. Power / VCOM / frame-rate / gamma settings are NOT customised
+here — those fall back to the chip's hardware-reset defaults.
 
 ```ruby
 # Each entry: [cmd_byte, [payload_bytes...], delay_ms]
 INIT_COMMANDS = [
-  [0x01, [],                                                         120],  # SWRESET (software reset)
-  [0x11, [],                                                         120],  # SLPOUT  (sleep out)
-
-  # Power Control B
-  [0xCF, [0x00, 0xC1, 0x30],                                           0],
-  # Power on sequence control
-  [0xED, [0x64, 0x03, 0x12, 0x81],                                     0],
-  # Driver timing control A
-  [0xE8, [0x85, 0x00, 0x78],                                           0],
-  # Power Control A
-  [0xCB, [0x39, 0x2C, 0x00, 0x34, 0x02],                               0],
-  # Pump ratio control
-  [0xF7, [0x20],                                                       0],
-  # Driver timing control B
-  [0xEA, [0x00, 0x00],                                                 0],
-
-  # Power Control 1
-  [0xC0, [0x23],                                                       0],  # VRH = 4.60V
-  # Power Control 2
-  [0xC1, [0x10],                                                       0],
-  # VCOM Control 1
-  [0xC5, [0x3E, 0x28],                                                 0],
-  # VCOM Control 2
-  [0xC7, [0x86],                                                       0],
-
-  # Memory Access Control (MADCTL) — landscape default, BGR
-  # 0x08 = MX=0 MY=0 MV=0 ML=0 BGR=1 MH=0
-  # CoreS3 native is landscape 320x240 with swap_xy=false, so MADCTL=0x08
-  [0x36, [0x08],                                                       0],
-
-  # Pixel Format Set: 16-bit RGB565 (DPI/DBI = 0x55)
-  [0x3A, [0x55],                                                       0],
-
-  # Frame Rate Control: 70 Hz default
-  [0xB1, [0x00, 0x18],                                                 0],
-  # Display Function Control
-  [0xB6, [0x08, 0x82, 0x27],                                           0],
-
-  # Enable 3G (gamma correction disabled)
-  [0xF2, [0x00],                                                       0],
-  # Gamma curve selected (Gamma 2.2)
-  [0x26, [0x01],                                                       0],
-
-  # Positive Gamma Correction
-  [0xE0, [0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08, 0x4E,
-          0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00],             0],
-  # Negative Gamma Correction
-  [0xE1, [0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31,
-          0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F],             0],
-
-  # Display inversion ON (upstream calls esp_lcd_panel_invert_color(panel, true))
-  [0x21, [],                                                           0],
-
-  [0x29, [],                                                         100],  # DISPON (display on)
+  [0xC8, [0xFF, 0x93, 0x42],                                           0],  # SETEXTC: unlock Level-2 commands
+  [0x01, [],                                                         120],  # SWRESET
+  [0x11, [],                                                         120],  # SLPOUT
+  [0x3A, [0x55],                                                       0],  # COLMOD: 16-bit RGB565
+  [0x21, [],                                                           0],  # INVON (CoreS3 panel)
+  [0x29, [],                                                         100],  # DISPON
 ].freeze
 ```
+
+MADCTL (0x36) is intentionally absent: `set_rotation()` is the sole
+owner so the user's `rotation:` kwarg controls it.
+
+If real-hardware bring-up reveals incorrect colour balance / gamma /
+power behaviour, additional Level-2 commands may be added — but only
+with measured values per the ILI9342C command spec, not by re-pasting
+the ILI9341 reference init that the audit removed. See
+`audit-ili9342c-datasheet-2026-05-10.md` for the per-command verdict.
 
 ### Color setup helpers (Task 8 reference)
 
