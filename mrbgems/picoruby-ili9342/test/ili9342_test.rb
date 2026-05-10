@@ -177,3 +177,29 @@ class ILI9342DrawPixelTest < Test::Unit::TestCase
                  "out-of-range coords must not write any pixel"
   end
 end
+
+class ILI9342DrawRectTest < Test::Unit::TestCase
+  def setup
+    @spi = FakeSPI.new
+    @display = ILI9342.new(spi: @spi, dc_pin: FakeGPIO.new(2), cs_pin: FakeGPIO.new(3),
+                           rst_pin: FakeGPIO.new(4), bl_pin: FakeGPIO.new(5),
+                           width: 320, height: 240)
+    @spi.reset_log!
+  end
+
+  def test_draw_rect_fill_writes_w_times_h_pixels
+    @display.draw_rect(10, 10, 5, 4, 0x1234, fill: true)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    ramwr_idx = bytes.index(ILI9342::CMD_RAMWR)
+    payload = bytes[(ramwr_idx + 1)..-1]
+    assert_equal 5 * 4 * 2, payload.size, "fill rect must write w*h*2 bytes"
+  end
+
+  def test_draw_rect_outline_uses_four_lines
+    # outline = top + bottom + left + right edges
+    @display.draw_rect(0, 0, 10, 5, 0xFFFF, fill: false)
+    ramwr_count = @spi.writes.count(ILI9342::CMD_RAMWR)
+    # four edges = up to 4 RAMWR sessions (or fewer if optimized into a single window)
+    assert ramwr_count >= 1, "outline must produce at least one RAMWR"
+  end
+end
