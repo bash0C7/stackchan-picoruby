@@ -140,3 +140,40 @@ class ILI9342FillTest < Test::Unit::TestCase
                  "fill should toggle CS exactly 3 times: CASET, RASET, RAMWR+pixels combined. Found #{transitions_to_low} (4+ means CS bounced between RAMWR and pixel data — real hardware would discard pixels)"
   end
 end
+
+class ILI9342DrawPixelTest < Test::Unit::TestCase
+  def setup
+    @spi = FakeSPI.new
+    @display = ILI9342.new(spi: @spi, dc_pin: FakeGPIO.new(2), cs_pin: FakeGPIO.new(3),
+                           rst_pin: FakeGPIO.new(4), bl_pin: FakeGPIO.new(5),
+                           width: 320, height: 240)
+    @spi.reset_log!
+  end
+
+  def test_draw_pixel_sets_window_to_one_pixel_and_writes_two_bytes
+    @display.draw_pixel(100, 50, 0xABCD)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+
+    caset_idx = bytes.index(ILI9342::CMD_CASET)
+    raset_idx = bytes.index(ILI9342::CMD_RASET)
+    ramwr_idx = bytes.index(ILI9342::CMD_RAMWR)
+
+    assert caset_idx, "CASET expected"
+    assert_equal [0x00, 0x64, 0x00, 0x64], bytes[caset_idx + 1, 4],
+                 "CASET payload must encode x=100..100"
+    assert_equal [0x00, 0x32, 0x00, 0x32], bytes[raset_idx + 1, 4],
+                 "RASET payload must encode y=50..50"
+    payload = bytes[(ramwr_idx + 1)..-1]
+    assert_equal [0xAB, 0xCD], payload, "single pixel must be 2 bytes"
+  end
+
+  def test_draw_pixel_clips_out_of_range
+    @display.draw_pixel(-1, 50, 0xFFFF)
+    @display.draw_pixel(320, 50, 0xFFFF)
+    @display.draw_pixel(100, -1, 0xFFFF)
+    @display.draw_pixel(100, 240, 0xFFFF)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    assert_equal 0, bytes.count(ILI9342::CMD_RAMWR),
+                 "out-of-range coords must not write any pixel"
+  end
+end
