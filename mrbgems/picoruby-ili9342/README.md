@@ -15,9 +15,12 @@ require 'spi'
 require 'gpio'
 require 'ili9342'
 
-# CoreS3 pins (verified against m5stack/StackChan upstream)
+# CoreS3 pins (verified against m5stack/StackChan upstream).
+# NOTE: do NOT pass cs_pin: to SPI.new on ESP32 — ESP-IDF would auto-toggle
+# CS per `spi.write` call, which breaks the cmd→DC-change→data sequence
+# this driver needs. We own CS manually via the GPIO below.
 spi = SPI.new(unit: :ESP32_SPI3_HOST, frequency: 40_000_000,
-              sck_pin: 36, copi_pin: 37, cs_pin: 3, mode: 2)
+              sck_pin: 36, copi_pin: 37, mode: 2)
 display = ILI9342.new(
   spi: spi,
   dc_pin:  GPIO.new(35, GPIO::OUT),

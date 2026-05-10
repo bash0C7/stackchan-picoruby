@@ -11,8 +11,10 @@ DC_PIN   = 35
 RST_PIN  = 1   # placeholder — see black_fill.rb header
 BL_PIN   = 2   # placeholder
 
+# NOTE: cs_pin: is intentionally omitted from SPI.new — see README "CS handling".
+# We own CS manually so cmd→DC change→data stays in one CS-low window.
 spi = SPI.new(unit: :ESP32_SPI3_HOST, frequency: 40_000_000,
-              sck_pin: SCK_PIN, copi_pin: MOSI_PIN, cs_pin: CS_PIN, mode: 2)
+              sck_pin: SCK_PIN, copi_pin: MOSI_PIN, mode: 2)
 display = ILI9342.new(
   spi: spi,
   dc_pin:  GPIO.new(DC_PIN,  GPIO::OUT),

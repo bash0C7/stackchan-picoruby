@@ -86,8 +86,11 @@ placeholder GPIO numbers (1 and 2) — the SWRESET command (`0x01`) inside
 backlight on.
 
 ```ruby
+> # NOTE: cs_pin: omitted from SPI.new — driver manages CS manually so
+> # cmd→DC change→data stays in one CS-low window (ESP-IDF would otherwise
+> # auto-toggle CS per spi.write call).
 > spi = SPI.new(unit: :ESP32_SPI3_HOST, frequency: 40_000_000,
-                sck_pin: 36, copi_pin: 37, cs_pin: 3, mode: 2)
+                sck_pin: 36, copi_pin: 37, mode: 2)
 > dc  = GPIO.new(35, GPIO::OUT)
 > cs  = GPIO.new(3,  GPIO::OUT)
 > rst = GPIO.new(1,  GPIO::OUT)   # placeholder — see _Limitations_ below
