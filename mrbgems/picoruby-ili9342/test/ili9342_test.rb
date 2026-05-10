@@ -203,3 +203,33 @@ class ILI9342DrawRectTest < Test::Unit::TestCase
     assert ramwr_count >= 1, "outline must produce at least one RAMWR"
   end
 end
+
+class ILI9342DrawLineTest < Test::Unit::TestCase
+  def setup
+    @spi = FakeSPI.new
+    @display = ILI9342.new(spi: @spi, dc_pin: FakeGPIO.new(2), cs_pin: FakeGPIO.new(3),
+                           rst_pin: FakeGPIO.new(4), bl_pin: FakeGPIO.new(5),
+                           width: 320, height: 240)
+    @spi.reset_log!
+  end
+
+  def test_horizontal_line_writes_n_pixels
+    # 10 pixels from (5, 5) to (14, 5)
+    @display.draw_line(5, 5, 14, 5, 0xFFFF)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    pixel_writes = bytes.count(ILI9342::CMD_RAMWR)
+    assert_equal 10, pixel_writes, "horizontal 10-px line must trigger 10 single-pixel writes"
+  end
+
+  def test_vertical_line_writes_n_pixels
+    @display.draw_line(20, 0, 20, 4, 0xF800)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    assert_equal 5, bytes.count(ILI9342::CMD_RAMWR)
+  end
+
+  def test_diagonal_line_writes_n_pixels
+    @display.draw_line(0, 0, 4, 4, 0x07E0)
+    bytes = @spi.writes.select { |b| b.is_a?(Integer) }
+    assert_equal 5, bytes.count(ILI9342::CMD_RAMWR)
+  end
+end
