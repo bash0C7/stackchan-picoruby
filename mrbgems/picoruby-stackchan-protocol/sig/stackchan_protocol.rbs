@@ -1,0 +1,43 @@
+module StackchanProtocol
+  module Face
+    EYE_LEFT_CX: Integer
+    EYE_LEFT_CY: Integer
+    EYE_RIGHT_CX: Integer
+    EYE_RIGHT_CY: Integer
+    EYE_RX: Integer
+    EYE_RY: Integer
+    EYE_COLOR: Integer
+    MOUTH_COLOR: Integer
+    BACKGROUND_COLOR: Integer
+    MOUTH_CX: Integer
+    MOUTH_CY: Integer
+    MOUTH_HALF_WIDTH: Integer
+
+    class Base
+      def draw_eyes: (untyped display) -> void
+      def draw_mouth: (untyped display, Integer delta_y) -> void
+      def draw: (untyped display) -> void
+    end
+
+    class Neutral < Base
+      DELTA_Y: Integer
+    end
+
+    class Smile < Base
+      DELTA_Y: Integer
+    end
+
+    class Joy < Base
+      DELTA_Y: Integer
+    end
+  end
+
+  class Dispatcher
+    FACES: Hash[String, singleton(Face::Base)]
+    ERROR_BYTE: String
+
+    def initialize: (display: untyped, ?stdin: untyped, ?stdout: untyped) -> void
+    def handle_byte: (String byte) -> void
+    def run: () -> void
+  end
+end
