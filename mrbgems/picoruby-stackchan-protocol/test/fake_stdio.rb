@@ -24,8 +24,4 @@ class FakeStdout
     @writes << s.to_s
     s.to_s.bytesize
   end
-
-  def reset_log!
-    @writes = []
-  end
 end

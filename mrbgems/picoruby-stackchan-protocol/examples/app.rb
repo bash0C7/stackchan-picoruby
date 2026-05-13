@@ -32,7 +32,4 @@ display = ILI9342.new(
 # Welcome face before any host command arrives.
 StackchanProtocol::Face::Neutral.new.draw(display)
 
-# Make sure '?' is emitted promptly on error.
-$stdout.sync = true if $stdout.respond_to?(:sync=)
-
 StackchanProtocol::Dispatcher.new(display: display).run

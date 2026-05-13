@@ -26,9 +26,4 @@ class FakeDisplay
     @calls << [:draw_line, [x0, y0, x1, y1, color]]
     nil
   end
-
-  def reset_log!
-    @calls = []
-    @raise_on_fill = nil
-  end
 end
