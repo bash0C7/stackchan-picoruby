@@ -117,3 +117,30 @@ class ClientOpenTest < Test::Unit::TestCase
     assert_kind_of FakeUart, captured
   end
 end
+
+class ClientRawSendTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = stub_uart_class(@fake_uart)
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", uart_class: @fake_uart_class
+    )
+  end
+
+  def test_raw_send_writes_single_byte
+    @client.open do |serial|
+      @client.raw_send(serial, "9")
+    end
+    assert_equal ["9"], @fake_uart.writes
+  end
+
+  private
+
+  def stub_uart_class(fake)
+    Class.new do
+      define_singleton_method(:open) do |_port, _baud, &block|
+        block.call(fake)
+      end
+    end
+  end
+end

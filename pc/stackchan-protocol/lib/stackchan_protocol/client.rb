@@ -16,5 +16,9 @@ module StackchanProtocol
     def open(&block)
       @uart_class.open(@port, @baud, &block)
     end
+
+    def raw_send(serial, byte)
+      serial.write(byte)
+    end
   end
 end
