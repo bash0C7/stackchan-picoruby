@@ -227,3 +227,41 @@ class DispatcherHandleByteTest < Test::Unit::TestCase
     end
   end
 end
+
+class DispatcherRunTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+    @stdout  = FakeStdout.new
+  end
+
+  def test_run_processes_all_bytes_until_stream_ends
+    stdin = FakeStdin.new("012")
+    dispatcher = StackchanProtocol::Dispatcher.new(
+      display: @display, stdin: stdin, stdout: @stdout
+    )
+    dispatcher.run
+    fills = @display.calls.select { |c| c.first == :fill }
+    assert_equal 3, fills.size, "should have drawn 3 faces"
+  end
+
+  def test_run_mixes_valid_and_invalid_bytes
+    stdin = FakeStdin.new("0X1")
+    dispatcher = StackchanProtocol::Dispatcher.new(
+      display: @display, stdin: stdin, stdout: @stdout
+    )
+    dispatcher.run
+    fills = @display.calls.select { |c| c.first == :fill }
+    assert_equal 2, fills.size
+    assert_equal ["?"], @stdout.writes
+  end
+
+  def test_run_returns_when_stream_is_empty
+    stdin = FakeStdin.new("")
+    dispatcher = StackchanProtocol::Dispatcher.new(
+      display: @display, stdin: stdin, stdout: @stdout
+    )
+    assert_nothing_raised { dispatcher.run }
+    assert_equal [], @display.calls
+    assert_equal [], @stdout.writes
+  end
+end

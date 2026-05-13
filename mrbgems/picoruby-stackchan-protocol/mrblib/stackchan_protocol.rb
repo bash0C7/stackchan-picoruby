@@ -77,5 +77,13 @@ module StackchanProtocol
     rescue StandardError
       @stdout.write(ERROR_BYTE)
     end
+
+    def run
+      loop do
+        byte = @stdin.read(1)
+        break if byte.nil?
+        handle_byte(byte)
+      end
+    end
   end
 end
