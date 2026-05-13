@@ -193,4 +193,24 @@ class DispatcherHandleByteTest < Test::Unit::TestCase
     @dispatcher.handle_byte("0")
     assert_equal [], @stdout.writes
   end
+
+  def test_unknown_byte_writes_question_mark
+    @dispatcher.handle_byte("9")
+    assert_equal ["?"], @stdout.writes
+  end
+
+  def test_unknown_byte_does_not_draw
+    @dispatcher.handle_byte("9")
+    assert_equal [], @display.calls
+  end
+
+  def test_newline_is_treated_as_unknown
+    @dispatcher.handle_byte("\n")
+    assert_equal ["?"], @stdout.writes
+  end
+
+  def test_carriage_return_is_treated_as_unknown
+    @dispatcher.handle_byte("\r")
+    assert_equal ["?"], @stdout.writes
+  end
 end
