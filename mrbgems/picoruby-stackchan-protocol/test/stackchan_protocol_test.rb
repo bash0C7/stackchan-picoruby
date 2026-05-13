@@ -88,3 +88,31 @@ class FaceBaseEyesTest < Test::Unit::TestCase
     assert_equal 104, cy
   end
 end
+
+class FaceBaseMouthTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+    @face = StackchanProtocol::Face::Base.new
+  end
+
+  def test_draw_mouth_emits_two_lines
+    @face.draw_mouth(@display, 0)
+    line_calls = @display.calls.select { |c| c.first == :draw_line }
+    assert_equal 2, line_calls.size
+  end
+
+  def test_delta_y_zero_draws_straight_mouth
+    @face.draw_mouth(@display, 0)
+    # left segment: (115, 146) -> (160, 146)
+    assert_equal [115, 146, 160, 146, ILI9342::Color::WHITE], @display.calls[0].last
+    # right segment: (160, 146) -> (205, 146)
+    assert_equal [160, 146, 205, 146, ILI9342::Color::WHITE], @display.calls[1].last
+  end
+
+  def test_positive_delta_y_lifts_corners
+    @face.draw_mouth(@display, 8)
+    # corner_y = 146 - 8 = 138
+    assert_equal [115, 138, 160, 146, ILI9342::Color::WHITE], @display.calls[0].last
+    assert_equal [160, 146, 205, 138, ILI9342::Color::WHITE], @display.calls[1].last
+  end
+end
