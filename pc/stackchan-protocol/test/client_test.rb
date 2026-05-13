@@ -144,3 +144,42 @@ class ClientRawSendTest < Test::Unit::TestCase
     end
   end
 end
+
+class ClientSetFaceSuccessTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", ack_timeout: 0.1, uart_class: @fake_uart_class
+    )
+  end
+
+  def test_set_face_writes_smile_byte
+    @client.open { |s| @client.set_face(s, :smile) }
+    assert_equal ["1"], @fake_uart.writes
+  end
+
+  def test_set_face_writes_neutral_byte
+    @client.open { |s| @client.set_face(s, :neutral) }
+    assert_equal ["0"], @fake_uart.writes
+  end
+
+  def test_set_face_writes_joy_byte
+    @client.open { |s| @client.set_face(s, :joy) }
+    assert_equal ["2"], @fake_uart.writes
+  end
+
+  def test_set_face_returns_nil_on_ack_timeout
+    result = @client.open { |s| @client.set_face(s, :smile) }
+    assert_nil result
+  end
+
+  def test_set_face_uses_configured_ack_timeout
+    @client.open { |s| @client.set_face(s, :smile) }
+    assert_equal [0.1], @fake_uart.wait_readable_calls
+  end
+end

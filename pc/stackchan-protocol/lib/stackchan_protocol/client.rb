@@ -20,5 +20,15 @@ module StackchanProtocol
     def raw_send(serial, byte)
       serial.write(byte)
     end
+
+    def set_face(serial, name)
+      byte = FACE_BYTES.fetch(name)
+      serial.write(byte)
+      ready = serial.wait_readable(@ack_timeout)
+      return nil if ready.nil?
+      ack = serial.read(1)
+      raise DeviceError, "device reported '?' for face=#{name}" if ack == "?"
+      nil
+    end
   end
 end
