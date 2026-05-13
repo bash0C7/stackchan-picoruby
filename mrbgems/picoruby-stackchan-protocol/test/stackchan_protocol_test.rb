@@ -157,3 +157,40 @@ class FaceSubclassesTest < Test::Unit::TestCase
     assert_equal [115, 128, 160, 146, ILI9342::Color::WHITE], line_calls.first.last
   end
 end
+
+class DispatcherHandleByteTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+    @stdout  = FakeStdout.new
+    @dispatcher = StackchanProtocol::Dispatcher.new(
+      display: @display,
+      stdin:   FakeStdin.new(""),
+      stdout:  @stdout
+    )
+  end
+
+  def test_byte_zero_draws_neutral
+    @dispatcher.handle_byte("0")
+    methods = @display.calls.map(&:first)
+    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
+    line = @display.calls.select { |c| c.first == :draw_line }.first.last
+    assert_equal 146, line[1]
+  end
+
+  def test_byte_one_draws_smile
+    @dispatcher.handle_byte("1")
+    line = @display.calls.select { |c| c.first == :draw_line }.first.last
+    assert_equal 138, line[1]
+  end
+
+  def test_byte_two_draws_joy
+    @dispatcher.handle_byte("2")
+    line = @display.calls.select { |c| c.first == :draw_line }.first.last
+    assert_equal 128, line[1]
+  end
+
+  def test_valid_byte_does_not_write_error
+    @dispatcher.handle_byte("0")
+    assert_equal [], @stdout.writes
+  end
+end
