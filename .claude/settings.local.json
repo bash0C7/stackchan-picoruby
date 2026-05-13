@@ -5,7 +5,11 @@
       "Bash(system_profiler SPUSBDataType)",
       "Bash(ioreg -p IOUSB -l -w 0)",
       "Read(//dev/**)",
-      "Bash(screen -ls)"
+      "Bash(screen -ls)",
+      "Bash(stty -f /dev/cu.usbmodem1101)",
+      "Bash(screen -dmS r2p2-handoff-fix bash -c ' *)",
+      "Bash(rake *)",
+      "mcp__esa__esa_create_post"
     ]
   }
 }

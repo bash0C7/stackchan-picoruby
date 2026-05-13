@@ -60,3 +60,30 @@ PC連携アバターパターン：
 - PicoRubyドライバーの構成は picoruby-mpu6886 / picoruby-vl53l0x のレイアウトを踏襲
 - 公式 `../StackChan` には書き込まない。ピン配置や初期化シーケンスは読み取って参考にするだけ
 - spec / plan は `docs/superpowers/specs/` `docs/superpowers/plans/` に置く
+
+## R2P2-ESP32 ビルド・flash フロー（CoreS3 ターゲット）
+
+stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣リポジトリ `../../bash0C7/R2P2-ESP32` への呼び出しと esp-idf env source を全部ラップ済み。
+
+| タスク | 用途 |
+|---|---|
+| `rake r2p2:build_flash` | **基本フロー**。`picoruby:build → flash` を 1 screen 内で連結。build 失敗時は rake が flash を自動 skip。build と flash を別 kick する流れは禁止 |
+| `rake r2p2:setup` | 初回・target 切り替え後。`setup_esp32s3` = deep_clean + mruby host rebuild + `idf.py set-target esp32s3`。`idf.py fullclean` のみだと target が default `esp32` に戻り IRAM overflow でリンク失敗する |
+| `rake r2p2:reset` | RTS pulse で CoreS3 再起動。serial キャプチャ前に呼ぶ |
+| `rake r2p2:flash` / `rake r2p2:build` | 個別 fallback。普段使わない |
+
+### CoreS3 固有の sdkconfig
+
+- `bash0C7/R2P2-ESP32/sdkconfigs/cores3`：`SPIRAM=y` + `SPIRAM_MODE_QUAD=y` + `SPIRAM_SPEED_80M=y`。CoreS3 は **Quad PSRAM 8MB**（Octal でない）。デフォルトの `sdkconfigs/spiram` は `MODE_OCT=y` なので CoreS3 で使うと PSRAM ID 読み失敗 → boot loop
+- `bash0C7/R2P2-ESP32/sdkconfig.defaults`：`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`（CoreS3 は 16MB Flash）
+- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3`（Rakefile にハードコード済み）
+
+### monitor は人間がやる
+
+- claude code の Bash は TTY が無いから `idf.py monitor` / `rake monitor` は使用不可（即詰む）
+- claude code 側で boot ログ確認したい場合：`cat /dev/cu.usbmodem1101 > tmp/longrun/serial.log` を `run_in_background` で起動 → `rake r2p2:reset` → log を Read
+- 本格 monitor（Ctrl-] 抜け含む）は人間が別ターミナルで `cd ../../bash0C7/R2P2-ESP32 && rake monitor`
+
+### ロングバッチ
+
+setup は mruby host build を含むので 10〜20 分、build_flash は 5〜10 分。`~/dev/src/CLAUDE.md` のロングバッチパターン（`screen -dmS` で detached + `DONE:` sentinel）に従う。Monitor tool で `tail -F log | awk '/^DONE:/{exit}'` 待機。
