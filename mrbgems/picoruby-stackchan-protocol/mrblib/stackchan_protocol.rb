@@ -31,6 +31,24 @@ module StackchanProtocol
         display.draw_line(left_x, corner_y, cx,      cy,       MOUTH_COLOR)
         display.draw_line(cx,     cy,       right_x, corner_y, MOUTH_COLOR)
       end
+
+      def draw(display)
+        display.fill(BACKGROUND_COLOR)
+        draw_eyes(display)
+        draw_mouth(display, self.class::DELTA_Y)
+      end
+    end
+
+    class Neutral < Base
+      DELTA_Y = 0
+    end
+
+    class Smile < Base
+      DELTA_Y = 8
+    end
+
+    class Joy < Base
+      DELTA_Y = 18
     end
   end
 end

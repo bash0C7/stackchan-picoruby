@@ -116,3 +116,44 @@ class FaceBaseMouthTest < Test::Unit::TestCase
     assert_equal [160, 146, 205, 138, ILI9342::Color::WHITE], @display.calls[1].last
   end
 end
+
+class FaceSubclassesTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+  end
+
+  def test_neutral_delta_y_is_zero
+    assert_equal 0, StackchanProtocol::Face::Neutral::DELTA_Y
+  end
+
+  def test_smile_delta_y_is_eight
+    assert_equal 8, StackchanProtocol::Face::Smile::DELTA_Y
+  end
+
+  def test_joy_delta_y_is_eighteen
+    assert_equal 18, StackchanProtocol::Face::Joy::DELTA_Y
+  end
+
+  def test_draw_starts_with_black_fill
+    StackchanProtocol::Face::Neutral.new.draw(@display)
+    assert_equal [:fill, [ILI9342::Color::BLACK]], @display.calls.first
+  end
+
+  def test_draw_sequence_is_fill_then_two_eyes_then_two_mouth_lines
+    StackchanProtocol::Face::Smile.new.draw(@display)
+    methods = @display.calls.map(&:first)
+    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
+  end
+
+  def test_smile_uses_delta_y_eight_for_mouth
+    StackchanProtocol::Face::Smile.new.draw(@display)
+    line_calls = @display.calls.select { |c| c.first == :draw_line }
+    assert_equal [115, 138, 160, 146, ILI9342::Color::WHITE], line_calls.first.last
+  end
+
+  def test_joy_uses_delta_y_eighteen_for_mouth
+    StackchanProtocol::Face::Joy.new.draw(@display)
+    line_calls = @display.calls.select { |c| c.first == :draw_line }
+    assert_equal [115, 128, 160, 146, ILI9342::Color::WHITE], line_calls.first.last
+  end
+end
