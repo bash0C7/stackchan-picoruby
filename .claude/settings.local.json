@@ -3,7 +3,9 @@
     "allow": [
       "Read(//Users/bash/dev/src/github.com/m5stack/StackChan/**)",
       "Bash(system_profiler SPUSBDataType)",
-      "Bash(ioreg -p IOUSB -l -w 0)"
+      "Bash(ioreg -p IOUSB -l -w 0)",
+      "Read(//dev/**)",
+      "Bash(screen -ls)"
     ]
   }
 }

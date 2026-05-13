@@ -31,9 +31,13 @@ The pending steps map to original plan tasks:
 ```bash
 cd /Users/bash/dev/src/github.com/bash0C7/R2P2-ESP32
 git switch master           # vanilla, before our gem
-export SDKCONFIG_DEFAULTS="sdkconfigs/usb_console;sdkconfigs/spiram"
+# `sdkconfig.defaults` is REQUIRED — it sets CONFIG_PARTITION_TABLE_CUSTOM
+# so `partitions.csv` (defines the `storage` littlefs partition) is used.
+# Without it `littlefs_create_partition_image(storage ...)` fails at CMake
+# time. The order matches .github/workflows/esp-idf.yml (project SSOT).
+export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/spiram"
 rake setup_esp32s3
-rake build && rake flash && rake monitor
+rake picoruby:build && rake flash && rake monitor
 ```
 
 Pass criterion: R2P2 banner + `> ` prompt within 5 s of reset. In REPL:
@@ -54,7 +58,10 @@ If `require 'spi'` fails: vanilla build is missing the spi mrbgem — check `xte
 ```bash
 cd /Users/bash/dev/src/github.com/bash0C7/R2P2-ESP32
 git switch feature/cores3-stackchan   # picoruby-ili9342 wired in
-rake build
+# Same SDKCONFIG_DEFAULTS rule as Phase 1 — `sdkconfig.defaults` first.
+# Use `picoruby:build` (PICORB_VM=mruby) — `rake build` is ambiguous about VM.
+export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/spiram"
+rake picoruby:build
 ```
 
 If build fails on `picoruby-ili9342` linkage: check the `gemdir:` path in
