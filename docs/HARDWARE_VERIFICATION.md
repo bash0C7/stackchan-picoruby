@@ -125,9 +125,9 @@ device (via picomodem or your terminal's drag-and-drop), then in REPL:
 > load '/home/avatar_demo.rb'  # cycles 3 expressions every 5 s, infinite loop
 ```
 
-Note: `face_*.rb` use `require_relative '_face'` which may not be supported
-on PicoRuby. If `LoadError`, copy `_face.rb` to `/home/` first and edit the
-require to `require '_face'`.
+Note: `face_*.rb` use `require_relative '_face'`. `picoruby-require` documents
+this as supported (for CRuby compatibility); if it fails on this build,
+copy `_face.rb` to `/home/` first and edit the require to `require '_face'`.
 
 ### Phase 5 — Autostart (Plan Task 22)
 
@@ -150,9 +150,9 @@ fill() x5 avg: <X.Y> ms
 Capture the printed average and replace the `_TBD_` placeholder in
 `mrbgems/picoruby-ili9342/README.md` "Performance baseline" section.
 
-If `Machine.uptime_us` is not available on R2P2-ESP32, swap for whatever
-microsecond-precision time source is exposed (`Time.now.to_f * 1_000_000`,
-`PicoTime.now`, etc).
+`Machine.uptime_us` is documented in picoruby-machine; if it errors here,
+swap for whatever microsecond-precision time source is exposed
+(`Time.now.to_f * 1_000_000`, `PicoTime.now`, etc).
 
 ## Limitations to fix in follow-up specs
 
@@ -165,15 +165,13 @@ driver but missing scope:
   lines 168-175).
 - **AXP2101 PMIC driver** needed for backlight on/off control (currently the
   panel is on by default with USB power).
-- **`picoruby-machine` `delay_ms` / `uptime_us`** — verify symbols actually
-  exist on R2P2-ESP32 build; if naming differs, adjust `mrblib/ili9342.rb` and
-  `examples/benchmark_fill.rb`.
-- **`Float#round` and `Float#**`** in `draw_ellipse` — verify
-  picoruby-float build is included; integer-only fallback exists in
-  `docs/superpowers/plans/2026-05-10-stackchan-display-bringup.md` Task 13
-  if needed.
-- **`require_relative`** in face_*.rb examples — confirm support on PicoRuby
-  or document the `/home/` copy + plain `require` workaround.
+- **PicoRuby API availability (verified by source inspection, untested on
+  device)**: `Machine.delay_ms` / `Machine.uptime_us` are documented in
+  picoruby-machine; `require_relative` is documented in picoruby-require;
+  `Float#round` and `Float#**` come from mruby core and `xtensa-esp-picoruby.rb`
+  does not define `MRB_NO_FLOAT`. If any of these errors on hardware,
+  treat it as a build-config or version-mismatch bug rather than a missing
+  feature, and re-check the R2P2-ESP32 build config.
 
 ## After successful verification
 

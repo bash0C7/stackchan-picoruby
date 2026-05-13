@@ -2,7 +2,7 @@
 require 'spi'
 require 'gpio'
 require 'ili9342'
-require_relative '_face'   # if LoadError on device, copy _face.rb to /home/ and use require '_face'
+require_relative '_face'
 
 SCK_PIN  = 36
 MOSI_PIN = 37

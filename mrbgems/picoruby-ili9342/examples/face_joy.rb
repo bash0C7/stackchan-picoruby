@@ -2,9 +2,6 @@
 require 'spi'
 require 'gpio'
 require 'ili9342'
-# NOTE: `require_relative` may not be available on PicoRuby. If LoadError fires
-# on device, copy both `_face.rb` and this file to `/home/` and replace the
-# line below with `require '_face'`.
 require_relative '_face'
 
 SCK_PIN  = 36
