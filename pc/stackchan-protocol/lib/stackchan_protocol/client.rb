@@ -30,5 +30,19 @@ module StackchanProtocol
       raise DeviceError, "device reported '?' for face=#{name}" if ack == "?"
       nil
     end
+
+    def drain(serial, timeout: 1.0)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      buf = +""
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        break if remaining <= 0
+        ready = serial.wait_readable(0)
+        break if ready.nil?
+        chunk = serial.read(64) || break
+        buf << chunk
+      end
+      buf
+    end
   end
 end

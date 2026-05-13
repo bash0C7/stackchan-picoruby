@@ -250,3 +250,28 @@ class ClientSetFaceKeyErrorTest < Test::Unit::TestCase
     assert_equal [], @fake_uart.writes
   end
 end
+
+class ClientDrainTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new(read_bytes: "R2P2 banner\r\n$ ")
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", uart_class: @fake_uart_class
+    )
+  end
+
+  def test_drain_returns_buffered_string
+    drained = @client.open { |s| @client.drain(s, timeout: 0.05) }
+    assert_equal "R2P2 banner\r\n$ ", drained
+  end
+
+  def test_drain_returns_empty_string_when_nothing_buffered
+    @fake_uart.read_buffer = ""
+    drained = @client.open { |s| @client.drain(s, timeout: 0.05) }
+    assert_equal "", drained
+  end
+end
