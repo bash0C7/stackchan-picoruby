@@ -15,3 +15,4 @@ end
 require "test/unit"
 require "fake_display"
 require "fake_stdio"
+require "stackchan_protocol"

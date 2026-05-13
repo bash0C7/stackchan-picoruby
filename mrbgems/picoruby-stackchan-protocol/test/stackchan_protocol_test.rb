@@ -54,3 +54,37 @@ class FakeStdoutHarnessTest < Test::Unit::TestCase
     assert_equal 1, o.write("?")
   end
 end
+
+class FaceBaseEyesTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+    @face = StackchanProtocol::Face::Base.new
+  end
+
+  def test_draw_eyes_emits_two_filled_ellipses
+    @face.draw_eyes(@display)
+    ellipse_calls = @display.calls.select { |c| c.first == :draw_ellipse }
+    assert_equal 2, ellipse_calls.size, "must draw both eyes"
+  end
+
+  def test_left_eye_at_upstream_coords
+    @face.draw_eyes(@display)
+    left = @display.calls.first
+    assert_equal :draw_ellipse, left.first
+    cx, cy, rx, ry, color, opts = left.last
+    assert_equal 90,  cx
+    assert_equal 104, cy
+    assert_equal 16,  rx
+    assert_equal 16,  ry
+    assert_equal ILI9342::Color::WHITE, color
+    assert_equal({ fill: true }, opts)
+  end
+
+  def test_right_eye_at_mirrored_coords
+    @face.draw_eyes(@display)
+    right = @display.calls[1]
+    cx, cy, * = right.last
+    assert_equal 230, cx
+    assert_equal 104, cy
+  end
+end
