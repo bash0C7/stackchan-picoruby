@@ -74,6 +74,8 @@ module StackchanProtocol
       else
         @stdout.write(ERROR_BYTE)
       end
+    rescue StandardError
+      @stdout.write(ERROR_BYTE)
     end
   end
 end

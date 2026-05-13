@@ -213,4 +213,17 @@ class DispatcherHandleByteTest < Test::Unit::TestCase
     @dispatcher.handle_byte("\r")
     assert_equal ["?"], @stdout.writes
   end
+
+  def test_display_failure_emits_error_byte
+    @display.raise_on_fill = StandardError.new("simulated draw failure")
+    @dispatcher.handle_byte("0")
+    assert_equal ["?"], @stdout.writes
+  end
+
+  def test_display_failure_does_not_propagate
+    @display.raise_on_fill = StandardError.new("simulated draw failure")
+    assert_nothing_raised do
+      @dispatcher.handle_byte("0")
+    end
+  end
 end
