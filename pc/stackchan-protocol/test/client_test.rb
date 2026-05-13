@@ -221,3 +221,32 @@ class ClientSetFaceDeviceErrorTest < Test::Unit::TestCase
     assert_nil result
   end
 end
+
+class ClientSetFaceKeyErrorTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", uart_class: @fake_uart_class
+    )
+  end
+
+  def test_unknown_face_raises_key_error
+    assert_raises(KeyError) do
+      @client.open { |s| @client.set_face(s, :rage) }
+    end
+  end
+
+  def test_unknown_face_does_not_write_anything
+    begin
+      @client.open { |s| @client.set_face(s, :rage) }
+    rescue KeyError
+      # expected
+    end
+    assert_equal [], @fake_uart.writes
+  end
+end
