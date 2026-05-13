@@ -183,3 +183,41 @@ class ClientSetFaceSuccessTest < Test::Unit::TestCase
     assert_equal [0.1], @fake_uart.wait_readable_calls
   end
 end
+
+class ClientSetFaceDeviceErrorTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new(read_bytes: "?")
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", ack_timeout: 0.1, uart_class: @fake_uart_class
+    )
+  end
+
+  def test_set_face_raises_device_error_on_question_mark
+    assert_raises(StackchanProtocol::DeviceError) do
+      @client.open { |s| @client.set_face(s, :smile) }
+    end
+  end
+
+  def test_set_face_consumes_byte_before_raising
+    begin
+      @client.open { |s| @client.set_face(s, :smile) }
+    rescue StackchanProtocol::DeviceError
+      # expected
+    end
+    assert_empty @fake_uart.read_buffer
+  end
+
+  def test_set_face_ignores_non_question_noise
+    @fake_uart.read_buffer = "X"
+    result = nil
+    assert_nothing_raised do
+      result = @client.open { |s| @client.set_face(s, :smile) }
+    end
+    assert_nil result
+  end
+end
