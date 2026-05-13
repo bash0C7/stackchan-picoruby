@@ -4,6 +4,8 @@ ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/pyt
 
 SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3'
 ESPPORT_DEFAULT = '/dev/cu.usbmodem1101'
+LONGRUN_DIR = File.expand_path('tmp/longrun', __dir__)
+SERIAL_LOG_DEFAULT = "#{LONGRUN_DIR}/serial.log"
 
 def in_r2p2(*args)
   cmd = args.join(' ')
@@ -37,6 +39,14 @@ namespace :r2p2 do
   task :monitor do
     port = ENV.fetch('ESPPORT', ESPPORT_DEFAULT)
     in_r2p2 %Q{ESPPORT=#{port} rake monitor}
+  end
+
+  desc 'cat ESPPORT into SERIAL_LOG (claude code: launch via run_in_background, then rake r2p2:reset)'
+  task :capture do
+    port = ENV.fetch('ESPPORT', ESPPORT_DEFAULT)
+    log = ENV.fetch('SERIAL_LOG', SERIAL_LOG_DEFAULT)
+    mkdir_p File.dirname(log)
+    sh "cat #{port} > #{log}"
   end
 
   desc 'pulse RTS to reset CoreS3 (claude code has no TTY for `idf.py monitor`)'
