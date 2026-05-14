@@ -26,6 +26,10 @@ class PY32IOExpander
     write_reg(REG_LED_RAM_START, *bytes)
   end
 
+  def refresh_leds
+    write_reg(REG_LED_CFG, 0x40)
+  end
+
   private
 
   def write_reg(reg, *data)

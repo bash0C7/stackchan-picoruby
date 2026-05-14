@@ -164,3 +164,14 @@ class PY32WriteLedRamTest < Test::Unit::TestCase
     assert_equal 0x30, args.first
   end
 end
+
+class PY32RefreshLedsTest < Test::Unit::TestCase
+  def test_writes_bit6_to_REG_LED_CFG
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.refresh_leds
+    w = i2c.writes.first
+    assert_equal 0x6F, w[:addr]
+    assert_equal [0x24, 0x40], w[:args], "bit 6 = 0x40"
+  end
+end
