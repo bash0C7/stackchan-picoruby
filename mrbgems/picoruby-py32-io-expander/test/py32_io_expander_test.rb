@@ -175,13 +175,28 @@ class PY32WriteLedRamTest < Test::Unit::TestCase
 end
 
 class PY32RefreshLedsTest < Test::Unit::TestCase
-  def test_writes_bit6_to_REG_LED_CFG
+  # Per StackChan-BSP src/drivers/PY32IOExpander/PY32IOExpander.cpp:275-279,
+  # refresh must read REG_LED_CFG then OR-in bit 6 so the LED count (bits 5:0)
+  # written by set_led_count is preserved. Plain write of 0x40 would zero the
+  # count and the chip would emit nothing on the WS2812 line.
+  def test_reads_REG_LED_CFG_then_writes_with_bit6_set
+    i2c = FakeI2C.new
+    i2c.queue_read("\x0C".b)  # count=12 already set
+    py32 = PY32IOExpander.new(i2c)
+    py32.refresh_leds
+    assert_equal 1, i2c.reads.size, "must read REG_LED_CFG before writing"
+    assert_equal 0x24, i2c.reads.first[:reg]
+    w = i2c.writes.first
+    assert_equal 0x6F, w[:addr]
+    assert_equal [0x24, 0x4C], w[:args], "preserves count 0x0C + bit6 -> 0x4C"
+  end
+
+  def test_writes_only_bit6_when_count_is_zero
+    # Default queue returns 0x00, so result must be 0x40.
     i2c = FakeI2C.new
     py32 = PY32IOExpander.new(i2c)
     py32.refresh_leds
-    w = i2c.writes.first
-    assert_equal 0x6F, w[:addr]
-    assert_equal [0x24, 0x40], w[:args], "bit 6 = 0x40"
+    assert_equal [0x24, 0x40], i2c.writes.first[:args]
   end
 end
 

@@ -3,6 +3,8 @@ class PY32IOExpander
 
   REG_GPIO_M_L   = 0x03
   REG_GPIO_M_H   = 0x04
+  REG_GPIO_O_L   = 0x05
+  REG_GPIO_O_H   = 0x06
   REG_GPIO_PU_L  = 0x09
   REG_GPIO_PU_H  = 0x0A
   REG_GPIO_PD_L  = 0x0B
@@ -39,7 +41,10 @@ class PY32IOExpander
   end
 
   def refresh_leds
-    write_reg(REG_LED_CFG, REFRESH_BIT)
+    # Read-modify-write so the LED count (bits 5:0) written by set_led_count is
+    # preserved. Plain 0x40 would zero the count and the chip emits no frame.
+    current = read_reg(REG_LED_CFG, 1)[0]
+    write_reg(REG_LED_CFG, current | REFRESH_BIT)
   end
 
   def set_direction(pin, output)
@@ -58,6 +63,10 @@ class PY32IOExpander
 
   def set_drive_mode(pin, open_drain)
     write_pin_bit(REG_GPIO_DRV_L, REG_GPIO_DRV_H, pin, open_drain)
+  end
+
+  def digital_write(pin, level)
+    write_pin_bit(REG_GPIO_O_L, REG_GPIO_O_H, pin, level)
   end
 
   private
