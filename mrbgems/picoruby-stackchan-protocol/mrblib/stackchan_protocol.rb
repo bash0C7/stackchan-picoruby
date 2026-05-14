@@ -79,5 +79,3 @@ module StackchanProtocol
   end
 end
 
-require 'stackchan_protocol/frame_parser'
-require 'stackchan_protocol/dispatcher'

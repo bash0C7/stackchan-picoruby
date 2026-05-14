@@ -11,8 +11,8 @@ require 'gpio'
 require 'i2c'
 require 'machine'
 require 'ili9342'
-require 'py32_io_expander'
-require 'stackchan_led'
+require 'py32-io-expander'
+require 'stackchan-led'
 require 'stackchan-protocol'
 
 I2C_SDA_PIN  = 12
@@ -20,7 +20,7 @@ I2C_SCL_PIN  = 11
 AXP2101_ADDR = 0x34
 AW9523_ADDR  = 0x58
 
-i2c = I2C.new(unit: :ESP32_I2C0, frequency: 400_000,
+i2c = I2C.new(unit: :ESP32_I2C0, frequency: 100_000,
               sda_pin: I2C_SDA_PIN, scl_pin: I2C_SCL_PIN)
 
 # AXP2101: enable DLDO1 (bit 7 of reg 0x90) and set its voltage (reg 0x99).
@@ -55,9 +55,23 @@ display = ILI9342.new(
   width: 320, height: 240, rotation: :landscape
 )
 
-# PY32 IO Expander + LED driver (LEDs default to all-off via StackchanLed#init).
+# PY32 IO Expander + LED driver. PY32 boots slowly after power-on (~1.2s per
+# official firmware hal_io_expander.cpp); retry the first I2C write until it ACKs.
+Machine.delay_ms(500)
 py32 = PY32IOExpander.new(i2c)
-led  = StackchanLed.new(py32)
+led_init_attempt = 0
+begin
+  led = StackchanLed.new(py32)
+rescue IOError
+  led_init_attempt += 1
+  if led_init_attempt < 6
+    Machine.delay_ms(200)
+    retry
+  end
+  raise
+end
+# Low brightness during bring-up to protect eyes / equipment.
+led.brightness = 20
 
 # Initial face: neutral.
 StackchanProtocol::Face::Neutral.new.draw(display)
