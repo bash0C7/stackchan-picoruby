@@ -7,7 +7,7 @@
 require 'spi'
 require 'gpio'
 require 'ili9342'
-require 'stackchan_protocol'
+require 'stackchan-protocol'
 
 SCK_PIN  = 36
 MOSI_PIN = 37

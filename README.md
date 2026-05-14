@@ -8,9 +8,9 @@ The official M5Stack firmware lives in the sibling directory `../StackChan` and 
 
 | Subsystem | State | Driver mrbgem |
 | --- | --- | --- |
-| LCD (ILI9342) | host-tested, hardware-untested | `mrbgems/picoruby-ili9342` |
-| Face render (3 expressions) | host-tested, hardware-untested | — |
-| USB-Serial host protocol (1-byte) | host-tested, hardware-untested | `mrbgems/picoruby-stackchan-protocol` |
+| LCD (ILI9342) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-ili9342` |
+| Face render (3 expressions) | working on CoreS3 (2026-05-14) | — |
+| USB-Serial host protocol (1-byte) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-stackchan-protocol` |
 | IMU (BMI270) | not started | `picoruby-bmi270` (planned) |
 | Servo (SCServo) | not started | `picoruby-scservo` (planned) |
 | Touch (FT6336) | not started | `picoruby-ft6336` (planned) |

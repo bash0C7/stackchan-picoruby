@@ -33,6 +33,11 @@ module StackchanProtocol
               return 2
             end
             client.raw_send(serial, byte)
+            ready = serial.wait_readable(client.ack_timeout)
+            if ready
+              ack = serial.read(1)
+              raise DeviceError, "device reported '?' for raw send (byte=#{byte.inspect})" if ack == "?"
+            end
           else
             client.set_face(serial, command.to_sym)
           end

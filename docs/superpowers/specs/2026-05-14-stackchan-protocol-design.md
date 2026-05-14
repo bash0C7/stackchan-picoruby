@@ -379,14 +379,21 @@ section 8 の手順をそのまま実行。pass criterion は section 2 のゴ�
 
 ## 11. リスクと open question
 
-| # | 内容 | 対策 |
+| # | 内容 | 結果（2026-05-14 実機検証） |
 |---|---|---|
-| R1 | tenderlove/uart の `wait_readable` に timeout 引数なし | `IO.select([io], nil, nil, ack_timeout)` で代替。serial fd が IO-compatible でないなら uart gem 内部 IO の accessor 追加（upstream PR 候補） |
-| R2 | app.rb autostart 後の STDOUT に R2P2 boot ログが混ざるか不明 | 実機検証で確認、混ざるなら PC 側 drain で対処、それでもダメなら StackChan 側に「magic sentinel 出してから loop」 |
-| R3 | PicoRuby 4.0 系の `STDIN.read(1)` がブロッキングかノンブロッキングか不明 | 実機 + chiebukuro-mcp で確認、ブロックしないなら `sleep` 入れる |
-| R4 | `STDOUT.write('?')` の flush 挙動 | 実装で `$stdout.sync = true` を試す、ダメなら `$stdout.flush` 明示 |
-| R5 | app.rb autostart が STDIN/STDOUT を shell から奪えるか | `home/app.rb` 起動時の挙動を実機で確認、奪えないなら別 channel 模索（PicoModem 派生など） |
-| R6 | picoruby-ili9342 が「実機未検証」状態（display bring-up は別 session で物理接続待ち） | 本 spec の host テストは picoruby-ili9342 を mock するので独立。実機検証は両方が flash 通った後で連結 |
+| R1 | tenderlove/uart の `wait_readable` に timeout 引数なし | ✅ 解決。`UART.open` が返すのは普通の `File`、`io.wait_readable(timeout)` がそのまま使える |
+| R2 | app.rb autostart 後の STDOUT に R2P2 boot ログが混ざるか不明 | ✅ 問題なし。autostart で `Dispatcher#run` が STDIN を占有、boot 後の I (NNNN) ログは ack 通信に乗らない |
+| R3 | PicoRuby 4.0 系の `STDIN.read(1)` がブロッキングかノンブロッキングか不明 | ✅ blocking。`main_task: Returned from app_main()` が出ず Dispatcher が永続化 |
+| R4 | `STDOUT.write('?')` の flush 挙動 | ✅ flush 不要。`$stdout` は `:sync=` を持たんが、`write('?')` は即 PC に到達（probe で 1 byte ack 取得確認） |
+| R5 | app.rb autostart が STDIN/STDOUT を shell から奪えるか | ✅ 奪える。shell prompt `$>` は autostart 後一切出ず、PC 側 1 byte がそのまま Dispatcher に届く |
+| R6 | picoruby-ili9342 が「実機未検証」状態（display bring-up は別 session で物理接続待ち） | ✅ 解決。同セッションで CoreS3 上で `ILI9342.new` 成功、`fill / draw_ellipse / draw_line` 動作、20 連続 face switch 安定 |
+
+### 実機検証で判明した build infra 課題（spec 外、Rakefile/CLAUDE.md 側で対処）
+
+- **`conf.gem path:` は picoruby の `MRuby::LoadGems` で未対応**（`Need to set exactly ONE of git, github, bitbucket, mgem, core, or gemdir`）。`gemdir:` に統一する。R2P2-ESP32 fork 側 `build_config/xtensa-esp-picoruby.rb` の表記を修正済み
+- **gem 追加後は `rake r2p2:setup` 必須**。`idf.py build` 単独では picoruby/build の `gem_init.c` / `picogem_init.c` が再生成されず、新規 gem が組み込まれない（boot 時 LoadError）
+- **require 名 = gem 名から `picoruby-` を strip した形**。`picoruby-stackchan-protocol` → `require 'stackchan-protocol'` (hyphen)。host テストの `require 'stackchan_protocol'` (underscore) はファイル名解決経由で問題なし
+- **port は機体によって `/dev/cu.usbmodem101` or `1101`**。Rakefile / 検証 doc は ESPPORT 環境変数で上書き可
 
 ## 12. 完了の判定（再掲）
 

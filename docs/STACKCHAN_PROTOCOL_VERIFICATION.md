@@ -118,22 +118,34 @@ Pass criterion: all 20 succeed (exit 0). Face is correct after the loop.
 No `irb` / interactive shell on CoreS3 — the autostart loop is the only
 consumer of STDIN.
 
-## Open questions to resolve during this verification (spec §11)
+## Open questions — resolved (2026-05-14)
 
-| # | Question | Where to check |
+All R1–R6 from spec §11 resolved during this verification session.
+
+| # | Question | Result |
 |---|---|---|
-| R3 | Is `STDIN.read(1)` blocking on PicoRuby 4.0 / R2P2-ESP32? | Phase 2: if face appears immediately at boot before any PC byte is sent, the `Dispatcher#run` loop is spinning — that means `read(1)` returned nil quickly. Should not happen if `STDIN.read(1)` blocks. If it does, add a `Machine.delay_ms(1)` inside the loop or switch to `STDIN.getc`. |
-| R4 | Does `$stdout.write('?')` flush in time for PC `IO.select` window? | Phase 5: if `raw 9` doesn't trigger DeviceError, the `'?'` is buffered. `$stdout.sync = true` in `examples/app.rb` is the first remedy. |
-| R5 | Does autostart `app.rb` actually own STDIN/STDOUT? | Phase 2: if app.rb never runs (no face appears) but R2P2 banner shows up over PC serial, autostart is not handing the channels over. Re-check `/home/app.rb` was uploaded. |
-| R6 | Does R2P2 boot log noise reach the PC after autostart? | Phase 5: if `neutral/smile/joy` produce spurious DeviceError, boot noise is still leaking. Mitigation: `Client#drain` before sending. |
+| R1 | `wait_readable` timeout on uart gem | OK — `UART.open` returns a regular `File`; `io.wait_readable(t)` works directly |
+| R2 | Boot log noise mixing into protocol STDOUT | OK — `Dispatcher#run` owns STDIN after autostart; no `Client#drain` needed |
+| R3 | `STDIN.read(1)` blocking on PicoRuby 4.0 | OK — blocks; `main_task` does not return after autostart |
+| R4 | `$stdout.write('?')` flush | OK — `:sync=` absent on PicoRuby `$stdout` but write reaches PC instantly (probed with 1 byte raw send → 1 byte `?` ack within 2 s) |
+| R5 | Autostart STDIN/STDOUT ownership | OK — shell `$>` does not appear; PC bytes route straight to `Dispatcher` |
+| R6 | Phase-6 stability (20 face switches in a row) | OK — all 20 PASS |
+
+## Build-infrastructure notes (discovered during verification)
+
+- The `r2p2:setup` step is **mandatory** whenever a new `conf.gem` line is added to `bash0C7/R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb`. `idf.py build` alone does not regenerate `picoruby/build/.../mrbgems/gem_init.c` / `picogem_init.c`, so the new gem will fail to load at runtime.
+- `conf.gem` must use `gemdir:` (not `path:`). PicoRuby's `MRuby::LoadGems` does not accept `path:`.
+- The require name is the gem name with `picoruby-` stripped — so `picoruby-stackchan-protocol` is loaded with `require 'stackchan-protocol'` (hyphen). Host tests can use the file-name form `require 'stackchan_protocol'` via `$LOAD_PATH`; only the on-device require has to match the prebuilt gem name.
+- USB-CDC port enumerates as `/dev/cu.usbmodem101` on one CoreS3 unit and `/dev/cu.usbmodem1101` on others — override with `ESPPORT=...` on every `rake r2p2:*` invocation.
+
+## Claude-Code-side picomodem upload
+
+`https://picoruby.org/terminal` is the canonical Upload entry point, but it requires a human Chrome session. For autonomous flows there is `tmp/picomodem_upload.rb` (host CRuby + the `uart` gem from `pc/stackchan-protocol/vendor/bundle`) which sends `STX` + `FILE_WRITE` + chunked `CHUNK` frames matching `picoruby-picomodem`'s wire format. Useful for re-uploading `examples/app.rb` after every code change without leaving the terminal.
+
+Note: if the device is stuck in a crash-loop or `main_task` has returned (e.g. autostart raised an uncaught exception), the shell will not service incoming `STX` frames. Recovery is `rake r2p2:flash` to re-flash `storage.bin` and reset `/home/`.
 
 ## After successful verification
 
-1. Update `README.md` status table: change `protocol | host-tested,
-   hardware-untested` → `working on CoreS3` (or analogous).
-2. If R3/R4/R5/R6 surfaced workarounds, fold them into either
-   `examples/app.rb` or `Client` defaults and add a regression test on the
-   host side.
-3. Decide branch fate (merge `feature/stackchan-display-bringup` to `main`
-   together with stackchan-protocol, or keep separate per remaining
-   bring-up tasks in `HARDWARE_VERIFICATION.md`).
+1. ✅ `README.md` status table updated to `working on CoreS3 (2026-05-14)`.
+2. ✅ Build-infra workarounds folded into the project CLAUDE.md / spec §11 (see "Build-infrastructure notes" above).
+3. Decide branch fate (merge `feature/stackchan-display-bringup` to `main` together with stackchan-protocol, or keep separate per remaining bring-up tasks in `HARDWARE_VERIFICATION.md`).

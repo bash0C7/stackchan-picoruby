@@ -1,4 +1,5 @@
 require "uart"
+require_relative "face_table"
 
 module StackchanProtocol
   class DeviceError < StandardError; end
