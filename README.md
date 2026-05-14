@@ -10,11 +10,12 @@ The official M5Stack firmware lives in the sibling directory `../StackChan` and 
 | --- | --- | --- |
 | LCD (ILI9342) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-ili9342` |
 | Face render (3 expressions) | working on CoreS3 (2026-05-14) | — |
-| USB-Serial host protocol (1-byte) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-stackchan-protocol` |
+| USB-Serial host protocol (frame) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-stackchan-protocol` |
+| PY32 IO Expander (I2C) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-py32-io-expander` |
+| RGB LED (SK6812, 4-mode) | working on CoreS3 (2026-05-14) | `mrbgems/picoruby-stackchan-led` |
 | IMU (BMI270) | not started | `picoruby-bmi270` (planned) |
 | Servo (SCServo) | not started | `picoruby-scservo` (planned) |
 | Touch (FT6336) | not started | `picoruby-ft6336` (planned) |
-| RGB LED (SK6812) | not started | wrapper of upstream `adafruit_sk6812` (planned) |
 | BLE-Serial | not started, blocking on ESP32 BLE port | (long-term) |
 | Camera / Mic / Speaker | unscoped | far future |
 
