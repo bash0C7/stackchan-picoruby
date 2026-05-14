@@ -3,23 +3,23 @@ require "stackchan_protocol"
 
 class FaceTableTest < Test::Unit::TestCase
   def test_neutral_maps_to_zero
-    assert_equal "0", StackchanProtocol::FACE_BYTES.fetch(:neutral)
+    assert_equal "0", StackchanProtocol::FACE_INDICES.fetch(:neutral)
   end
 
   def test_smile_maps_to_one
-    assert_equal "1", StackchanProtocol::FACE_BYTES.fetch(:smile)
+    assert_equal "1", StackchanProtocol::FACE_INDICES.fetch(:smile)
   end
 
   def test_joy_maps_to_two
-    assert_equal "2", StackchanProtocol::FACE_BYTES.fetch(:joy)
+    assert_equal "2", StackchanProtocol::FACE_INDICES.fetch(:joy)
   end
 
   def test_table_is_frozen
-    assert_predicate StackchanProtocol::FACE_BYTES, :frozen?
+    assert_predicate StackchanProtocol::FACE_INDICES, :frozen?
   end
 
   def test_unknown_face_raises_key_error
-    assert_raises(KeyError) { StackchanProtocol::FACE_BYTES.fetch(:rage) }
+    assert_raises(KeyError) { StackchanProtocol::FACE_INDICES.fetch(:rage) }
   end
 end
 
@@ -127,11 +127,11 @@ class ClientRawSendTest < Test::Unit::TestCase
     )
   end
 
-  def test_raw_send_writes_single_byte
+  def test_raw_send_writes_string_as_is
     @client.open do |serial|
-      @client.raw_send(serial, "9")
+      @client.raw_send(serial, "<X:bogus>\n")
     end
-    assert_equal ["9"], @fake_uart.writes
+    assert_equal ["<X:bogus>\n"], @fake_uart.writes
   end
 
   private
@@ -160,17 +160,17 @@ class ClientSetFaceSuccessTest < Test::Unit::TestCase
 
   def test_set_face_writes_smile_byte
     @client.open { |s| @client.set_face(s, :smile) }
-    assert_equal ["1"], @fake_uart.writes
+    assert_equal ["<F:1>\n"], @fake_uart.writes
   end
 
   def test_set_face_writes_neutral_byte
     @client.open { |s| @client.set_face(s, :neutral) }
-    assert_equal ["0"], @fake_uart.writes
+    assert_equal ["<F:0>\n"], @fake_uart.writes
   end
 
   def test_set_face_writes_joy_byte
     @client.open { |s| @client.set_face(s, :joy) }
-    assert_equal ["2"], @fake_uart.writes
+    assert_equal ["<F:2>\n"], @fake_uart.writes
   end
 
   def test_set_face_returns_nil_on_ack_timeout

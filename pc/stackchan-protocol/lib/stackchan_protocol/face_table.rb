@@ -1,5 +1,5 @@
 module StackchanProtocol
-  FACE_BYTES = {
+  FACE_INDICES = {
     neutral:   "0",
     smile:     "1",
     joy:       "2",

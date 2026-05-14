@@ -17,7 +17,7 @@ class CliArgParsingTest < Test::Unit::TestCase
       ["--port", "/dev/cu.test", "neutral"],
       env: {}, uart_class: @fake_uart_class, stderr: @stderr
     )
-    assert_equal ["0"], @fake_uart.writes
+    assert_equal ["<F:0>\n"], @fake_uart.writes
   end
 
   def test_port_from_env_when_not_in_argv
@@ -26,7 +26,7 @@ class CliArgParsingTest < Test::Unit::TestCase
       env: { "STACKCHAN_PORT" => "/dev/cu.fromenv" },
       uart_class: @fake_uart_class, stderr: @stderr
     )
-    assert_equal ["1"], @fake_uart.writes
+    assert_equal ["<F:1>\n"], @fake_uart.writes
   end
 
   def test_missing_port_exits_nonzero
