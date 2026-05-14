@@ -81,3 +81,44 @@ class StackchanLedClearTest < Test::Unit::TestCase
     pixels.each { |rgb| assert_equal [0, 0, 0], rgb }
   end
 end
+
+class StackchanLedBrightnessTest < Test::Unit::TestCase
+  def test_brightness_default_is_100_no_attenuation
+    py32 = FakePY32.new
+    led = StackchanLed.new(py32)
+    led.fill(100, 200, 50).show
+    assert_equal [100, 200, 50], py32.led_ram_calls.last.first
+  end
+
+  def test_brightness_50_halves_values
+    py32 = FakePY32.new
+    led = StackchanLed.new(py32)
+    led.brightness = 50
+    led.fill(100, 200, 50).show
+    assert_equal [50, 100, 25], py32.led_ram_calls.last.first
+  end
+
+  def test_brightness_0_blanks
+    py32 = FakePY32.new
+    led = StackchanLed.new(py32)
+    led.brightness = 0
+    led.fill(255, 255, 255).show
+    assert_equal [0, 0, 0], py32.led_ram_calls.last.first
+  end
+
+  def test_brightness_clamps_above_100
+    py32 = FakePY32.new
+    led = StackchanLed.new(py32)
+    led.brightness = 150
+    led.fill(100, 0, 0).show
+    assert_equal [100, 0, 0], py32.led_ram_calls.last.first
+  end
+
+  def test_brightness_clamps_below_0
+    py32 = FakePY32.new
+    led = StackchanLed.new(py32)
+    led.brightness = -50
+    led.fill(100, 0, 0).show
+    assert_equal [0, 0, 0], py32.led_ram_calls.last.first
+  end
+end

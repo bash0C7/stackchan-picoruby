@@ -25,6 +25,11 @@ class StackchanLed
     fill(0, 0, 0)
   end
 
+  def brightness=(v)
+    @brightness = clamp(v, 0, 100)
+    self
+  end
+
   def show
     pixels = @buffer.map { |rgb| apply_brightness(rgb[0], rgb[1], rgb[2]) }
     @py32.write_led_ram(pixels)
@@ -36,5 +41,9 @@ class StackchanLed
 
   def apply_brightness(r, g, b)
     [r * @brightness / 100, g * @brightness / 100, b * @brightness / 100]
+  end
+
+  def clamp(v, lo, hi)
+    v < lo ? lo : (v > hi ? hi : v)
   end
 end
