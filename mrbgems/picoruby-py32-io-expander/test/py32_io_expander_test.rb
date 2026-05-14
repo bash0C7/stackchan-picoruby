@@ -82,3 +82,14 @@ class PY32ReadRegTest < Test::Unit::TestCase
     assert_raises(IOError) { py32.send(:read_reg, 0x10, 1) }
   end
 end
+
+class PY32SetLedCountTest < Test::Unit::TestCase
+  def test_writes_count_to_REG_LED_COUNT
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_led_count(12)
+    w = i2c.writes.first
+    assert_equal 0x6F, w[:addr]
+    assert_equal [0x25, 12], w[:args]
+  end
+end

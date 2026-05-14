@@ -8,6 +8,10 @@ class PY32IOExpander
     @i2c = i2c
   end
 
+  def set_led_count(n)
+    write_reg(REG_LED_COUNT, n)
+  end
+
   private
 
   def write_reg(reg, *data)
