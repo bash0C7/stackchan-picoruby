@@ -77,40 +77,7 @@ module StackchanProtocol
       end
     end
   end
-
-  class Dispatcher
-    FACES = {
-      "0" => Face::Neutral,
-      "1" => Face::Smile,
-      "2" => Face::Joy,
-      "3" => Face::Surprised,
-    }
-
-    ERROR_BYTE = "?"
-
-    def initialize(display:, stdin: $stdin, stdout: $stdout)
-      @display = display
-      @stdin   = stdin
-      @stdout  = stdout
-    end
-
-    def handle_byte(byte)
-      face_class = FACES[byte]
-      if face_class
-        face_class.new.draw(@display)
-      else
-        @stdout.write(ERROR_BYTE)
-      end
-    rescue StandardError
-      @stdout.write(ERROR_BYTE)
-    end
-
-    def run
-      loop do
-        byte = @stdin.read(1)
-        break if byte.nil?
-        handle_byte(byte)
-      end
-    end
-  end
 end
+
+require 'stackchan_protocol/frame_parser'
+require 'stackchan_protocol/dispatcher'
