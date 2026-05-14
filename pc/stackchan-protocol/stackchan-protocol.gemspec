@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.license     = "MIT"
 
   spec.files       = Dir["lib/**/*.rb", "exe/*", "README.md"]
-  spec.executables = ["stackchan-control"]
+  spec.executables = ["stackchan-control", "picomodem-upload"]
   spec.bindir      = "exe"
   spec.require_paths = ["lib"]
 

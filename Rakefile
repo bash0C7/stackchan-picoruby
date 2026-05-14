@@ -90,4 +90,66 @@ namespace :r2p2 do
       print('reset sent')
     PY
   end
+
+  desc 'upload a Ruby file via PicoModem (SRC=path DST=/home/foo.rb), defaults to examples/app.rb'
+  task :upload do
+    src  = ENV.fetch('SRC', 'mrbgems/picoruby-stackchan-protocol/examples/app.rb')
+    dst  = ENV.fetch('DST', '/home/app.rb')
+    port = espport
+    abs_src = File.expand_path(src, __dir__)
+    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
+      sh 'bundle', 'exec', 'exe/picomodem-upload', abs_src, dst, port
+    end
+  end
+
+  desc 'send `led <COLOR> <MODE>` via stackchan-control (defaults: COLOR=red MODE=solid)'
+  task :send_led do
+    color = ENV.fetch('COLOR', 'red')
+    mode  = ENV.fetch('MODE', 'solid')
+    port = espport
+    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
+      sh 'bundle', 'exec', 'exe/stackchan-control', '--port', port, 'led', color, mode
+    end
+  end
+
+  desc 'send `face <NAME>` via stackchan-control (default NAME=neutral)'
+  task :send_face do
+    name = ENV.fetch('NAME', 'neutral')
+    port = espport
+    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
+      sh 'bundle', 'exec', 'exe/stackchan-control', '--port', port, 'face', name
+    end
+  end
+
+  desc 'one-shot HW verify: reset + capture serial + send_led + tail log (COLOR/MODE/WAIT env override)'
+  task :verify_led do
+    color = ENV.fetch('COLOR', 'red')
+    mode  = ENV.fetch('MODE', 'solid')
+    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
+    settle_wait    = ENV.fetch('SETTLE_WAIT', '4').to_i
+    port = espport
+    log = File.expand_path('tmp/longrun/verify-led-serial.log', __dir__)
+    mkdir_p File.dirname(log)
+    File.write(log, '')
+
+    Rake::Task['r2p2:reset'].invoke
+    sleep 1
+
+    cat_pid = spawn("cat #{port} > #{log}")
+    puts "[verify_led] serial capture pid=#{cat_pid} -> #{log}"
+
+    puts "[verify_led] waiting #{autostart_wait}s for autostart..."
+    sleep autostart_wait
+
+    ENV['COLOR'] = color
+    ENV['MODE']  = mode
+    Rake::Task['r2p2:send_led'].invoke
+
+    sleep settle_wait
+    Process.kill('TERM', cat_pid) rescue nil
+    Process.wait(cat_pid) rescue nil
+
+    puts "===== serial log tail (last 80 lines of #{log}) ====="
+    sh "tail -80 #{log}"
+  end
 end
