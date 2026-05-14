@@ -275,3 +275,70 @@ class ClientDrainTest < Test::Unit::TestCase
     assert_equal "", drained
   end
 end
+
+class ClientSetLedTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", ack_timeout: 0.1, uart_class: @fake_uart_class
+    )
+  end
+
+  def test_red_solid_writes_frame
+    @client.open { |s| @client.set_led(s, "red", "solid") }
+    assert_equal ["<L:1,R:255,G:0,B:0,M:s>\n"], @fake_uart.writes
+  end
+
+  def test_green_breathing
+    @client.open { |s| @client.set_led(s, "green", "breathing") }
+    assert_equal ["<L:1,R:0,G:255,B:0,M:p>\n"], @fake_uart.writes
+  end
+
+  def test_off_omits_rgb
+    @client.open { |s| @client.set_led(s, "off", "off") }
+    assert_equal ["<L:1,M:o>\n"], @fake_uart.writes
+  end
+
+  def test_default_mode_is_solid
+    @client.open { |s| @client.set_led(s, "blue") }
+    assert_equal ["<L:1,R:0,G:0,B:255,M:s>\n"], @fake_uart.writes
+  end
+
+  def test_unknown_color_raises_key_error
+    assert_raises(KeyError) do
+      @client.open { |s| @client.set_led(s, "puce") }
+    end
+  end
+
+  def test_unknown_mode_raises_key_error
+    assert_raises(KeyError) do
+      @client.open { |s| @client.set_led(s, "red", "rave") }
+    end
+  end
+end
+
+class ClientSetComboTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @client = StackchanProtocol::Client.new(
+      port: "/dev/cu.fake", ack_timeout: 0.1, uart_class: @fake_uart_class
+    )
+  end
+
+  def test_combo_smile_green_solid
+    @client.open do |s|
+      @client.set_combo(s, face_name: :smile, color_name: "green", mode_name: "solid")
+    end
+    assert_equal ["<F:1,L:1,R:0,G:255,B:0,M:s>\n"], @fake_uart.writes
+  end
+end
