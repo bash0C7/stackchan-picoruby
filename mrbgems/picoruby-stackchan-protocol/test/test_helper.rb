@@ -15,4 +15,5 @@ end
 require "test/unit"
 require "fake_display"
 require "fake_stdio"
+require "fake_led"
 require "stackchan_protocol"
