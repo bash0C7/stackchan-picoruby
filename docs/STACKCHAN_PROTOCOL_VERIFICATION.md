@@ -145,6 +145,65 @@ All R1–R6 from spec §11 resolved during this verification session.
 
 Note: if the device is stuck in a crash-loop or `main_task` has returned (e.g. autostart raised an uncaught exception), the shell will not service incoming `STX` frames. Recovery is `rake r2p2:flash` to re-flash `storage.bin` and reset `/home/`.
 
+## Phase 4 — Frame protocol + LED verification (post-LED extension spec)
+
+After the `2026-05-14-stackchan-led-protocol-extension` plan completes, the
+1-byte protocol is gone and the following replaces it.
+
+### Solid color sweep
+
+```bash
+for color in red green blue yellow cyan magenta white off; do
+  bundle exec stackchan-control --port /dev/cu.usbmodem* led $color
+  sleep 1
+done
+```
+
+**Pass criterion:** Each color uniform on all 12 LEDs; off blanks; each call exits 0.
+
+### Animation modes
+
+```bash
+bundle exec stackchan-control --port /dev/cu.usbmodem* led red blink
+# wait 5s -> visible 1Hz blink
+bundle exec stackchan-control --port /dev/cu.usbmodem* led green breathing
+# wait 10s -> 3-second smooth in/out
+bundle exec stackchan-control --port /dev/cu.usbmodem* led off off
+# blanks instantly
+```
+
+### Combo frame
+
+```bash
+bundle exec stackchan-control --port /dev/cu.usbmodem* \
+  --face smile --led "green solid" combo
+```
+
+**Pass criterion:** Face smile + LEDs green solid + single ACK.
+
+### Garbage tolerance
+
+```bash
+bundle exec stackchan-control --port /dev/cu.usbmodem* raw "junk<F:0>more<L:1,M:o>"
+```
+
+**Pass criterion:** Face neutral, LEDs off, exits 0.
+
+### Error frame
+
+```bash
+bundle exec stackchan-control --port /dev/cu.usbmodem* raw "<Z:bogus>"
+```
+
+**Pass criterion:** Exits 1, stderr "device error".
+
+### Cold-boot LED check
+
+1. USB unplug for 10s.
+2. USB replug.
+3. Wait 5s for autostart.
+4. Confirm: neutral face on screen, all 12 LEDs OFF (no flash on boot).
+
 ## After successful verification
 
 1. ✅ `README.md` status table updated to `working on CoreS3 (2026-05-14)`.
