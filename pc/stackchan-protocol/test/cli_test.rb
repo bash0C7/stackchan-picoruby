@@ -14,7 +14,7 @@ class CliArgParsingTest < Test::Unit::TestCase
 
   def test_port_from_argv
     StackchanProtocol::CLI.run(
-      ["--port", "/dev/cu.test", "neutral"],
+      ["--port", "/dev/cu.test", "face", "neutral"],
       env: {}, uart_class: @fake_uart_class, stderr: @stderr
     )
     assert_equal ["<F:0>\n"], @fake_uart.writes
@@ -22,7 +22,7 @@ class CliArgParsingTest < Test::Unit::TestCase
 
   def test_port_from_env_when_not_in_argv
     StackchanProtocol::CLI.run(
-      ["smile"],
+      ["face", "smile"],
       env: { "STACKCHAN_PORT" => "/dev/cu.fromenv" },
       uart_class: @fake_uart_class, stderr: @stderr
     )
@@ -31,7 +31,7 @@ class CliArgParsingTest < Test::Unit::TestCase
 
   def test_missing_port_exits_nonzero
     status = StackchanProtocol::CLI.run(
-      ["smile"], env: {}, uart_class: @fake_uart_class, stderr: @stderr
+      ["face", "smile"], env: {}, uart_class: @fake_uart_class, stderr: @stderr
     )
     assert_not_equal 0, status
     assert_match(/port/i, @stderr.string)
@@ -57,15 +57,15 @@ class CliRawCommandTest < Test::Unit::TestCase
     @stderr = StringIO.new
   end
 
-  def test_raw_sends_byte
+  def test_raw_sends_frame
     StackchanProtocol::CLI.run(
-      ["--port", "/dev/cu.test", "raw", "9"],
+      ["--port", "/dev/cu.test", "raw", "<X:bogus>"],
       env: {}, uart_class: @fake_uart_class, stderr: @stderr
     )
-    assert_equal ["9"], @fake_uart.writes
+    assert_equal ["<X:bogus>\n"], @fake_uart.writes
   end
 
-  def test_raw_without_byte_exits_nonzero
+  def test_raw_without_frame_exits_nonzero
     status = StackchanProtocol::CLI.run(
       ["--port", "/dev/cu.test", "raw"],
       env: {}, uart_class: @fake_uart_class, stderr: @stderr
@@ -85,7 +85,7 @@ class CliDeviceErrorTest < Test::Unit::TestCase
     stderr = StringIO.new
 
     status = StackchanProtocol::CLI.run(
-      ["--port", "/dev/cu.test", "smile"],
+      ["--port", "/dev/cu.test", "face", "smile"],
       env: {}, uart_class: fake_uart_class, stderr: stderr
     )
     assert_equal 1, status
@@ -104,10 +104,82 @@ class CliUnknownFaceTest < Test::Unit::TestCase
     stderr = StringIO.new
 
     status = StackchanProtocol::CLI.run(
-      ["--port", "/dev/cu.test", "rage"],
+      ["--port", "/dev/cu.test", "face", "rage"],
       env: {}, uart_class: fake_uart_class, stderr: stderr
     )
     assert_equal 2, status
-    assert_match(/unknown face/i, stderr.string)
+    assert_match(/unknown name/i, stderr.string)
+  end
+end
+
+class CliLedCommandTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @stderr = StringIO.new
+  end
+
+  def test_led_red_default_solid
+    StackchanProtocol::CLI.run(
+      ["--port", "/dev/cu.test", "led", "red"],
+      env: {}, uart_class: @fake_uart_class, stderr: @stderr
+    )
+    assert_equal ["<L:1,R:255,G:0,B:0,M:s>\n"], @fake_uart.writes
+  end
+
+  def test_led_green_breathing
+    StackchanProtocol::CLI.run(
+      ["--port", "/dev/cu.test", "led", "green", "breathing"],
+      env: {}, uart_class: @fake_uart_class, stderr: @stderr
+    )
+    assert_equal ["<L:1,R:0,G:255,B:0,M:p>\n"], @fake_uart.writes
+  end
+
+  def test_led_off
+    StackchanProtocol::CLI.run(
+      ["--port", "/dev/cu.test", "led", "off", "off"],
+      env: {}, uart_class: @fake_uart_class, stderr: @stderr
+    )
+    assert_equal ["<L:1,M:o>\n"], @fake_uart.writes
+  end
+
+  def test_led_missing_color_exits_two
+    status = StackchanProtocol::CLI.run(
+      ["--port", "/dev/cu.test", "led"],
+      env: {}, uart_class: @fake_uart_class, stderr: @stderr
+    )
+    assert_equal 2, status
+  end
+end
+
+class CliComboCommandTest < Test::Unit::TestCase
+  def setup
+    @fake_uart = FakeUart.new
+    @fake_uart_class = Class.new do
+      def self.open(_port, _baud, &block); block.call(@_fake); end
+      class << self; attr_accessor :_fake; end
+    end
+    @fake_uart_class._fake = @fake_uart
+    @stderr = StringIO.new
+  end
+
+  def test_combo_smile_green_solid
+    StackchanProtocol::CLI.run(
+      ["--port", "/dev/cu.test", "--face", "smile", "--led", "green solid", "combo"],
+      env: {}, uart_class: @fake_uart_class, stderr: @stderr
+    )
+    assert_equal ["<F:1,L:1,R:0,G:255,B:0,M:s>\n"], @fake_uart.writes
+  end
+
+  def test_combo_missing_face_exits_two
+    status = StackchanProtocol::CLI.run(
+      ["--port", "/dev/cu.test", "--led", "green solid", "combo"],
+      env: {}, uart_class: @fake_uart_class, stderr: @stderr
+    )
+    assert_equal 2, status
   end
 end
