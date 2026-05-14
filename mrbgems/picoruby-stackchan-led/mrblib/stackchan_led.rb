@@ -1,13 +1,16 @@
-require 'py32_io_expander'
-require 'stackchan_led/animator'
+require 'py32-io-expander'
 
 class StackchanLed
-  PIXEL_COUNT = 12
+  PIXEL_COUNT  = 12
+  LED_DATA_PIN = 13
 
   def initialize(py32)
     @py32 = py32
     @brightness = 100
     @buffer = Array.new(PIXEL_COUNT) { [0, 0, 0] }
+    @py32.set_direction(LED_DATA_PIN, true)
+    @py32.set_pull_mode(LED_DATA_PIN, true)
+    @py32.set_drive_mode(LED_DATA_PIN, false)
     @py32.set_led_count(PIXEL_COUNT)
     show
   end

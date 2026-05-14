@@ -19,6 +19,24 @@ class FakePY32HarnessTest < Test::Unit::TestCase
     py32.refresh_leds
     assert_equal 2, py32.refresh_calls
   end
+
+  def test_records_set_direction
+    py32 = FakePY32.new
+    py32.set_direction(13, true)
+    assert_equal [[13, true]], py32.direction_calls
+  end
+
+  def test_records_set_pull_mode
+    py32 = FakePY32.new
+    py32.set_pull_mode(13, true)
+    assert_equal [[13, true]], py32.pull_mode_calls
+  end
+
+  def test_records_set_drive_mode
+    py32 = FakePY32.new
+    py32.set_drive_mode(13, false)
+    assert_equal [[13, false]], py32.drive_mode_calls
+  end
 end
 
 class StackchanLedInitializeTest < Test::Unit::TestCase
@@ -39,6 +57,26 @@ class StackchanLedInitializeTest < Test::Unit::TestCase
     py32 = FakePY32.new
     StackchanLed.new(py32)
     assert_equal 1, py32.refresh_calls
+  end
+
+  def test_inits_gpio_13_as_output
+    py32 = FakePY32.new
+    StackchanLed.new(py32)
+    # GPIO 13 is the LED data line; must be configured as output.
+    assert_equal [[13, true]], py32.direction_calls
+  end
+
+  def test_inits_gpio_13_pull_up
+    py32 = FakePY32.new
+    StackchanLed.new(py32)
+    assert_equal [[13, true]], py32.pull_mode_calls
+  end
+
+  def test_inits_gpio_13_push_pull
+    py32 = FakePY32.new
+    StackchanLed.new(py32)
+    # open_drain=false means push-pull drive.
+    assert_equal [[13, false]], py32.drive_mode_calls
   end
 end
 
