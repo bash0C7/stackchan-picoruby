@@ -1,33 +1,46 @@
 module StackchanProtocol
   module Face
-    EYE_LEFT_CX  = 90
-    EYE_LEFT_CY  = 104
-    EYE_RIGHT_CX = 230
-    EYE_RIGHT_CY = 104
-    EYE_RX       = 16
-    EYE_RY       = 16
+    # Geometry derived from the M5Stack official StackChan reference photo.
+    # Ratios (normalised to screen 320×240):
+    #   eye-to-eye   : 0.31 W  = 100 px  (offset ±50 from cx=160)
+    #   eye_y        : 0.42 H  = 100 px  (slightly above geometric centre y=120)
+    #   mouth_y      : 0.58 H  = 140 px  (slightly below centre, gap 40 from eye)
+    #   eye diameter : 0.025 W = 8  px   (radius 4)
+    #   mouth width  : 0.16 W  = 50 px   (half-width 25)
+    EYE_LEFT_CX  = 110
+    EYE_LEFT_CY  = 100
+    EYE_RIGHT_CX = 210
+    EYE_RIGHT_CY = 100
+    EYE_RX       = 4
+    EYE_RY       = 4
 
     EYE_COLOR        = ILI9342::Color::WHITE
     MOUTH_COLOR      = ILI9342::Color::WHITE
     BACKGROUND_COLOR = ILI9342::Color::BLACK
 
     MOUTH_CX         = 160
-    MOUTH_CY         = 146
-    MOUTH_HALF_WIDTH = 45
+    MOUTH_CY         = 140
+    MOUTH_HALF_WIDTH = 25
+
+    # Surprised mouth — vertical filled rectangle (open mouth).
+    SURPRISED_MOUTH_HALF_W = 6
+    SURPRISED_MOUTH_HALF_H = 12
 
     class Base
+      DELTA_Y = 0
+
       def draw_eyes(display)
         display.draw_ellipse(EYE_LEFT_CX,  EYE_LEFT_CY,  EYE_RX, EYE_RY, EYE_COLOR, fill: true)
         display.draw_ellipse(EYE_RIGHT_CX, EYE_RIGHT_CY, EYE_RX, EYE_RY, EYE_COLOR, fill: true)
       end
 
-      def draw_mouth(display, delta_y)
+      def draw_mouth(display)
         cx = MOUTH_CX
         cy = MOUTH_CY
         hw = MOUTH_HALF_WIDTH
         left_x   = cx - hw
         right_x  = cx + hw
-        corner_y = cy - delta_y
+        corner_y = cy - self.class::DELTA_Y
         display.draw_line(left_x, corner_y, cx,      cy,       MOUTH_COLOR)
         display.draw_line(cx,     cy,       right_x, corner_y, MOUTH_COLOR)
       end
@@ -35,7 +48,7 @@ module StackchanProtocol
       def draw(display)
         display.fill(BACKGROUND_COLOR)
         draw_eyes(display)
-        draw_mouth(display, self.class::DELTA_Y)
+        draw_mouth(display)
       end
     end
 
@@ -50,6 +63,19 @@ module StackchanProtocol
     class Joy < Base
       DELTA_Y = 18
     end
+
+    class Surprised < Base
+      def draw_mouth(display)
+        display.draw_rect(
+          MOUTH_CX - SURPRISED_MOUTH_HALF_W,
+          MOUTH_CY - SURPRISED_MOUTH_HALF_H,
+          SURPRISED_MOUTH_HALF_W * 2,
+          SURPRISED_MOUTH_HALF_H * 2,
+          MOUTH_COLOR,
+          fill: true
+        )
+      end
+    end
   end
 
   class Dispatcher
@@ -57,6 +83,7 @@ module StackchanProtocol
       "0" => Face::Neutral,
       "1" => Face::Smile,
       "2" => Face::Joy,
+      "3" => Face::Surprised,
     }
 
     ERROR_BYTE = "?"

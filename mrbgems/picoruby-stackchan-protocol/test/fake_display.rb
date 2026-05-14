@@ -26,4 +26,9 @@ class FakeDisplay
     @calls << [:draw_line, [x0, y0, x1, y1, color]]
     nil
   end
+
+  def draw_rect(x, y, w, h, color, fill: false)
+    @calls << [:draw_rect, [x, y, w, h, color, { fill: fill }]]
+    nil
+  end
 end

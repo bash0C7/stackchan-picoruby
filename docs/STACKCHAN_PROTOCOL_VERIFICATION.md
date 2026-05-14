@@ -134,9 +134,10 @@ All R1–R6 from spec §11 resolved during this verification session.
 ## Build-infrastructure notes (discovered during verification)
 
 - The `r2p2:setup` step is **mandatory** whenever a new `conf.gem` line is added to `bash0C7/R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb`. `idf.py build` alone does not regenerate `picoruby/build/.../mrbgems/gem_init.c` / `picogem_init.c`, so the new gem will fail to load at runtime.
+- When only `mrblib/*.rb` content inside an **existing** gem changes (e.g. tweaking a constant), `idf.py build` keeps the stale cached `<gem>/mrblib/<gem>.c` bytecode because CMake's `add_custom_command(OUTPUT libmruby.a COMMAND ... rake)` only depends on the output file. Use `rake r2p2:rebuild_gems` to delete `libmruby.a`; the next `rake r2p2:build_flash` then forces picoruby's `rake` to re-run mrbc on every gem and re-link. Recommended pair: `rake r2p2:rebuild_gems r2p2:build_flash`.
 - `conf.gem` must use `gemdir:` (not `path:`). PicoRuby's `MRuby::LoadGems` does not accept `path:`.
 - The require name is the gem name with `picoruby-` stripped — so `picoruby-stackchan-protocol` is loaded with `require 'stackchan-protocol'` (hyphen). Host tests can use the file-name form `require 'stackchan_protocol'` via `$LOAD_PATH`; only the on-device require has to match the prebuilt gem name.
-- USB-CDC port enumerates as `/dev/cu.usbmodem101` on one CoreS3 unit and `/dev/cu.usbmodem1101` on others — override with `ESPPORT=...` on every `rake r2p2:*` invocation.
+- USB-CDC port enumerates as `/dev/cu.usbmodem101` on one CoreS3 unit and `/dev/cu.usbmodem1101` on others. The repo `Rakefile` auto-detects `/dev/cu.usbmodem*` for all `rake r2p2:*` tasks (override with `ESPPORT=...` only when 2+ candidates exist).
 
 ## Claude-Code-side picomodem upload
 

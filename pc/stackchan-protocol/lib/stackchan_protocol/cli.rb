@@ -19,7 +19,7 @@ module StackchanProtocol
 
       command = argv.shift
       unless command
-        stderr.puts "error: command required (neutral/smile/joy/raw <byte>)"
+        stderr.puts "error: command required (neutral/smile/joy/surprised/raw <byte>)"
         return 2
       end
 

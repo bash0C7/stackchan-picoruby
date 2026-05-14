@@ -67,15 +67,15 @@ class FaceBaseEyesTest < Test::Unit::TestCase
     assert_equal 2, ellipse_calls.size, "must draw both eyes"
   end
 
-  def test_left_eye_at_upstream_coords
+  def test_left_eye_at_official_ratio_coords
     @face.draw_eyes(@display)
     left = @display.calls.first
     assert_equal :draw_ellipse, left.first
     cx, cy, rx, ry, color, opts = left.last
-    assert_equal 90,  cx
-    assert_equal 104, cy
-    assert_equal 16,  rx
-    assert_equal 16,  ry
+    assert_equal 110, cx
+    assert_equal 100, cy
+    assert_equal 4,   rx
+    assert_equal 4,   ry
     assert_equal ILI9342::Color::WHITE, color
     assert_equal({ fill: true }, opts)
   end
@@ -84,36 +84,61 @@ class FaceBaseEyesTest < Test::Unit::TestCase
     @face.draw_eyes(@display)
     right = @display.calls[1]
     cx, cy, * = right.last
-    assert_equal 230, cx
-    assert_equal 104, cy
+    assert_equal 210, cx
+    assert_equal 100, cy
   end
 end
 
 class FaceBaseMouthTest < Test::Unit::TestCase
   def setup
     @display = FakeDisplay.new
-    @face = StackchanProtocol::Face::Base.new
   end
 
   def test_draw_mouth_emits_two_lines
-    @face.draw_mouth(@display, 0)
+    StackchanProtocol::Face::Base.new.draw_mouth(@display)
     line_calls = @display.calls.select { |c| c.first == :draw_line }
     assert_equal 2, line_calls.size
   end
 
-  def test_delta_y_zero_draws_straight_mouth
-    @face.draw_mouth(@display, 0)
-    # left segment: (115, 146) -> (160, 146)
-    assert_equal [115, 146, 160, 146, ILI9342::Color::WHITE], @display.calls[0].last
-    # right segment: (160, 146) -> (205, 146)
-    assert_equal [160, 146, 205, 146, ILI9342::Color::WHITE], @display.calls[1].last
+  def test_base_delta_y_zero_draws_straight_mouth
+    StackchanProtocol::Face::Base.new.draw_mouth(@display)
+    # left segment: (135, 140) -> (160, 140)
+    assert_equal [135, 140, 160, 140, ILI9342::Color::WHITE], @display.calls[0].last
+    # right segment: (160, 140) -> (185, 140)
+    assert_equal [160, 140, 185, 140, ILI9342::Color::WHITE], @display.calls[1].last
   end
 
-  def test_positive_delta_y_lifts_corners
-    @face.draw_mouth(@display, 8)
-    # corner_y = 146 - 8 = 138
-    assert_equal [115, 138, 160, 146, ILI9342::Color::WHITE], @display.calls[0].last
-    assert_equal [160, 146, 205, 138, ILI9342::Color::WHITE], @display.calls[1].last
+  def test_smile_class_delta_y_lifts_corners
+    StackchanProtocol::Face::Smile.new.draw_mouth(@display)
+    # corner_y = 140 - 8 = 132
+    assert_equal [135, 132, 160, 140, ILI9342::Color::WHITE], @display.calls[0].last
+    assert_equal [160, 140, 185, 132, ILI9342::Color::WHITE], @display.calls[1].last
+  end
+end
+
+class FaceSurprisedTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+  end
+
+  def test_draw_mouth_emits_filled_rect
+    StackchanProtocol::Face::Surprised.new.draw_mouth(@display)
+    rect_calls = @display.calls.select { |c| c.first == :draw_rect }
+    assert_equal 1, rect_calls.size
+    x, y, w, h, color, opts = rect_calls.first.last
+    # half_w=6 -> x=160-6=154, w=12; half_h=12 -> y=140-12=128, h=24
+    assert_equal 154, x
+    assert_equal 128, y
+    assert_equal 12,  w
+    assert_equal 24,  h
+    assert_equal ILI9342::Color::WHITE, color
+    assert_equal({ fill: true }, opts)
+  end
+
+  def test_draw_sequence_is_fill_then_two_eyes_then_one_rect
+    StackchanProtocol::Face::Surprised.new.draw(@display)
+    methods = @display.calls.map(&:first)
+    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_rect], methods
   end
 end
 
@@ -148,13 +173,13 @@ class FaceSubclassesTest < Test::Unit::TestCase
   def test_smile_uses_delta_y_eight_for_mouth
     StackchanProtocol::Face::Smile.new.draw(@display)
     line_calls = @display.calls.select { |c| c.first == :draw_line }
-    assert_equal [115, 138, 160, 146, ILI9342::Color::WHITE], line_calls.first.last
+    assert_equal [135, 132, 160, 140, ILI9342::Color::WHITE], line_calls.first.last
   end
 
   def test_joy_uses_delta_y_eighteen_for_mouth
     StackchanProtocol::Face::Joy.new.draw(@display)
     line_calls = @display.calls.select { |c| c.first == :draw_line }
-    assert_equal [115, 128, 160, 146, ILI9342::Color::WHITE], line_calls.first.last
+    assert_equal [135, 122, 160, 140, ILI9342::Color::WHITE], line_calls.first.last
   end
 end
 
@@ -174,19 +199,19 @@ class DispatcherHandleByteTest < Test::Unit::TestCase
     methods = @display.calls.map(&:first)
     assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
     line = @display.calls.select { |c| c.first == :draw_line }.first.last
-    assert_equal 146, line[1]
+    assert_equal 140, line[1]
   end
 
   def test_byte_one_draws_smile
     @dispatcher.handle_byte("1")
     line = @display.calls.select { |c| c.first == :draw_line }.first.last
-    assert_equal 138, line[1]
+    assert_equal 132, line[1]
   end
 
   def test_byte_two_draws_joy
     @dispatcher.handle_byte("2")
     line = @display.calls.select { |c| c.first == :draw_line }.first.last
-    assert_equal 128, line[1]
+    assert_equal 122, line[1]
   end
 
   def test_valid_byte_does_not_write_error
