@@ -163,3 +163,47 @@ class StackchanLedAnimateOffTest < Test::Unit::TestCase
     assert_equal calls_before, @py32.led_ram_calls.size
   end
 end
+
+class AnimatorBlinkTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led = StackchanLed.new(@py32)
+    @py32.led_ram_calls.clear
+  end
+
+  def test_blink_first_tick_is_on
+    @led.animate(255, 0, 0, :blink)
+    @led.tick(0)
+    assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_blink_at_499ms_still_on
+    @led.animate(255, 0, 0, :blink)
+    @led.tick(0)
+    @led.tick(499)
+    assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_blink_at_500ms_off
+    @led.animate(255, 0, 0, :blink)
+    @led.tick(0)
+    @led.tick(500)
+    assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_blink_at_1000ms_on_again
+    @led.animate(255, 0, 0, :blink)
+    @led.tick(0)
+    @led.tick(1000)
+    assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_blink_phase_anchored_to_first_tick
+    @led.animate(255, 0, 0, :blink)
+    @led.tick(7000)  # first tick sets phase_start_ms = 7000
+    @led.tick(7499)  # elapsed 499 -> still on
+    assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
+    @led.tick(7500)  # elapsed 500 -> off
+    assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
+  end
+end
