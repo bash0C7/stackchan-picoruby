@@ -93,3 +93,74 @@ class PY32SetLedCountTest < Test::Unit::TestCase
     assert_equal [0x25, 12], w[:args]
   end
 end
+
+class PY32WriteLedRamTest < Test::Unit::TestCase
+  def test_writes_to_REG_LED_RAM_START
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.write_led_ram([[255, 0, 0]])
+    w = i2c.writes.first
+    assert_equal 0x6F, w[:addr]
+    assert_equal 0x30, w[:args].first
+  end
+
+  def test_packs_red_to_rgb565_high_byte_first
+    # red 255 -> r5=0x1F=11111, g6=0, b5=0
+    # RGB565 = 11111000 00000000 = 0xF800 -> bytes [0xF8, 0x00]
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.write_led_ram([[255, 0, 0]])
+    args = i2c.writes.first[:args]
+    assert_equal [0x30, 0xF8, 0x00], args
+  end
+
+  def test_packs_green_to_rgb565
+    # green 255 -> r5=0, g6=0x3F=111111, b5=0
+    # RGB565 = 00000111 11100000 = 0x07E0 -> [0x07, 0xE0]
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.write_led_ram([[0, 255, 0]])
+    args = i2c.writes.first[:args]
+    assert_equal [0x30, 0x07, 0xE0], args
+  end
+
+  def test_packs_blue_to_rgb565
+    # blue 255 -> r5=0, g6=0, b5=0x1F
+    # RGB565 = 00000000 00011111 = 0x001F -> [0x00, 0x1F]
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.write_led_ram([[0, 0, 255]])
+    args = i2c.writes.first[:args]
+    assert_equal [0x30, 0x00, 0x1F], args
+  end
+
+  def test_packs_white_full_intensity
+    # white 255,255,255 -> r5=0x1F, g6=0x3F, b5=0x1F
+    # RGB565 = 11111111 11111111 = 0xFFFF -> [0xFF, 0xFF]
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.write_led_ram([[255, 255, 255]])
+    args = i2c.writes.first[:args]
+    assert_equal [0x30, 0xFF, 0xFF], args
+  end
+
+  def test_writes_multiple_pixels_in_one_bulk_call
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.write_led_ram([[255, 0, 0], [0, 255, 0]])
+    assert_equal 1, i2c.writes.size, "must be one bulk I2C transaction"
+    args = i2c.writes.first[:args]
+    assert_equal [0x30, 0xF8, 0x00, 0x07, 0xE0], args
+  end
+
+  def test_handles_12_pixels
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    pixels = Array.new(12) { [255, 255, 255] }
+    py32.write_led_ram(pixels)
+    args = i2c.writes.first[:args]
+    # 1 reg byte + 12 pixels * 2 bytes = 25 bytes
+    assert_equal 25, args.size
+    assert_equal 0x30, args.first
+  end
+end

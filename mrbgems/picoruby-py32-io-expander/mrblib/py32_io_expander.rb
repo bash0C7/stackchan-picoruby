@@ -12,6 +12,20 @@ class PY32IOExpander
     write_reg(REG_LED_COUNT, n)
   end
 
+  def write_led_ram(pixels)
+    bytes = []
+    pixels.each do |rgb|
+      r, g, b = rgb[0], rgb[1], rgb[2]
+      r5 = (r >> 3) & 0x1F
+      g6 = (g >> 2) & 0x3F
+      b5 = (b >> 3) & 0x1F
+      packed = (r5 << 11) | (g6 << 5) | b5
+      bytes << ((packed >> 8) & 0xFF)
+      bytes << (packed & 0xFF)
+    end
+    write_reg(REG_LED_RAM_START, *bytes)
+  end
+
   private
 
   def write_reg(reg, *data)
