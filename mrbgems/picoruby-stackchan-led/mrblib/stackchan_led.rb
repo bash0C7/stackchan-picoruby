@@ -11,6 +11,20 @@ class StackchanLed
     show
   end
 
+  def fill(r, g, b)
+    @buffer = Array.new(PIXEL_COUNT) { [r, g, b] }
+    self
+  end
+
+  def set_rgb(i, r, g, b)
+    @buffer[i] = [r, g, b]
+    self
+  end
+
+  def clear
+    fill(0, 0, 0)
+  end
+
   def show
     pixels = @buffer.map { |rgb| apply_brightness(rgb[0], rgb[1], rgb[2]) }
     @py32.write_led_ram(pixels)
