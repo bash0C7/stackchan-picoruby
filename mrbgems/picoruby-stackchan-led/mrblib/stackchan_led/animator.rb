@@ -1,6 +1,8 @@
 class StackchanLed
   class Animator
     BLINK_HALF_PERIOD_MS = 500
+    BREATHING_LUT = [0, 5, 20, 45, 70, 90, 100, 90, 70, 45, 20, 5].freeze
+    BREATHING_STEP_MS = 250
 
     def initialize(led)
       @led = led
@@ -32,6 +34,9 @@ class StackchanLed
         else
           @led.fill(0, 0, 0).show
         end
+      when :breathing
+        ratio = BREATHING_LUT[(elapsed / BREATHING_STEP_MS) % BREATHING_LUT.size]
+        @led.fill(@r * ratio / 100, @g * ratio / 100, @b * ratio / 100).show
       end
     end
 

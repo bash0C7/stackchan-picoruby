@@ -207,3 +207,48 @@ class AnimatorBlinkTest < Test::Unit::TestCase
     assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
   end
 end
+
+class AnimatorBreathingTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led = StackchanLed.new(@py32)
+    @py32.led_ram_calls.clear
+  end
+
+  def test_breathing_first_tick_step_0_is_zero
+    @led.animate(100, 0, 0, :breathing)
+    @led.tick(0)
+    assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_breathing_at_250ms_step_1
+    # LUT[1] = 5%, 100*5/100 = 5
+    @led.animate(100, 0, 0, :breathing)
+    @led.tick(0)
+    @led.tick(250)
+    assert_equal [5, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_breathing_at_1500ms_step_6_peak
+    # LUT[6] = 100%, full intensity
+    @led.animate(200, 100, 50, :breathing)
+    @led.tick(0)
+    @led.tick(1500)
+    assert_equal [200, 100, 50], @py32.led_ram_calls.last.first
+  end
+
+  def test_breathing_wraps_at_3000ms
+    # 3000ms / 250 = 12, % 12 = 0, LUT[0] = 0
+    @led.animate(100, 0, 0, :breathing)
+    @led.tick(0)
+    @led.tick(3000)
+    assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_breathing_phase_anchored_to_first_tick
+    @led.animate(100, 0, 0, :breathing)
+    @led.tick(5000)  # phase_start_ms = 5000
+    @led.tick(5250)  # elapsed 250 -> step 1 -> 5
+    assert_equal [5, 0, 0], @py32.led_ram_calls.last.first
+  end
+end
