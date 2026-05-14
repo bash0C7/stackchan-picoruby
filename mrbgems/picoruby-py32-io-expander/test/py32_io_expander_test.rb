@@ -84,13 +84,21 @@ class PY32ReadRegTest < Test::Unit::TestCase
 end
 
 class PY32SetLedCountTest < Test::Unit::TestCase
-  def test_writes_count_to_REG_LED_COUNT
+  def test_writes_count_to_REG_LED_CFG
+    # Official firmware writes the count into LED_CFG (0x24), masked to 6 bits.
     i2c = FakeI2C.new
     py32 = PY32IOExpander.new(i2c)
     py32.set_led_count(12)
     w = i2c.writes.first
     assert_equal 0x6F, w[:addr]
-    assert_equal [0x25, 12], w[:args]
+    assert_equal [0x24, 12], w[:args]
+  end
+
+  def test_masks_count_to_6_bits
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_led_count(0xFF)
+    assert_equal [0x24, 0x3F], i2c.writes.first[:args]
   end
 end
 
@@ -104,39 +112,39 @@ class PY32WriteLedRamTest < Test::Unit::TestCase
     assert_equal 0x30, w[:args].first
   end
 
-  def test_packs_red_to_rgb565_high_byte_first
+  def test_packs_red_to_rgb565_low_byte_first
     # red 255 -> r5=0x1F=11111, g6=0, b5=0
-    # RGB565 = 11111000 00000000 = 0xF800 -> bytes [0xF8, 0x00]
+    # RGB565 = 11111000 00000000 = 0xF800 -> little-endian bytes [0x00, 0xF8]
     i2c = FakeI2C.new
     py32 = PY32IOExpander.new(i2c)
     py32.write_led_ram([[255, 0, 0]])
     args = i2c.writes.first[:args]
-    assert_equal [0x30, 0xF8, 0x00], args
+    assert_equal [0x30, 0x00, 0xF8], args
   end
 
-  def test_packs_green_to_rgb565
+  def test_packs_green_to_rgb565_little_endian
     # green 255 -> r5=0, g6=0x3F=111111, b5=0
-    # RGB565 = 00000111 11100000 = 0x07E0 -> [0x07, 0xE0]
+    # RGB565 = 00000111 11100000 = 0x07E0 -> little-endian [0xE0, 0x07]
     i2c = FakeI2C.new
     py32 = PY32IOExpander.new(i2c)
     py32.write_led_ram([[0, 255, 0]])
     args = i2c.writes.first[:args]
-    assert_equal [0x30, 0x07, 0xE0], args
+    assert_equal [0x30, 0xE0, 0x07], args
   end
 
-  def test_packs_blue_to_rgb565
+  def test_packs_blue_to_rgb565_little_endian
     # blue 255 -> r5=0, g6=0, b5=0x1F
-    # RGB565 = 00000000 00011111 = 0x001F -> [0x00, 0x1F]
+    # RGB565 = 00000000 00011111 = 0x001F -> little-endian [0x1F, 0x00]
     i2c = FakeI2C.new
     py32 = PY32IOExpander.new(i2c)
     py32.write_led_ram([[0, 0, 255]])
     args = i2c.writes.first[:args]
-    assert_equal [0x30, 0x00, 0x1F], args
+    assert_equal [0x30, 0x1F, 0x00], args
   end
 
   def test_packs_white_full_intensity
     # white 255,255,255 -> r5=0x1F, g6=0x3F, b5=0x1F
-    # RGB565 = 11111111 11111111 = 0xFFFF -> [0xFF, 0xFF]
+    # RGB565 = 11111111 11111111 = 0xFFFF -> [0xFF, 0xFF] (endian-agnostic)
     i2c = FakeI2C.new
     py32 = PY32IOExpander.new(i2c)
     py32.write_led_ram([[255, 255, 255]])
@@ -150,7 +158,8 @@ class PY32WriteLedRamTest < Test::Unit::TestCase
     py32.write_led_ram([[255, 0, 0], [0, 255, 0]])
     assert_equal 1, i2c.writes.size, "must be one bulk I2C transaction"
     args = i2c.writes.first[:args]
-    assert_equal [0x30, 0xF8, 0x00, 0x07, 0xE0], args
+    # red LE [0x00, 0xF8], green LE [0xE0, 0x07]
+    assert_equal [0x30, 0x00, 0xF8, 0xE0, 0x07], args
   end
 
   def test_handles_12_pixels
@@ -173,5 +182,112 @@ class PY32RefreshLedsTest < Test::Unit::TestCase
     w = i2c.writes.first
     assert_equal 0x6F, w[:addr]
     assert_equal [0x24, 0x40], w[:args], "bit 6 = 0x40"
+  end
+end
+
+class PY32SetDirectionTest < Test::Unit::TestCase
+  def test_pin_lt_8_sets_bit_in_REG_GPIO_M_L
+    # initial reg is 0x00 (FakeI2C returns zeros), set_direction(3, true) -> 0x08
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_direction(3, true)
+    assert_equal 1, i2c.reads.size
+    assert_equal 0x03, i2c.reads.first[:reg]
+    w = i2c.writes.first
+    assert_equal [0x03, 0x08], w[:args]
+  end
+
+  def test_pin_13_sets_bit_5_in_REG_GPIO_M_H
+    # pin 13 -> reg_h, bit = 13 - 8 = 5 -> 0x20
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_direction(13, true)
+    assert_equal 0x04, i2c.reads.first[:reg]
+    assert_equal [0x04, 0x20], i2c.writes.first[:args]
+  end
+
+  def test_set_direction_false_clears_bit
+    # initial value 0xFF -> clearing bit 5 -> 0xDF
+    i2c = FakeI2C.new
+    i2c.queue_read("\xFF".b)
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_direction(13, false)
+    assert_equal [0x04, 0xDF], i2c.writes.first[:args]
+  end
+
+  def test_read_modify_write_preserves_other_bits
+    # initial value 0x05 (bits 0 and 2 set), set bit 5 -> 0x25
+    i2c = FakeI2C.new
+    i2c.queue_read("\x05".b)
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_direction(13, true)
+    assert_equal [0x04, 0x25], i2c.writes.first[:args]
+  end
+end
+
+class PY32SetPullModeTest < Test::Unit::TestCase
+  def test_pull_up_clears_pd_then_sets_pu_for_pin_13
+    # pin 13 -> reg_h variants. Initial regs are 0x00.
+    # Sequence: clear PD_H bit 5 -> set PU_H bit 5.
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_pull_mode(13, true)
+    assert_equal 2, i2c.writes.size
+    # First: write to REG_GPIO_PD_H (0x0C), clearing bit 5 from 0x00 -> 0x00
+    assert_equal [0x0C, 0x00], i2c.writes[0][:args]
+    # Second: write to REG_GPIO_PU_H (0x0A), setting bit 5 -> 0x20
+    assert_equal [0x0A, 0x20], i2c.writes[1][:args]
+  end
+
+  def test_pull_down_clears_pu_then_sets_pd_for_pin_13
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_pull_mode(13, false)
+    assert_equal 2, i2c.writes.size
+    assert_equal [0x0A, 0x00], i2c.writes[0][:args]
+    assert_equal [0x0C, 0x20], i2c.writes[1][:args]
+  end
+
+  def test_pull_up_uses_low_regs_for_pin_lt_8
+    # pin 3 -> reg_l variants (PD_L=0x0B, PU_L=0x09), bit 3 -> 0x08
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_pull_mode(3, true)
+    assert_equal [0x0B, 0x00], i2c.writes[0][:args]
+    assert_equal [0x09, 0x08], i2c.writes[1][:args]
+  end
+end
+
+class PY32SetDriveModeTest < Test::Unit::TestCase
+  def test_push_pull_clears_bit_for_pin_13
+    # open_drain=false -> clear bit 5 of REG_GPIO_DRV_H (0x14). initial 0x00 -> 0x00
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_drive_mode(13, false)
+    assert_equal 0x14, i2c.reads.first[:reg]
+    assert_equal [0x14, 0x00], i2c.writes.first[:args]
+  end
+
+  def test_open_drain_sets_bit_for_pin_13
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_drive_mode(13, true)
+    assert_equal [0x14, 0x20], i2c.writes.first[:args]
+  end
+
+  def test_push_pull_preserves_other_bits
+    # initial 0xFF, clear bit 5 -> 0xDF
+    i2c = FakeI2C.new
+    i2c.queue_read("\xFF".b)
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_drive_mode(13, false)
+    assert_equal [0x14, 0xDF], i2c.writes.first[:args]
+  end
+
+  def test_pin_lt_8_uses_DRV_L
+    i2c = FakeI2C.new
+    py32 = PY32IOExpander.new(i2c)
+    py32.set_drive_mode(2, true)
+    assert_equal [0x13, 0x04], i2c.writes.first[:args]
   end
 end
