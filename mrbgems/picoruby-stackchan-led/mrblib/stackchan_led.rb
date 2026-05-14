@@ -1,4 +1,5 @@
 require 'py32_io_expander'
+require 'stackchan_led/animator'
 
 class StackchanLed
   PIXEL_COUNT = 12
@@ -37,7 +38,20 @@ class StackchanLed
     self
   end
 
+  def animate(r, g, b, mode)
+    animator.set(r, g, b, mode)
+    self
+  end
+
+  def tick(now_ms)
+    animator.tick(now_ms)
+  end
+
   private
+
+  def animator
+    @animator ||= Animator.new(self)
+  end
 
   def apply_brightness(r, g, b)
     [r * @brightness / 100, g * @brightness / 100, b * @brightness / 100]

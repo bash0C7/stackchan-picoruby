@@ -122,3 +122,44 @@ class StackchanLedBrightnessTest < Test::Unit::TestCase
     assert_equal [0, 0, 0], py32.led_ram_calls.last.first
   end
 end
+
+class StackchanLedAnimateSolidTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led = StackchanLed.new(@py32)
+  end
+
+  def test_animate_solid_pushes_color_immediately
+    @led.animate(100, 200, 50, :solid)
+    assert_equal [100, 200, 50], @py32.led_ram_calls.last.first
+  end
+
+  def test_animate_solid_then_tick_does_not_change
+    @led.animate(100, 200, 50, :solid)
+    calls_before = @py32.led_ram_calls.size
+    @led.tick(123)
+    @led.tick(500)
+    @led.tick(2000)
+    assert_equal calls_before, @py32.led_ram_calls.size, "solid is static; tick is no-op"
+  end
+end
+
+class StackchanLedAnimateOffTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led = StackchanLed.new(@py32)
+  end
+
+  def test_animate_off_clears_immediately
+    @led.fill(255, 255, 255).show
+    @led.animate(99, 99, 99, :off)
+    assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
+  end
+
+  def test_animate_off_tick_no_op
+    @led.animate(0, 0, 0, :off)
+    calls_before = @py32.led_ram_calls.size
+    @led.tick(100)
+    assert_equal calls_before, @py32.led_ram_calls.size
+  end
+end
