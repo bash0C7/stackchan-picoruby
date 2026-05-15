@@ -125,6 +125,38 @@ namespace :r2p2 do
     end
   end
 
+  # SRC (.rb) を host picorbc で .mrb bytecode に compile し、/home/app.mrb として
+  # autostart 用に upload する。R2P2 の main_task は .mrb を .rb より優先 load する
+  # ので、複雑な ble_smoke.rb 等 on-device の mrb_sandbox_compile で FreeRTOS main
+  # task stack を blow するアプリは host compile 経由でしか動かない (2026-05-16 finding)。
+  # picorbc は rake r2p2:setup で host build される。bytecode は tmp/build/ に置く。
+  desc 'host-compile SRC=path/to/foo.rb to .mrb and upload as /home/app.mrb (autostart bytecode path; bypasses on-device compile)'
+  task :upload_mrb do
+    src = ENV.fetch('SRC') { abort 'SRC=path/to/file.rb is required for r2p2:upload_mrb' }
+    src_path = File.expand_path(src, __dir__)
+    abort "SRC not found: #{src_path}" unless File.exist?(src_path)
+
+    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
+    unless File.executable?(picorbc)
+      abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first (host picoruby build)"
+    end
+
+    build_dir = File.expand_path('tmp/build', __dir__)
+    mkdir_p build_dir
+    base = File.basename(src_path, File.extname(src_path))
+    mrb_path = File.join(build_dir, "#{base}.mrb")
+    rm_f mrb_path
+    sh picorbc, '-o', mrb_path, src_path
+    abort "picorbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
+    puts "[upload_mrb] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes)"
+
+    port = espport
+    dst = '/home/app.mrb'
+    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
+      sh 'bundle', 'exec', 'exe/picomodem-upload', mrb_path, dst, port
+    end
+  end
+
   desc 'send `led <COLOR> <MODE>` via stackchan-control (defaults: COLOR=red MODE=solid)'
   task :send_led do
     color = ENV.fetch('COLOR', 'red')

@@ -1,7 +1,21 @@
-# examples/ble_smoke.rb — Phase 1 picoruby-ble smoke on CoreS3.
+# examples/ble_smoke.rb — picoruby-ble smoke on CoreS3 (Phase 1 + Phase 2).
 # Advertises 'StackChan-PicoRuby' for 60 seconds then exits so the device
 # returns to shell and upload remains race-free.
+#
+# Phase 1 (kept for regression): GAP service + 0xFFE0/0xFFE1 static read demo
+# Phase 2 (new): Nordic UART Service (NUS) — RX write_without_response + TX notify
+#
+# AST depth note: every helper is split into its own method to keep the
+# PicoRuby compiler's codegen recursion shallow. An earlier monolithic
+# initialize() blew the FreeRTOS main task stack inside mrb_sandbox_compile.
 require 'ble'
+
+# 2-second escape hatch at boot. R2P2 autostart of /home/app.rb is fast and
+# unforgiving once the panic loop starts: stack overflow / NameError / hung
+# state can repeat-reset the device before a serial reader can grab the
+# shell. Burning 2 seconds here keeps a Ctrl-C window open so the user can
+# drop into the R2P2 shell to `rm /home/app.rb` before any heavy work.
+sleep_ms 2000
 
 class StackChanSmoke < BLE
   # AD types per Bluetooth Core spec
@@ -10,26 +24,101 @@ class StackChanSmoke < BLE
   # LE General Discoverable | BR/EDR Not Supported
   AD_FLAGS = 0x06
   BTSTACK_EVENT_STATE = 0x60
+  HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
+  ATT_EVENT_CAN_SEND_NOW = 0xB7
+
+  # Nordic UART Service UUIDs (128-bit) stored in little-endian byte order
+  # since BLE::GattDatabase#uuid2str passes 16-byte strings through verbatim
+  # and BTstack's att_db expects LE order for 128-bit UUIDs.
+  #
+  # Wire UUIDs:
+  #   Service: 6e400001-b5a3-f393-e0a9-e50e24dcca9e
+  #   RX     : 6e400002-b5a3-f393-e0a9-e50e24dcca9e  (Write / Write Without Response)
+  #   TX     : 6e400003-b5a3-f393-e0a9-e50e24dcca9e  (Read / Notify)
+  NUS_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
+  NUS_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x02\x00\x40\x6e"
+  NUS_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x03\x00\x40\x6e"
+
+  # Pre-computed property flag masks. Hoisting these out of the GattDatabase
+  # builder keeps the OR-chain expressions out of the deeply nested codegen
+  # path during initialize().
+  NUS_RX_PROPS = BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
+  NUS_TX_PROPS = BLE::READ | BLE::NOTIFY | BLE::DYNAMIC
+  NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
+  NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
+
+  NOTIFY_PERIOD_TICKS = 50 # heartbeat_callback fires every POLLING_UNIT_MS=100ms
 
   def initialize
-    @adv_data = BLE::AdvertisingData.build do |a|
+    @adv_data = build_adv_data
+    db = build_gatt_database
+    @db = db   # ivar 保持 (string body lifetime defense)
+    @rx_handle = nus_handle(db, NUS_RX_CHAR_UUID, :value_handle)
+    @tx_handle = nus_handle(db, NUS_TX_CHAR_UUID, :value_handle)
+    @tx_cccd_handle = nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION)
+    @notify_enabled = false
+    @notify_tick = 0
+    @notify_seq = 0
+    dump_profile(db)
+    puts "[ble_smoke] NUS handles rx=#{@rx_handle} tx=#{@tx_handle} cccd=#{@tx_cccd_handle}"
+    super(:peripheral, db.profile_data)
+  end
+
+  def build_adv_data
+    BLE::AdvertisingData.build do |a|
       a.add(AD_TYPE_FLAGS, AD_FLAGS)
       a.add(AD_TYPE_COMPLETE_LOCAL_NAME, "StackChan-PicoRuby")
     end
-    db = BLE::GattDatabase.new do |db|
-      db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GAP_SERVICE_UUID) do |s|
-        s.add_characteristic(BLE::READ, BLE::GAP_DEVICE_NAME_UUID, BLE::READ, "StackChan-PicoRuby")
-      end
-      # Phase 1 diagnostic (2026-05-15): add custom 0xFFE0 service to test if att_db
-      # is actually used by BTstack for GATT discovery. If 0xFFE0 appears in Chrome
-      # but the 0x1800 (GAP) service does not, BTstack is special-casing GAP via its
-      # own internal handlers (att_db user-supplied 0x1800 is silently ignored).
-      # If NEITHER appears, our att_db is not being consulted at all by ATT server.
-      db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, 0xFFE0) do |s|
-        s.add_characteristic(BLE::READ, 0xFFE1, BLE::READ, "PicoRubyTest")
-      end
+  end
+
+  def build_gatt_database
+    BLE::GattDatabase.new do |db|
+      add_gap_service(db)
+      add_diag_service(db)
+      add_nus_service(db)
     end
-    @db = db   # ivar 保持 (string body lifetime defense)
+  end
+
+  def add_gap_service(db)
+    db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GAP_SERVICE_UUID) do |s|
+      s.add_characteristic(BLE::READ, BLE::GAP_DEVICE_NAME_UUID, BLE::READ, "StackChan-PicoRuby")
+    end
+  end
+
+  # Phase 1 diagnostic (2026-05-15): custom 0xFFE0 service with static read.
+  # Kept so iPhone nRF Connect / rb-corebluetooth-mac can verify the Phase 1
+  # path still works alongside the new NUS service (regression detection).
+  def add_diag_service(db)
+    db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, 0xFFE0) do |s|
+      s.add_characteristic(BLE::READ, 0xFFE1, BLE::READ, "PicoRubyTest")
+    end
+  end
+
+  # Phase 2: Nordic UART Service for BLE serial-like bidirectional bytes.
+  def add_nus_service(db)
+    db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, NUS_SERVICE_UUID) do |s|
+      add_nus_rx(s)
+      add_nus_tx(s)
+    end
+  end
+
+  def add_nus_rx(s)
+    s.add_characteristic(NUS_RX_PROPS, NUS_RX_CHAR_UUID, NUS_RX_PROPS, "")
+  end
+
+  def add_nus_tx(s)
+    s.add_characteristic(NUS_TX_PROPS, NUS_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
+      # CCCD is not auto-generated by picoruby-ble; central writes "\x01\x00"
+      # here to subscribe to notifications.
+      c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
+    end
+  end
+
+  def nus_handle(db, char_uuid, key)
+    db.handle_table[NUS_SERVICE_UUID][char_uuid][key]
+  end
+
+  def dump_profile(db)
     bytes = db.profile_data.bytes
     puts "[ble_smoke] profile_data #{bytes.size} bytes:"
     hex = ""
@@ -41,7 +130,6 @@ class StackChanSmoke < BLE
       i += 1
     end
     puts hex
-    super(:peripheral, db.profile_data)
   end
 
   def packet_callback(event_packet)
@@ -50,11 +138,35 @@ class StackChanSmoke < BLE
       return unless event_packet[2]&.ord == BLE::HCI_STATE_WORKING
       puts "[ble_smoke] HCI WORKING — advertising as 'StackChan-PicoRuby'"
       advertise(@adv_data)
+    when HCI_EVENT_DISCONNECTION_COMPLETE
+      puts "[ble_smoke] disconnected"
+      @notify_enabled = false
+    when ATT_EVENT_CAN_SEND_NOW
+      notify(@tx_handle)
     end
   end
 
   def heartbeat_callback
-    # no-op for smoke; default would call blink_led which needs GPIO_LED_BLE
+    # NUS RX: drain any inbound writes from the central
+    rx_data = pop_write_value(@rx_handle)
+    while rx_data
+      puts "[ble_smoke] NUS RX (#{rx_data.length}B): #{rx_data.inspect}"
+      rx_data = pop_write_value(@rx_handle)
+    end
+    # CCCD: detect notification subscribe / unsubscribe
+    cccd = pop_write_value(@tx_cccd_handle)
+    if cccd
+      @notify_enabled = (cccd == "\x01\x00")
+      puts "[ble_smoke] NUS TX notify #{@notify_enabled ? 'enabled' : 'disabled'} cccd=#{cccd.inspect}"
+    end
+    # Periodic TX push while subscribed
+    return unless @notify_enabled
+    @notify_tick += 1
+    return if @notify_tick < NOTIFY_PERIOD_TICKS
+    @notify_tick = 0
+    @notify_seq += 1
+    push_read_value(@tx_handle, "ping ##{@notify_seq}\n")
+    request_can_send_now_event
   end
 end
 
