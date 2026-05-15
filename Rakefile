@@ -29,6 +29,27 @@ def in_r2p2(*args)
   sh %Q{bash -c '. #{ESP_IDF_EXPORT} && cd #{R2P2_ROOT} && #{cmd}'}
 end
 
+# idf.py never re-applies SDKCONFIG_DEFAULTS to an already-existing sdkconfig,
+# so edits to any fragment listed in SDKCONFIG_DEFAULTS_CORES3 are silently
+# ignored on the next build. Detect that case by mtime and nuke sdkconfig so
+# the next build regenerates it from the fragments. (2026-05-15 finding —
+# CONFIG_SW_COEXIST_ENABLE override was being dropped this way.)
+def ensure_sdkconfig_fresh
+  sdkconfig = "#{R2P2_ROOT}/sdkconfig"
+  unless File.exist?(sdkconfig)
+    puts "[r2p2] sdkconfig missing — will be generated from defaults"
+    return
+  end
+  cfg_mtime = File.mtime(sdkconfig)
+  stale = SDKCONFIG_DEFAULTS_CORES3.split(';').filter_map do |rel|
+    path = File.join(R2P2_ROOT, rel)
+    File.exist?(path) && File.mtime(path) > cfg_mtime ? rel : nil
+  end
+  return if stale.empty?
+  puts "[r2p2] sdkconfig fragment(s) newer than sdkconfig: #{stale.inspect} — regenerating"
+  rm sdkconfig
+end
+
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup do
@@ -47,6 +68,7 @@ namespace :r2p2 do
 
   desc "build with CoreS3 sdkconfig (QUAD PSRAM + 16MB flash, VM=mruby)"
   task :build do
+    ensure_sdkconfig_fresh
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
   end
 
@@ -58,6 +80,7 @@ namespace :r2p2 do
 
   desc 'build + flash in one shot (default workflow for code iteration)'
   task :build_flash do
+    ensure_sdkconfig_fresh
     port = espport
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
   end

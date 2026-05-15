@@ -118,7 +118,43 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣
 
 - `bash0C7/R2P2-ESP32/sdkconfigs/cores3`：`SPIRAM=y` + `SPIRAM_MODE_QUAD=y` + `SPIRAM_SPEED_80M=y`。CoreS3 は **Quad PSRAM 8MB**（Octal でない）。デフォルトの `sdkconfigs/spiram` は `MODE_OCT=y` なので CoreS3 で使うと PSRAM ID 読み失敗 → boot loop
 - `bash0C7/R2P2-ESP32/sdkconfig.defaults`：`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`（CoreS3 は 16MB Flash）
-- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3`（Rakefile にハードコード済み）
+- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_btstack`（Rakefile にハードコード済み）
+
+### sdkconfig fragment 編集後は自動再生成 (2026-05-15 finding)
+
+`idf.py build` は **既に存在する sdkconfig に SDKCONFIG_DEFAULTS を再適用しない**。fragment を編集しても次回 build に反映されないので silent regression に詰む。
+
+対策: stackchan-picoruby `Rakefile` の `r2p2:build` / `r2p2:build_flash` は **`ensure_sdkconfig_fresh`** を先に走らせて、いずれかの fragment が `sdkconfig` より新しい場合は `sdkconfig` を rm → 次の idf.py build で再生成される。手動で `rm sdkconfig` する必要は無い。
+
+### BLE on CoreS3: COEX 完全 disable 必須 (2026-05-15 finding)
+
+BLE-only build (BTstack vendored、WiFi 並走無し) で `CONFIG_SW_COEXIST_ENABLE=y` のままだと、BT controller の内部 task `btdm_controller_on_reset` → `bt_rf_coex_hook_st_set` → `coex_schm_status_bit_clear` → **ROM `coex_schm_lock`** で **uninitialized semaphore handle (`0x82xxxxxx` 等の高 bit set) を semphr_take して LoadProhibited panic**。
+
+ROM 側の `coex_schm_env` 参照経路が IDF v5.4 + ESP32-S3 + BLE-only で破綻している (詳細は addr2line + 一行 disasm で確認済)。`sdkconfigs/bt_btstack` で **全 coex 関連 flag を `n`** に：
+
+```
+CONFIG_SW_COEXIST_ENABLE=n
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
+CONFIG_ESP_COEX_ENABLED=n
+```
+
+これで `bt.c` 内 `coex_schm_status_bit_clear_wrapper` 等が `#if CONFIG_SW_COEXIST_ENABLE` ガードで no-op になり、BT controller の coex hook も harmless 化、ROM 経路に到達しない。WiFi 起動時に coex 必要になったら戻す (この時は `coex_schm_init` が正しく走るか別 issue として再評価)。
+
+### BTstack は thread-safe ではない (2026-05-15 finding)
+
+BTstack vendored ESP32 port の README 明記：
+> BTstack is not thread-safe... To call a function from the BTstack thread, you can use *btstack_run_loop_execute_on_main_thread*
+
+picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertise` 等は Ruby thread から呼ばれるが BTstack 内部は run_loop_freertos thread。**全部 btstack thread で実行** させる必要がある：
+
+- `ports/esp32/btstack_owner.c` に `picoruby_btstack_ensure_started(setup_cb, ctx)` + `picoruby_btstack_run_sync(cb, ctx)` API を追加
+- `BLE_init` の `l2cap_init / sm_init / att_server_init / hci_add_event_handler` 一式は setup callback として btstack_task 内 (run_loop_execute 前) で実行
+- 起動後の runtime call (`hci_power_control` / `gap_advertisements_*` 等) は `btstack_run_loop_execute_on_main_thread` 経由で semaphore 同期 dispatch
+- 同じ btstack thread から呼ばれた場合は dispatch せず直接 call (short-circuit) — deadlock 回避
+
+### Storage 区画は `idf.py flash` で wipe される
+
+`idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
 
 ### 物理 / shell-level op は人間に振る (recovery を粘らない)
 
@@ -132,8 +168,9 @@ claude 側で rake task を組み合わせて自動 recovery を粘るより、*
 | storage を完全 wipe したい | BOOT 押しながら USB 挿し → download mode 強制 → claude 側で flash |
 | 板の物理状態 (LED 光ってる？画面に何が出てる？) | 目視確認をお願い (serial trace は補助) |
 
-- claude code の Bash は TTY が無いから `idf.py monitor` / `rake monitor` は使用不可 (即詰む)
-- 軽量に boot ログ確認したい場合のみ：`cat /dev/cu.usbmodem1101 > tmp/longrun/serial.log` を `run_in_background` で起動 → `rake r2p2:reset` → log を Read。ただし USB-CDC re-enumerate で EOF するリスクあり、確実性は monitor 経由 < 人間視認
+- claude code の Bash は TTY が無いから `idf.py monitor` / `rake monitor` を直接呼ぶと即詰む
+- **`bin/capture-with-pty SECONDS LOG CMD...`** で PTY 付き短時間キャプチャができる (expect ベース)。`bin/capture-with-pty 30 /tmp/boot.log rake r2p2:monitor` で 30 秒キャプチャ → Ctrl-] 自動送出 → log 確定。USB-CDC re-enumerate にも idf_monitor 自前 reconnect で耐える
+- 軽量だけが目的なら `cat /dev/cu.usbmodem1101 > tmp/longrun/serial.log` を `run_in_background` で起動 → `rake r2p2:reset` → log を Read でも一応動く。ただし USB-CDC re-enumerate で EOF するリスクあり、確実性は capture-with-pty > cat > 人間視認
 
 ### R2P2 shell REPL は二段構成
 
