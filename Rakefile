@@ -2,7 +2,7 @@ R2P2_ROOT = File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
 
-SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3'
+SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_btstack'
 LIBMRUBY_FILE = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby/lib/libmruby.a"
 LONGRUN_DIR = File.expand_path('tmp/longrun', __dir__)
 SERIAL_LOG_DEFAULT = "#{LONGRUN_DIR}/serial.log"
