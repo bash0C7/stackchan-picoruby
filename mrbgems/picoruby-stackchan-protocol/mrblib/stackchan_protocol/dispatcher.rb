@@ -17,6 +17,12 @@ module StackchanProtocol
       "o" => :off,
     }.freeze
 
+    SIDE_TABLE = {
+      "L" => :left,
+      "R" => :right,
+      "B" => :both,
+    }.freeze
+
     def initialize(display:, led:, stdout: $stdout)
       @display = display
       @led     = led
@@ -46,10 +52,12 @@ module StackchanProtocol
     def handle_led(frame)
       mode = MODE_TABLE[frame["M"]]
       return false unless mode
+      side = SIDE_TABLE[frame["S"]]
+      return false unless side
       r = (frame["R"] || "0").to_i
       g = (frame["G"] || "0").to_i
       b = (frame["B"] || "0").to_i
-      @led.animate(r, g, b, mode)
+      @led.animate_side(side, r, g, b, mode)
       true
     end
 
