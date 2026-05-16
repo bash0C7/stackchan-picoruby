@@ -82,7 +82,18 @@ def run
     end
     puts '[verify] assert_services OK (FFE0 / NUS present)'
 
-    puts '[verify] PARTIAL (through assert_services — later phases not yet implemented)'
+    phase 'read_ffe1'
+    diag_ch = peripheral.find_characteristic(DIAG_CHAR)
+    if diag_ch.nil?
+      fail_exit 5, 'read_ffe1', 'FFE1 characteristic not found'
+    end
+    diag_val = diag_ch.read(timeout: 5.0).force_encoding('UTF-8')
+    unless diag_val == EXPECTED_DIAG
+      fail_exit 5, 'read_ffe1', "FFE1 value mismatch: got #{diag_val.inspect} expected #{EXPECTED_DIAG.inspect}"
+    end
+    puts "[verify] read_ffe1 OK (#{diag_val.inspect})"
+
+    puts '[verify] PARTIAL (through read_ffe1 — NUS RX/TX phases pending)'
   rescue CoreBluetoothMac::Error => e
     case e.domain
     when :closed, :cb
