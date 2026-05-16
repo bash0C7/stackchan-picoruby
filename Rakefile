@@ -150,4 +150,37 @@ namespace :r2p2 do
     Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
   end
 
+  # E2E smoke: upload application.mrb → reset → wait autostart → send a
+  # control frame via stackchan-ble-control combo. Exits with the CLI's
+  # exit code so the rake invocation surfaces structured failure (0/2/3/4/5).
+  desc 'BLE control E2E smoke (COLOR=red MODE=blink FACE=joy SIDE=both AUTOSTART_WAIT=12)'
+  task :ble_control_smoke do
+    color = ENV.fetch('COLOR', 'red')
+    mode  = ENV.fetch('MODE',  'solid')
+    face  = ENV.fetch('FACE',  'neutral')
+    side  = ENV.fetch('SIDE',  'both')
+    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
+
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    Rake::Task['r2p2:upload_mrb'].invoke
+    Rake::Task['r2p2:reset'].invoke
+
+    puts "[smoke] waiting #{autostart_wait}s for autostart (5s escape + BLE init + advertise)"
+    sleep autostart_wait
+
+    Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+      ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                  '--side', side,
+                  'combo',
+                  '--face', face,
+                  '--led',  "#{color} #{mode}")
+      unless ok
+        # Propagate the CLI's exit code so the rake call surfaces structured failure.
+        exit $?.exitstatus
+      end
+    end
+
+    puts "[smoke] PASS — face=#{face} LED=#{color} #{mode} (side=#{side}) — visual check please"
+  end
+
 end
