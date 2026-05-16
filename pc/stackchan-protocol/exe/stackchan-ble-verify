@@ -1,0 +1,59 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# stackchan-ble-verify — autonomous BLE verification loop against a CoreS3
+# running ble_smoke.rb. See docs/superpowers/specs/2026-05-16-ble-mac-
+# autonomous-verification-loop-design.md for the phase contract and exit codes.
+
+require 'bundler/setup'
+require 'corebluetooth_mac'
+
+DEVICE_NAME    = ENV.fetch('BLE_DEVICE_NAME',  'StackChan-PicoRuby')
+SCAN_TIMEOUT   = Float(ENV.fetch('BLE_SCAN_TIMEOUT', '10'))
+NOTIFY_WAIT    = Float(ENV.fetch('BLE_NOTIFY_WAIT',  '6'))
+STATE_TIMEOUT  = Float(ENV.fetch('BLE_STATE_TIMEOUT', '5'))
+
+NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+NUS_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
+NUS_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
+GAP_SERVICE = '1800'
+GAP_NAME_CHAR = '2a00'
+DIAG_SERVICE = 'ffe0'
+DIAG_CHAR    = 'ffe1'
+
+EXPECTED_GAP_NAME = 'StackChan-PicoRuby'
+EXPECTED_DIAG     = 'PicoRubyTest'
+
+def phase(name)
+  puts "[verify] #{name}"
+end
+
+def fail_exit(code, phase_name, reason, domain: 'n/a')
+  warn "[FAIL] phase=#{phase_name} reason=#{reason} domain=#{domain}"
+  exit code
+end
+
+def run
+  central = nil
+  begin
+    phase 'state_check'
+    central = CoreBluetoothMac::Central.new(state_timeout: STATE_TIMEOUT)
+    puts "[verify] state_check OK (central_id=#{central.central_id})"
+
+    # NOTE: subsequent phases (scan / connect / discover / read / write /
+    # subscribe / teardown) added in later tasks.
+
+    puts '[verify] PARTIAL (state_check only — later phases not yet implemented)'
+  rescue CoreBluetoothMac::Error => e
+    case e.domain
+    when :closed, :cb
+      fail_exit 2, 'state_check', "adapter not usable: #{e.message}", domain: e.domain
+    else
+      raise
+    end
+  ensure
+    central&.close
+  end
+end
+
+run
