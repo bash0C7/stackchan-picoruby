@@ -47,7 +47,13 @@ class StackChanSmoke < BLE
   NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
   NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
-  NOTIFY_PERIOD_TICKS = 50 # heartbeat_callback fires every POLLING_UNIT_MS=100ms
+  # Push a notify every NOTIFY_PERIOD_TICKS heartbeat ticks. The original 50
+  # was based on a misread of POLLING_UNIT_MS as 100ms; empirically the
+  # heartbeat fires ~1s per tick on R2P2-ESP32 (CoreS3) so 50 = ~50s, which
+  # exceeded Mac CoreBluetooth's idle-disconnect window before a single
+  # frame went out. 5 → ~5s, safely under that window while still avoiding
+  # spam on every heartbeat.
+  NOTIFY_PERIOD_TICKS = 5
 
   def initialize
     @adv_data = build_adv_data

@@ -10,7 +10,7 @@ require 'corebluetooth_mac'
 
 DEVICE_NAME    = ENV.fetch('BLE_DEVICE_NAME',  'StackChan-PicoRuby')
 SCAN_TIMEOUT   = Float(ENV.fetch('BLE_SCAN_TIMEOUT', '10'))
-NOTIFY_WAIT    = Float(ENV.fetch('BLE_NOTIFY_WAIT',  '6'))
+NOTIFY_WAIT    = Float(ENV.fetch('BLE_NOTIFY_WAIT',  '15'))
 STATE_TIMEOUT  = Float(ENV.fetch('BLE_STATE_TIMEOUT', '5'))
 
 NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
@@ -93,7 +93,45 @@ def run
     end
     puts "[verify] read_ffe1 OK (#{diag_val.inspect})"
 
-    puts '[verify] PARTIAL (through read_ffe1 — NUS RX/TX phases pending)'
+    phase 'nus_write'
+    rx_ch = peripheral.find_characteristic(NUS_RX_CHAR)
+    if rx_ch.nil?
+      fail_exit 5, 'nus_write', "NUS RX characteristic #{NUS_RX_CHAR} not found"
+    end
+    seq = Time.now.to_i
+    rx_ch.write_without_response("ping #{seq}\n")
+    puts "[verify] nus_write OK (sent ping #{seq})"
+
+    phase 'nus_subscribe'
+    tx_ch = peripheral.find_characteristic(NUS_TX_CHAR)
+    if tx_ch.nil?
+      fail_exit 5, 'nus_subscribe', "NUS TX characteristic #{NUS_TX_CHAR} not found"
+    end
+    sub = tx_ch.subscribe
+    received = []
+    deadline = Time.now + NOTIFY_WAIT
+    while (remaining = deadline - Time.now) > 0
+      v = sub.next_value(timeout: remaining)
+      break if v == false  # subscription closed/drained terminal
+      next  if v.nil?      # timeout, deadline check on next iteration
+      received << v
+    end
+    tx_ch.unsubscribe
+    matching = received.select { |frame| frame.force_encoding('UTF-8') =~ /\Aping #\d+\n\z/ }
+    if matching.empty?
+      fail_exit 5, 'nus_subscribe',
+        "no matching notify in #{NOTIFY_WAIT}s (got #{received.size} frames: #{received.map(&:inspect).join(', ')})"
+    end
+    puts "[verify] nus_subscribe OK (got #{received.size} notify, matching=#{matching.size}, first=#{matching.first.inspect})"
+
+    phase 'teardown'
+    central.disconnect(peripheral)
+    peripheral = nil  # so ensure block doesn't double-disconnect
+    central.close
+    central = nil
+    puts '[verify] teardown OK'
+
+    puts '[verify] PASS'
   rescue CoreBluetoothMac::Error => e
     case e.domain
     when :closed, :cb

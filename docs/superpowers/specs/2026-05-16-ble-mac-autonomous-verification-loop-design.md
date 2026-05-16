@@ -53,7 +53,7 @@ rake r2p2:ble_verify  ──┬─► r2p2:upload_mrb (host picorbc + picomodem 
 - env:
   - `BLE_DEVICE_NAME` (default `"StackChan-PicoRuby"`)
   - `BLE_SCAN_TIMEOUT` (default `10`)
-  - `BLE_NOTIFY_WAIT` (default `6`)
+  - `BLE_NOTIFY_WAIT` (default `15` — needs to span at least 2 device heartbeat cycles + Mac CoreBluetooth's idle-disconnect window safety margin; see 2026-05-16 finding in plan Task 6)
 - フロー (各 phase は stdout に header `[verify] <phase>` を出す):
   1. `state_check`: `CoreBluetoothMac::Central.new(state_timeout: 5)` — permission/adapter チェック
   2. `scan`: name filter で 10 秒間 scan → `devices.first` を取得 → **`device.name == "StackChan-PicoRuby"` を assert** (Apple は GAP/0x1800 を `discoverServices(nil)` から filter するので、device 名は scan-response advertising data から取る)
