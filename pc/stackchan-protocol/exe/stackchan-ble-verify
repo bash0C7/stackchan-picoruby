@@ -53,9 +53,31 @@ def run
     peripheral = central.connect(device, timeout: 5.0)
     puts "[verify] connect OK"
 
-    # NOTE: discover / read / write / subscribe added in later tasks.
+    phase 'discover'
+    peripheral.discover_services(timeout: 5.0)
+    peripheral.services.each do |svc|
+      svc.discover_characteristics(timeout: 5.0)
+    end
+    puts "[verify] discover OK (#{peripheral.services.size} services)"
 
-    puts '[verify] PARTIAL (through connect — later phases not yet implemented)'
+    phase 'assert_services'
+    missing = []
+    missing << GAP_SERVICE  unless peripheral.find_service(GAP_SERVICE)
+    missing << DIAG_SERVICE unless peripheral.find_service(DIAG_SERVICE)
+    missing << NUS_SERVICE  unless peripheral.find_service(NUS_SERVICE)
+    unless missing.empty?
+      warn ''
+      warn 'Mac CoreBluetooth GATT cache may be stale.'
+      warn 'Recovery options:'
+      warn '  1. sudo pkill bluetoothd  (Bluetooth daemon restart, services re-fetched on next connect)'
+      warn '  2. System Settings > Bluetooth > 該当 device を Forget (UI 操作必要)'
+      warn '  3. CoreS3 BD addr 変更で peripheral identifier ごと変える (要 ble_smoke.rb 改修)'
+      warn ''
+      fail_exit 5, 'assert_services', "missing services: #{missing.inspect}"
+    end
+    puts '[verify] assert_services OK (GAP / FFE0 / NUS present)'
+
+    puts '[verify] PARTIAL (through assert_services — later phases not yet implemented)'
   rescue CoreBluetoothMac::Error => e
     case e.domain
     when :closed, :cb
