@@ -4,7 +4,7 @@
 #   [1] 5s escape hatch (sleep_ms 5000) — crash-loop recovery window
 #   [2] cold-boot init (AXP2101 → AW9523 → ILI9342 → PY32 → LED → Face::Neutral)
 #   [3] BLE NUS service + Dispatcher + FrameParser + AckSink
-#   [4] peri.start(0) — infinite advertise loop
+#   [4] peri.start(60_000) — 60s advertise window (Phase 2 で実証された引数; 経過後 return)
 #
 # Upload: rake r2p2:upload_mrb SRC=mrbgems/picoruby-stackchan-protocol/examples/application.rb
 # Smoke:  rake r2p2:ble_control_smoke COLOR=red MODE=blink FACE=joy SIDE=both
@@ -142,7 +142,9 @@ class StackChanApp < BLE
     @dispatcher = StackchanProtocol::Dispatcher.new(
       display: @display, led: @led, stdout: self
     )
+    puts "[application] initialize: super(:peripheral) entering"
     super(:peripheral, db.profile_data)
+    puts "[application] initialize: super returned"
   end
 
   # AckSink contract: Dispatcher calls `write(byte)` to deliver an ACK byte.
@@ -176,6 +178,7 @@ class StackChanApp < BLE
   end
 
   def packet_callback(event_packet)
+    puts "[application] pkt evt=#{event_packet[0] ? event_packet[0].ord : 'nil'}"
     case event_packet[0]&.ord
     when BTSTACK_EVENT_STATE
       return unless event_packet[2]&.ord == BLE::HCI_STATE_WORKING
@@ -190,6 +193,7 @@ class StackChanApp < BLE
   end
 
   def heartbeat_callback
+    puts "[application] heartbeat"
     # NUS RX drain
     rx_data = pop_write_value(@rx_handle)
     while rx_data
@@ -221,12 +225,12 @@ class StackChanApp < BLE
   end
 end
 
-# [4] Infinite advertise. peri.start(0) puts BTstack's run_loop in steady
-# state — if `0` does not mean infinite on this picoruby-ble fork, swap to
-# a very large millisecond value (e.g. 0xFFFFFFFF) and document in
-# CLAUDE.md.
-puts "[application] BLE peripheral starting (infinite advertise)"
+# [4] Run BTstack run_loop for 60_000ms. Phase 2 ble_smoke.rb で実証済みの引数で、
+# 60s 経過後に start() は return する仕様 (引数は ms)。Phase 3 production として
+# 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
+# このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
+puts "[application] BLE peripheral starting (60s)"
 peri = StackChanApp.new(display: display, led: led)
 peri.debug = true
-peri.start(0)
-puts "[application] start returned — should not reach here under normal operation"
+peri.start(60_000)
+puts "[application] start returned (60s elapsed)"
