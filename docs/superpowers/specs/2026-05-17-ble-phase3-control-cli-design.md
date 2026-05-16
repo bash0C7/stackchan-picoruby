@@ -31,7 +31,7 @@ $ echo $?
 | 3 | LED 色指定は 4 形式すべて実装 | named / RGB hex / HSB hex / mode キーワード引数 |
 | 4 | DSL は `client.send do |stackchan| ... end` block 形式 | block 内 `(method, side)` ごとに最後勝ち集約、frame 配列に encode |
 | 5 | Mac 新規 gem `pc/stackchan-ble-client/` 独立 gem 構成 | 高レベル API + example CLI 同梱 |
-| 6 | 既存 `pc/stackchan-protocol/` gem は **完全廃止** | USB-serial 通信機能、frame_writer/table、`stackchan-ble-verify` は新 gem へ移転。`picomodem-upload` は deploy script として Rakefile 側 (`lib/deploy/picomodem.rb`) に統合 |
+| 6 | 既存 `pc/stackchan-protocol/` gem は **完全廃止** | USB-serial 通信機能と `stackchan-ble-verify` exe は削除、`frame_writer`/table は新 gem stackchan-ble-client に統合。`picomodem-upload` は deploy script として Rakefile 側 (`lib/deploy/picomodem.rb`) に統合 |
 | 7 | device 新規ファイルは `application.rb` (mrbc → `app.mrb`) | `mrbgems/picoruby-stackchan-protocol/examples/application.rb`、`r2p2:upload_mrb SRC=...` で `/home/app.mrb` に転送 |
 | 8 | device 起動時間は **無限 advertise** | `peri.start(0)` (BTstack run_loop が永続)。先頭で **5 秒の escape hatch** (crash loop からの shell 復帰窓) |
 | 9 | face/LED は 1 frame combine しない | Phase 3 では face frame と LED frame を分離送信、block セマンティクスを直線的に保つ。旧 `combo` 仕様は廃止 |
@@ -47,7 +47,7 @@ $ echo $?
 │   ├ Frame encoder            │                          │   ├ BLE peripheral (NUS)           │
 │   └ corebluetooth_mac        │                          │   ├ FrameParser ──→ Dispatcher    │
 │ exe/stackchan-ble-control    │                          │   └ AckSink → NUS TX notify       │
-│ exe/stackchan-ble-verify     │                          │ application.rb は無限 advertise    │
+│ (Mac CLI 唯一の entry point)  │                          │ application.rb は無限 advertise    │
 └─────────────────────────────┘                          └──────────────────────────────────┘
 ```
 
@@ -66,8 +66,7 @@ pc/stackchan-ble-client/
 │   ├── hsb_to_rgb.rb          # HSB packed → RGB packed
 │   └── version.rb
 ├── exe/
-│   ├── stackchan-ble-control  # optparse + sub-command
-│   └── stackchan-ble-verify   # Phase 2 verify (旧 pc/stackchan-protocol から移転)
+│   └── stackchan-ble-control  # optparse + sub-command (唯一の Mac CLI)
 ├── test/
 │   ├── frame_codec_test.rb
 │   ├── send_builder_test.rb
@@ -198,7 +197,7 @@ bundle exec stackchan-ble-control raw '<X:1>\n'
 
 `combo` は internal で 1 回の `client.send` block に face と led を入れて発射するだけ。1 frame combine ではなく 2 frame 連射。
 
-Exit code は `stackchan-ble-verify` と同じ scheme:
+Exit code scheme:
 
 | code | 意味 |
 |---|---|
@@ -209,9 +208,9 @@ Exit code は `stackchan-ble-verify` と同じ scheme:
 | 5 | assertion (unknown face name 等、ACK `?`) |
 | 9 | uncategorized |
 
-### 4.6 Exe: `stackchan-ble-verify`
+### 4.6 ~~Exe: `stackchan-ble-verify`~~ (削除)
 
-Phase 2 の `pc/stackchan-protocol/exe/stackchan-ble-verify` をそのまま移転。新 gem の `corebluetooth_mac` 依存に乗り換える以外 logic 変更なし。
+Phase 2 の `pc/stackchan-protocol/exe/stackchan-ble-verify` は **削除**。ble_control_smoke が同等の BLE 経路 (scan/connect/discover/write/notify) を control DSL 経由で全部踏むため redundant。Mac 側 E2E entry point は `stackchan-ble-control` 1 本に統一する。
 
 ## 5. Device side — `application.rb` + Dispatcher 拡張
 
@@ -220,9 +219,9 @@ Phase 2 の `pc/stackchan-protocol/exe/stackchan-ble-verify` をそのまま移�
 ```
 mrbgems/picoruby-stackchan-protocol/
 ├── examples/
-│   ├── app.rb                 # 既存 bring-up smoke (残す、regression check)
-│   ├── ble_smoke.rb           # Phase 2 demo (残す、ble_verify は当面これを使う)
+│   ├── app.rb                 # 既存 bring-up smoke (LED/LCD cold-boot 検証用、別ファイルとして残す)
 │   └── application.rb         # 新規 production dispatcher (BLE + Dispatcher)
+│   # ble_smoke.rb は削除 (application.rb に subsumed)
 └── mrblib/stackchan_protocol/
     ├── frame_parser.rb        # 既存 (変更なし)
     └── dispatcher.rb          # S key 対応で拡張
@@ -256,9 +255,9 @@ sleep_ms 5000
 # ... (現 app.rb の init ブロックをそのまま移植) ...
 
 # [3] BLE NUS service 構築 + Dispatcher 結線
+#     NUS UUID / property mask / GATT DB 構築は Phase 2 ble_smoke.rb から
+#     コピー移植 (元ファイルは Phase 3 で削除)
 class StackChanApp < BLE
-  # NUS UUID / property mask は ble_smoke.rb と同一
-  # ... (略、ble_smoke.rb の StackChanSmoke を継承 or 取り込み) ...
 
   def initialize(display:, led:)
     @display = display
@@ -290,7 +289,7 @@ class StackChanApp < BLE
 
   def packet_callback(event_packet)
     # state working → advertise / disconnect → notify reset / can_send_now → notify(@tx_handle)
-    # (ble_smoke.rb の実装を踏襲)
+    # (Phase 2 ble_smoke.rb と同じパターンを application.rb に取り込む)
   end
 end
 
@@ -328,7 +327,7 @@ peri.start(0)   # peri.start(0) は BTstack run_loop が永続。crash 時は es
 
 - crash loop が起きていてもこの 5 秒の間に shell が STDIN を受け付け、人間が monitor で `rm /home/app.mrb` できる
 - `r2p2:upload_mrb` 直後の boot で uploader と autostart の race も escape hatch 内に余裕で収まる
-- 現 `ble_smoke.rb` の 2 秒では境界事象でカツカツだったので 5 秒に延長
+- Phase 2 ble_smoke.rb の 2 秒では境界事象でカツカツだったので 5 秒に延長
 
 ### 5.3 Dispatcher 拡張 (`mrblib/stackchan_protocol/dispatcher.rb`)
 
@@ -344,7 +343,8 @@ SIDE_TABLE = {
 def handle_led(frame)
   mode = MODE_TABLE[frame["M"]]
   return false unless mode
-  side = SIDE_TABLE[frame["S"]] || :both  # backward-compat default
+  side = SIDE_TABLE[frame["S"]]
+  return false unless side
   r = (frame["R"] || "0").to_i
   g = (frame["G"] || "0").to_i
   b = (frame["B"] || "0").to_i
@@ -353,7 +353,7 @@ def handle_led(frame)
 end
 ```
 
-未知 `S` 値は `?` ACK (assertion 扱い)。
+`S` key 必須 (省略 / 未知値はどちらも `?` ACK)。Mac 側 SDK は必ず `S` を載せる。
 
 ### 5.4 LED driver 拡張 (`picoruby-stackchan-led`)
 
@@ -434,7 +434,7 @@ end
 
 `apply_color` の細部は実装時に最適化 (`show` を 1 回に集約する etc)。
 
-旧 `StackchanLed#animate(r, g, b, mode)` (side 引数なし) は **削除** ではなく `animate_side(:both, ...)` の alias として残す (既存 test / Dispatcher 旧 path との互換)。
+旧 `StackchanLed#animate(r, g, b, mode)` (side 引数なし) は **削除**。呼び側 (既存 Dispatcher / test) も `animate_side(:both, ...)` を直接呼ぶ形に更新する。
 
 #### 5.4.1 left/right index 分割の物理確認 (open)
 
@@ -451,12 +451,12 @@ end
 | Key | 意味 | 値 |
 |---|---|---|
 | `F` | face index | `0`-`3` (`FACE_TABLE`) |
-| `L` | LED on/off | `1` (LED 操作あり) — `0` は使わない |
+| `L` | LED 操作 marker | `1` のみ。`L` が存在 = LED frame |
 | `R` `G` `B` | RGB | `0`-`255` 各々 |
-| `S` | LED side | `L` / `R` / `B` (default `B` = both) ← **新規** |
-| `M` | mode | `s` (solid) / `b` (blink) / `p` (breathing) / `o` (off) |
+| `S` | LED side | `L` / `R` / `B` (LED frame で必須) |
+| `M` | mode | `s` (solid) / `b` (blink) / `p` (breathing) / `o` (off)、LED frame で必須 |
 
-未知 key は無視 (backward compat)、必須 key 不足は `?` ACK。
+未知 key は parser がそのまま hash に格納するが、Dispatcher は読まない (= 副作用なし、エラーにもならない)。必須 key 不足 / 未知 enum 値は `?` ACK。`L` か `F` のどちらかが必須 (両方含む frame は本仕様では送らない、§4.3 集約の通り)。
 
 ### 6.2 NUS mapping
 
@@ -490,7 +490,7 @@ pc/stackchan-protocol/                       # gem 全体を削除
   ├── lib/stackchan_protocol/face_table.rb   # → stackchan-ble-client/lib/.../face_table.rb へ移転
   ├── lib/stackchan_protocol/led_color_table.rb  # 同上
   ├── exe/stackchan-control                  # 削除
-  ├── exe/stackchan-ble-verify               # → stackchan-ble-client/exe/ へ移転
+  ├── exe/stackchan-ble-verify               # 削除 (ble_control_smoke に subsumed、§4.6)
   ├── exe/picomodem-upload                   # → lib/deploy/picomodem.rb (project root 下) へ移植
   └── ... (Gemfile / Rakefile / test 全部)
 ```
@@ -531,7 +531,7 @@ end
 | `r2p2:send_led` | **削除** (USB-serial CLI 廃止) |
 | `r2p2:send_face` | **削除** (同上) |
 | `r2p2:verify_led` | **削除** (`send_led` 依存) |
-| `r2p2:ble_verify` | `pc/stackchan-protocol/exe/stackchan-ble-verify` 参照を `pc/stackchan-ble-client/exe/stackchan-ble-verify` に変更 |
+| `r2p2:ble_verify` | **削除** (ble_control_smoke に subsumed) |
 | `r2p2:ble_control_smoke` | **新規追加** (下記 §8) |
 
 ## 8. E2E smoke — `rake r2p2:ble_control_smoke`
@@ -583,10 +583,10 @@ rake r2p2:ble_control_smoke [COLOR=red] [MODE=blink] [FACE=joy] [SIDE=both]
 * SIDE=left, right, both 各々で目視確認 (left を red にしたら left 半分の LED 6 個だけ赤、right は元の色 or off)
 * face neutral/smile/joy/surprised 全部で LCD 描画確認
 
-### 9.3 Existing regression (kept)
+### 9.3 Regression
 
-* `rake r2p2:ble_verify` (Phase 2 smoke) は ble_smoke.rb がそのまま残るので動き続ける
 * `rake r2p2:build_flash` (R2P2-ESP32 build) は変わらず
+* Phase 2 の `r2p2:ble_verify` / `stackchan-ble-verify` exe は削除済み (`r2p2:ble_control_smoke` に統合)
 
 ## 10. Out of scope / followup
 
@@ -615,11 +615,11 @@ rake r2p2:ble_control_smoke [COLOR=red] [MODE=blink] [FACE=joy] [SIDE=both]
 * `docs/superpowers/specs/2026-05-16-ble-mac-autonomous-verification-loop-design.md` — Phase 2 design
 * `docs/superpowers/specs/2026-05-14-stackchan-protocol-design.md` — frame protocol 起源
 * `docs/superpowers/specs/2026-05-14-stackchan-led-protocol-extension-design.md` — LED protocol 拡張、PY32/AW9523 hardware notes
-* `mrbgems/picoruby-stackchan-protocol/examples/ble_smoke.rb` — Phase 2 BLE demo (継承元)
+* `mrbgems/picoruby-stackchan-protocol/examples/ble_smoke.rb` — Phase 2 BLE demo (継承元、Phase 3 で削除)
 * `mrbgems/picoruby-stackchan-protocol/examples/app.rb` — bring-up smoke、cold-boot init 手順の参照
 * `mrbgems/picoruby-stackchan-led/mrblib/stackchan_led.rb` — LED driver、本 spec で拡張対象
 * `mrbgems/picoruby-stackchan-protocol/mrblib/stackchan_protocol/dispatcher.rb` — S key 対応で拡張対象
-* `pc/stackchan-protocol/exe/stackchan-ble-verify` — Phase 2 verify (新 gem へ移転)
+* `pc/stackchan-protocol/exe/stackchan-ble-verify` — Phase 2 verify (Phase 3 で削除)
 * `pc/stackchan-protocol/exe/picomodem-upload` — uploader (`lib/deploy/picomodem.rb` へ移植)
 * `Rakefile` — r2p2:* task 群、本 spec で再編
 
