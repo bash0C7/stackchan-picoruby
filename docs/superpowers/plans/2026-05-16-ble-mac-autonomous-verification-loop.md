@@ -256,7 +256,10 @@ def run
       fail_exit 5, 'scan', "no device named #{DEVICE_NAME.inspect} found within #{SCAN_TIMEOUT}s"
     end
     device = devices.first
-    puts "[verify] scan OK (#{devices.size} device, identifier=#{device.identifier} rssi=#{device.rssi})"
+    puts "[verify] scan OK (#{devices.size} device, identifier=#{device.identifier} rssi=#{device.rssi} name=#{device.name.inspect})"
+    if device.name != EXPECTED_DEVICE_NAME
+      fail_exit 5, 'scan', "device name mismatch: got #{device.name.inspect} expected #{EXPECTED_DEVICE_NAME.inspect}"
+    end
 
     phase 'connect'
     peripheral = central.connect(device, timeout: 5.0)
@@ -297,7 +300,7 @@ echo "exit=$?"
 [verify] state_check
 [verify] state_check OK (central_id=...)
 [verify] scan
-[verify] scan OK (1 device, identifier=... rssi=-XX)
+[verify] scan OK (1 device, identifier=... rssi=-XX name="StackChan-PicoRuby")
 [verify] connect
 [verify] connect OK
 [verify] PARTIAL (through connect — later phases not yet implemented)
@@ -306,6 +309,7 @@ exit=0
 
 失敗ケース:
 - scan で no device → device side advertise 期限切れ (60s 過ぎ) の可能性。Step 1 やり直し
+- name mismatch → 別の StackChan が advertise 中。`BLE_DEVICE_NAME` env で別名指定可
 - connect timeout → device がぶら下がってる可能性、`rake r2p2:reset` で再起動
 
 - [ ] **Step 4: Commit**
@@ -356,7 +360,6 @@ sleep 10
 
     phase 'assert_services'
     missing = []
-    missing << GAP_SERVICE  unless peripheral.find_service(GAP_SERVICE)
     missing << DIAG_SERVICE unless peripheral.find_service(DIAG_SERVICE)
     missing << NUS_SERVICE  unless peripheral.find_service(NUS_SERVICE)
     unless missing.empty?
@@ -369,8 +372,10 @@ sleep 10
       warn ''
       fail_exit 5, 'assert_services', "missing services: #{missing.inspect}"
     end
-    puts '[verify] assert_services OK (GAP / FFE0 / NUS present)'
+    puts '[verify] assert_services OK (FFE0 / NUS present)'
 ```
+
+**Apple platform note (2026-05-16 finding):** GAP (0x1800) と GATT (0x1801) は `discoverServices(nil)` の返り値から CoreBluetooth が filter する。device 名は scan response の `device.name` から取るので、Task 3 の scan phase で assert する (この plan Task 3 の Step 2 の挿入時にすでに `EXPECTED_DEVICE_NAME` チェックが入った形にしてある)。
 
 `PARTIAL` メッセージは "through assert_services — later phases not yet implemented" に更新。
 
@@ -386,9 +391,9 @@ echo "exit=$?"
 
 ```
 [verify] discover
-[verify] discover OK (3 services)
+[verify] discover OK (2 services)
 [verify] assert_services
-[verify] assert_services OK (GAP / FFE0 / NUS present)
+[verify] assert_services OK (FFE0 / NUS present)
 [verify] PARTIAL (through assert_services — later phases not yet implemented)
 exit=0
 ```
@@ -406,8 +411,9 @@ git add pc/stackchan-protocol/exe/stackchan-ble-verify
 git commit -m "$(cat <<'EOF'
 feat(ble): add discover + assert_services phases with cache trap recovery hint
 
-GAP / FFE0 / NUS service presence check. Mac CoreBluetooth GATT cache
-stale-state diagnostic prints recovery options to stderr.
+FFE0 / NUS service presence check (Apple filters GAP 0x1800). Mac
+CoreBluetooth GATT cache stale-state diagnostic prints recovery options
+to stderr.
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -416,10 +422,12 @@ EOF
 
 ---
 
-### Task 5: Add read_gap_name + read_ffe1 phases
+### Task 5: Add read_ffe1 phase (read_gap_name dropped per Apple filter finding)
 
 **Files:**
 - Modify: `pc/stackchan-protocol/exe/stackchan-ble-verify`
+
+**Why no read_gap_name:** Apple CoreBluetooth filters GAP (0x1800) so `peripheral.find_characteristic('2a00')` returns nil. Device name assertion moved to `scan` phase (Task 3) using `device.name` from the advertisement local-name field.
 
 - [ ] **Step 1: Ensure device is advertising**
 
@@ -430,22 +438,11 @@ rake r2p2:reset
 sleep 10
 ```
 
-- [ ] **Step 2: Insert read phases between assert_services and PARTIAL**
+- [ ] **Step 2: Insert read_ffe1 phase between assert_services and PARTIAL**
 
 `assert_services OK` を出した行のあとに以下を挿入:
 
 ```ruby
-    phase 'read_gap_name'
-    name_ch = peripheral.find_characteristic(GAP_NAME_CHAR)
-    if name_ch.nil?
-      fail_exit 5, 'read_gap_name', "GAP Device Name characteristic #{GAP_NAME_CHAR} not found"
-    end
-    name_val = name_ch.read(timeout: 5.0).force_encoding('UTF-8')
-    unless name_val == EXPECTED_GAP_NAME
-      fail_exit 5, 'read_gap_name', "GAP name mismatch: got #{name_val.inspect} expected #{EXPECTED_GAP_NAME.inspect}"
-    end
-    puts "[verify] read_gap_name OK (#{name_val.inspect})"
-
     phase 'read_ffe1'
     diag_ch = peripheral.find_characteristic(DIAG_CHAR)
     if diag_ch.nil?
@@ -471,8 +468,6 @@ echo "exit=$?"
 期待出力末尾:
 
 ```
-[verify] read_gap_name
-[verify] read_gap_name OK ("StackChan-PicoRuby")
 [verify] read_ffe1
 [verify] read_ffe1 OK ("PicoRubyTest")
 [verify] PARTIAL (through read_ffe1 — NUS RX/TX phases pending)
@@ -485,10 +480,10 @@ exit=0
 cd /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby
 git add pc/stackchan-protocol/exe/stackchan-ble-verify
 git commit -m "$(cat <<'EOF'
-feat(ble): add read_gap_name + read_ffe1 phases to stackchan-ble-verify
+feat(ble): add read_ffe1 phase to stackchan-ble-verify
 
-Phase 1 regression checks: GAP Device Name 0x2a00 == "StackChan-PicoRuby",
-FFE1 == "PicoRubyTest". Both must pass before NUS RX/TX exercise.
+Phase 1 regression check: FFE1 read == "PicoRubyTest". read_gap_name
+dropped because Apple CoreBluetooth filters 0x1800 from discoverServices.
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -752,7 +747,7 @@ Spec coverage check:
 | connect phase | Task 3 |
 | discover phase | Task 4 |
 | assert_services (GAP/FFE0/NUS) | Task 4 |
-| read GAP Device Name == "StackChan-PicoRuby" | Task 5 |
+| read GAP Device Name == "StackChan-PicoRuby" | Task 3 (scan-time `device.name` assert; Apple filters GAP from GATT) |
 | read FFE1 == "PicoRubyTest" | Task 5 |
 | NUS RX write_without_response | Task 6 |
 | NUS TX subscribe + 6s notify drain + assert ≥1 ping pattern | Task 6 |

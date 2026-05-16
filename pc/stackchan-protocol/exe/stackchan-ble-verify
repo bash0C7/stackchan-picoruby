@@ -16,13 +16,16 @@ STATE_TIMEOUT  = Float(ENV.fetch('BLE_STATE_TIMEOUT', '5'))
 NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
 NUS_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
 NUS_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
-GAP_SERVICE = '1800'
-GAP_NAME_CHAR = '2a00'
 DIAG_SERVICE = 'ffe0'
 DIAG_CHAR    = 'ffe1'
 
-EXPECTED_GAP_NAME = 'StackChan-PicoRuby'
-EXPECTED_DIAG     = 'PicoRubyTest'
+# Apple CoreBluetooth filters GAP (0x1800) and GATT (0x1801) services from
+# discoverServices(nil) — they're treated as implementation-internal. Get the
+# device's Local Name from the scan-response advertising data instead
+# (DiscoveredDevice#name), and skip asserting these two services in the GATT
+# discovery phase.
+EXPECTED_DEVICE_NAME = 'StackChan-PicoRuby'
+EXPECTED_DIAG        = 'PicoRubyTest'
 
 def phase(name)
   puts "[verify] #{name}"
@@ -47,7 +50,10 @@ def run
       fail_exit 5, 'scan', "no device named #{DEVICE_NAME.inspect} found within #{SCAN_TIMEOUT}s"
     end
     device = devices.first
-    puts "[verify] scan OK (#{devices.size} device, identifier=#{device.identifier} rssi=#{device.rssi})"
+    puts "[verify] scan OK (#{devices.size} device, identifier=#{device.identifier} rssi=#{device.rssi} name=#{device.name.inspect})"
+    if device.name != EXPECTED_DEVICE_NAME
+      fail_exit 5, 'scan', "device name mismatch: got #{device.name.inspect} expected #{EXPECTED_DEVICE_NAME.inspect}"
+    end
 
     phase 'connect'
     peripheral = central.connect(device, timeout: 5.0)
@@ -62,7 +68,6 @@ def run
 
     phase 'assert_services'
     missing = []
-    missing << GAP_SERVICE  unless peripheral.find_service(GAP_SERVICE)
     missing << DIAG_SERVICE unless peripheral.find_service(DIAG_SERVICE)
     missing << NUS_SERVICE  unless peripheral.find_service(NUS_SERVICE)
     unless missing.empty?
@@ -75,7 +80,7 @@ def run
       warn ''
       fail_exit 5, 'assert_services', "missing services: #{missing.inspect}"
     end
-    puts '[verify] assert_services OK (GAP / FFE0 / NUS present)'
+    puts '[verify] assert_services OK (FFE0 / NUS present)'
 
     puts '[verify] PARTIAL (through assert_services — later phases not yet implemented)'
   rescue CoreBluetoothMac::Error => e

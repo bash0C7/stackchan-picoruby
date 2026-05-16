@@ -56,15 +56,14 @@ rake r2p2:ble_verify  ──┬─► r2p2:upload_mrb (host picorbc + picomodem 
   - `BLE_NOTIFY_WAIT` (default `6`)
 - フロー (各 phase は stdout に header `[verify] <phase>` を出す):
   1. `state_check`: `CoreBluetoothMac::Central.new(state_timeout: 5)` — permission/adapter チェック
-  2. `scan`: name filter で 10 秒間 scan → `devices.first` を取得
+  2. `scan`: name filter で 10 秒間 scan → `devices.first` を取得 → **`device.name == "StackChan-PicoRuby"` を assert** (Apple は GAP/0x1800 を `discoverServices(nil)` から filter するので、device 名は scan-response advertising data から取る)
   3. `connect`: `central.connect(device, timeout: 5)`
-  4. `discover`: `peripheral.discover_services(timeout: 5)` (全 service 取得)
-  5. `assert_services`: GAP (`1800`) / FFE0 / NUS (`6e400001-b5a3-f393-e0a9-e50e24dcca9e`) 3 service 揃ってるか
-  6. `read_gap_name`: GAP 0x2a00 を読んで `"StackChan-PicoRuby"` と equal を assert
-  7. `read_ffe1`: FFE0 配下 FFE1 を読んで `"PicoRubyTest"` と equal を assert
-  8. `nus_write`: NUS RX (`6e400002-...`) に `"ping #{Time.now.to_i}\n"` を `response: false` で write
-  9. `nus_subscribe`: NUS TX (`6e400003-...`) `subscribe` → Ractor pump で 6 秒待って `notify_count >= 1` && 受信 payload が `/^ping #\d+\n/` を assert
-  10. `teardown`: `central.disconnect(peripheral)` → `central.close`
+  4. `discover`: `peripheral.discover_services(timeout: 5)` (全 service 取得、Apple filter で GAP 0x1800 / GATT 0x1801 は返らない)
+  5. `assert_services`: FFE0 / NUS (`6e400001-b5a3-f393-e0a9-e50e24dcca9e`) 2 service 揃ってるか
+  6. `read_ffe1`: FFE0 配下 FFE1 を読んで `"PicoRubyTest"` と equal を assert
+  7. `nus_write`: NUS RX (`6e400002-...`) に `"ping #{Time.now.to_i}\n"` を `response: false` で write
+  8. `nus_subscribe`: NUS TX (`6e400003-...`) `subscribe` → Ractor pump で 6 秒待って `notify_count >= 1` && 受信 payload が `/^ping #\d+\n/` を assert
+  9. `teardown`: `central.disconnect(peripheral)` → `central.close`
 - 成功時 stdout 末尾に `[verify] PASS` + exit 0
 - 失敗時 stderr に 1 行 `[FAIL] phase=<phase> reason=<reason> domain=<error_domain or n/a>` を出して exit non-zero
 - exit code mapping:
