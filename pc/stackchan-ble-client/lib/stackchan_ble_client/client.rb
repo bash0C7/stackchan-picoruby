@@ -38,6 +38,12 @@ module StackchanBleClient
       self
     end
 
+    def raw_send(frame_string)
+      raise ConnectionError, "not connected" unless @subscription
+      send_frame(frame_string)
+      self
+    end
+
     def disconnect
       @tx_char&.unsubscribe
       @transport.disconnect(@peripheral) if @peripheral

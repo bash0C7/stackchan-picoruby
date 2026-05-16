@@ -1,0 +1,97 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "optparse"
+require "stackchan_ble_client"
+
+EXIT_OK         = 0
+EXIT_ADAPTER    = 2
+EXIT_TIMEOUT    = 3
+EXIT_CONNECTION = 4
+EXIT_ASSERTION  = 5
+EXIT_UNCAT      = 9
+
+device_name = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
+side        = :both
+mode        = :solid
+
+parser = OptionParser.new do |opts|
+  opts.on("--device NAME") { |v| device_name = v }
+  opts.on("--side SIDE") do |v|
+    side = v.to_sym
+    abort "error: --side must be left/right/both" unless %i[left right both].include?(side)
+  end
+  opts.on("--mode MODE") do |v|
+    mode = v.to_sym
+    abort "error: --mode must be solid/blink/breathing/off" unless %i[solid blink breathing off].include?(mode)
+  end
+  opts.on("--face NAME")  { |v| $combo_face  = v.to_sym }
+  opts.on("--led SPEC")   { |v| $combo_led   = v }   # "<color> <mode>" e.g. "red blink"
+end
+parser.parse!(ARGV)
+
+command = ARGV.shift
+abort "error: command required (face / led / led-rgb / led-hsb / combo / raw)" unless command
+
+client = StackchanBleClient::Client.new(device_name: device_name)
+
+begin
+  client.connect
+
+  case command
+  when "face"
+    name = ARGV.shift or abort "error: face requires <name>"
+    client.send { |s| s.face(name.to_sym) }
+  when "led"
+    color = ARGV.shift or abort "error: led requires <color>"
+    color_mode = ARGV.shift  # optional positional mode override
+    effective_mode = color_mode ? color_mode.to_sym : mode
+    client.send { |s| s.led(color.to_sym, side: side, mode: effective_mode) }
+  when "led-rgb"
+    hex = ARGV.shift or abort "error: led-rgb requires <hex>"
+    val = Integer(hex, 16)
+    client.send { |s| s.led(:rgb, val, side: side, mode: mode) }
+  when "led-hsb"
+    hex = ARGV.shift or abort "error: led-hsb requires <hex>"
+    val = Integer(hex, 16)
+    client.send { |s| s.led(:hsb, val, side: side, mode: mode) }
+  when "combo"
+    face_name = $combo_face or abort "error: combo requires --face <name>"
+    led_spec  = $combo_led  or abort "error: combo requires --led '<color> <mode>'"
+    led_color, led_mode = led_spec.split(/\s+/, 2)
+    client.send do |s|
+      s.face(face_name)
+      s.led(led_color.to_sym, side: side, mode: (led_mode || "solid").to_sym)
+    end
+  when "raw"
+    frame = ARGV.shift or abort "error: raw requires <frame>"
+    frame += "\n" unless frame.end_with?("\n")
+    client.raw_send(frame)
+  else
+    abort "error: unknown command #{command.inspect}"
+  end
+
+  exit EXIT_OK
+rescue StackchanBleClient::TimeoutError => e
+  warn "[FAIL] reason=#{e.message} domain=timeout"
+  exit EXIT_TIMEOUT
+rescue StackchanBleClient::ConnectionError => e
+  warn "[FAIL] reason=#{e.message} domain=connection"
+  exit EXIT_CONNECTION
+rescue StackchanBleClient::DeviceError => e
+  warn "[FAIL] reason=#{e.message} domain=assertion"
+  exit EXIT_ASSERTION
+rescue StackchanBleClient::Error => e
+  warn "[FAIL] reason=#{e.message} domain=ble-client"
+  exit EXIT_UNCAT
+rescue => e
+  warn "[FAIL] reason=#{e.class}: #{e.message} domain=uncaught"
+  exit EXIT_UNCAT
+ensure
+  begin
+    client.disconnect
+  rescue StandardError => disconnect_err
+    warn "[disconnect] suppressed during error path: #{disconnect_err.class}: #{disconnect_err.message}"
+  end
+end
