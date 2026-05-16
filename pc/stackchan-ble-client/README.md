@@ -1,0 +1,70 @@
+# stackchan-ble-client
+
+BLE control SDK for the M5Stack StackChan running PicoRuby firmware (see [stackchan-picoruby](https://github.com/bash0C7/stackchan-picoruby)). Connects via Nordic UART Service and exposes a block-DSL for face / LED frames with left/right side support and four color forms (named symbol, RGB hex, HSB hex, mode keyword).
+
+## Requirements
+
+- Ruby ≥ 3.1
+- Mac with Bluetooth (CoreBluetooth)
+- [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac) (path-loaded — see `Gemfile`)
+- The StackChan device running `examples/application.rb` (advertises as `StackChan-PicoRuby`)
+
+## Quick start
+
+```ruby
+require "stackchan_ble_client"
+
+client = StackchanBleClient::Client.new(device_name: "StackChan-PicoRuby")
+client.connect
+
+client.send do |stackchan|
+  stackchan.face(:joy)
+  stackchan.led(:red, mode: :blink)
+end
+
+client.send do |stackchan|
+  stackchan.led(:blue, side: :left)
+  stackchan.led(:green, side: :right)
+end
+
+client.send do |stackchan|
+  stackchan.led(:rgb, 0xFF8000)             # 24-bit RGB packed
+  stackchan.led(:hsb, 0x00FFFF, side: :left)  # 24-bit HSB packed (H/S/B each 0-255)
+end
+
+client.disconnect
+```
+
+### Block DSL aggregation rules
+
+- `face` is a single key; calling `stackchan.face(...)` multiple times within one block uses the last one.
+- `led` is keyed by `(side)` — `:left` / `:right` / `:both` are independent; each defaults to the last call for that side.
+- Within one `#send` block, up to 4 frames are emitted: `face` + one per side that was touched.
+- Frames are emitted in the order each key was first mentioned in the block.
+- ACK is 1 byte from the device per frame (`.` = OK, `?` = error → `DeviceError` raised).
+
+## CLI
+
+```bash
+bundle exec stackchan-ble-control face joy
+bundle exec stackchan-ble-control led red blink --side left
+bundle exec stackchan-ble-control led-rgb 0xFF8000 --mode blink
+bundle exec stackchan-ble-control led-hsb 0x00FFFF --side right
+bundle exec stackchan-ble-control combo --face joy --led 'red blink'
+bundle exec stackchan-ble-control raw '<F:0>'
+```
+
+Exit codes:
+
+| code | meaning |
+|---|---|
+| 0 | success |
+| 2 | adapter (CoreBluetooth state error) |
+| 3 | timeout (scan / connect / ACK) |
+| 4 | connection (lost or refused) |
+| 5 | assertion (unknown face name, device rejected with `?` ACK) |
+| 9 | uncategorized |
+
+## License
+
+MIT
