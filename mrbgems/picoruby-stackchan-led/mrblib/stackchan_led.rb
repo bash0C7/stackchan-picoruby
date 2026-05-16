@@ -64,19 +64,34 @@ class StackchanLed
     self
   end
 
-  def animate(r, g, b, mode)
-    animator.set(r, g, b, mode)
+  def animate_side(side, r, g, b, mode)
+    case side
+    when :both
+      left_animator.set(r, g, b, mode)
+      right_animator.set(r, g, b, mode)
+    when :left
+      left_animator.set(r, g, b, mode)
+    when :right
+      right_animator.set(r, g, b, mode)
+    else
+      raise ArgumentError, "unknown side: #{side.inspect}"
+    end
     self
   end
 
   def tick(now_ms)
-    animator.tick(now_ms)
+    left_animator.tick(now_ms)
+    right_animator.tick(now_ms)
   end
 
   private
 
-  def animator
-    @animator ||= Animator.new(self)
+  def left_animator
+    @left_animator ||= Animator.new(self, pixel_range: LEFT_RANGE)
+  end
+
+  def right_animator
+    @right_animator ||= Animator.new(self, pixel_range: RIGHT_RANGE)
   end
 
   def apply_brightness(r, g, b)
