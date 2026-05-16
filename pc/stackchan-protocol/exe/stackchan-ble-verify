@@ -35,23 +35,40 @@ end
 
 def run
   central = nil
+  peripheral = nil
   begin
     phase 'state_check'
     central = CoreBluetoothMac::Central.new(state_timeout: STATE_TIMEOUT)
     puts "[verify] state_check OK (central_id=#{central.central_id})"
 
-    # NOTE: subsequent phases (scan / connect / discover / read / write /
-    # subscribe / teardown) added in later tasks.
+    phase 'scan'
+    devices = central.scan(name: DEVICE_NAME, timeout: SCAN_TIMEOUT)
+    if devices.empty?
+      fail_exit 5, 'scan', "no device named #{DEVICE_NAME.inspect} found within #{SCAN_TIMEOUT}s"
+    end
+    device = devices.first
+    puts "[verify] scan OK (#{devices.size} device, identifier=#{device.identifier} rssi=#{device.rssi})"
 
-    puts '[verify] PARTIAL (state_check only — later phases not yet implemented)'
+    phase 'connect'
+    peripheral = central.connect(device, timeout: 5.0)
+    puts "[verify] connect OK"
+
+    # NOTE: discover / read / write / subscribe added in later tasks.
+
+    puts '[verify] PARTIAL (through connect — later phases not yet implemented)'
   rescue CoreBluetoothMac::Error => e
     case e.domain
     when :closed, :cb
-      fail_exit 2, 'state_check', "adapter not usable: #{e.message}", domain: e.domain
+      fail_exit 2, 'unknown', "adapter not usable: #{e.message}", domain: e.domain
+    when :timeout
+      fail_exit 3, 'unknown', "timeout: #{e.message}", domain: e.domain
+    when :connection
+      fail_exit 4, 'unknown', "connection lost: #{e.message}", domain: e.domain
     else
       raise
     end
   ensure
+    central&.disconnect(peripheral) if peripheral
     central&.close
   end
 end
