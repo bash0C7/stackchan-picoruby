@@ -207,4 +207,22 @@ namespace :r2p2 do
     puts "===== serial log tail (last 80 lines of #{log}) ====="
     sh "tail -80 #{log}"
   end
+
+  # Mac autonomous BLE verification loop. Composes upload_mrb (host picorbc +
+  # picomodem) + reset (RTS pulse) + sleep (autostart + sleep_ms 2000 + BLE
+  # init) + stackchan-ble-verify (Mac CoreBluetooth central scan/connect/
+  # discover/read/write/subscribe). Single command for Claude Code to assert
+  # the full device→Mac BLE path with exit 0 / non-zero.
+  desc 'autonomous BLE verify loop: upload ble_smoke.rb (.mrb) + reset + Mac-side verify'
+  task :ble_verify do
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/ble_smoke.rb'
+    Rake::Task['r2p2:upload_mrb'].invoke
+    Rake::Task['r2p2:reset'].invoke
+    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '10').to_i
+    puts "[ble_verify] waiting #{autostart_wait}s for autostart (sleep_ms 2000 + BLE init + advertise)..."
+    sleep autostart_wait
+    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
+      sh 'bundle', 'exec', 'exe/stackchan-ble-verify'
+    end
+  end
 end
