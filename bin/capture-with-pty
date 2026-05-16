@@ -1,0 +1,40 @@
+#!/usr/bin/expect -f
+# capture-with-pty SECONDS LOG_PATH CMD [ARGS...]
+#
+# Run CMD inside a PTY for SECONDS seconds, log all output to LOG_PATH, then
+# send Ctrl-] (group separator) and wait for the child to exit cleanly.
+#
+# The Claude Code Bash tool has no controlling TTY, so commands that require
+# one (idf.py monitor / rake r2p2:monitor / picocom, etc.) hang when invoked
+# directly. expect spawns under its own PTY and acts as a fake terminal so
+# the child runs to completion and clean-shuts on the Ctrl-] sentinel.
+#
+# Example:
+#   bin/capture-with-pty 30 /tmp/boot.log rake r2p2:monitor
+
+if {$argc < 3} {
+    puts stderr "Usage: $argv0 SECONDS LOG_PATH CMD \[ARGS...\]"
+    exit 2
+}
+
+set sec      [lindex $argv 0]
+set logfile  [lindex $argv 1]
+set cmd_args [lrange $argv 2 end]
+set timeout  $sec
+
+log_file -noappend $logfile
+
+eval spawn -noecho $cmd_args
+
+expect {
+  eof {
+    puts "\n[capture-with-pty] child exited before timeout (exit_status will be set by expect)"
+    exit 0
+  }
+  timeout {
+    send "\x1d"
+  }
+}
+
+set timeout 10
+expect eof

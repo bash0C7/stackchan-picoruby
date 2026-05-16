@@ -1,0 +1,42 @@
+class ILI9342
+  type rotation_t = :portrait | :landscape | :portrait_flip | :landscape_flip
+
+  MADCTL_PORTRAIT: Integer
+  MADCTL_LANDSCAPE: Integer
+  MADCTL_PORTRAIT_FLIP: Integer
+  MADCTL_LANDSCAPE_FLIP: Integer
+
+  CMD_SWRESET: Integer
+  CMD_SLPOUT: Integer
+  CMD_DISPON: Integer
+  CMD_CASET: Integer
+  CMD_RASET: Integer
+  CMD_RAMWR: Integer
+  CMD_MADCTL: Integer
+  CMD_COLMOD: Integer
+
+  module Color
+    BLACK: Integer
+    WHITE: Integer
+    RED:   Integer
+    GREEN: Integer
+    BLUE:  Integer
+  end
+
+  attr_reader width: Integer
+  attr_reader height: Integer
+  attr_reader rotation: rotation_t
+
+  def self.rgb: (Integer, Integer, Integer) -> Integer
+
+  def initialize: (spi: untyped, dc_pin: untyped, cs_pin: untyped, rst_pin: untyped, bl_pin: untyped,
+                   width: Integer, height: Integer, ?rotation: rotation_t) -> void
+
+  def fill: (Integer rgb565) -> void
+  def draw_pixel: (Integer x, Integer y, Integer rgb565) -> void
+  def draw_rect:  (Integer x, Integer y, Integer w, Integer h, Integer rgb565, ?fill: bool) -> void
+  def draw_line:  (Integer x0, Integer y0, Integer x1, Integer y1, Integer rgb565) -> void
+  def draw_ellipse: (Integer cx, Integer cy, Integer rx, Integer ry, Integer rgb565, ?fill: bool) -> void
+  def set_backlight: (bool) -> void
+  def set_rotation: (rotation_t) -> void
+end

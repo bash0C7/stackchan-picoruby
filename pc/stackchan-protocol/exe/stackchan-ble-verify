@@ -1,0 +1,152 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# stackchan-ble-verify — autonomous BLE verification loop against a CoreS3
+# running ble_smoke.rb. See docs/superpowers/specs/2026-05-16-ble-mac-
+# autonomous-verification-loop-design.md for the phase contract and exit codes.
+
+require 'bundler/setup'
+require 'corebluetooth_mac'
+
+DEVICE_NAME    = ENV.fetch('BLE_DEVICE_NAME',  'StackChan-PicoRuby')
+SCAN_TIMEOUT   = Float(ENV.fetch('BLE_SCAN_TIMEOUT', '10'))
+NOTIFY_WAIT    = Float(ENV.fetch('BLE_NOTIFY_WAIT',  '15'))
+STATE_TIMEOUT  = Float(ENV.fetch('BLE_STATE_TIMEOUT', '5'))
+
+NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+NUS_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
+NUS_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
+DIAG_SERVICE = 'ffe0'
+DIAG_CHAR    = 'ffe1'
+
+# Apple CoreBluetooth filters GAP (0x1800) and GATT (0x1801) services from
+# discoverServices(nil) — they're treated as implementation-internal. Get the
+# device's Local Name from the scan-response advertising data instead
+# (DiscoveredDevice#name), and skip asserting these two services in the GATT
+# discovery phase.
+EXPECTED_DEVICE_NAME = 'StackChan-PicoRuby'
+EXPECTED_DIAG        = 'PicoRubyTest'
+
+def phase(name)
+  puts "[verify] #{name}"
+end
+
+def fail_exit(code, phase_name, reason, domain: 'n/a')
+  warn "[FAIL] phase=#{phase_name} reason=#{reason} domain=#{domain}"
+  exit code
+end
+
+def run
+  central = nil
+  peripheral = nil
+  begin
+    phase 'state_check'
+    central = CoreBluetoothMac::Central.new(state_timeout: STATE_TIMEOUT)
+    puts "[verify] state_check OK (central_id=#{central.central_id})"
+
+    phase 'scan'
+    devices = central.scan(name: DEVICE_NAME, timeout: SCAN_TIMEOUT)
+    if devices.empty?
+      fail_exit 5, 'scan', "no device named #{DEVICE_NAME.inspect} found within #{SCAN_TIMEOUT}s"
+    end
+    device = devices.first
+    puts "[verify] scan OK (#{devices.size} device, identifier=#{device.identifier} rssi=#{device.rssi} name=#{device.name.inspect})"
+    if device.name != EXPECTED_DEVICE_NAME
+      fail_exit 5, 'scan', "device name mismatch: got #{device.name.inspect} expected #{EXPECTED_DEVICE_NAME.inspect}"
+    end
+
+    phase 'connect'
+    peripheral = central.connect(device, timeout: 5.0)
+    puts "[verify] connect OK"
+
+    phase 'discover'
+    peripheral.discover_services(timeout: 5.0)
+    peripheral.services.each do |svc|
+      svc.discover_characteristics(timeout: 5.0)
+    end
+    puts "[verify] discover OK (#{peripheral.services.size} services)"
+
+    phase 'assert_services'
+    missing = []
+    missing << DIAG_SERVICE unless peripheral.find_service(DIAG_SERVICE)
+    missing << NUS_SERVICE  unless peripheral.find_service(NUS_SERVICE)
+    unless missing.empty?
+      warn ''
+      warn 'Mac CoreBluetooth GATT cache may be stale.'
+      warn 'Recovery options:'
+      warn '  1. sudo pkill bluetoothd  (Bluetooth daemon restart, services re-fetched on next connect)'
+      warn '  2. System Settings > Bluetooth > 該当 device を Forget (UI 操作必要)'
+      warn '  3. CoreS3 BD addr 変更で peripheral identifier ごと変える (要 ble_smoke.rb 改修)'
+      warn ''
+      fail_exit 5, 'assert_services', "missing services: #{missing.inspect}"
+    end
+    puts '[verify] assert_services OK (FFE0 / NUS present)'
+
+    phase 'read_ffe1'
+    diag_ch = peripheral.find_characteristic(DIAG_CHAR)
+    if diag_ch.nil?
+      fail_exit 5, 'read_ffe1', 'FFE1 characteristic not found'
+    end
+    diag_val = diag_ch.read(timeout: 5.0).force_encoding('UTF-8')
+    unless diag_val == EXPECTED_DIAG
+      fail_exit 5, 'read_ffe1', "FFE1 value mismatch: got #{diag_val.inspect} expected #{EXPECTED_DIAG.inspect}"
+    end
+    puts "[verify] read_ffe1 OK (#{diag_val.inspect})"
+
+    phase 'nus_write'
+    rx_ch = peripheral.find_characteristic(NUS_RX_CHAR)
+    if rx_ch.nil?
+      fail_exit 5, 'nus_write', "NUS RX characteristic #{NUS_RX_CHAR} not found"
+    end
+    seq = Time.now.to_i
+    rx_ch.write_without_response("ping #{seq}\n")
+    puts "[verify] nus_write OK (sent ping #{seq})"
+
+    phase 'nus_subscribe'
+    tx_ch = peripheral.find_characteristic(NUS_TX_CHAR)
+    if tx_ch.nil?
+      fail_exit 5, 'nus_subscribe', "NUS TX characteristic #{NUS_TX_CHAR} not found"
+    end
+    sub = tx_ch.subscribe
+    received = []
+    deadline = Time.now + NOTIFY_WAIT
+    while (remaining = deadline - Time.now) > 0
+      v = sub.next_value(timeout: remaining)
+      break if v == false  # subscription closed/drained terminal
+      next  if v.nil?      # timeout, deadline check on next iteration
+      received << v
+    end
+    tx_ch.unsubscribe
+    matching = received.select { |frame| frame.force_encoding('UTF-8') =~ /\Aping #\d+\n\z/ }
+    if matching.empty?
+      fail_exit 5, 'nus_subscribe',
+        "no matching notify in #{NOTIFY_WAIT}s (got #{received.size} frames: #{received.map(&:inspect).join(', ')})"
+    end
+    puts "[verify] nus_subscribe OK (got #{received.size} notify, matching=#{matching.size}, first=#{matching.first.inspect})"
+
+    phase 'teardown'
+    central.disconnect(peripheral)
+    peripheral = nil  # so ensure block doesn't double-disconnect
+    central.close
+    central = nil
+    puts '[verify] teardown OK'
+
+    puts '[verify] PASS'
+  rescue CoreBluetoothMac::Error => e
+    case e.domain
+    when :closed, :cb
+      fail_exit 2, 'unknown', "adapter not usable: #{e.message}", domain: e.domain
+    when :timeout
+      fail_exit 3, 'unknown', "timeout: #{e.message}", domain: e.domain
+    when :connection
+      fail_exit 4, 'unknown', "connection lost: #{e.message}", domain: e.domain
+    else
+      raise
+    end
+  ensure
+    central&.disconnect(peripheral) if peripheral
+    central&.close
+  end
+end
+
+run

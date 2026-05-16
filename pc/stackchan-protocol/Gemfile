@@ -1,0 +1,10 @@
+source "https://rubygems.org"
+
+gemspec
+
+# Local path during BLE bring-up. Switch to git: source after rb-corebluetooth-mac
+# stabilizes (see docs/superpowers/specs/2026-05-16-...design.md "Out of scope").
+gem 'rb-corebluetooth-mac', path: '/Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac'
+
+# swift_gem dependency (rb-corebluetooth-mac transitive; not published to rubygems.org)
+gem "swift_gem", path: '/Users/bash/dev/src/github.com/bash0C7/swift_gem'
