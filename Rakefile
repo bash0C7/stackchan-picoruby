@@ -1,3 +1,6 @@
+require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
+require_relative "lib/deploy/picomodem"
+
 R2P2_ROOT = File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
@@ -120,16 +123,9 @@ namespace :r2p2 do
     dst  = ENV.fetch('DST', '/home/app.rb')
     port = espport
     abs_src = File.expand_path(src, __dir__)
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/picomodem-upload', abs_src, dst, port
-    end
+    Deploy::Picomodem.upload(src: abs_src, dst: dst, port: port)
   end
 
-  # SRC (.rb) を host picorbc で .mrb bytecode に compile し、/home/app.mrb として
-  # autostart 用に upload する。R2P2 の main_task は .mrb を .rb より優先 load する
-  # ので、複雑な ble_smoke.rb 等 on-device の mrb_sandbox_compile で FreeRTOS main
-  # task stack を blow するアプリは host compile 経由でしか動かない (2026-05-16 finding)。
-  # picorbc は rake r2p2:setup で host build される。bytecode は tmp/build/ に置く。
   desc 'host-compile SRC=path/to/foo.rb to .mrb and upload as /home/app.mrb (autostart bytecode path; bypasses on-device compile)'
   task :upload_mrb do
     src = ENV.fetch('SRC') { abort 'SRC=path/to/file.rb is required for r2p2:upload_mrb' }
@@ -151,10 +147,7 @@ namespace :r2p2 do
     puts "[upload_mrb] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes)"
 
     port = espport
-    dst = '/home/app.mrb'
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/picomodem-upload', mrb_path, dst, port
-    end
+    Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
   end
 
   desc 'send `led <COLOR> <MODE>` via stackchan-control (defaults: COLOR=red MODE=solid)'
