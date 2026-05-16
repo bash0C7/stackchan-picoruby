@@ -4,6 +4,12 @@ class StackchanLed
   PIXEL_COUNT  = 12
   LED_DATA_PIN = 13
 
+  # Left/right physical pixel index split (draft assumption — verify visually
+  # via rake r2p2:ble_control_smoke SIDE=left / SIDE=right and adjust if the
+  # physical wraparound differs).
+  LEFT_RANGE  = (0..5)
+  RIGHT_RANGE = (6..11)
+
   def initialize(py32)
     @py32 = py32
     @brightness = 100
@@ -23,6 +29,23 @@ class StackchanLed
   def set_rgb(i, r, g, b)
     @buffer[i] = [r, g, b]
     self
+  end
+
+  def fill_range(start_idx, end_idx, r, g, b)
+    i = start_idx
+    while i <= end_idx
+      @buffer[i] = [r, g, b]
+      i += 1
+    end
+    self
+  end
+
+  def fill_left(r, g, b)
+    fill_range(LEFT_RANGE.first, LEFT_RANGE.last, r, g, b)
+  end
+
+  def fill_right(r, g, b)
+    fill_range(RIGHT_RANGE.first, RIGHT_RANGE.last, r, g, b)
   end
 
   def clear

@@ -290,3 +290,55 @@ class AnimatorBreathingTest < Test::Unit::TestCase
     assert_equal [5, 0, 0], @py32.led_ram_calls.last.first
   end
 end
+
+class StackchanLedFillRangeTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led  = StackchanLed.new(@py32)
+    @py32.led_ram_calls.clear  # discard init blank
+  end
+
+  def test_fill_range_writes_only_specified_pixels
+    @led.fill_range(2, 4, 100, 50, 25)
+    @led.show
+    last = @py32.led_ram_calls.last
+    assert_equal [0, 0, 0],     last[0]
+    assert_equal [0, 0, 0],     last[1]
+    assert_equal [100, 50, 25], last[2]
+    assert_equal [100, 50, 25], last[3]
+    assert_equal [100, 50, 25], last[4]
+    assert_equal [0, 0, 0],     last[5]
+  end
+
+  def test_fill_left_covers_indices_0_to_5
+    @led.fill_left(10, 20, 30)
+    @led.show
+    last = @py32.led_ram_calls.last
+    (0..5).each { |i| assert_equal [10, 20, 30], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+  end
+
+  def test_fill_right_covers_indices_6_to_11
+    @led.fill_right(40, 50, 60)
+    @led.show
+    last = @py32.led_ram_calls.last
+    (0..5).each { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [40, 50, 60], last[i], "pixel #{i}" }
+  end
+
+  def test_left_and_right_independent
+    @led.fill_left(255, 0, 0)
+    @led.fill_right(0, 0, 255)
+    @led.show
+    last = @py32.led_ram_calls.last
+    (0..5).each { |i| assert_equal [255, 0, 0], last[i] }
+    (6..11).each { |i| assert_equal [0, 0, 255], last[i] }
+  end
+
+  def test_constants_LEFT_RANGE_and_RIGHT_RANGE
+    assert_equal 0, StackchanLed::LEFT_RANGE.first
+    assert_equal 5, StackchanLed::LEFT_RANGE.last
+    assert_equal 6, StackchanLed::RIGHT_RANGE.first
+    assert_equal 11, StackchanLed::RIGHT_RANGE.last
+  end
+end
