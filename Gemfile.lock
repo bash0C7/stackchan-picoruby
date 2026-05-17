@@ -3,6 +3,7 @@ GEM
   specs:
     rake (13.4.2)
     ruby-termios (1.1.0)
+    serialport (1.4.0)
     uart (1.0.0)
       ruby-termios
 
@@ -12,11 +13,13 @@ PLATFORMS
 
 DEPENDENCIES
   rake
+  serialport
   uart
 
 CHECKSUMS
   rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
   ruby-termios (1.1.0) sha256=d05b3f18d64c27da81ebab32540b3fbeb4428a4b2f6238c290d42acdd20ff375
+  serialport (1.4.0) sha256=a9a790bf252449e59d9973625205af5123e9ee2e5583b77ddfcd8bd091b78c69
   uart (1.0.0) sha256=99ec585ec576157cfce61f327a91483fe2ccba2d31aafca63b1d7ec44b68118f
 
 BUNDLED WITH
