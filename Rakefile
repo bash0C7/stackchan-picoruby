@@ -1,3 +1,7 @@
+require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
+require_relative "lib/deploy/picomodem"
+require_relative "lib/deploy/shell_recovery"
+
 R2P2_ROOT = File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
@@ -56,13 +60,13 @@ namespace :r2p2 do
     in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
   end
 
-  desc 'force regenerate mrbgem bytecode (.rb -> .c) before next build. Use when only mrblib/*.rb changed; idf.py build alone keeps stale cached bytecode'
-  task :rebuild_gems do
+  desc 'rm libmruby.a so the next build forces picoruby rake to recompile all gems (catches mrblib/*.rb changes that idf.py build silently ignores)'
+  task :clear_libmruby_cache do
     if File.exist?(LIBMRUBY_FILE)
       rm LIBMRUBY_FILE
-      puts "removed #{LIBMRUBY_FILE} — next build will re-run picoruby rake"
+      puts "[r2p2] cleared libmruby cache (#{LIBMRUBY_FILE}) — next build will recompile gems"
     else
-      puts "libmruby.a already absent — next build will run picoruby rake anyway"
+      puts "[r2p2] libmruby cache already absent"
     end
   end
 
@@ -79,7 +83,7 @@ namespace :r2p2 do
   end
 
   desc 'build + flash in one shot (default workflow for code iteration)'
-  task :build_flash do
+  task :build_flash => :clear_libmruby_cache do
     ensure_sdkconfig_fresh
     port = espport
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
@@ -114,22 +118,39 @@ namespace :r2p2 do
     PY
   end
 
+  # Future-proof: present R2P2 build exits main_task after SIGINT and never
+  # re-prints a shell prompt over USB-CDC, so this task does not actually
+  # recover anything on the current build. Kept for the day shell echo
+  # behavior is restored upstream — see lib/deploy/shell_recovery.rb header
+  # for the diagnostic context. For working recovery today, use `wipe_storage`.
+  desc 'interrupt autostart via Ctrl-C and rm /home/app.mrb (press M5Stack reset button immediately before invoking)'
+  task :rm_appmrb do
+    port = espport
+    Deploy::ShellRecovery.rm_app(port: port)
+  end
+
+  # Generic R2P2-ESP32 (CoreS3) storage partition erase: nukes /home/* so the
+  # next boot starts with no autostart payload. Useful for any picoruby app
+  # whose /home/app.mrb panic-loops, jams PicoModem handshake, or otherwise
+  # locks out the shell. Storage partition layout is 0x210000-0x310000 (1MB);
+  # adjust if your sdkconfig partition table differs. ~7s end-to-end.
+  desc 'erase storage partition (0x210000-0x310000, ~1MB) — fast app.mrb recovery without full flash'
+  task :wipe_storage do
+    port = espport
+    Dir.chdir(R2P2_ROOT) do
+      sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} erase_region 0x210000 0x100000'"
+    end
+  end
+
   desc 'upload a Ruby file via PicoModem (SRC=path DST=/home/foo.rb), defaults to examples/app.rb'
   task :upload do
     src  = ENV.fetch('SRC', 'mrbgems/picoruby-stackchan-protocol/examples/app.rb')
     dst  = ENV.fetch('DST', '/home/app.rb')
     port = espport
     abs_src = File.expand_path(src, __dir__)
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/picomodem-upload', abs_src, dst, port
-    end
+    Deploy::Picomodem.upload(src: abs_src, dst: dst, port: port)
   end
 
-  # SRC (.rb) を host picorbc で .mrb bytecode に compile し、/home/app.mrb として
-  # autostart 用に upload する。R2P2 の main_task は .mrb を .rb より優先 load する
-  # ので、複雑な ble_smoke.rb 等 on-device の mrb_sandbox_compile で FreeRTOS main
-  # task stack を blow するアプリは host compile 経由でしか動かない (2026-05-16 finding)。
-  # picorbc は rake r2p2:setup で host build される。bytecode は tmp/build/ に置く。
   desc 'host-compile SRC=path/to/foo.rb to .mrb and upload as /home/app.mrb (autostart bytecode path; bypasses on-device compile)'
   task :upload_mrb do
     src = ENV.fetch('SRC') { abort 'SRC=path/to/file.rb is required for r2p2:upload_mrb' }
@@ -151,78 +172,54 @@ namespace :r2p2 do
     puts "[upload_mrb] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes)"
 
     port = espport
-    dst = '/home/app.mrb'
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/picomodem-upload', mrb_path, dst, port
-    end
+    Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
   end
 
-  desc 'send `led <COLOR> <MODE>` via stackchan-control (defaults: COLOR=red MODE=solid)'
-  task :send_led do
+  # E2E smoke: upload application.mrb → reset → wait autostart → send a
+  # control frame via stackchan-ble-control combo. Exits with the CLI's
+  # exit code so the rake invocation surfaces structured failure (0/2/3/4/5).
+  desc 'BLE control E2E smoke (COLOR=red MODE=blink FACE=joy SIDE=both AUTOSTART_WAIT=12)'
+  task :ble_control_smoke do
     color = ENV.fetch('COLOR', 'red')
-    mode  = ENV.fetch('MODE', 'solid')
-    port = espport
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/stackchan-control', '--port', port, 'led', color, mode
-    end
-  end
-
-  desc 'send `face <NAME>` via stackchan-control (default NAME=neutral)'
-  task :send_face do
-    name = ENV.fetch('NAME', 'neutral')
-    port = espport
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/stackchan-control', '--port', port, 'face', name
-    end
-  end
-
-  desc 'one-shot HW verify: reset + capture serial + send_led + tail log (COLOR/MODE/WAIT env override)'
-  task :verify_led do
-    color = ENV.fetch('COLOR', 'red')
-    mode  = ENV.fetch('MODE', 'solid')
+    mode  = ENV.fetch('MODE',  'solid')
+    face  = ENV.fetch('FACE',  'neutral')
+    side  = ENV.fetch('SIDE',  'both')
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
-    settle_wait    = ENV.fetch('SETTLE_WAIT', '4').to_i
-    port = espport
-    log = File.expand_path('tmp/longrun/verify-led-serial.log', __dir__)
-    mkdir_p File.dirname(log)
-    File.write(log, '')
 
-    Rake::Task['r2p2:reset'].invoke
-    sleep 1
-
-    cat_pid = spawn("cat #{port} > #{log}")
-    puts "[verify_led] serial capture pid=#{cat_pid} -> #{log}"
-
-    puts "[verify_led] waiting #{autostart_wait}s for autostart..."
-    sleep autostart_wait
-
-    ENV['COLOR'] = color
-    ENV['MODE']  = mode
-    Rake::Task['r2p2:send_led'].invoke
-
-    sleep settle_wait
-    Process.kill('TERM', cat_pid) rescue nil
-    Process.wait(cat_pid) rescue nil
-
-    puts "===== serial log tail (last 80 lines of #{log}) ====="
-    sh "tail -80 #{log}"
-  end
-
-  # Mac autonomous BLE verification loop. Composes upload_mrb (host picorbc +
-  # picomodem) + reset (RTS pulse) + sleep (autostart + sleep_ms 2000 + BLE
-  # init) + stackchan-ble-verify (Mac CoreBluetooth central scan/connect/
-  # discover/read/write/subscribe). Single command for Claude Code to assert
-  # the full device→Mac BLE path with exit 0 / non-zero.
-  desc 'autonomous BLE verify loop: upload ble_smoke.rb (.mrb) + reset + Mac-side verify'
-  task :ble_verify do
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/ble_smoke.rb'
+    # Mac CoreBluetooth scan is known to truncate / cache device names, stripping
+    # long suffixes. Epoch suffix design is ineffective on macOS host side.
+    # (Web research confirms no effective host-side workaround: sudo pkill bluetoothd
+    # and active scan only provide temporary relief, not root fix.)
+    # → Retired epoch suffix infrastructure. Device discovery now uses fixed base name.
+    # Single board per session, so "StackChan-PicoRuby" prefix is unique.
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
     Rake::Task['r2p2:upload_mrb'].invoke
     Rake::Task['r2p2:reset'].invoke
-    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '10').to_i
-    puts "[ble_verify] waiting #{autostart_wait}s for autostart (sleep_ms 2000 + BLE init + advertise)..."
+
+    puts "[smoke] waiting #{autostart_wait}s for autostart (5s escape + BLE init + advertise)"
     sleep autostart_wait
-    Dir.chdir(File.expand_path('pc/stackchan-protocol', __dir__)) do
-      sh 'bundle', 'exec', 'exe/stackchan-ble-verify'
+
+    # The project-root Bundler env (loaded at the top of this Rakefile) leaks
+    # into any child `bundle exec`, which makes pc/stackchan-ble-client's
+    # `require "stackchan_ble_client"` fail with LoadError because resolution
+    # uses the outer Gemfile instead of the inner one. Drop the outer env so
+    # the child `bundle exec` reads its own Gemfile.
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                    '--name-prefix', 'StackChan-PicoRuby',
+                    '--side', side,
+                    'combo',
+                    '--face', face,
+                    '--led',  "#{color} #{mode}")
+        unless ok
+          # Propagate the CLI's exit code so the rake call surfaces structured failure.
+          exit $?.exitstatus
+        end
+      end
     end
+
+    puts "[smoke] PASS — face=#{face} LED=#{color} #{mode} (side=#{side}) — visual check please"
   end
+
 end

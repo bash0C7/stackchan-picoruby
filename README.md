@@ -1,85 +1,172 @@
 # stackchan-picoruby
 
-Personal port of [M5Stack StackChan](https://www.switch-science.com/products/11129) (CoreS3 ベース) to [PicoRuby](https://github.com/picoruby/picoruby) on [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32).
+A personal port of [Stack-chan](https://github.com/stack-chan/stack-chan) to [PicoRuby](https://github.com/picoruby/picoruby), running on [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) on the [M5Stack StackChan AI Desktop Robot (CoreS3)](https://www.switch-science.com/products/11129).
 
-Architecture is **PC ↔ StackChan avatar pattern**:
+The hardware layer (LCD, RGB LEDs, IO expanders, BLE peripheral) is reimplemented as out-of-tree PicoRuby `mrbgems`. Higher-level avatar logic is orchestrated from a macOS-side Ruby client over Nordic UART Service (BLE NUS).
 
-- **StackChan**: PicoRuby driver 群 + frame protocol で I/O 端末として動作。LCD / LED / (将来) servo / sensor を駆動
-- **PC (Mac)**: [`rb-foundation-model-mac`](https://github.com/bash0C7/rb-foundation-model-mac) (Apple Foundation Model の Ruby binding) で AI orchestration
+## Acknowledgement
 
-公式 M5Stack firmware は隣ディレクトリ `../StackChan` に **read-only** で置く。ピン配置と init sequence の参照源として使うが、絶対に書き換えない。
+Massive thanks to:
 
-## Status (2026-05-14)
+- The upstream [Stack-chan](https://github.com/stack-chan/stack-chan) project by Shinya Ishikawa and the Stack-chan community — the hardware design, the cute face, the entire concept. The official C++ firmware (referenced read-only as `../StackChan` in this monorepo) was indispensable for pin assignments and cold-boot sequences.
+- [PicoRuby](https://github.com/picoruby/picoruby) by [@hasumikin](https://github.com/hasumikin) and contributors.
+- [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) for the ESP32 port that made any of this possible.
 
-bring-up smoke (LCD face + WS2812 RGB ring + 10s heartbeat) が CoreS3 実機で確認済 (`feature/stackchan-display-bringup` branch、tip `f50780e`)。
+## Architecture
 
-| Subsystem | State | Driver mrbgem |
-| --- | --- | --- |
-| LCD (ILI9342) | working | `mrbgems/picoruby-ili9342` |
-| Face render (Neutral / Happy / Sad) | working | `mrbgems/picoruby-stackchan-protocol` (Face module) |
-| RGB LED ring (WS2812 ×12, 4-mode animator) | working | `mrbgems/picoruby-stackchan-led` |
-| PY32 IO Expander (I2C, RMW LED refresh + digital_write) | working | `mrbgems/picoruby-py32-io-expander` |
-| USB-Serial host frame protocol (Dispatcher / FrameParser) | working | `mrbgems/picoruby-stackchan-protocol` |
-| PC-side CLI (`stackchan-control` / `picomodem-upload`) | working | `pc/stackchan-protocol/` |
-| **Mac comm (WiFi station + TCP/HTTP/WebSocket)** | **next** | upstream `picoruby-esp32` + `picoruby-socket` + `picoruby-net-*` |
-| IMU (BMI270 + BMM150) | not started | `picoruby-bmi270` (planned) |
-| Servo (SCServo, neck pan + tilt) | not started | `picoruby-scservo` (planned) |
-| Touch (3-zone Si12T head) | not started | (planned) |
-| Camera / Mic / Speaker | unscoped | far future |
-| BLE-Serial | **deferred** (R2P2-ESP32 sdkconfig に BT 設定無し、`picoruby-ble` の ESP32 port 不明) | — |
+```
++-----------+   BLE NUS (frame protocol + ACK queue)   +---------------------+
+|  macOS    | <--------------------------------------> |  CoreS3 / R2P2      |
+|  (Ruby    |                                          |  PicoRuby + mrbgems |
+|  client)  |                                          |  LCD / LED / BLE    |
++-----------+                                          +---------------------+
+```
 
-### Hardware finding (CoreS3 bring-up)
+- **CoreS3 side**: I/O endpoint. Renders faces, drives the 12× WS2812 RGB ring (per-side, animated), advertises NUS, listens for control frames.
+- **macOS side**: orchestrator. Sends control frames (face × LED color × animation mode × side selector), receives ACK / ERR bytes.
+- **Frame protocol**: K=V semicolon-delimited frames, single-byte ACK (`.`) or ERR (`?`) reply. Implementation in `mrbgems/picoruby-stackchan-protocol/` and `pc/stackchan-ble-client/`.
 
-cold-boot で LCD と LED を出すには **ESP32 SoC の SPI/GPIO init だけでは不足**。以下を順に叩く必要あり:
+## Feature matrix vs upstream
 
-1. **AXP2101 PMIC**: `0x97 / 0x69 / 0x30 / 0x90 / 0x94 / 0x95 / 0x27 / 0x99` を全部書く (ALDO/BLDO の rail を立てる)。`0x90 = 0xBF` だけでは LCD バックライト点かない
-2. **AW9523 GPIO Expander**: `reg 0x02 (P0) = 0b00000111` で **WS2812 用 5V rail を enable**。これ書かないと WS2812 chip 側を完璧に叩いても暗黒
-3. **PY32 GPIO 0 (VM_EN) HIGH + 200ms settle**: WS2812 data line (PY32 GPIO 13) を駆動する前に必須
-4. WS2812 への書き込みは `refresh_leds` を read-modify-write 必須 (count を wipe しない)
+| Subsystem | Upstream (official) | This repo (PicoRuby) | Notes |
+|---|---|---|---|
+| Core 4 faces (Neutral / Smile / Joy / Surprised) | ✓ | ✓ | Custom geometry, photo-derived ratios |
+| Extended emotions (Angry / Sad / etc.) | ✓ | ✗ | Out of scope — easy to add as new `Face::*` |
+| Eye-blink liveness animation | partial | ✓ | Eye-only redraw, no full-screen flicker |
+| RGB LED ring (12 px) | ✓ | ✓ | `solid` / `blink` / `breathing` / `off`, per-side (`L`/`R`/`both`) |
+| BLE control (Nordic UART Service) | (community) | ✓ | NUS RX/TX + ACK queue + heartbeat tick |
+| WiFi + HTTP / MQTT / WebSocket | ✓ | (planned) | `picoruby-net-*` gems available, not wired up yet |
+| Servo control (neck pan + tilt) | ✓ | ✗ | Planned (`picoruby-scservo`) |
+| IMU (BMI270 + BMM150) | ✓ | ✗ | Planned (`picoruby-bmi270`) |
+| 3-zone touch (head Si12T) | ✓ | ✗ | Not started |
+| Microphone / Speaker / TTS | ✓ | ✗ | Delegated to macOS side (`rb-foundation-model-mac`) |
+| Camera (GC0308) | ✓ | ✗ | Out of scope |
+| NFC | ✓ | ✗ | Out of scope |
+| Voice synthesis / LLM | community | (planned, macOS-side) | Via `rb-foundation-model-mac` orchestrator |
+
+## Target hardware
+
+[M5Stack StackChan AI Desktop Robot (Switch Science 11129)](https://www.switch-science.com/products/11129):
+
+- SoC: **ESP32-S3** dual-core LX7 @ 240MHz, 16MB Flash, 8MB Quad PSRAM
+- LCD: 2.0" IPS 320×240 (ILI9342)
+- LEDs: 12× WS2812 RGB
+- PMIC: AXP2101
+- IO Expanders: AW9523 + PY32
+- BLE 5.0 LE (BTstack vendored ESP32 port)
+
+## Development environment
+
+**macOS only.** The Rakefile hard-codes macOS paths (`~/.espressif/python_env/...`, `/dev/cu.usbmodem*`) and uses the macOS-flavored [`serialport`](https://github.com/larskanis/ruby-serialport) gem. Linux / Windows would need rewrites in `Rakefile` and `lib/deploy/picomodem.rb`.
+
+### Prerequisites
+
+- macOS 14+ (tested on Darwin 25)
+- [esp-idf](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/get-started/index.html) **v5.4**, installed at `~/esp/esp-idf`
+- Ruby 3.4+ (rbenv recommended)
+- `bundler`
+- [`ghq`](https://github.com/x-motemen/ghq) for repository layout (optional but assumed)
+
+### Repository layout
+
+This monorepo expects a sibling clone of `R2P2-ESP32` (fork required — sdkconfig fragments and BLE bring-up live there):
+
+```
+~/dev/src/github.com/bash0C7/
+├── stackchan-picoruby/    (this repo)
+└── R2P2-ESP32/            (https://github.com/bash0C7/R2P2-ESP32, fork)
+```
+
+### First-time setup
+
+```bash
+ghq get github.com/bash0C7/stackchan-picoruby
+ghq get github.com/bash0C7/R2P2-ESP32
+cd ~/dev/src/github.com/bash0C7/stackchan-picoruby
+bundle install
+bundle exec rake r2p2:setup       # ~10-20 min, builds host picoruby + sets ESP32-S3 target
+```
+
+### Build + flash + smoke
+
+```bash
+bundle exec rake r2p2:build_flash       # ~5-10 min; auto-clears libmruby cache on mrblib changes
+bundle exec rake r2p2:wipe_storage      # ~7s, clean /home partition
+bundle exec rake r2p2:ble_control_smoke COLOR=red MODE=blink FACE=joy SIDE=both
+```
+
+Expected smoke output ends with:
+```
+[smoke] PASS — face=joy LED=red blink (side=both) — visual check please
+```
+
+Visual sanity check: joy face on LCD, both sides red blinking, eye-blink animation every ~5 seconds.
+
+### Recovery — when `/home/app.mrb` wedges autostart
+
+```bash
+bundle exec rake r2p2:wipe_storage
+```
+
+If `wipe_storage` itself stalls (USB-CDC re-enumeration issues), fall back to `bundle exec rake r2p2:build_flash` for a full reflash. If that also fails, USB cable cycle + M5Stack power cycle is the last resort.
+
+## Development notes
+
+### CoreS3 cold-boot is non-trivial
+
+LCD + WS2812 do not work from a cold boot using ESP32 SoC SPI/GPIO init alone. You must walk the I2C bus (SDA=GPIO 12, SCL=GPIO 11) and program AXP2101 → AW9523 → ILI9342 → PY32 → WS2812 in the correct order. See the cold-boot block at the top of `mrbgems/picoruby-stackchan-protocol/examples/application.rb` for the working sequence.
+
+### BLE bring-up gotcha
+
+After cold-boot, you **must** `sleep_ms 3000` before starting BLE. The synchronous I2C/SPI cold-boot block (in particular the LCD pixel push) starves BTstack's FreeRTOS task. Without the yield, `gap_advertisements_enable(1)` is called but never actually emits — the device logs `HCI WORKING — advertising` while iPhone / Mac scanners see nothing. Verified by bisect (2026-05-17).
+
+### USB-CDC: ESP32-S3 native (USB Serial JTAG), DTR-gated
+
+CoreS3 uses the ESP32-S3 native USB Serial JTAG controller, not TinyUSB CDC ACM. The host uploader (`lib/deploy/picomodem.rb`) must set `DTR=1` on serial open, or the device will refuse TX. This is why the project uses the `serialport` gem (DTR control) rather than `uart` (no DTR API).
+
+Baud rate is functionally ignored by USB Serial JTAG — the value is cosmetic. Set to 115200 for human-readability of log output.
+
+### Mac CoreBluetooth quirks
+
+- Device name suffixes are **truncated** by Mac CoreBluetooth scan caching. Do not rely on long discriminators (epoch suffixes etc.) — Mac will only show the base name. Use a fixed `--name-prefix` and tolerate a single board per session.
+- GATT cache trap: Mac CoreBluetooth caches GATT services per device identifier and can serve a `0 services` stale view. The only reliable reset is **Bluetooth OFF → ON** (which restarts `blued`). Cross-check with iPhone (e.g. nRF Connect) when the Mac side stalls.
+
+### Rake task discipline
+
+Long-running rake tasks (`r2p2:build_flash`, `r2p2:setup`) take minutes. The `r2p2:build_flash` task auto-clears the libmruby cache (`clear_libmruby_cache` prerequisite) when invoked — this catches the `idf.py build` silent-bytecode-cache trap that previously caused mrblib changes (e.g. new `Face::*` classes) to be dropped at runtime as `NameError`.
+
+`idf.py monitor` cannot run from a TTY-less environment. Use `bin/capture-with-pty SECONDS LOG_FILE CMD...` for bounded captures (Expect-based, auto-`Ctrl-]` after the timeout), or attach manually from a real terminal.
 
 ## Repository layout
 
 ```
-stackchan-picoruby/
-├── Rakefile                              # r2p2:* tasks (build / flash / upload / send_* / verify_*)
-├── docs/superpowers/
-│   ├── specs/   ← per-subproject design docs + handoff memo
-│   └── plans/   ← per-subproject implementation plans
-├── mrbgems/
-│   ├── picoruby-ili9342/                 # LCD driver (ILI9342 SPI)
-│   ├── picoruby-py32-io-expander/        # PY32 chip driver (digital_write + RMW refresh_leds)
-│   ├── picoruby-stackchan-led/           # WS2812 12-LED ring driver on top of PY32
-│   └── picoruby-stackchan-protocol/      # Frame parser + Dispatcher + Face module + bring-up app.rb
-└── pc/stackchan-protocol/
-    ├── lib/stackchan_protocol/           # FrameWriter, LedColorTable, etc.
-    └── exe/
-        ├── stackchan-control             # PC CLI (face/led/raw/combo)
-        └── picomodem-upload              # PicoModem ファイル uploader (Ruby + uart gem + handshake responder)
+mrbgems/                                  out-of-tree PicoRuby gems
+├── picoruby-ili9342/                     LCD driver
+├── picoruby-py32-io-expander/            PY32 I/O expander (LEDs, VM_EN)
+├── picoruby-stackchan-led/               WS2812 12-px ring animator
+└── picoruby-stackchan-protocol/          face render + frame protocol + BLE app
+
+pc/                                       macOS-side Ruby clients
+├── stackchan-protocol/                   frame codec / CLI for serial control
+└── stackchan-ble-client/                 BLE NUS client + control CLI
+
+lib/deploy/                               host-side picomodem uploader (serialport gem)
+docs/                                     specs, plans, handoffs
+Rakefile                                  workflow wrappers (r2p2:*, build_flash, ble_control_smoke, etc.)
 ```
 
-各 `mrbgems/picoruby-*` は standalone PicoRuby gem の構造 (mrbgem.rake / Rakefile / mrblib / sig / test / examples) に揃えてあり、stable になったら個別リポジトリに切り出して upstream PR に出せる。
+## Related repositories (bash0C7 forks)
 
-## Build + flash (CoreS3)
-
-`Rakefile` に `r2p2:*` タスク群を集約。隣リポジトリ `../../bash0C7/R2P2-ESP32` 呼び出しと esp-idf env source を全部ラップしてある。
-
-| Task | 用途 |
-| --- | --- |
-| `rake r2p2:setup` | 初回・target 切り替え後 (deep_clean + mruby host rebuild + `idf.py set-target esp32s3`)。10〜20 分 |
-| `rake r2p2:build_flash` | **基本フロー**。`picoruby:build → flash` を 1 screen 内で連結 |
-| `rake r2p2:rebuild_gems` | gem の `.rb` を再生成したい時 (libmruby.a を消すだけ) |
-| `rake r2p2:upload SRC=path/to/app.rb` | PicoModem 経由で `/home/app.rb` 上書き |
-| `rake r2p2:send_face NAME=neutral` | Face frame 送信 |
-| `rake r2p2:send_led COLOR=red MODE=solid` | LED 制御 frame 送信 |
-| `rake r2p2:verify_led` | reset + capture + send_led + tail log の one-shot |
-| `rake r2p2:reset` | RTS pulse (CoreS3 の native USB-CDC では chip reset は効かないこと注意、人間に物理ボタン依頼が確実) |
-
-### CoreS3 固有の sdkconfig (R2P2-ESP32 側)
-
-- `sdkconfigs/cores3`: `SPIRAM=y` + `SPIRAM_MODE_QUAD=y` + `SPIRAM_SPEED_80M=y`。CoreS3 は Quad PSRAM 8MB (Octal でない)
-- `sdkconfig.defaults`: `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`
-- `SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3` (Rakefile にハードコード)
+- [R2P2-ESP32 (fork)](https://github.com/bash0C7/R2P2-ESP32) — CoreS3 sdkconfig fragments, BLE bring-up, BTstack thread bridging
+- [picoruby (fork)](https://github.com/bash0C7/picoruby) — BLE port modifications (BTstack ESP32 port thread safety)
+- [rb-foundation-model-mac](https://github.com/bash0C7/rb-foundation-model-mac) — Apple Foundation Model Ruby bindings (macOS-side orchestration)
 
 ## License
 
-MIT for code originating in this repository. The official `m5stack/StackChan` repository — referenced for pin numbers and init sequences — has its own license; see `docs/upstream-license-note.md`.
+MIT — see [LICENSE](./LICENSE).
+
+## See also
+
+- [Stack-chan official repository](https://github.com/stack-chan/stack-chan)
+- [PicoRuby](https://github.com/picoruby/picoruby)
+- [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32)

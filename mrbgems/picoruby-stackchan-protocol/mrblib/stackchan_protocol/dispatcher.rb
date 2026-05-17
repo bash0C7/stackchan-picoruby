@@ -17,10 +17,19 @@ module StackchanProtocol
       "o" => :off,
     }.freeze
 
+    SIDE_TABLE = {
+      "L" => :left,
+      "R" => :right,
+      "B" => :both,
+    }.freeze
+
+    attr_reader :current_face_class
+
     def initialize(display:, led:, stdout: $stdout)
       @display = display
       @led     = led
       @stdout  = stdout
+      @current_face_class = Face::Neutral
     end
 
     def handle(frame)
@@ -39,6 +48,7 @@ module StackchanProtocol
     def handle_face(frame)
       face_class = FACE_TABLE[frame["F"]]
       return false unless face_class
+      @current_face_class = face_class
       face_class.new.draw(@display)
       true
     end
@@ -46,10 +56,12 @@ module StackchanProtocol
     def handle_led(frame)
       mode = MODE_TABLE[frame["M"]]
       return false unless mode
+      side = SIDE_TABLE[frame["S"]]
+      return false unless side
       r = (frame["R"] || "0").to_i
       g = (frame["G"] || "0").to_i
       b = (frame["B"] || "0").to_i
-      @led.animate(r, g, b, mode)
+      @led.animate_side(side, r, g, b, mode)
       true
     end
 
