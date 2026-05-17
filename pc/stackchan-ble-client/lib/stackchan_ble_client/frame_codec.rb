@@ -2,9 +2,16 @@ require_relative "face_table"
 
 module StackchanBleClient
   module FrameCodec
+    # API symbol :left / :right are from StackChan's own perspective
+    # (its left hand / right hand). The device firmware's wire chars
+    # are wired in the opposite direction, so the API translates:
+    #   :left  → "R" on the wire (StackChan's left hand)
+    #   :right → "L" on the wire (StackChan's right hand)
+    # Verified on real hardware 2026-05-17. Keep callers in StackChan
+    # perspective and let this table absorb the wire-level reversal.
     SIDE_TO_CHAR = {
-      left:  "L",
-      right: "R",
+      left:  "R",
+      right: "L",
       both:  "B",
     }.freeze
 

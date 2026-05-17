@@ -22,7 +22,8 @@ class SendBuilderBasicTest < Test::Unit::TestCase
   def test_led_named_with_side
     b = StackchanBleClient::SendBuilder.new
     b.led(:green, side: :left)
-    assert_equal ["<L:1,R:0,G:255,B:0,S:L,M:s>\n"], b.to_frames
+    # API :left = StackChan's left hand = wire "R"
+    assert_equal ["<L:1,R:0,G:255,B:0,S:R,M:s>\n"], b.to_frames
   end
 
   def test_led_rgb_form
@@ -50,9 +51,10 @@ class SendBuilderAggregationTest < Test::Unit::TestCase
     b = StackchanBleClient::SendBuilder.new
     b.led(:red,   side: :left)
     b.led(:blue,  side: :right)
+    # API :left → wire "R", :right → wire "L" (StackChan-perspective)
     assert_equal [
-      "<L:1,R:255,G:0,B:0,S:L,M:s>\n",
-      "<L:1,R:0,G:0,B:255,S:R,M:s>\n",
+      "<L:1,R:255,G:0,B:0,S:R,M:s>\n",
+      "<L:1,R:0,G:0,B:255,S:L,M:s>\n",
     ], b.to_frames
   end
 
@@ -90,8 +92,8 @@ class SendBuilderAggregationTest < Test::Unit::TestCase
     assert_equal 4, frames.size
     assert_includes frames, "<F:1>\n"
     assert_includes frames, "<L:1,R:255,G:255,B:255,S:B,M:b>\n"
-    assert_includes frames, "<L:1,R:0,G:0,B:255,S:L,M:s>\n"
-    assert_includes frames, "<L:1,R:0,G:255,B:0,S:R,M:s>\n"
+    assert_includes frames, "<L:1,R:0,G:0,B:255,S:R,M:s>\n"
+    assert_includes frames, "<L:1,R:0,G:255,B:0,S:L,M:s>\n"
   end
 
   def test_form_can_switch_with_last_wins
