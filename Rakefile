@@ -193,15 +193,22 @@ namespace :r2p2 do
     puts "[smoke] waiting #{autostart_wait}s for autostart (5s escape + BLE init + advertise)"
     sleep autostart_wait
 
-    Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
-      ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                  '--side', side,
-                  'combo',
-                  '--face', face,
-                  '--led',  "#{color} #{mode}")
-      unless ok
-        # Propagate the CLI's exit code so the rake call surfaces structured failure.
-        exit $?.exitstatus
+    # The project-root Bundler env (loaded at the top of this Rakefile) leaks
+    # into any child `bundle exec`, which makes pc/stackchan-ble-client's
+    # `require "stackchan_ble_client"` fail with LoadError because resolution
+    # uses the outer Gemfile instead of the inner one. Drop the outer env so
+    # the child `bundle exec` reads its own Gemfile.
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                    '--side', side,
+                    'combo',
+                    '--face', face,
+                    '--led',  "#{color} #{mode}")
+        unless ok
+          # Propagate the CLI's exit code so the rake call surfaces structured failure.
+          exit $?.exitstatus
+        end
       end
     end
 
