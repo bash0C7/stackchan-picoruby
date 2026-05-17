@@ -4,6 +4,12 @@ class StackchanLed
   PIXEL_COUNT  = 12
   LED_DATA_PIN = 13
 
+  # Left/right physical pixel index split (draft assumption — verify visually
+  # via rake r2p2:ble_control_smoke SIDE=left / SIDE=right and adjust if the
+  # physical wraparound differs).
+  LEFT_RANGE  = (0..5)
+  RIGHT_RANGE = (6..11)
+
   def initialize(py32)
     @py32 = py32
     @brightness = 100
@@ -25,6 +31,23 @@ class StackchanLed
     self
   end
 
+  def fill_range(start_idx, end_idx, r, g, b)
+    i = start_idx
+    while i <= end_idx
+      @buffer[i] = [r, g, b]
+      i += 1
+    end
+    self
+  end
+
+  def fill_left(r, g, b)
+    fill_range(LEFT_RANGE.first, LEFT_RANGE.last, r, g, b)
+  end
+
+  def fill_right(r, g, b)
+    fill_range(RIGHT_RANGE.first, RIGHT_RANGE.last, r, g, b)
+  end
+
   def clear
     fill(0, 0, 0)
   end
@@ -41,19 +64,34 @@ class StackchanLed
     self
   end
 
-  def animate(r, g, b, mode)
-    animator.set(r, g, b, mode)
+  def animate_side(side, r, g, b, mode)
+    case side
+    when :both
+      left_animator.set(r, g, b, mode)
+      right_animator.set(r, g, b, mode)
+    when :left
+      left_animator.set(r, g, b, mode)
+    when :right
+      right_animator.set(r, g, b, mode)
+    else
+      raise ArgumentError, "unknown side: #{side.inspect}"
+    end
     self
   end
 
   def tick(now_ms)
-    animator.tick(now_ms)
+    left_animator.tick(now_ms)
+    right_animator.tick(now_ms)
   end
 
   private
 
-  def animator
-    @animator ||= Animator.new(self)
+  def left_animator
+    @left_animator ||= Animator.new(self, pixel_range: LEFT_RANGE)
+  end
+
+  def right_animator
+    @right_animator ||= Animator.new(self, pixel_range: RIGHT_RANGE)
   end
 
   def apply_brightness(r, g, b)

@@ -1,13 +1,13 @@
 class FakeLed
-  attr_reader :animate_calls, :tick_calls
+  attr_reader :animate_side_calls, :tick_calls
 
   def initialize
-    @animate_calls = []
+    @animate_side_calls = []
     @tick_calls = []
   end
 
-  def animate(r, g, b, mode)
-    @animate_calls << [r, g, b, mode]
+  def animate_side(side, r, g, b, mode)
+    @animate_side_calls << [side, r, g, b, mode]
     self
   end
 
@@ -15,7 +15,7 @@ class FakeLed
     @tick_calls << now_ms
   end
 
-  def last_animate_args
-    @animate_calls.last
+  def last_animate_side_args
+    @animate_side_calls.last
   end
 end

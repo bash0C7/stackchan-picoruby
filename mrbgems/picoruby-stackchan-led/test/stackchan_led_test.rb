@@ -168,12 +168,12 @@ class StackchanLedAnimateSolidTest < Test::Unit::TestCase
   end
 
   def test_animate_solid_pushes_color_immediately
-    @led.animate(100, 200, 50, :solid)
+    @led.animate_side(:both, 100, 200, 50, :solid)
     assert_equal [100, 200, 50], @py32.led_ram_calls.last.first
   end
 
   def test_animate_solid_then_tick_does_not_change
-    @led.animate(100, 200, 50, :solid)
+    @led.animate_side(:both, 100, 200, 50, :solid)
     calls_before = @py32.led_ram_calls.size
     @led.tick(123)
     @led.tick(500)
@@ -190,12 +190,12 @@ class StackchanLedAnimateOffTest < Test::Unit::TestCase
 
   def test_animate_off_clears_immediately
     @led.fill(255, 255, 255).show
-    @led.animate(99, 99, 99, :off)
+    @led.animate_side(:both, 99, 99, 99, :off)
     assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_animate_off_tick_no_op
-    @led.animate(0, 0, 0, :off)
+    @led.animate_side(:both, 0, 0, 0, :off)
     calls_before = @py32.led_ram_calls.size
     @led.tick(100)
     assert_equal calls_before, @py32.led_ram_calls.size
@@ -210,34 +210,34 @@ class AnimatorBlinkTest < Test::Unit::TestCase
   end
 
   def test_blink_first_tick_is_on
-    @led.animate(255, 0, 0, :blink)
+    @led.animate_side(:both, 255, 0, 0, :blink)
     @led.tick(0)
     assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_blink_at_499ms_still_on
-    @led.animate(255, 0, 0, :blink)
+    @led.animate_side(:both, 255, 0, 0, :blink)
     @led.tick(0)
     @led.tick(499)
     assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_blink_at_500ms_off
-    @led.animate(255, 0, 0, :blink)
+    @led.animate_side(:both, 255, 0, 0, :blink)
     @led.tick(0)
     @led.tick(500)
     assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_blink_at_1000ms_on_again
-    @led.animate(255, 0, 0, :blink)
+    @led.animate_side(:both, 255, 0, 0, :blink)
     @led.tick(0)
     @led.tick(1000)
     assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_blink_phase_anchored_to_first_tick
-    @led.animate(255, 0, 0, :blink)
+    @led.animate_side(:both, 255, 0, 0, :blink)
     @led.tick(7000)  # first tick sets phase_start_ms = 7000
     @led.tick(7499)  # elapsed 499 -> still on
     assert_equal [255, 0, 0], @py32.led_ram_calls.last.first
@@ -254,14 +254,14 @@ class AnimatorBreathingTest < Test::Unit::TestCase
   end
 
   def test_breathing_first_tick_step_0_is_zero
-    @led.animate(100, 0, 0, :breathing)
+    @led.animate_side(:both, 100, 0, 0, :breathing)
     @led.tick(0)
     assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_breathing_at_250ms_step_1
     # LUT[1] = 5%, 100*5/100 = 5
-    @led.animate(100, 0, 0, :breathing)
+    @led.animate_side(:both, 100, 0, 0, :breathing)
     @led.tick(0)
     @led.tick(250)
     assert_equal [5, 0, 0], @py32.led_ram_calls.last.first
@@ -269,7 +269,7 @@ class AnimatorBreathingTest < Test::Unit::TestCase
 
   def test_breathing_at_1500ms_step_6_peak
     # LUT[6] = 100%, full intensity
-    @led.animate(200, 100, 50, :breathing)
+    @led.animate_side(:both, 200, 100, 50, :breathing)
     @led.tick(0)
     @led.tick(1500)
     assert_equal [200, 100, 50], @py32.led_ram_calls.last.first
@@ -277,16 +277,127 @@ class AnimatorBreathingTest < Test::Unit::TestCase
 
   def test_breathing_wraps_at_3000ms
     # 3000ms / 250 = 12, % 12 = 0, LUT[0] = 0
-    @led.animate(100, 0, 0, :breathing)
+    @led.animate_side(:both, 100, 0, 0, :breathing)
     @led.tick(0)
     @led.tick(3000)
     assert_equal [0, 0, 0], @py32.led_ram_calls.last.first
   end
 
   def test_breathing_phase_anchored_to_first_tick
-    @led.animate(100, 0, 0, :breathing)
+    @led.animate_side(:both, 100, 0, 0, :breathing)
     @led.tick(5000)  # phase_start_ms = 5000
     @led.tick(5250)  # elapsed 250 -> step 1 -> 5
     assert_equal [5, 0, 0], @py32.led_ram_calls.last.first
+  end
+end
+
+class StackchanLedFillRangeTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led  = StackchanLed.new(@py32)
+    @py32.led_ram_calls.clear  # discard init blank
+  end
+
+  def test_fill_range_writes_only_specified_pixels
+    @led.fill_range(2, 4, 100, 50, 25)
+    @led.show
+    last = @py32.led_ram_calls.last
+    assert_equal [0, 0, 0],     last[0]
+    assert_equal [0, 0, 0],     last[1]
+    assert_equal [100, 50, 25], last[2]
+    assert_equal [100, 50, 25], last[3]
+    assert_equal [100, 50, 25], last[4]
+    assert_equal [0, 0, 0],     last[5]
+  end
+
+  def test_fill_left_covers_indices_0_to_5
+    @led.fill_left(10, 20, 30)
+    @led.show
+    last = @py32.led_ram_calls.last
+    (0..5).each { |i| assert_equal [10, 20, 30], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+  end
+
+  def test_fill_right_covers_indices_6_to_11
+    @led.fill_right(40, 50, 60)
+    @led.show
+    last = @py32.led_ram_calls.last
+    (0..5).each { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [40, 50, 60], last[i], "pixel #{i}" }
+  end
+
+  def test_left_and_right_independent
+    @led.fill_left(255, 0, 0)
+    @led.fill_right(0, 0, 255)
+    @led.show
+    last = @py32.led_ram_calls.last
+    (0..5).each { |i| assert_equal [255, 0, 0], last[i] }
+    (6..11).each { |i| assert_equal [0, 0, 255], last[i] }
+  end
+
+  def test_constants_LEFT_RANGE_and_RIGHT_RANGE
+    assert_equal 0, StackchanLed::LEFT_RANGE.first
+    assert_equal 5, StackchanLed::LEFT_RANGE.last
+    assert_equal 6, StackchanLed::RIGHT_RANGE.first
+    assert_equal 11, StackchanLed::RIGHT_RANGE.last
+  end
+end
+
+class StackchanLedAnimateSideTest < Test::Unit::TestCase
+  def setup
+    @py32 = FakePY32.new
+    @led  = StackchanLed.new(@py32)
+    @py32.led_ram_calls.clear
+  end
+
+  def test_animate_side_both_solid_fills_all_pixels
+    @led.animate_side(:both, 100, 50, 25, :solid)
+    last = @py32.led_ram_calls.last
+    (0..11).each { |i| assert_equal [100, 50, 25], last[i], "pixel #{i}" }
+  end
+
+  def test_animate_side_left_solid_fills_only_left_half
+    @led.animate_side(:left, 100, 50, 25, :solid)
+    last = @py32.led_ram_calls.last
+    (0..5).each  { |i| assert_equal [100, 50, 25], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+  end
+
+  def test_animate_side_right_solid_fills_only_right_half
+    @led.animate_side(:right, 0, 0, 255, :solid)
+    last = @py32.led_ram_calls.last
+    (0..5).each  { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [0, 0, 255], last[i], "pixel #{i}" }
+  end
+
+  def test_animate_side_off_clears_only_that_side
+    @led.animate_side(:both, 255, 255, 255, :solid)
+    @led.animate_side(:left, 0, 0, 0, :off)
+    last = @py32.led_ram_calls.last
+    (0..5).each  { |i| assert_equal [0, 0, 0], last[i], "pixel #{i}" }
+    (6..11).each { |i| assert_equal [255, 255, 255], last[i], "pixel #{i}" }
+  end
+
+  def test_animate_side_unknown_raises
+    assert_raise(ArgumentError) do
+      @led.animate_side(:up, 0, 0, 0, :solid)
+    end
+  end
+
+  def test_tick_ticks_both_animators
+    # Set both sides to blink; advance time; check the buffer flipped.
+    @led.animate_side(:both, 255, 0, 0, :blink)
+    initial = @py32.led_ram_calls.last.dup
+    @led.tick(0)        # at start of phase, blink on
+    @led.tick(600)      # after 500ms half-period, blink off
+    later = @py32.led_ram_calls.last
+    refute_equal initial, later, "tick should have produced a different buffer after 600ms"
+  end
+end
+
+class StackchanLedLegacyAnimateRemovedTest < Test::Unit::TestCase
+  def test_animate_method_no_longer_exists
+    led = StackchanLed.new(FakePY32.new)
+    refute_respond_to led, :animate
   end
 end

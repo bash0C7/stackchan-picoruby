@@ -139,3 +139,15 @@ Phase 3 を B/C/D で開始したい場合は上の prompt を差し替える。
 3. `git checkout main && git pull` で両 repo を main 最新へ
 4. Phase 3 のオプションを user に確認 (A 推奨だが、B/C/D に切り替える可能性あり)
 5. brainstorming skill で要件詰めへ
+
+## Session decisions log
+
+### 2026-05-17 session start
+
+- 両 PR (stackchan-picoruby#1, rb-corebluetooth-mac#1) は本 handoff 起票時点では open 扱いだったが、2026-05-16 中に user が両方 squash-merge 済み。本セッション開始時点で `main` 両 repo 同期済み。
+- user choice: **Phase 3 オプション A + D を同時実施**。ゴールは「BLE 経由で表情・LCD・サーボを動かしてスタックちゃんとして名乗れる」。
+- **B (AI bridge)** はもっと先のセッションで扱う。A 完了が前提。
+- **C (WebSocket / Web Bluetooth)** は本セッションでは扱わない。長期 follow-up として保留。再開する場合は本 handoff の "C." 節と memory `project_mac_communication_path` から起こす。今回 spec / plan には含めない。
+- 後続作業の spec / plan は本日中に新規ファイルで起票:
+  - spec: `docs/superpowers/specs/2026-05-17-ble-phase3-control-cli-design.md`
+  - plan: `docs/superpowers/plans/2026-05-17-ble-phase3-control-cli.md`

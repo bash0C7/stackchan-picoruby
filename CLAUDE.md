@@ -56,8 +56,9 @@ PC連携アバターパターン：
    - 書き順は reference (`../StackChan/firmware/main/hal/board/stackchan.cc:148-156`): P0 output → P1 output → CONFIG_P0 → CONFIG_P1 → GCR → LEDMODE_P0 → LEDMODE_P1
 3. **PY32 IO Expander** — GPIO 0 (VM_EN) HIGH + 200ms settle、GPIO 13 (WS2812 data line) を push-pull 出力で初期化、`refresh_leds` は read-modify-write 必須 (count を wipe しない)
 4. **ILI9342 driver の `rst_pin` / `bl_pin`** — AW9523 / AXP2101 経由なのでダミー GPIO (例 GPIO 1 等の未配線) を渡す
+5. **BLE を続けるなら cold-boot 完了後に `sleep_ms 3000` で必ず yield する** (2026-05-17 bisect 確定)。cold-boot 全体 (特に Face::Neutral.draw の 150KB pixel push) は同期 SPI/I2C で CPU を占有し、BTstack の FreeRTOS task が初期化を完走できない。yield せず `BLE.new` → `start` に入ると `gap_advertisements_enable(1)` は呼ばれても **RF emit が silent fail** する (device-side log には `HCI WORKING — advertising` が出る、Mac scan / iPhone nRF Connect では一切見えない)。最小値は未測定で 3000ms は安全策
 
-実装例: `mrbgems/picoruby-stackchan-protocol/examples/app.rb` 冒頭ブロック (= bring-up smoke v13)。将来 `picoruby-cores3-board` 的な gem に隠蔽する場合は **必ず AW9523 reg 0x02 = 0b00000111 を含めること**。
+実装例: `mrbgems/picoruby-stackchan-protocol/examples/app.rb` 冒頭ブロック (= bring-up smoke v13)、`mrbgems/picoruby-stackchan-protocol/examples/application.rb` (cold-boot 後 sleep_ms 3000 入り)。将来 `picoruby-cores3-board` 的な gem に隠蔽する場合は **必ず AW9523 reg 0x02 = 0b00000111 を含めること**、それと **BLE と組合せる場合の yield 必要性をドキュメント明記すること**。
 
 ## PicoRubyの制約・互換性の調べ方
 
@@ -155,6 +156,14 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 ### Storage 区画は `idf.py flash` で wipe される
 
 `idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
+
+### autostart 詰まり recovery の階層
+
+`/home/app.mrb` が boot loop / advertise 失敗 / PicoModem 通信不能等で詰まったときは、以下を **必ずこの順で** 試す。下に行くほど時間かかるが確実性高い。**1 段で 2 周以上空回ししたら次の段に上げる** — 同じ手を 3 周繰り返したら自動 recovery 粘り過ぎ、即上に進む。
+
+1. **`rake r2p2:wipe_storage`** (7s) — esptool で storage partition (0x210000-0x310000, 1MB) erase + hard reset。app.mrb 限定で速い。**ただし 1 回前の upload の PicoModem session が device 側に残ってると次の handshake が `FILE_ACK got nil` で詰む**。この場合は wipe 直後 sleep 15s 待って再 upload で復活することが多い
+2. **`rake r2p2:build_flash`** (5〜10 分) — 4 partition 全部 flash で device 完全に作り直す。wipe で 2-3 周回詰まって混乱したら **panic mode に入ってる** ので、落ち着いて build_flash に戻す。memory に「wipe で何とかなる」と書いてあっても**この階層の優先順位の方が上**(2026-05-17 wipe 不調セッションの教訓)
+3. **人間に依頼** — wipe + build_flash も詰まる / USB device が消える / 物理状態確認が要る、なら下表の通り
 
 ### 物理 / shell-level op は人間に振る (recovery を粘らない)
 
