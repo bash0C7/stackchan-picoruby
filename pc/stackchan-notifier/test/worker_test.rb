@@ -237,6 +237,47 @@ class WorkerTest < Test::Unit::TestCase
     worker.shutdown
   end
 
+  # GATT cache trap detection: when ensure_connected hits N consecutive
+  # `discoverServices timed out` failures, a single ERROR with a power-cycle
+  # message is emitted. Subsequent failures of the same kind must not spam
+  # the log — exactly one ERROR per trap event.
+  def test_repeated_discover_services_timeout_logs_error_once_with_power_cycle_message
+    events = []
+    logger = build_severity_capturing_logger(events)
+    factory_calls = 0
+    factory = -> {
+      factory_calls += 1
+      stub = Object.new
+      stub.define_singleton_method(:connect) do
+        raise StackchanBleClient::ConnectionError,
+              "CoreBluetoothMac::Error: discoverServices timed out after 5000ms"
+      end
+      stub
+    }
+    worker = StackchanNotifier::Worker.new(
+      ts:               @ts,
+      client_factory:   factory,
+      logger:           logger,
+      backoff:          [0],
+      sleep_fn:         ->(_s) {},
+      restore_sleep_fn: ->(_s) {},
+    )
+    worker.start
+    wait_until { events.count { |sev, _| sev == "ERROR" } >= 1 }
+    # Spin a few more iterations to confirm the ERROR does not repeat.
+    threshold = StackchanNotifier::Worker::GATT_CACHE_TRAP_THRESHOLD
+    wait_until { factory_calls >= threshold + 3 }
+
+    errors = events.select { |sev, _| sev == "ERROR" }
+    assert_equal 1, errors.size,
+                 "ERROR should fire exactly once per trap event, got #{errors.size} (events=#{events.inspect})"
+    assert_match(/GATT discovery stuck/,    errors.first[1])
+    assert_match(/power-cycle the StackChan/, errors.first[1])
+    assert_match(/keep retrying/,           errors.first[1])
+  ensure
+    worker&.shutdown
+  end
+
   private
 
   def build_worker(logger: nil, restore_clock: ->(_s) { sleep(0.01) })

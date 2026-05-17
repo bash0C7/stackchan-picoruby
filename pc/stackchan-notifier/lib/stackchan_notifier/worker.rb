@@ -13,6 +13,15 @@ module StackchanNotifier
     FORCE_RECONNECT_TUPLE    = [:notify, FORCE_RECONNECT_SENTINEL, 0, :solid, 0, :solid, nil].freeze
     RESTORE_TUPLE            = [:notify, :neutral,                 0, :solid, 0, :solid, nil].freeze
 
+    # GATT cache trap detection. When macOS CoreBluetooth's GATT cache is
+    # stale for our peripheral, every reconnect attempt fails the same way
+    # (`discoverServices timed out after 5000ms`). Detect N such consecutive
+    # failures and surface a single actionable ERROR — the daemon cannot
+    # programmatically clear the cache (no public API as of macOS 14), so
+    # the user has to power-cycle the StackChan to recover.
+    GATT_CACHE_TRAP_THRESHOLD = 3
+    GATT_CACHE_TRAP_PATTERN   = /discoverServices timed out/i
+
     def initialize(ts:, client_factory:, logger: nil, backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) }, restore_sleep_fn: ->(s) { sleep(s) })
       @ts               = ts
       @client_factory   = client_factory
@@ -20,11 +29,13 @@ module StackchanNotifier
       @backoff          = backoff
       @sleep_fn         = sleep_fn
       @restore_sleep_fn = restore_sleep_fn
-      @shutdown         = false
-      @client           = nil
-      @connect_attempt  = 0
-      @thread           = nil
-      @restore_thread   = nil
+      @shutdown               = false
+      @client                 = nil
+      @connect_attempt        = 0
+      @thread                 = nil
+      @restore_thread         = nil
+      @gatt_cache_trap_count  = 0
+      @gatt_cache_trap_logged = false
     end
 
     def start
@@ -91,15 +102,40 @@ module StackchanNotifier
           fresh = @client_factory.call
           fresh.connect
           @client = fresh
-          @connect_attempt = 0
+          @connect_attempt        = 0
+          @gatt_cache_trap_count  = 0
+          @gatt_cache_trap_logged = false
           log(:info, "BLE connected")
         rescue StackchanBleClient::Error, IOError, SystemCallError => e
           @connect_attempt += 1
+          track_gatt_cache_trap(e)
           delay = @backoff[[@connect_attempt - 1, @backoff.size - 1].min]
           log(:warn, "connect failed (attempt=#{@connect_attempt}): #{e.class}: #{e.message}; sleeping #{delay}s")
+          maybe_log_gatt_cache_trap
           @sleep_fn.call(delay)
         end
       end
+    end
+
+    def track_gatt_cache_trap(error)
+      if GATT_CACHE_TRAP_PATTERN.match?(error.message.to_s)
+        @gatt_cache_trap_count += 1
+      else
+        @gatt_cache_trap_count  = 0
+        @gatt_cache_trap_logged = false
+      end
+    end
+
+    def maybe_log_gatt_cache_trap
+      return if @gatt_cache_trap_logged
+      return if @gatt_cache_trap_count < GATT_CACHE_TRAP_THRESHOLD
+      log(:error,
+          "BLE GATT discovery stuck (#{@gatt_cache_trap_count} consecutive `discoverServices` timeouts). " \
+          "macOS CoreBluetooth has cached a stale GATT for this device and there is no programmatic " \
+          "API to clear it — please power-cycle the StackChan (unplug/replug USB-C or hard-reset the " \
+          "M5Stack). The daemon will keep retrying in the background; once the device reboots the next " \
+          "scan should succeed.")
+      @gatt_cache_trap_logged = true
     end
 
     def next_tuple_to_deliver
@@ -152,7 +188,10 @@ module StackchanNotifier
       schedule_restore(duration) if duration && duration > 0
       true
     rescue StackchanBleClient::Error, IOError, SystemCallError => e
-      log(:warn, "send failed: #{e.class}: #{e.message}; will reconnect")
+      # Task 1 retry slot will re-deliver the same tuple after ensure_connected
+      # reconnects, so a single send failure is recoverable noise — INFO. The
+      # WARN escalation lives in run_loop's "send failed twice; dropping" path.
+      log(:info, "send failed: #{e.class}: #{e.message}; will reconnect")
       disconnect_quietly
       false
     end

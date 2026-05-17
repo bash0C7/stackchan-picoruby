@@ -20,6 +20,15 @@ def build_capturing_logger(sink)
   logger
 end
 
+# Captures (severity, msg) pairs so tests can assert on the LEVEL too, not
+# just the text. Use this when the test cares whether something was logged
+# as INFO vs WARN vs ERROR.
+def build_severity_capturing_logger(events)
+  logger = Logger.new(StringIO.new)
+  logger.formatter = ->(severity, _time, _progname, msg) { events << [severity, msg]; "" }
+  logger
+end
+
 # Fake BLE client used by Worker tests. Records every send and lets tests
 # script connect / send behavior (raise to simulate disconnect, etc.).
 class FakeBleClient
