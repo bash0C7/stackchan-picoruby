@@ -7,12 +7,22 @@ PATH
   remote: .
   specs:
     stackchan_notifier (0.1.0)
+      logger
+      rinda
 
 GEM
   remote: https://rubygems.org/
   specs:
+    drb (2.2.3)
+    forwardable (1.4.0)
+    ipaddr (1.2.9)
+    logger (1.7.0)
     power_assert (3.0.1)
     rake (13.4.2)
+    rinda (0.2.0)
+      drb
+      forwardable
+      ipaddr
     test-unit (3.7.7)
       power_assert
 
@@ -27,8 +37,13 @@ DEPENDENCIES
   test-unit
 
 CHECKSUMS
+  drb (2.2.3) sha256=0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373
+  forwardable (1.4.0) sha256=f1cd40cc9812937980e1c76f1aa053660990a7c9b6a98fc37d945468afcce838
+  ipaddr (1.2.9) sha256=0f858a7b2e45def81ad2acf7997af77f2837709fa3b3acbbc05f33cfcc03deb7
+  logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   power_assert (3.0.1) sha256=8ce9876716cc74e863fcd4cdcdc52d792bd983598d1af3447083a3a9a4d34103
   rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
+  rinda (0.2.0) sha256=bb4566af73c9b78e80bc41202140860e33150ee2a0eacdf6dfe583e1aa0b03fa
   stackchan_ble_client (0.1.0)
   stackchan_notifier (0.1.0)
   test-unit (3.7.7) sha256=3c89d5ff0690a16bef9946156c4624390402b9d54dfcf4ce9cbd5b06bead1e45

@@ -1,7 +1,17 @@
 require "bundler/setup"
 require "test/unit"
+require "stringio"
+require "fileutils"
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+
+def wait_until(timeout: 1.0)
+  deadline = Time.now + timeout
+  until yield
+    sleep 0.01
+    raise "timeout waiting for condition" if Time.now > deadline
+  end
+end
 
 # Fake BLE client used by Worker tests. Records every send and lets tests
 # script connect / send behavior (raise to simulate disconnect, etc.).

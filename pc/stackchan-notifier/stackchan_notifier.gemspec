@@ -13,6 +13,7 @@ Gem::Specification.new do |spec|
   DESC
   spec.required_ruby_version = ">= 3.3.0"
   spec.add_runtime_dependency "rinda"
+  spec.add_runtime_dependency "logger"
   spec.files = Dir["lib/**/*.rb", "exe/*", "README.md"]
   spec.executables = ["stackchan-notifier-daemon", "stackchan-notify"]
   spec.require_paths = ["lib"]
