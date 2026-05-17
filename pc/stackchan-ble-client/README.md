@@ -38,7 +38,7 @@ client.disconnect
 ### Block DSL aggregation rules
 
 - `face` is a single key; calling `stackchan.face(...)` multiple times within one block uses the last one.
-- `led` is keyed by `(side)` — `:left` / `:right` / `:both` are independent; each defaults to the last call for that side.
+- `led` is keyed by `(side)` — `:left` / `:right` / `:both` are independent; each defaults to the last call for that side. `:left` / `:right` are from **StackChan's own perspective** (its left / right hand); the wire chars are swapped internally to match the device firmware.
 - Within one `#send` block, up to 4 frames are emitted: `face` + one per side that was touched.
 - Frames are emitted in the order each key was first mentioned in the block.
 - ACK is 1 byte from the device per frame (`.` = OK, `?` = error → `DeviceError` raised).

@@ -23,12 +23,14 @@ class FrameCodecEncodeLedTest < Test::Unit::TestCase
   end
 
   def test_encode_led_left_blue_blink
-    assert_equal "<L:1,R:0,G:0,B:255,S:L,M:b>\n",
+    # API :left = StackChan's left hand = wire "R" (see SIDE_TO_CHAR comment)
+    assert_equal "<L:1,R:0,G:0,B:255,S:R,M:b>\n",
                  StackchanBleClient::FrameCodec.encode_led(r: 0, g: 0, b: 255, side: :left, mode: :blink)
   end
 
   def test_encode_led_right_yellow_breathing
-    assert_equal "<L:1,R:255,G:255,B:0,S:R,M:p>\n",
+    # API :right = StackChan's right hand = wire "L"
+    assert_equal "<L:1,R:255,G:255,B:0,S:L,M:p>\n",
                  StackchanBleClient::FrameCodec.encode_led(r: 255, g: 255, b: 0, side: :right, mode: :breathing)
   end
 
