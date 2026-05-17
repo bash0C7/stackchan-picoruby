@@ -175,6 +175,55 @@ namespace :r2p2 do
     Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
   end
 
+  # Helper: compile + upload with epoch-suffix baked into device name.
+  # Substitutes "StackChan-PicoRuby" -> "StackChan-PicoRuby-<epoch>" in a temp copy.
+  # Returns the epoch-suffixed name for caller to pass to stackchan-ble-control.
+  def upload_mrb_dev(src, name_prefix: "StackChan-PicoRuby")
+    src_path = File.expand_path(src, __dir__)
+    abort "SRC not found: #{src_path}" unless File.exist?(src_path)
+
+    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
+    unless File.executable?(picorbc)
+      abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first (host picoruby build)"
+    end
+
+    build_dir = File.expand_path('tmp/build', __dir__)
+    mkdir_p build_dir
+
+    # Create epoch-suffixed name
+    epoch = Time.now.to_i
+    device_name = "#{name_prefix}-#{epoch}"
+
+    # Copy source to temp file and substitute name
+    base = File.basename(src_path, File.extname(src_path))
+    temp_src = File.join(build_dir, "#{base}-#{epoch}.rb")
+    content = File.read(src_path)
+    content = content.gsub(name_prefix, device_name)
+    File.write(temp_src, content)
+
+    # Compile the temp file
+    mrb_path = File.join(build_dir, "#{base}-#{epoch}.mrb")
+    rm_f mrb_path
+    sh picorbc, '-o', mrb_path, temp_src
+    abort "picorbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
+    puts "[upload_mrb_dev] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes, epoch=#{epoch})"
+
+    # Upload
+    port = espport
+    Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
+
+    # Return the epoch-suffixed name for caller to use in scan
+    device_name
+  end
+
+  desc 'upload_mrb with epoch-suffix (DEV=1 enables, optionally NAME_PREFIX=...)'
+  task :upload_mrb_dev do
+    src = ENV.fetch('SRC') { abort 'SRC=path/to/file.rb is required for r2p2:upload_mrb_dev' }
+    name_prefix = ENV.fetch('NAME_PREFIX', 'StackChan-PicoRuby')
+    device_name = upload_mrb_dev(src, name_prefix: name_prefix)
+    puts "[upload_mrb_dev] device will advertise as: #{device_name}"
+  end
+
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
   # control frame via stackchan-ble-control combo. Exits with the CLI's
   # exit code so the rake invocation surfaces structured failure (0/2/3/4/5).
