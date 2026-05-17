@@ -36,7 +36,8 @@ exposed over DRb. The "latest-wins drain" strategy follows the same author's
                ▼
 ┌─────────────────────────────────────┐
 │ stackchan-notify CLI (~50 ms)       │
-│   parses --face/--hsb/--mode/--side │
+│   parses --face/--left_led/         │
+│   --right_led/--duration flags      │
 │   writes one tuple via DRb, exits   │
 └──────────────┬──────────────────────┘
                │ DRb over Unix socket
@@ -91,8 +92,14 @@ Useful flags:
 | `--log-level LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 
 The daemon binds the socket with mode `0600` so other users on the same Mac
-cannot push notifications to your StackChan. INT / TERM cause a graceful
-shutdown (worker stop → DRb stop → socket unlink).
+cannot push notifications to your StackChan.
+
+### Signals
+
+| Signal | Effect |
+|---|---|
+| `INT`, `TERM` | graceful shutdown — worker stops, DRb stops, socket unlinks |
+| `HUP` | force-reconnect — worker tears down the current BLE connection and re-scans on the next loop iteration; useful when the device just came back from a silent disconnect |
 
 ### Optional: launchd plist (not provided)
 
@@ -132,36 +139,36 @@ Add to `~/.claude/settings.json` (or a project-local equivalent):
       "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "stackchan-notify --face surprised --hsb 0xFF0000 --mode blink --side both --quiet"
+        "command": "stackchan-notify --face surprised --left_led red,blink --right_led red,blink --duration 10 --quiet"
       }]
     }],
     "Stop": [{
       "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "stackchan-notify --face smile --hsb 0x00FF00 --mode solid --side both --quiet"
+        "command": "stackchan-notify --face smile --left_led green,solid --right_led green,solid --quiet"
       }]
     }],
     "SubagentStop": [{
       "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "stackchan-notify --face joy --hsb 0xFFFF00 --mode breathing --side both --quiet"
+        "command": "stackchan-notify --face joy --left_led yellow,breathing --right_led yellow,breathing --quiet"
       }]
     }],
     "PreToolUse": [{
       "matcher": "Bash",
       "hooks": [{
         "type": "command",
-        "command": "stackchan-notify --face neutral --hsb 0xFFA500 --mode blink --side both --quiet"
+        "command": "stackchan-notify --face neutral --left_led blue,blink --right_led blue,blink --duration 3 --quiet"
       }]
     }]
   }
 }
 ```
 
-The mapping of *event → (face, color, mode, side)* lives entirely in this
-file. The daemon does no event-name interpretation — it just forwards the
+The mapping of *event → (face, left LED, right LED, duration)* lives entirely in
+this file. The daemon does no event-name interpretation — it just forwards the
 tuple. To rebind, edit the hook command.
 
 `--quiet` is recommended on the hook so a missing/stopped daemon never
@@ -173,11 +180,25 @@ Claude Code is never blocked.
 | Flag | Required | Domain |
 |---|---|---|
 | `--face NAME` | yes | `neutral` / `smile` / `joy` / `surprised` |
-| `--hsb HEX` | yes | `0x000000`..`0xFFFFFF` (also `55FF80` without the `0x`) |
-| `--mode NAME` | yes | `solid` / `blink` / `breathing` / `off` |
-| `--side NAME` | no, default `both` | `left` / `right` / `both` (Stack-chan POV) |
-| `--socket PATH` | no | overrides default + env |
+| `--left_led COLOR,MODE` | no, default `0x000000,solid` (off) | COLOR = preset name or hex; MODE = `solid` / `blink` / `breathing` / `off` |
+| `--right_led COLOR,MODE` | no, default `0x000000,solid` (off) | same format as `--left_led` |
+| `--duration N` | no, default no auto-restore | positive integer seconds; on expiry the worker writes a neutral + both-LEDs-off tuple |
+| `--socket PATH` | no | overrides default and `STACKCHAN_NOTIFIER_SOCKET` env |
 | `--quiet` | no | suppresses "daemon unavailable" stderr |
+
+**Color presets** (resolved case-sensitively against the bare name):
+
+| Name | Hex |
+|---|---|
+| `red` | `0xFF0000` |
+| `green` | `0x00FF00` |
+| `blue` | `0x0000FF` |
+| `yellow` | `0xFFFF00` |
+| `white` | `0xFFFFFF` |
+| `gray` | `0x808080` |
+| `black` | `0x000000` |
+
+Any 24-bit hex `0x000000..0xFFFFFF` is also accepted directly.
 
 Exit codes:
 
@@ -191,6 +212,8 @@ Exit codes:
 ```bash
 bundle exec rake test
 ```
+
+Tests: 40 tests, 82 assertions.
 
 Covers (no real BLE required):
 
