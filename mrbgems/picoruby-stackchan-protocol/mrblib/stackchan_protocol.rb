@@ -76,6 +76,25 @@ module StackchanProtocol
         )
       end
     end
+
+    # Closed eye for blink animation. Draws a short horizontal line where
+    # the eye normally sits, giving the impression of a closed lid.
+    CLOSED_EYE_HALF_W = 4
+
+    class Closed < Base
+      def draw_eyes(display)
+        display.draw_line(
+          EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+          EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+          EYE_COLOR
+        )
+        display.draw_line(
+          EYE_RIGHT_CX - CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+          EYE_RIGHT_CX + CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+          EYE_COLOR
+        )
+      end
+    end
   end
 end
 
