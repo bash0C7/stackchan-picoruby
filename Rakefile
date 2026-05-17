@@ -175,61 +175,9 @@ namespace :r2p2 do
     Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
   end
 
-  # Helper: compile + upload with epoch-suffix baked into device name.
-  # Substitutes "StackChan-PicoRuby" -> "StackChan-PicoRuby-<epoch>" in a temp copy.
-  # Returns the epoch-suffixed name for caller to pass to stackchan-ble-control.
-  # Uses 6-digit epoch (mod 1_000_000, cycles ~11 days) to keep BLE adv data under 31-byte limit:
-  #   Flags (3) + Name overhead (2) + "StackChan-PicoRuby" (18) + "-DDDDDD" (7) = 30 bytes.
-  def upload_mrb_dev(src, name_prefix: "StackChan-PicoRuby")
-    src_path = File.expand_path(src, __dir__)
-    abort "SRC not found: #{src_path}" unless File.exist?(src_path)
-
-    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
-    unless File.executable?(picorbc)
-      abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first (host picoruby build)"
-    end
-
-    build_dir = File.expand_path('tmp/build', __dir__)
-    mkdir_p build_dir
-
-    # Create epoch-suffixed name (6-digit suffix only, fits BLE 31-byte adv limit)
-    epoch = Time.now.to_i % 1_000_000
-    device_name = "#{name_prefix}-#{epoch}"
-
-    # Copy source to temp file and substitute name
-    base = File.basename(src_path, File.extname(src_path))
-    temp_src = File.join(build_dir, "#{base}-#{epoch}.rb")
-    content = File.read(src_path)
-    content = content.gsub(name_prefix, device_name)
-    File.write(temp_src, content)
-
-    # Compile the temp file
-    mrb_path = File.join(build_dir, "#{base}-#{epoch}.mrb")
-    rm_f mrb_path
-    sh picorbc, '-o', mrb_path, temp_src
-    abort "picorbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
-    puts "[upload_mrb_dev] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes, epoch=#{epoch})"
-
-    # Upload
-    port = espport
-    Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
-
-    # Return the epoch-suffixed name for caller to use in scan
-    device_name
-  end
-
-  desc 'upload_mrb with epoch-suffix (DEV=1 enables, optionally NAME_PREFIX=...)'
-  task :upload_mrb_dev do
-    src = ENV.fetch('SRC') { abort 'SRC=path/to/file.rb is required for r2p2:upload_mrb_dev' }
-    name_prefix = ENV.fetch('NAME_PREFIX', 'StackChan-PicoRuby')
-    device_name = upload_mrb_dev(src, name_prefix: name_prefix)
-    puts "[upload_mrb_dev] device will advertise as: #{device_name}"
-  end
-
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
   # control frame via stackchan-ble-control combo. Exits with the CLI's
   # exit code so the rake invocation surfaces structured failure (0/2/3/4/5).
-  # Uses epoch-suffix upload to avoid Mac GATT cache stale-name issues.
   desc 'BLE control E2E smoke (COLOR=red MODE=blink FACE=joy SIDE=both AUTOSTART_WAIT=12)'
   task :ble_control_smoke do
     color = ENV.fetch('COLOR', 'red')
@@ -238,8 +186,14 @@ namespace :r2p2 do
     side  = ENV.fetch('SIDE',  'both')
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
 
-    src = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
-    device_name = upload_mrb_dev(src, name_prefix: 'StackChan-PicoRuby')
+    # Mac CoreBluetooth scan is known to truncate / cache device names, stripping
+    # long suffixes. Epoch suffix design is ineffective on macOS host side.
+    # (Web research confirms no effective host-side workaround: sudo pkill bluetoothd
+    # and active scan only provide temporary relief, not root fix.)
+    # → Retired epoch suffix infrastructure. Device discovery now uses fixed base name.
+    # Single board per session, so "StackChan-PicoRuby" prefix is unique.
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    Rake::Task['r2p2:upload_mrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
     puts "[smoke] waiting #{autostart_wait}s for autostart (5s escape + BLE init + advertise)"
@@ -253,7 +207,7 @@ namespace :r2p2 do
     Bundler.with_unbundled_env do
       Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
         ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                    '--name-prefix', device_name,
+                    '--name-prefix', 'StackChan-PicoRuby',
                     '--side', side,
                     'combo',
                     '--face', face,
