@@ -112,8 +112,13 @@ module StackchanNotifier
     end
 
     def install_signal_handlers
-      %w[INT TERM].each { |sig| Signal.trap(sig) { stop } }
-      Signal.trap("HUP") { @worker&.force_reconnect }
+      # Ruby 4.0+ raises ThreadError if Mutex#synchronize runs inside a
+      # signal handler. `stop` and `force_reconnect` both take locks (a
+      # plain Mutex, and Rinda's internal lock respectively), so defer
+      # the actual work to a fresh thread spawned from the trap. The
+      # trap itself does nothing but Thread.new, which is signal-safe.
+      %w[INT TERM].each { |sig| Signal.trap(sig) { Thread.new { stop } } }
+      Signal.trap("HUP") { Thread.new { @worker&.force_reconnect } }
       self
     end
 

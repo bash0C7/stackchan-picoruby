@@ -22,6 +22,8 @@ class DaemonTest < Test::Unit::TestCase
     nil
   ensure
     Signal.trap("HUP", "DEFAULT")
+    Signal.trap("INT", "DEFAULT")
+    Signal.trap("TERM", "DEFAULT")
     FileUtils.rm_f(@socket)
   end
 
@@ -98,6 +100,37 @@ class DaemonTest < Test::Unit::TestCase
     wait_until { called == 1 }
 
     assert_equal 1, called, "SIGHUP should call worker.force_reconnect"
+  end
+
+  # Ruby 4.0 raises ThreadError if Mutex#synchronize is reached from a trap
+  # context. `stop` synchronizes on @stop_mutex, so the trap defers to a
+  # fresh Thread. Send a real SIGTERM to verify the deferral works and
+  # that `wait` unblocks as the side effect of the eventual stop.
+  def test_install_signal_handlers_traps_term_via_thread_deferral
+    @daemon.start
+    @daemon.install_signal_handlers
+    waiter = Thread.new { @daemon.wait }
+    sleep 0.05
+    assert waiter.alive?, "wait should still be blocking before SIGTERM"
+
+    Process.kill("TERM", Process.pid)
+    joined = waiter.join(2.0)
+    assert joined, "wait should return after SIGTERM-driven stop"
+  end
+
+  # Same coverage for SIGINT (Ctrl-C in foreground) — must also clean up
+  # cleanly through the deferred Thread instead of bubbling up the default
+  # Interrupt and killing the process mid-mutex.
+  def test_install_signal_handlers_traps_int_via_thread_deferral
+    @daemon.start
+    @daemon.install_signal_handlers
+    waiter = Thread.new { @daemon.wait }
+    sleep 0.05
+    assert waiter.alive?, "wait should still be blocking before SIGINT"
+
+    Process.kill("INT", Process.pid)
+    joined = waiter.join(2.0)
+    assert joined, "wait should return after SIGINT-driven stop"
   end
 
   private
