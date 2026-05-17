@@ -177,11 +177,13 @@ Changes added on top of upstream for this project:
 - `sdkconfigs/cores3` — CoreS3 SoC overlay: **Quad** PSRAM 8MB, 16MB Flash, USB-Serial-JTAG console
 - `sdkconfigs/bt_btstack` — BLE enablement: BTstack vendored, ROM coex hook disabled (`CONFIG_SW_COEXIST_ENABLE=n` — required to avoid `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with IDF v5.4 + ESP32-S3)
 - `components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — wire this repo's mrbgems (`picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-stackchan-led`, `picoruby-stackchan-protocol`) and the vendored `picoruby-ble` / `picoruby-ble-uart` via absolute `gemdir`
-- Submodule `components/picoruby-esp32/picoruby` repointed to the `bash0C7/picoruby` fork below (for the BLE port fixes)
+- Submodule `components/picoruby-esp32/picoruby` repointed (in `.gitmodules`) to `https://github.com/bash0C7/picoruby.git` (the fork documented below) and pinned to a commit on its `feature/ble-bringup` branch — this is how R2P2-ESP32 picks up the BLE port fixes
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby) (of `picoruby/picoruby`)
 
-Changes added on top of upstream for this project — all in `mrbgems/picoruby-ble/ports/esp32/`:
+The project-local BLE fixes live on the **`feature/ble-bringup`** branch (not the default branch `master`). [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) pins this fork via its `components/picoruby-esp32/picoruby` submodule (`.gitmodules` → `url = https://github.com/bash0C7/picoruby.git`) at a commit on that branch — currently [`d4909f2a`](https://github.com/bash0C7/picoruby/commit/d4909f2a) "feat(picoruby-ble): make build host-aware so ESP32 and host can opt out of CYW43". Browse the branch to read the full series.
+
+Project-local additions — all in `mrbgems/picoruby-ble/ports/esp32/`:
 
 - `btstack_owner.c` — new `picoruby_btstack_ensure_started(setup_cb, ctx)` and `picoruby_btstack_run_sync(cb, ctx)` APIs so Ruby-thread BLE calls can be marshalled onto BTstack's FreeRTOS run-loop thread (BTstack is not thread-safe; this avoids LoadProhibited panics in `hci_*` / `gap_*` from the wrong thread)
 - `BLE_init`'s `l2cap_init` / `sm_init` / `att_server_init` / `hci_add_event_handler` block runs inside the BTstack setup callback (before `run_loop_execute`)
