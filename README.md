@@ -213,11 +213,13 @@ Changes added on top of upstream for this project:
 
 The project-local BLE fixes live on the **`feature/ble-bringup`** branch (not the default branch `master`). [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) pins this fork via its `components/picoruby-esp32/picoruby` submodule (`.gitmodules` → `url = https://github.com/bash0C7/picoruby.git`) at a commit on that branch — currently [`d4909f2a`](https://github.com/bash0C7/picoruby/commit/d4909f2a) "feat(picoruby-ble): make build host-aware so ESP32 and host can opt out of CYW43". Browse the branch to read the full series.
 
-Project-local additions — all in `mrbgems/picoruby-ble/ports/esp32/`:
+Project-local additions are **scoped entirely to `mrbgems/picoruby-ble/`** (no other mrbgem / no other porting is touched). 3 commits, ~644 lines:
 
-- `btstack_owner.c` — new `picoruby_btstack_ensure_started(setup_cb, ctx)` and `picoruby_btstack_run_sync(cb, ctx)` APIs so Ruby-thread BLE calls can be marshalled onto BTstack's FreeRTOS run-loop thread (BTstack is not thread-safe; this avoids LoadProhibited panics in `hci_*` / `gap_*` from the wrong thread)
-- `BLE_init`'s `l2cap_init` / `sm_init` / `att_server_init` / `hci_add_event_handler` block runs inside the BTstack setup callback (before `run_loop_execute`)
-- Runtime calls (`hci_power_control`, `gap_advertisements_enable`, etc.) dispatch via `btstack_run_loop_execute_on_main_thread` with semaphore-synchronous wait; same-thread invocation short-circuits to direct call to avoid deadlock
+- `mrbgems/picoruby-ble/mrbgem.rake` + `mrblib/ble.rb` — make the build host-aware so ESP32 and host can opt out of the Pico W CYW43 path (upstream's only port was Pico W)
+- `mrbgems/picoruby-ble/ports/esp32/` (new directory, 6 files):
+  - `btstack_owner.c/.h` — `picoruby_btstack_ensure_started(setup_cb, ctx)` and `picoruby_btstack_run_sync(cb, ctx)` so Ruby-thread BLE calls can be marshalled onto BTstack's FreeRTOS run-loop thread (BTstack is not thread-safe; this avoids `LoadProhibited` panics in `hci_*` / `gap_*` from the wrong thread)
+  - `ble_peripheral.c` / `ble_central.c` / `ble_common.h` — peripheral and central wrappers
+  - `ble.c` — `BLE_init` owns `profile_data`; `l2cap_init` / `sm_init` / `att_server_init` / `hci_add_event_handler` run inside the BTstack setup callback (before `run_loop_execute`); runtime calls (`hci_power_control`, `gap_advertisements_enable`, etc.) dispatch via `btstack_run_loop_execute_on_main_thread` with semaphore-synchronous wait (same-thread invocation short-circuits to direct call to avoid deadlock); Security Manager / RPA hardening + att_db debug aids
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 
