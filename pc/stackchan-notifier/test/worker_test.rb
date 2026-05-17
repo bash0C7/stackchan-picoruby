@@ -178,6 +178,24 @@ class WorkerTest < Test::Unit::TestCase
     worker.shutdown
   end
 
+  def test_force_reconnect_sentinel_drained_during_burst_still_triggers_rescan
+    worker = build_worker
+    worker.start
+    wait_until { @client.connect_count == 1 }
+
+    # Write a burst — the worker's drain_latest will GC the older one.
+    # Slip the FORCE_RECONNECT_TUPLE between two notifies so it lands
+    # in the drained position, not the initial-take position.
+    @ts.write([:notify, :smile,             0x00FF00, :solid, :both])
+    @ts.write([:notify, :__force_reconnect__, 0, :solid, :both])
+    @ts.write([:notify, :surprised,         0xFF0000, :blink, :left])
+
+    wait_until { @client.connect_count == 2 }
+    assert_equal 2, @client.connect_count, "force-reconnect drained during burst should still trigger reconnect"
+
+    worker.shutdown
+  end
+
   private
 
   def build_worker(logger: nil)

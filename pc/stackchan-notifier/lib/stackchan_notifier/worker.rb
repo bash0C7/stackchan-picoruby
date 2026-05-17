@@ -53,13 +53,15 @@ module StackchanNotifier
 
     def run_loop
       @pending_retry = nil
+      @pending_force_reconnect = false
       until @shutdown
         ensure_connected
         break if @shutdown
 
         tuple, was_retry = next_tuple_to_deliver
         next if shutdown_sentinel?(tuple)
-        if force_reconnect_sentinel?(tuple)
+        if @pending_force_reconnect || force_reconnect_sentinel?(tuple)
+          @pending_force_reconnect = false
           log(:info, "force reconnect requested; tearing down current BLE connection")
           disconnect_quietly
           @pending_retry = nil
@@ -128,6 +130,7 @@ module StackchanNotifier
           @shutdown_during_drain = true
           break
         end
+        @pending_force_reconnect = true if force_reconnect_sentinel?(extra)
       rescue Rinda::RequestExpiredError
         break
       end

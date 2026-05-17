@@ -92,7 +92,7 @@ class DaemonTest < Test::Unit::TestCase
 
     @daemon.install_signal_handlers
     Process.kill("HUP", Process.pid)
-    sleep 0.1
+    wait_until { called == 1 }
 
     assert_equal 1, called, "SIGHUP should call worker.force_reconnect"
   end
