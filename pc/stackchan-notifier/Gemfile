@@ -4,6 +4,13 @@ gemspec
 
 gem "stackchan_ble_client", path: "../stackchan-ble-client"
 
+# stackchan_ble_client's BLE transport is declared as a path-dep in
+# pc/stackchan-ble-client/Gemfile, but path-deps don't travel through a
+# sibling gemspec. Re-declare them here so this gem's runtime bundle sees
+# `corebluetooth_mac` and can actually open a connection.
+gem "rb-corebluetooth-mac", path: "../../../rb-corebluetooth-mac"
+gem "swift_gem",            path: "../../../swift_gem"
+
 group :test do
   gem "test-unit"
   gem "rake"
