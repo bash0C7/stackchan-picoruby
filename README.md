@@ -146,42 +146,42 @@ If `wipe_storage` itself stalls (USB-CDC re-enumeration issues), fall back to `b
 
 ## Development notes
 
-The tables below cover behaviors you will likely encounter while developing on this codebase, along with the recommended response.
+The tables below collect the behaviors you are most likely to encounter while working on this codebase, together with the recommended response for each.
 
 ### Hardware bring-up
 
 | Topic | Behavior | Recommended response |
 |---|---|---|
-| CoreS3 cold-boot | LCD and the WS2812 ring need the I2C devices programmed in order: AXP2101 → AW9523 → ILI9342 → PY32 → WS2812 (SDA=GPIO 12, SCL=GPIO 11). | Follow the cold-boot block at the top of `mrbgems/picoruby-stackchan-protocol/examples/application.rb`. |
-| BLE start after cold-boot | The synchronous I2C/SPI bring-up (notably the LCD pixel push) keeps BTstack's FreeRTOS task from running, so the first `gap_advertisements_enable(1)` emits nothing. | Insert `sleep_ms 3000` between cold-boot and `BLE.new`. |
+| CoreS3 cold-boot | The LCD and the WS2812 ring come up only after the I2C bus programs the devices in this order: AXP2101 → AW9523 → ILI9342 → PY32 → WS2812 (SDA=GPIO 12, SCL=GPIO 11). | Follow the cold-boot block at the top of `mrbgems/picoruby-stackchan-protocol/examples/application.rb`. |
+| Starting BLE after cold-boot | The synchronous I2C/SPI work during cold-boot — in particular the LCD pixel push — keeps BTstack's FreeRTOS task from starting. As a result, the first `gap_advertisements_enable(1)` runs without emitting any radio packets. | Insert `sleep_ms 3000` between the cold-boot block and `BLE.new`. |
 
 ### Communication
 
 | Topic | Behavior | Recommended response |
 |---|---|---|
-| Host ↔ device serial | CoreS3 exposes ESP32-S3 native USB Serial JTAG. Baud rate is cosmetic (115200 is fine for log readability); the device gates TX on DTR. | `lib/deploy/picomodem.rb` opens the port via the `serialport` gem and asserts `serial.dtr = 1`. Reuse it. |
-| Mac CoreBluetooth scan | Long device-name suffixes are truncated in scan results. | Keep the advertised name short and stable; match with `--name-prefix` rather than per-board discriminators. |
-| Mac CoreBluetooth GATT cache | Services are cached per device identifier and can surface a stale `0 services` view. | Toggle macOS Bluetooth OFF → ON to restart `blued`. For an external sanity check, scan from a second device such as iPhone with nRF Connect. |
+| Host ↔ device serial | CoreS3 talks to the host through the ESP32-S3 native USB Serial JTAG controller. The baud-rate value has no effect on throughput (115200 keeps logs readable); the device only accepts TX from the host once DTR is asserted. | `lib/deploy/picomodem.rb` opens the port through the `serialport` gem and sets `serial.dtr = 1`. Reuse it. |
+| Mac CoreBluetooth scan | macOS shortens long advertised device names in scan results. | Use a short and stable advertised name, and match it with `--name-prefix` rather than per-board discriminators. |
+| Mac CoreBluetooth GATT cache | macOS caches GATT services per device identifier and sometimes returns a stale "0 services" view. | Toggle macOS Bluetooth OFF → ON to restart `blued`. For an independent sanity check, scan from another device such as an iPhone running nRF Connect. |
 
 ### Tooling
 
 | Topic | Behavior | Recommended response |
 |---|---|---|
-| `idf.py monitor` | Requires a real TTY; produces no output when invoked without one. | Use `bin/capture-with-pty SECONDS LOG_FILE CMD...` for bounded captures (Expect-based, auto-`Ctrl-]` after the timeout), or attach from a real terminal. |
-| `mrblib/**/*.rb` reaching the device | `idf.py build` reuses the cached `libmruby.a`, so Ruby-level additions (e.g. a new `Face::*` class) can land on the device only after the cache is rebuilt. | The Rakefile's `clear_libmruby_cache` prerequisite drops `libmruby.a` before every `build_flash`; no manual action needed. |
+| `idf.py monitor` | Needs a real terminal. When invoked without one it prints nothing. | Use `bin/capture-with-pty SECONDS LOG_FILE CMD...` for bounded captures (Expect-based, sends `Ctrl-]` automatically after the timeout), or attach from a real terminal. |
+| Getting `mrblib/**/*.rb` changes onto the device | `idf.py build` keeps the cached `libmruby.a` and skips recompiling gems. Newly added Ruby code — for example a new `Face::*` class — reaches the device only after that cache is cleared. | The Rakefile's `clear_libmruby_cache` prerequisite removes `libmruby.a` before every `build_flash`, so no manual action is needed. |
 
 ### Rakefile: a decoration over R2P2-ESP32's
 
-This repo's `Rakefile` wraps R2P2-ESP32's own `rake` tasks (decorator-style) rather than reimplementing the build pipeline. Every `r2p2:*` task ultimately shells into `bash -c '. $IDF_EXPORT && cd $R2P2_ROOT && rake <subtask>'` via the `in_r2p2` helper, so the upstream build flow stays authoritative.
+This repo's `Rakefile` wraps R2P2-ESP32's own `rake` tasks decorator-style rather than reimplementing the build pipeline. Every `r2p2:*` task ultimately runs `bash -c '. $IDF_EXPORT && cd $R2P2_ROOT && rake <subtask>'` through the `in_r2p2` helper, so the upstream build flow stays authoritative.
 
 | Decoration | What it adds |
 |---|---|
-| `espport` auto-detection | Scans `/dev/cu.usbmodem*` and picks one. `ESPPORT=...` env overrides. |
-| `ensure_sdkconfig_fresh` | If any `SDKCONFIG_DEFAULTS` fragment is newer than the existing `sdkconfig`, removes `sdkconfig` so the next `idf.py build` regenerates it from fragments. |
-| `r2p2:clear_libmruby_cache` (prerequisite of `r2p2:build_flash`) | Drops `libmruby.a` so the next build recompiles all gems from scratch. Adds ~1–2 minutes per build in exchange for guaranteeing `mrblib/**/*.rb` changes reach the device. |
-| `r2p2:upload_mrb` (mrbc-style fast path) | Compiles a `.rb` file to `.mrb` on the host with `picorbc`, then ships it over USB-CDC into `/home/app.mrb` via `Deploy::Picomodem.upload` (`lib/deploy/picomodem.rb`). Autostart loads the bytecode directly on next reset. Use this when only the app script changes; a full `build_flash` is reserved for gem (`mrbgems/`) changes. |
-| `r2p2:wipe_storage` | Runs `esptool erase_region 0x210000 0x100000` to zero the storage partition (where `/home/*` lives). Use when an autostart app needs to be cleared. |
-| `r2p2:ble_control_smoke` | Composite E2E task: `upload_mrb` + `reset` + `autostart_wait` + `pc/stackchan-ble-client`'s CLI inside a `Bundler.with_unbundled_env` subshell. Returns the CLI's exit code so failures surface as rake failures. |
+| `espport` auto-detection | Scans `/dev/cu.usbmodem*` and picks one. Override with `ESPPORT=...`. |
+| `ensure_sdkconfig_fresh` | If any `SDKCONFIG_DEFAULTS` fragment is newer than the current `sdkconfig`, removes `sdkconfig` so the next `idf.py build` regenerates it from the fragments. |
+| `r2p2:clear_libmruby_cache` (prerequisite of `r2p2:build_flash`) | Removes `libmruby.a` so the next build recompiles all gems from scratch. Adds about 1–2 minutes per build and guarantees that `mrblib/**/*.rb` changes reach the device. |
+| `r2p2:upload_mrb` (mrbc-style fast path) | Compiles a `.rb` file to `.mrb` on the host with `picorbc`, then ships it over USB-CDC into `/home/app.mrb` through `Deploy::Picomodem.upload` (`lib/deploy/picomodem.rb`). Autostart loads the bytecode directly on the next reset. Use this when only the app script changes; a full `build_flash` is reserved for gem changes under `mrbgems/`. |
+| `r2p2:wipe_storage` | Runs `esptool erase_region 0x210000 0x100000` to zero the storage partition (where `/home/*` lives). Use this to clear an autostart app from the device. |
+| `r2p2:ble_control_smoke` | A composite E2E task: `upload_mrb` + `reset` + `autostart_wait`, then runs `pc/stackchan-ble-client`'s CLI inside a `Bundler.with_unbundled_env` subshell. Returns the CLI's exit code so failures surface as rake failures. |
 
 ## Repository layout
 
