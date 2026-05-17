@@ -227,6 +227,7 @@ namespace :r2p2 do
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
   # control frame via stackchan-ble-control combo. Exits with the CLI's
   # exit code so the rake invocation surfaces structured failure (0/2/3/4/5).
+  # Uses epoch-suffix upload to avoid Mac GATT cache stale-name issues.
   desc 'BLE control E2E smoke (COLOR=red MODE=blink FACE=joy SIDE=both AUTOSTART_WAIT=12)'
   task :ble_control_smoke do
     color = ENV.fetch('COLOR', 'red')
@@ -235,8 +236,8 @@ namespace :r2p2 do
     side  = ENV.fetch('SIDE',  'both')
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
 
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
-    Rake::Task['r2p2:upload_mrb'].invoke
+    src = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    device_name = upload_mrb_dev(src, name_prefix: 'StackChan-PicoRuby')
     Rake::Task['r2p2:reset'].invoke
 
     puts "[smoke] waiting #{autostart_wait}s for autostart (5s escape + BLE init + advertise)"
@@ -250,6 +251,7 @@ namespace :r2p2 do
     Bundler.with_unbundled_env do
       Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
         ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                    '--name-prefix', device_name,
                     '--side', side,
                     'combo',
                     '--face', face,
