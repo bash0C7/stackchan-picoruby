@@ -56,8 +56,9 @@ PC連携アバターパターン：
    - 書き順は reference (`../StackChan/firmware/main/hal/board/stackchan.cc:148-156`): P0 output → P1 output → CONFIG_P0 → CONFIG_P1 → GCR → LEDMODE_P0 → LEDMODE_P1
 3. **PY32 IO Expander** — GPIO 0 (VM_EN) HIGH + 200ms settle、GPIO 13 (WS2812 data line) を push-pull 出力で初期化、`refresh_leds` は read-modify-write 必須 (count を wipe しない)
 4. **ILI9342 driver の `rst_pin` / `bl_pin`** — AW9523 / AXP2101 経由なのでダミー GPIO (例 GPIO 1 等の未配線) を渡す
+5. **BLE を続けるなら cold-boot 完了後に `sleep_ms 3000` で必ず yield する** (2026-05-17 bisect 確定)。cold-boot 全体 (特に Face::Neutral.draw の 150KB pixel push) は同期 SPI/I2C で CPU を占有し、BTstack の FreeRTOS task が初期化を完走できない。yield せず `BLE.new` → `start` に入ると `gap_advertisements_enable(1)` は呼ばれても **RF emit が silent fail** する (device-side log には `HCI WORKING — advertising` が出る、Mac scan / iPhone nRF Connect では一切見えない)。最小値は未測定で 3000ms は安全策
 
-実装例: `mrbgems/picoruby-stackchan-protocol/examples/app.rb` 冒頭ブロック (= bring-up smoke v13)。将来 `picoruby-cores3-board` 的な gem に隠蔽する場合は **必ず AW9523 reg 0x02 = 0b00000111 を含めること**。
+実装例: `mrbgems/picoruby-stackchan-protocol/examples/app.rb` 冒頭ブロック (= bring-up smoke v13)、`mrbgems/picoruby-stackchan-protocol/examples/application.rb` (cold-boot 後 sleep_ms 3000 入り)。将来 `picoruby-cores3-board` 的な gem に隠蔽する場合は **必ず AW9523 reg 0x02 = 0b00000111 を含めること**、それと **BLE と組合せる場合の yield 必要性をドキュメント明記すること**。
 
 ## PicoRubyの制約・互換性の調べ方
 

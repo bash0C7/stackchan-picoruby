@@ -108,6 +108,14 @@ led.brightness = 100
 StackchanProtocol::Face::Neutral.new.draw(display)
 puts "[application] LCD + LED cold-boot done"
 
+# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Neutral.draw) は
+# 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
+# yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
+# されない (silent fail、device-side log だけ HCI WORKING 出る)。
+# sleep_ms で control を yield して BTstack task に initialization を完了させる。
+# 2026-05-17 bisect: cold-boot 削除 variant HIT / cold-boot + sleep_ms 3000 variant HIT / sleep 無し MISS。
+sleep_ms 3000
+
 # [3] BLE NUS service. UUID / property masks copied from Phase 2 ble_smoke.rb
 # (deleted in this Phase 3 PR; structure lives in application.rb now).
 class StackChanApp < BLE
