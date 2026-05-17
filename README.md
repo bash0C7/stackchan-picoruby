@@ -195,7 +195,8 @@ mrbgems/                                  out-of-tree PicoRuby gems
 
 pc/                                       macOS-side Ruby clients
 ├── stackchan-protocol/                   frame codec / CLI for serial control
-└── stackchan-ble-client/                 BLE NUS client + control CLI
+├── stackchan-ble-client/                 BLE NUS client + control CLI
+└── stackchan-notifier/                   Claude Code hooks → BLE bridge (daemon + CLI)
 
 lib/deploy/                               host-side picomodem uploader (serialport gem)
 docs/                                     specs, plans, handoffs
