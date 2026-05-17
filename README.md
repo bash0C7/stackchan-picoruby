@@ -65,30 +65,60 @@ Massive thanks to:
 
 ### Prerequisites
 
+- M5Stack StackChan AI Desktop Robot ([Switch Science 11129](https://www.switch-science.com/products/11129)) — see Target hardware above
 - macOS 26+
-- [esp-idf](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/get-started/index.html) **v5.4**, installed at `~/esp/esp-idf`
-- Ruby 4.0+ required (rbenv recommended)
-- `bundler`
+- [esp-idf](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/get-started/index.html) **v5.4**, installed at `~/esp/esp-idf` (the Rakefile sources `~/esp/esp-idf/export.sh`)
+- Ruby 4.0+ (rbenv recommended)
+- Bundler
 
-### Repository layout
+### Repository layout — 4 sibling clones required
 
-This monorepo expects an **independent sibling clone** of `R2P2-ESP32` (fork required — sdkconfig fragments and BLE bring-up live there). These are **not** git submodules; the path is baked into `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` (absolute) and this repo's Rakefile (relative). Clone them under the same parent directory:
+This monorepo by itself is not enough to build / run / control the device. You need **four** independent sibling clones under the same parent directory. There are no git submodules at this repo's level; R2P2-ESP32's internal `components/picoruby-esp32/picoruby` submodule is fetched in step 1 below via `git clone --recursive`.
 
 ```
 your/parent/dir/
-├── stackchan-picoruby/    (this repo)
-└── R2P2-ESP32/            (https://github.com/bash0C7/R2P2-ESP32, fork — clone separately)
+├── stackchan-picoruby/       (this repo)
+├── R2P2-ESP32/               (fork; contains picoruby fork as an internal submodule)
+├── rb-corebluetooth-mac/     (path-loaded by pc/stackchan-ble-client)
+└── swift_gem/                (path-loaded by pc/stackchan-ble-client; also a runtime dep of rb-corebluetooth-mac)
 ```
 
 ### First-time setup
 
+#### 1. Clone all four repos
+
 ```bash
 cd your/parent/dir
 git clone https://github.com/bash0C7/stackchan-picoruby
-git clone https://github.com/bash0C7/R2P2-ESP32
+git clone --recursive https://github.com/bash0C7/R2P2-ESP32     # --recursive pulls the pinned bash0C7/picoruby submodule
+git clone https://github.com/bash0C7/rb-corebluetooth-mac
+git clone https://github.com/bash0C7/swift_gem
+```
+
+If you forgot `--recursive` on R2P2-ESP32: `cd R2P2-ESP32 && git submodule update --init --recursive`.
+
+#### 2. Edit absolute paths to your layout
+
+Two files contain absolute paths hard-coded to the original author's `~/dev/src/github.com/bash0C7/` layout. Edit them to point at **your** clone locations before the first build:
+
+- `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — 4 `conf.gem gemdir:` lines pointing at this repo's `mrbgems/{picoruby-ili9342, picoruby-py32-io-expander, picoruby-stackchan-led, picoruby-stackchan-protocol}`
+- `stackchan-picoruby/pc/stackchan-ble-client/Gemfile` — 2 `gem ... path:` lines (`rb-corebluetooth-mac` and `swift_gem`)
+
+(A future patch may make these relative; for now, edit by hand.)
+
+#### 3. Bundle install (2 locations)
+
+```bash
 cd stackchan-picoruby
-bundle install
-bundle exec rake r2p2:setup       # ~10-20 min, builds host picoruby + sets ESP32-S3 target
+bundle install                                              # root: Rakefile + picomodem uploader
+( cd pc/stackchan-ble-client && bundle install )            # BLE client side
+```
+
+#### 4. Host picoruby setup + first device flash
+
+```bash
+bundle exec rake r2p2:setup        # ~10-20 min, builds host picoruby + sets ESP32-S3 target
+bundle exec rake r2p2:build_flash  # ~5-10 min, idf.py build + flash
 ```
 
 ### Build + flash + smoke
