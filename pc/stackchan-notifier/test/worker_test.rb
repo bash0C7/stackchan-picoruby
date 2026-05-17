@@ -66,8 +66,10 @@ class WorkerTest < Test::Unit::TestCase
     @ts.write([:notify, :smile, 0xAAAAAA, :solid, :both])
     wait_until { @client.connect_count >= 2 }   # 1st connect + 1 reconnect
 
+    # With retry-slot: the failed :smile tuple is retried first (sent.size becomes 1),
+    # then the :joy tuple is processed (sent.size becomes 2).
     @ts.write([:notify, :joy, 0xBBBBBB, :blink, :both])
-    wait_until { @client.sent.size == 1 }       # only the post-reconnect send is recorded
+    wait_until { @client.sent.size == 2 }
 
     last = @client.sent.last
     assert_equal :joy, last[0][:name]
@@ -103,7 +105,76 @@ class WorkerTest < Test::Unit::TestCase
     refute @worker.thread, "thread should be cleared after shutdown"
   end
 
+  def test_send_failure_retries_once_after_reconnect
+    attempts = []
+    @client.on_send { |_b| attempts << :tried; raise StackchanBleClient::ConnectionError, "transient" if attempts.size == 1 }
+    worker = build_worker
+    worker.start
+
+    @ts.write([:notify, :smile, 0x00FF00, :solid, :both])
+
+    wait_until { attempts.size == 2 }
+    assert_equal 2, attempts.size, "tuple should be re-delivered after first failure"
+    assert_equal 2, @client.connect_count, "worker should have reconnected once"
+
+    worker.shutdown
+  end
+
+  def test_send_failure_drops_after_second_failure
+    warnings = []
+    logger = build_capturing_logger(warnings)
+    @client.on_send { |_b| raise StackchanBleClient::ConnectionError, "still broken" }
+    worker = build_worker(logger: logger)
+    worker.start
+
+    @ts.write([:notify, :smile, 0x00FF00, :solid, :both])
+
+    wait_until { warnings.any? { |w| w.include?("send failed twice; dropping") } }
+    assert(warnings.any? { |w| w.include?("send failed twice; dropping") }, "expected drop warning, got #{warnings.inspect}")
+
+    worker.shutdown
+  end
+
+  def test_newer_tuple_wins_over_pending_retry
+    send_args = []
+    reconnect_latch = Queue.new
+    # Gate the reconnect so we can write the newer tuple before retry runs.
+    @client.on_connect { |_| reconnect_latch.pop }
+    @client.on_send do |b|
+      send_args << b.commands.dup
+      raise StackchanBleClient::ConnectionError, "fail once" if send_args.size == 1
+    end
+    worker = build_worker
+    worker.start
+
+    # First connect (non-retry) — release the initial connect gate immediately.
+    reconnect_latch << :go
+
+    @ts.write([:notify, :smile,     0x00FF00, :solid, :both])  # will fail
+    wait_until { send_args.size >= 1 }                          # first attempt failed
+
+    # Reconnect is now gated; write newer tuple into TS before releasing.
+    @ts.write([:notify, :surprised, 0xFF0000, :blink, :left])   # newer tuple arrives during reconnect window
+    reconnect_latch << :go                                       # release reconnect
+
+    wait_until { send_args.size >= 2 }
+    latest_led = send_args.last.find { |c| c[:kind] == :led }
+    assert_equal 0xFF0000, latest_led[:value], "newer tuple should win over retry; got #{latest_led.inspect}"
+
+    worker.shutdown
+  end
+
   private
+
+  def build_worker(logger: nil)
+    StackchanNotifier::Worker.new(
+      ts:             @ts,
+      client_factory: -> { @client },
+      backoff:        [0.01, 0.02, 0.04],
+      sleep_fn:       ->(s) { @sleeps << s; sleep(0.001) },
+      logger:         logger
+    )
+  end
 
   def wait_until(timeout: 3.0)
     deadline = Time.now + timeout

@@ -46,17 +46,23 @@ module StackchanNotifier
     private
 
     def run_loop
+      @pending_retry = nil
       until @shutdown
         ensure_connected
         break if @shutdown
 
-        tuple = @ts.take(TUPLE_PATTERN)
+        tuple, was_retry = next_tuple_to_deliver
         next if shutdown_sentinel?(tuple)
-
-        tuple = drain_latest(tuple)
         break if @shutdown
 
-        deliver(tuple)
+        if deliver(tuple)
+          @pending_retry = nil
+        elsif was_retry
+          log(:warn, "send failed twice; dropping #{tuple.inspect}")
+          @pending_retry = nil
+        else
+          @pending_retry = tuple
+        end
       end
       disconnect_quietly
     end
@@ -76,6 +82,27 @@ module StackchanNotifier
           @sleep_fn.call(delay)
         end
       end
+    end
+
+    def next_tuple_to_deliver
+      if @pending_retry
+        newer = try_take_newer
+        if newer
+          @pending_retry = nil
+          [drain_latest(newer), false]
+        else
+          [@pending_retry, true]
+        end
+      else
+        initial = @ts.take(TUPLE_PATTERN)
+        [drain_latest(initial), false]
+      end
+    end
+
+    def try_take_newer
+      @ts.take_nonblocking(TUPLE_PATTERN)
+    rescue Rinda::RequestExpiredError
+      nil
     end
 
     # Rinda::TupleSpace#take returns the most-recently-written matching tuple
@@ -101,9 +128,11 @@ module StackchanNotifier
         s.face(face)
         s.led(:hsb, hsb, side: side, mode: mode)
       end
+      true
     rescue StackchanBleClient::Error, IOError, SystemCallError => e
       log(:warn, "send failed: #{e.class}: #{e.message}; will reconnect")
       disconnect_quietly
+      false
     end
 
     def shutdown_sentinel?(tuple)

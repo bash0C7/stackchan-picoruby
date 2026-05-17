@@ -1,5 +1,6 @@
 require "bundler/setup"
 require "test/unit"
+require "logger"
 require "stringio"
 require "fileutils"
 
@@ -11,6 +12,12 @@ def wait_until(timeout: 1.0)
     sleep 0.01
     raise "timeout waiting for condition" if Time.now > deadline
   end
+end
+
+def build_capturing_logger(sink)
+  logger = Logger.new(StringIO.new)
+  logger.formatter = ->(_severity, _time, _progname, msg) { sink << msg; "" }
+  logger
 end
 
 # Fake BLE client used by Worker tests. Records every send and lets tests
