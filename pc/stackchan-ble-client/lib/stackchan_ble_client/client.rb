@@ -6,8 +6,9 @@ module StackchanBleClient
     NUS_RX_CHAR = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
     NUS_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
-    def initialize(device_name:, scan_timeout: 10.0, connect_timeout: 5.0, ack_timeout: 3.0, transport: nil)
+    def initialize(device_name:, name_prefix: nil, scan_timeout: 10.0, connect_timeout: 5.0, ack_timeout: 3.0, transport: nil)
       @device_name     = device_name
+      @name_prefix     = name_prefix
       @scan_timeout    = scan_timeout
       @connect_timeout = connect_timeout
       @ack_timeout     = ack_timeout
@@ -19,8 +20,16 @@ module StackchanBleClient
     end
 
     def connect
-      devices = @transport.scan(name: @device_name, timeout: @scan_timeout)
-      raise ConnectionError, "no device named #{@device_name.inspect}" if devices.empty?
+      # If name_prefix is set, scan without name filter and match by prefix.
+      # Otherwise, use exact name match (legacy behavior).
+      if @name_prefix
+        devices = @transport.scan(timeout: @scan_timeout)
+        devices.select! { |d| d.name&.start_with?(@name_prefix) }
+        raise ConnectionError, "no device with name prefix #{@name_prefix.inspect}" if devices.empty?
+      else
+        devices = @transport.scan(name: @device_name, timeout: @scan_timeout)
+        raise ConnectionError, "no device named #{@device_name.inspect}" if devices.empty?
+      end
       @peripheral = @transport.connect(devices.first, timeout: @connect_timeout)
       @peripheral.discover_services(timeout: @connect_timeout)
       @peripheral.services.each { |svc| svc.discover_characteristics(timeout: @connect_timeout) if svc.respond_to?(:discover_characteristics) }

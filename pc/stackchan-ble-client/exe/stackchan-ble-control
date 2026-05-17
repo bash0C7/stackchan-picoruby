@@ -13,11 +13,13 @@ EXIT_ASSERTION  = 5
 EXIT_UNCAT      = 9
 
 device_name = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
+name_prefix = nil
 side        = :both
 mode        = :solid
 
 parser = OptionParser.new do |opts|
   opts.on("--device NAME") { |v| device_name = v }
+  opts.on("--name-prefix PREFIX") { |v| name_prefix = v }
   opts.on("--side SIDE") do |v|
     side = v.to_sym
     abort "error: --side must be left/right/both" unless %i[left right both].include?(side)
@@ -34,7 +36,8 @@ parser.parse!(ARGV)
 command = ARGV.shift
 abort "error: command required (face / led / led-rgb / led-hsb / combo / raw)" unless command
 
-client = StackchanBleClient::Client.new(device_name: device_name)
+# If name_prefix is provided, use prefix matching; otherwise use exact device_name match
+client = StackchanBleClient::Client.new(device_name: device_name, name_prefix: name_prefix)
 
 begin
   client.connect
