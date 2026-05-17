@@ -14,95 +14,93 @@ class CLITest < Test::Unit::TestCase
     StackchanNotifier::CLI.run(argv, stdout: @stdout, stderr: @stderr, sender: sender)
   end
 
-  def test_success_writes_one_tuple_with_parsed_values
-    code = run_cli(%w[--face smile --hsb 0x00FF00 --mode solid --side both])
+  def test_left_led_with_preset_color_produces_correct_tuple
+    code = run_cli(%w[--face smile --left_led red,blink])
     assert_equal 0, code
     assert_equal 1, @sent.size
-    socket, tuple = @sent.first
-    assert_equal StackchanNotifier.default_socket_path, socket
-    assert_equal [:notify, :smile, 0x00FF00, :solid, :both], tuple
-  end
-
-  def test_default_side_is_both
-    run_cli(%w[--face joy --hsb 0xABCDEF --mode blink])
     _, tuple = @sent.first
-    assert_equal :both, tuple[4]
+    assert_equal [:notify, :smile, 0xFF0000, :blink, 0x000000, :solid, nil], tuple
   end
 
-  def test_hsb_accepts_bare_hex_without_prefix
-    run_cli(%w[--face neutral --hsb 55FF80 --mode off])
+  def test_both_leds_with_mixed_preset_and_hex
+    code = run_cli(%w[--face smile --left_led 0xFF8800,solid --right_led green,breathing])
+    assert_equal 0, code
     _, tuple = @sent.first
-    assert_equal 0x55FF80, tuple[2]
+    assert_equal [:notify, :smile, 0xFF8800, :solid, 0x00FF00, :breathing, nil], tuple
   end
 
-  def test_socket_can_be_overridden_via_flag
-    run_cli(%w[--face smile --hsb 0x111111 --mode solid --socket /tmp/custom.sock])
-    socket, _ = @sent.first
-    assert_equal "/tmp/custom.sock", socket
+  def test_duration_appended_to_tuple
+    code = run_cli(%w[--face smile --left_led red,blink --duration 5])
+    assert_equal 0, code
+    _, tuple = @sent.first
+    assert_equal [:notify, :smile, 0xFF0000, :blink, 0x000000, :solid, 5], tuple
   end
 
-  def test_socket_can_be_overridden_via_env
+  def test_duration_zero_exits_2_with_stderr_message
+    code = run_cli(%w[--face smile --duration 0])
+    assert_equal 2, code
+    assert_match(/must be a positive integer/, @stderr.string)
+  end
+
+  def test_left_led_missing_mode_exits_2
+    code = run_cli(%w[--face smile --left_led red])
+    assert_equal 2, code
+    assert_match(/must be COLOR,MODE/, @stderr.string)
+  end
+
+  def test_left_led_unknown_preset_exits_2
+    code = run_cli(%w[--face smile --left_led purple,solid])
+    assert_equal 2, code
+    assert_match(/must be a preset name/, @stderr.string)
+  end
+
+  def test_left_led_hex_too_long_exits_2
+    code = run_cli(%w[--face smile --left_led 0xFFFFFFF,solid])
+    assert_equal 2, code
+    assert_match(/out of range/, @stderr.string)
+  end
+
+  def test_left_led_invalid_mode_exits_2
+    code = run_cli(%w[--face smile --left_led red,wobble])
+    assert_equal 2, code
+    assert_match(/mode must be one of/, @stderr.string)
+  end
+
+  def test_missing_face_exits_2_with_stderr_message
+    code = run_cli(%w[--left_led red,blink])
+    assert_equal 2, code
+    assert_match(/--face required/, @stderr.string)
+  end
+
+  def test_quiet_suppresses_daemon_unavailable_stderr
+    failing = ->(_s, _t) { raise DRb::DRbConnError, "connection refused" }
+    code = run_cli(%w[--face smile --quiet], sender: failing)
+    assert_equal 0, code
+    assert_equal "", @stderr.string
+  end
+
+  def test_daemon_unavailable_without_quiet_warns_stderr_exits_0
+    failing = ->(_s, _t) { raise DRb::DRbConnError, "connection refused" }
+    code = run_cli(%w[--face smile], sender: failing)
+    assert_equal 0, code, "must not block Claude Code on daemon failure"
+    assert_match(/daemon unavailable/, @stderr.string)
+  end
+
+  def test_socket_env_honored
     ENV["STACKCHAN_NOTIFIER_SOCKET"] = "/tmp/env-overridden.sock"
-    run_cli(%w[--face smile --hsb 0x111111 --mode solid])
+    run_cli(%w[--face smile])
     socket, _ = @sent.first
     assert_equal "/tmp/env-overridden.sock", socket
   ensure
     ENV.delete("STACKCHAN_NOTIFIER_SOCKET")
   end
 
-  def test_missing_face_exits_2_with_stderr_message
-    code = run_cli(%w[--hsb 0x00FF00 --mode solid])
-    assert_equal 2, code
-    assert_match(/--face required/, @stderr.string)
-  end
-
-  def test_invalid_face_value_exits_2
-    code = run_cli(%w[--face angry --hsb 0x00FF00 --mode solid])
-    assert_equal 2, code
-    assert_match(/--face required/, @stderr.string)
-  end
-
-  def test_invalid_mode_exits_2
-    code = run_cli(%w[--face smile --hsb 0x00FF00 --mode strobe])
-    assert_equal 2, code
-    assert_match(/--mode required/, @stderr.string)
-  end
-
-  def test_invalid_hsb_exits_2
-    code = run_cli(%w[--face smile --hsb not-hex --mode solid])
-    assert_equal 2, code
-    assert_match(/--hsb must be a hex/, @stderr.string)
-  end
-
-  def test_hsb_out_of_range_exits_2
-    code = run_cli(%w[--face smile --hsb 0x1000000 --mode solid])
-    assert_equal 2, code
-    assert_match(/--hsb out of range/, @stderr.string)
-  end
-
-  def test_invalid_side_exits_2
-    code = run_cli(%w[--face smile --hsb 0x00FF00 --mode solid --side back])
-    assert_equal 2, code
-    assert_match(/--side/, @stderr.string)
-  end
-
-  def test_daemon_unavailable_with_quiet_exits_0_silently
-    failing = ->(_s, _t) { raise DRb::DRbConnError, "connection refused" }
-    code = run_cli(%w[--face smile --hsb 0x00FF00 --mode solid --quiet], sender: failing)
-    assert_equal 0, code
-    assert_equal "", @stderr.string
-  end
-
-  def test_daemon_unavailable_without_quiet_warns_on_stderr_but_still_exits_0
-    failing = ->(_s, _t) { raise DRb::DRbConnError, "connection refused" }
-    code = run_cli(%w[--face smile --hsb 0x00FF00 --mode solid], sender: failing)
-    assert_equal 0, code, "must not block Claude Code on daemon failure"
-    assert_match(/daemon unavailable/, @stderr.string)
-  end
-
-  def test_enoent_socket_treated_as_daemon_unavailable
-    failing = ->(_s, _t) { raise Errno::ENOENT, "/tmp/missing.sock" }
-    code = run_cli(%w[--face smile --hsb 0x00FF00 --mode solid --quiet], sender: failing)
-    assert_equal 0, code
+  def test_socket_flag_overrides_env
+    ENV["STACKCHAN_NOTIFIER_SOCKET"] = "/tmp/env-overridden.sock"
+    run_cli(%w[--face smile --socket /tmp/custom.sock])
+    socket, _ = @sent.first
+    assert_equal "/tmp/custom.sock", socket
+  ensure
+    ENV.delete("STACKCHAN_NOTIFIER_SOCKET")
   end
 end

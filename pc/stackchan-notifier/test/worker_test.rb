@@ -9,36 +9,40 @@ class WorkerTest < Test::Unit::TestCase
     @ts      = StackchanNotifier::TupleSpace4Ractor.new
     @client  = FakeBleClient.new
     @sleeps  = []
-    @worker  = StackchanNotifier::Worker.new(
-      ts:             @ts,
-      client_factory: -> { @client },
-      backoff:        [0.01, 0.02, 0.04],
-      sleep_fn:       ->(s) { @sleeps << s; sleep(0.001) }
-    )
+    @worker  = build_worker
   end
 
   def teardown
     @worker.shutdown(timeout: 2.0)
   end
 
+  # Helper: build a 7-element notify tuple.
+  def notify_tuple(face: :smile, left: [0x00FF00, :solid], right: [0x00FF00, :solid], duration: nil)
+    [:notify, face, left[0], left[1], right[0], right[1], duration]
+  end
+
   def test_takes_single_tuple_and_sends_combo
     @worker.start
-    @ts.write([:notify, :smile, 0x00FF00, :solid, :both])
+    @ts.write(notify_tuple(face: :smile, left: [0x00FF00, :solid], right: [0x00FF00, :solid]))
 
     wait_until { @client.sent.size == 1 }
 
     commands = @client.sent.first
     assert_equal({ kind: :face, name: :smile }, commands[0])
     assert_equal(
-      { kind: :led, form: :hsb, value: 0x00FF00, side: :both, mode: :solid },
+      { kind: :led, form: :hsb, value: 0x00FF00, side: :left, mode: :solid },
       commands[1]
+    )
+    assert_equal(
+      { kind: :led, form: :hsb, value: 0x00FF00, side: :right, mode: :solid },
+      commands[2]
     )
   end
 
   def test_drains_latest_when_many_tuples_queued_before_start
-    @ts.write([:notify, :neutral, 0x111111, :off,    :both])
-    @ts.write([:notify, :smile,   0x222222, :solid,  :left])
-    @ts.write([:notify, :joy,     0x333333, :blink,  :right])
+    @ts.write(notify_tuple(face: :neutral, left: [0x111111, :off],   right: [0x111111, :off]))
+    @ts.write(notify_tuple(face: :smile,   left: [0x222222, :solid], right: [0x222222, :solid]))
+    @ts.write(notify_tuple(face: :joy,     left: [0x333333, :blink], right: [0x333333, :blink]))
 
     @worker.start
     wait_until { @client.sent.size >= 1 }
@@ -50,7 +54,7 @@ class WorkerTest < Test::Unit::TestCase
     assert_equal :joy, commands[0][:name]
     assert_equal 0x333333, commands[1][:value]
     assert_equal :blink, commands[1][:mode]
-    assert_equal :right, commands[1][:side]
+    assert_equal :left, commands[1][:side]
   end
 
   def test_reconnects_after_send_failure
@@ -63,12 +67,12 @@ class WorkerTest < Test::Unit::TestCase
     end
 
     @worker.start
-    @ts.write([:notify, :smile, 0xAAAAAA, :solid, :both])
+    @ts.write(notify_tuple(face: :smile, left: [0xAAAAAA, :solid], right: [0xAAAAAA, :solid]))
     wait_until { @client.connect_count >= 2 }   # 1st connect + 1 reconnect
 
     # With retry-slot: the failed :smile tuple is retried first (sent.size becomes 1),
     # then the :joy tuple is processed (sent.size becomes 2).
-    @ts.write([:notify, :joy, 0xBBBBBB, :blink, :both])
+    @ts.write(notify_tuple(face: :joy, left: [0xBBBBBB, :blink], right: [0xBBBBBB, :blink]))
     wait_until { @client.sent.size == 2 }
 
     last = @client.sent.last
@@ -87,7 +91,7 @@ class WorkerTest < Test::Unit::TestCase
     end
 
     @worker.start
-    @ts.write([:notify, :smile, 0x00FF00, :solid, :both])
+    @ts.write(notify_tuple(face: :smile, left: [0x00FF00, :solid], right: [0x00FF00, :solid]))
 
     wait_until { @client.connect_count >= 3 && @client.sent.size == 1 }
 
@@ -111,7 +115,7 @@ class WorkerTest < Test::Unit::TestCase
     worker = build_worker
     worker.start
 
-    @ts.write([:notify, :smile, 0x00FF00, :solid, :both])
+    @ts.write(notify_tuple(face: :smile, left: [0x00FF00, :solid], right: [0x00FF00, :solid]))
 
     wait_until { attempts.size == 2 }
     assert_equal 2, attempts.size, "tuple should be re-delivered after first failure"
@@ -127,7 +131,7 @@ class WorkerTest < Test::Unit::TestCase
     worker = build_worker(logger: logger)
     worker.start
 
-    @ts.write([:notify, :smile, 0x00FF00, :solid, :both])
+    @ts.write(notify_tuple(face: :smile, left: [0x00FF00, :solid], right: [0x00FF00, :solid]))
 
     wait_until { warnings.any? { |w| w.include?("send failed twice; dropping") } }
     assert(warnings.any? { |w| w.include?("send failed twice; dropping") }, "expected drop warning, got #{warnings.inspect}")
@@ -140,7 +144,7 @@ class WorkerTest < Test::Unit::TestCase
     worker.start
     wait_until { @client.connect_count == 1 }
 
-    @ts.write([:notify, :__force_reconnect__, 0, :solid, :both])
+    @ts.write([:notify, :__force_reconnect__, 0, :solid, 0, :solid, nil])
 
     wait_until { @client.connect_count == 2 }
     assert_equal 2, @client.connect_count, "SIGHUP-equivalent tuple should trigger reconnect"
@@ -164,11 +168,11 @@ class WorkerTest < Test::Unit::TestCase
     # First connect (non-retry) — release the initial connect gate immediately.
     reconnect_latch << :go
 
-    @ts.write([:notify, :smile,     0x00FF00, :solid, :both])  # will fail
+    @ts.write(notify_tuple(face: :smile,     left: [0x00FF00, :solid], right: [0x00FF00, :solid]))  # will fail
     wait_until { send_args.size >= 1 }                          # first attempt failed
 
     # Reconnect is now gated; write newer tuple into TS before releasing.
-    @ts.write([:notify, :surprised, 0xFF0000, :blink, :left])   # newer tuple arrives during reconnect window
+    @ts.write(notify_tuple(face: :surprised, left: [0xFF0000, :blink], right: [0xFF0000, :blink]))  # newer tuple arrives during reconnect window
     reconnect_latch << :go                                       # release reconnect
 
     wait_until { send_args.size >= 2 }
@@ -186,9 +190,9 @@ class WorkerTest < Test::Unit::TestCase
     # Write a burst — the worker's drain_latest will GC the older one.
     # Slip the FORCE_RECONNECT_TUPLE between two notifies so it lands
     # in the drained position, not the initial-take position.
-    @ts.write([:notify, :smile,             0x00FF00, :solid, :both])
-    @ts.write([:notify, :__force_reconnect__, 0, :solid, :both])
-    @ts.write([:notify, :surprised,         0xFF0000, :blink, :left])
+    @ts.write(notify_tuple(face: :smile,     left: [0x00FF00, :solid], right: [0x00FF00, :solid]))
+    @ts.write([:notify, :__force_reconnect__, 0, :solid, 0, :solid, nil])
+    @ts.write(notify_tuple(face: :surprised, left: [0xFF0000, :blink], right: [0xFF0000, :blink]))
 
     wait_until { @client.connect_count == 2 }
     assert_equal 2, @client.connect_count, "force-reconnect drained during burst should still trigger reconnect"
@@ -196,15 +200,53 @@ class WorkerTest < Test::Unit::TestCase
     worker.shutdown
   end
 
+  def test_deliver_sends_face_plus_left_led_plus_right_led
+    worker = build_worker
+    worker.start
+    @ts.write(notify_tuple(face: :joy, left: [0xFF0000, :blink], right: [0x000000, :solid]))
+    wait_until { @client.sent.size == 1 }
+    cmds = @client.sent.first
+    assert_equal :joy, cmds[0][:name]
+    assert_equal({ kind: :led, form: :hsb, value: 0xFF0000, side: :left,  mode: :blink}, cmds[1])
+    assert_equal({ kind: :led, form: :hsb, value: 0x000000, side: :right, mode: :solid}, cmds[2])
+    worker.shutdown
+  end
+
+  def test_deliver_with_duration_schedules_restore_to_neutral_off
+    worker = build_worker(restore_clock: ->(_s) { sleep(0.05) })
+    worker.start
+    @ts.write(notify_tuple(face: :surprised, left: [0xFF0000, :blink], right: [0xFF0000, :blink], duration: 1))
+    wait_until { @client.sent.size == 2 }
+    restore_cmds = @client.sent.last
+    assert_equal :neutral, restore_cmds[0][:name]
+    assert_equal 0x000000, restore_cmds[1][:value]
+    assert_equal 0x000000, restore_cmds[2][:value]
+    worker.shutdown
+  end
+
+  def test_new_tuple_arriving_during_pending_restore_cancels_it
+    worker = build_worker(restore_clock: ->(_s) { sleep(5.0) })
+    worker.start
+    @ts.write(notify_tuple(face: :surprised, left: [0xFF0000, :blink], right: [0xFF0000, :blink], duration: 5))
+    wait_until { @client.sent.size == 1 }
+    @ts.write(notify_tuple(face: :smile, left: [0x00FF00, :solid], right: [0x00FF00, :solid]))
+    wait_until { @client.sent.size == 2 }
+    sleep 0.5   # well under the 5s restore timer
+    # Restore must NOT have fired — sent.size stays 2, not 3
+    assert_equal 2, @client.sent.size, "newer tuple should cancel pending restore; saw #{@client.sent.inspect}"
+    worker.shutdown
+  end
+
   private
 
-  def build_worker(logger: nil)
+  def build_worker(logger: nil, restore_clock: ->(_s) { sleep(0.01) })
     StackchanNotifier::Worker.new(
-      ts:             @ts,
-      client_factory: -> { @client },
-      backoff:        [0.01, 0.02, 0.04],
-      sleep_fn:       ->(s) { @sleeps << s; sleep(0.001) },
-      logger:         logger
+      ts:               @ts,
+      client_factory:   -> { @client },
+      backoff:          [0.01, 0.02, 0.04],
+      sleep_fn:         ->(s) { @sleeps << s; sleep(0.001) },
+      logger:           logger,
+      restore_sleep_fn: restore_clock,
     )
   end
 

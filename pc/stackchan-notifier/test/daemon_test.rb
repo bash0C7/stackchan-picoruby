@@ -42,15 +42,18 @@ class DaemonTest < Test::Unit::TestCase
   def test_drb_round_trip_in_process_delivers_tuple_to_ble
     @daemon.start
     remote = DRbObject.new_with_uri(@daemon.drb_uri)
-    remote.write([:notify, :smile, 0xFF8800, :blink, :both])
+    remote.write([:notify, :smile, 0xFF8800, :blink, 0x00FF00, :solid, nil])
 
     wait_until { @client.sent.size == 1 }
 
-    commands = @client.sent.first
-    assert_equal :smile, commands[0][:name]
-    assert_equal 0xFF8800, commands[1][:value]
-    assert_equal :blink, commands[1][:mode]
-    assert_equal :both, commands[1][:side]
+    cmds = @client.sent.first
+    assert_equal :smile, cmds[0][:name]
+    assert_equal 0xFF8800, cmds[1][:value]
+    assert_equal :blink,   cmds[1][:mode]
+    assert_equal :left,    cmds[1][:side]
+    assert_equal 0x00FF00, cmds[2][:value]
+    assert_equal :solid,   cmds[2][:mode]
+    assert_equal :right,   cmds[2][:side]
   end
 
   def test_stale_socket_file_is_cleaned_on_start

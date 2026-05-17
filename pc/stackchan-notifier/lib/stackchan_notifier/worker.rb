@@ -5,23 +5,26 @@ require_relative "tuple_space4ractor"
 
 module StackchanNotifier
   class Worker
-    TUPLE_PATTERN     = [:notify, Symbol, Integer, Symbol, Symbol].freeze
+    TUPLE_PATTERN            = [:notify, Symbol, Integer, Symbol, Integer, Symbol, nil].freeze
     SHUTDOWN_SENTINEL        = :__shutdown__
     FORCE_RECONNECT_SENTINEL = :__force_reconnect__
     DEFAULT_BACKOFF          = [1, 2, 4, 8, 30].freeze
-    SHUTDOWN_TUPLE           = [:notify, SHUTDOWN_SENTINEL, 0, SHUTDOWN_SENTINEL, SHUTDOWN_SENTINEL].freeze
-    FORCE_RECONNECT_TUPLE    = [:notify, FORCE_RECONNECT_SENTINEL, 0, :solid, :both].freeze
+    SHUTDOWN_TUPLE           = [:notify, SHUTDOWN_SENTINEL,        0, :solid, 0, :solid, nil].freeze
+    FORCE_RECONNECT_TUPLE    = [:notify, FORCE_RECONNECT_SENTINEL, 0, :solid, 0, :solid, nil].freeze
+    RESTORE_TUPLE            = [:notify, :neutral,                 0, :solid, 0, :solid, nil].freeze
 
-    def initialize(ts:, client_factory:, logger: nil, backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) })
-      @ts             = ts
-      @client_factory = client_factory
-      @logger         = logger
-      @backoff        = backoff
-      @sleep_fn       = sleep_fn
-      @shutdown       = false
-      @client         = nil
-      @connect_attempt = 0
-      @thread         = nil
+    def initialize(ts:, client_factory:, logger: nil, backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) }, restore_sleep_fn: ->(s) { sleep(s) })
+      @ts               = ts
+      @client_factory   = client_factory
+      @logger           = logger
+      @backoff          = backoff
+      @sleep_fn         = sleep_fn
+      @restore_sleep_fn = restore_sleep_fn
+      @shutdown         = false
+      @client           = nil
+      @connect_attempt  = 0
+      @thread           = nil
+      @restore_thread   = nil
     end
 
     def start
@@ -32,6 +35,7 @@ module StackchanNotifier
 
     def shutdown(timeout: 5.0)
       return self unless @thread
+      cancel_pending_restore
       @shutdown = true
       # Unblock the blocking take so the loop notices @shutdown.
       @ts.write(SHUTDOWN_TUPLE)
@@ -138,16 +142,31 @@ module StackchanNotifier
     end
 
     def deliver(tuple)
-      _, face, hsb, mode, side = tuple
+      cancel_pending_restore
+      _, face, left_color, left_mode, right_color, right_mode, duration = tuple
       @client.send do |s|
         s.face(face)
-        s.led(:hsb, hsb, side: side, mode: mode)
+        s.led(:hsb, left_color,  side: :left,  mode: left_mode)
+        s.led(:hsb, right_color, side: :right, mode: right_mode)
       end
+      schedule_restore(duration) if duration && duration > 0
       true
     rescue StackchanBleClient::Error, IOError, SystemCallError => e
       log(:warn, "send failed: #{e.class}: #{e.message}; will reconnect")
       disconnect_quietly
       false
+    end
+
+    def schedule_restore(seconds)
+      @restore_thread = Thread.new(seconds) do |secs|
+        @restore_sleep_fn.call(secs)
+        @ts.write(RESTORE_TUPLE)
+      end
+    end
+
+    def cancel_pending_restore
+      @restore_thread&.kill
+      @restore_thread = nil
     end
 
     def shutdown_sentinel?(tuple)

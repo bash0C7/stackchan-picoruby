@@ -15,7 +15,16 @@ module StackchanNotifier
   class CLI
     FACES = %i[neutral smile joy surprised].freeze
     MODES = %i[solid blink breathing off].freeze
-    SIDES = %i[left right both].freeze
+    PRESETS = {
+      red:    0xFF0000,
+      green:  0x00FF00,
+      blue:   0x0000FF,
+      yellow: 0xFFFF00,
+      white:  0xFFFFFF,
+      gray:   0x808080,
+      black:  0x000000,
+    }.freeze
+    DEFAULT_LED = [0x000000, :solid].freeze   # unspecified side = visually off
 
     EXIT_OK      = 0
     EXIT_BAD_ARG = 2
@@ -37,7 +46,13 @@ module StackchanNotifier
 
     def run(argv)
       opts = parse(argv)
-      tuple = [:notify, opts[:face], opts[:hsb], opts[:mode], opts[:side]]
+      tuple = [
+        :notify,
+        opts[:face],
+        opts[:left][0],  opts[:left][1],
+        opts[:right][0], opts[:right][1],
+        opts[:duration],
+      ]
       try_send(opts[:socket], tuple, quiet: opts[:quiet])
       EXIT_OK
     rescue OptionParser::ParseError, ArgumentError => e
@@ -49,40 +64,62 @@ module StackchanNotifier
 
     def parse(argv)
       result = {
-        face:   nil,
-        hsb:    nil,
-        mode:   nil,
-        side:   :both,
-        socket: ENV["STACKCHAN_NOTIFIER_SOCKET"] || StackchanNotifier.default_socket_path,
-        quiet:  false,
+        face:     nil,
+        left:     DEFAULT_LED,
+        right:    DEFAULT_LED,
+        duration: nil,
+        socket:   ENV["STACKCHAN_NOTIFIER_SOCKET"] || StackchanNotifier.default_socket_path,
+        quiet:    false,
       }
 
       parser = OptionParser.new do |o|
-        o.banner = "Usage: stackchan-notify --face NAME --hsb HEX --mode NAME [--side NAME] [--socket PATH] [--quiet]"
-        o.on("--face NAME",   "one of: #{FACES.join(' / ')}")                                  { |v| result[:face] = v.to_sym }
-        o.on("--hsb HEX",     "color hex, e.g. 0x55FF80 (range 0x000000..0xFFFFFF)")           { |v| result[:hsb]  = parse_hex(v) }
-        o.on("--mode NAME",   "one of: #{MODES.join(' / ')}")                                  { |v| result[:mode] = v.to_sym }
-        o.on("--side NAME",   "one of: #{SIDES.join(' / ')} (default: both)")                  { |v| result[:side] = v.to_sym }
-        o.on("--socket PATH", "DRb Unix socket (env: STACKCHAN_NOTIFIER_SOCKET,",
-                              "default: #{StackchanNotifier.default_socket_path})")            { |v| result[:socket] = v }
-        o.on("--quiet",       "suppress 'daemon unavailable' stderr (CLI still exits 0)")      { result[:quiet] = true }
-        o.on("-h", "--help",  "show this help and exit")                                       { @stdout.puts(o); exit EXIT_OK }
+        o.banner = "Usage: stackchan-notify --face NAME [--left_led COLOR,MODE] [--right_led COLOR,MODE] [--duration N] [--socket PATH] [--quiet]"
+        o.on("--face NAME",          "one of: #{FACES.join(' / ')}")                                { |v| result[:face] = v.to_sym }
+        o.on("--left_led SPEC",      "left LED, e.g. red,blink or 0xFF0000,blink",
+                                     "default: 0x000000,solid (off)")                              { |v| result[:left]  = parse_led(v) }
+        o.on("--right_led SPEC",     "right LED, same format as --left_led",
+                                     "default: 0x000000,solid (off)")                              { |v| result[:right] = parse_led(v) }
+        o.on("--duration N", Integer, "auto-restore to neutral + both LEDs off after N seconds")    { |v| result[:duration] = v }
+        o.on("--socket PATH",        "DRb Unix socket (env: STACKCHAN_NOTIFIER_SOCKET,",
+                                     "default: #{StackchanNotifier.default_socket_path})")         { |v| result[:socket] = v }
+        o.on("--quiet",              "suppress 'daemon unavailable' stderr (CLI still exits 0)")   { result[:quiet] = true }
+        o.on("-h", "--help",         "show this help and exit")                                    { @stdout.puts(o); print_extras; exit EXIT_OK }
       end
       parser.parse!(argv.dup)
 
       raise ArgumentError, "--face required (one of #{FACES.join(' / ')})" unless FACES.include?(result[:face])
-      raise ArgumentError, "--hsb required (e.g. 0x55FF80)"                 if result[:hsb].nil?
-      raise ArgumentError, "--mode required (one of #{MODES.join(' / ')})" unless MODES.include?(result[:mode])
-      raise ArgumentError, "--side must be one of #{SIDES.join(' / ')}"    unless SIDES.include?(result[:side])
-      raise ArgumentError, "--hsb out of range (0x000000..0xFFFFFF)"        if result[:hsb] < 0 || result[:hsb] > 0xFFFFFF
-
+      if result[:duration] && result[:duration] <= 0
+        raise ArgumentError, "--duration must be a positive integer (got #{result[:duration]})"
+      end
       result
     end
 
-    def parse_hex(str)
-      Integer(str, 16)
-    rescue ArgumentError, TypeError
-      raise ArgumentError, "--hsb must be a hex value like 0x55FF80 (got #{str.inspect})"
+    def parse_led(spec)
+      color_str, mode_str = spec.split(",", 2)
+      raise ArgumentError, "--left_led / --right_led must be COLOR,MODE (got #{spec.inspect})" if color_str.nil? || mode_str.nil? || color_str.empty? || mode_str.empty?
+      [parse_color(color_str), parse_mode(mode_str)]
+    end
+
+    def parse_color(str)
+      return PRESETS[str.to_sym] if PRESETS.key?(str.to_sym)
+      val = Integer(str, 16)
+      raise ArgumentError, "color out of range (0x000000..0xFFFFFF): #{str}" if val < 0 || val > 0xFFFFFF
+      val
+    rescue ArgumentError => e
+      raise if e.message.start_with?("color out of range")
+      raise ArgumentError, "color must be a preset name (#{PRESETS.keys.join(' / ')}) or hex (0x000000..0xFFFFFF); got #{str.inspect}"
+    end
+
+    def parse_mode(str)
+      sym = str.to_sym
+      raise ArgumentError, "mode must be one of #{MODES.join(' / ')}; got #{str.inspect}" unless MODES.include?(sym)
+      sym
+    end
+
+    def print_extras
+      @stdout.puts
+      @stdout.puts "Color presets:"
+      PRESETS.each { |name, hex| @stdout.puts format("  %-7s = 0x%06X", name, hex) }
     end
 
     def try_send(socket, tuple, quiet:)
