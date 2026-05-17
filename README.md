@@ -159,11 +159,28 @@ docs/                                     specs, plans, handoffs
 Rakefile                                  workflow wrappers (r2p2:*, build_flash, ble_control_smoke, etc.)
 ```
 
-## Related repositories (bash0C7 forks)
+## Related repositories
 
-- [R2P2-ESP32 (fork)](https://github.com/bash0C7/R2P2-ESP32) — CoreS3 sdkconfig fragments, BLE bring-up, BTstack thread bridging
-- [picoruby (fork)](https://github.com/bash0C7/picoruby) — BLE port modifications (BTstack ESP32 port thread safety)
-- [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac) — macOS CoreBluetooth Ruby gem (used by `pc/stackchan-ble-client` as the BLE transport, path-loaded in its `Gemfile`)
+### [R2P2-ESP32 fork](https://github.com/bash0C7/R2P2-ESP32) (of `picoruby/R2P2-ESP32`)
+
+Changes added on top of upstream for this project:
+
+- `sdkconfigs/cores3` — CoreS3 SoC overlay: **Quad** PSRAM 8MB, 16MB Flash, USB-Serial-JTAG console
+- `sdkconfigs/bt_btstack` — BLE enablement: BTstack vendored, ROM coex hook disabled (`CONFIG_SW_COEXIST_ENABLE=n` — required to avoid `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with IDF v5.4 + ESP32-S3)
+- `components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — wire this repo's mrbgems (`picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-stackchan-led`, `picoruby-stackchan-protocol`) and the vendored `picoruby-ble` / `picoruby-ble-uart` via absolute `gemdir`
+- Submodule `components/picoruby-esp32/picoruby` repointed to the `bash0C7/picoruby` fork below (for the BLE port fixes)
+
+### [picoruby fork](https://github.com/bash0C7/picoruby) (of `picoruby/picoruby`)
+
+Changes added on top of upstream for this project — all in `mrbgems/picoruby-ble/ports/esp32/`:
+
+- `btstack_owner.c` — new `picoruby_btstack_ensure_started(setup_cb, ctx)` and `picoruby_btstack_run_sync(cb, ctx)` APIs so Ruby-thread BLE calls can be marshalled onto BTstack's FreeRTOS run-loop thread (BTstack is not thread-safe; this avoids LoadProhibited panics in `hci_*` / `gap_*` from the wrong thread)
+- `BLE_init`'s `l2cap_init` / `sm_init` / `att_server_init` / `hci_add_event_handler` block runs inside the BTstack setup callback (before `run_loop_execute`)
+- Runtime calls (`hci_power_control`, `gap_advertisements_enable`, etc.) dispatch via `btstack_run_loop_execute_on_main_thread` with semaphore-synchronous wait; same-thread invocation short-circuits to direct call to avoid deadlock
+
+### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
+
+Original gem (not a fork). macOS CoreBluetooth Ruby binding, used by `pc/stackchan-ble-client` as the BLE transport (path-loaded in its `Gemfile`).
 
 ## License
 
