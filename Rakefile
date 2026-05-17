@@ -178,6 +178,8 @@ namespace :r2p2 do
   # Helper: compile + upload with epoch-suffix baked into device name.
   # Substitutes "StackChan-PicoRuby" -> "StackChan-PicoRuby-<epoch>" in a temp copy.
   # Returns the epoch-suffixed name for caller to pass to stackchan-ble-control.
+  # Uses 6-digit epoch (mod 1_000_000, cycles ~11 days) to keep BLE adv data under 31-byte limit:
+  #   Flags (3) + Name overhead (2) + "StackChan-PicoRuby" (18) + "-DDDDDD" (7) = 30 bytes.
   def upload_mrb_dev(src, name_prefix: "StackChan-PicoRuby")
     src_path = File.expand_path(src, __dir__)
     abort "SRC not found: #{src_path}" unless File.exist?(src_path)
@@ -190,8 +192,8 @@ namespace :r2p2 do
     build_dir = File.expand_path('tmp/build', __dir__)
     mkdir_p build_dir
 
-    # Create epoch-suffixed name
-    epoch = Time.now.to_i
+    # Create epoch-suffixed name (6-digit suffix only, fits BLE 31-byte adv limit)
+    epoch = Time.now.to_i % 1_000_000
     device_name = "#{name_prefix}-#{epoch}"
 
     # Copy source to temp file and substitute name
