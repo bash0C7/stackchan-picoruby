@@ -67,6 +67,7 @@ Massive thanks to:
 
 - M5Stack StackChan AI Desktop Robot ([Switch Science 11129](https://www.switch-science.com/products/11129)) — see Target hardware above
 - macOS 26+
+- **Xcode** with the Swift toolchain — `swift_gem` builds a Swift Package Manager-backed native extension during `bundle install`, and `rb-corebluetooth-mac` depends on it
 - [esp-idf](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/get-started/index.html) **v5.4**, installed at `~/esp/esp-idf` (the Rakefile sources `~/esp/esp-idf/export.sh`)
 - Ruby 4.0+ (rbenv recommended)
 - Bundler
