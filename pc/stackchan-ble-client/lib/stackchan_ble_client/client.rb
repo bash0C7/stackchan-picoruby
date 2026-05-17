@@ -1,3 +1,5 @@
+require "corebluetooth_mac"
+
 require_relative "send_builder"
 require_relative "frame_codec"
 
@@ -37,6 +39,8 @@ module StackchanBleClient
       @tx_char = @peripheral.find_characteristic(NUS_TX_CHAR) or raise ConnectionError, "NUS TX not found"
       @subscription = @tx_char.subscribe
       self
+    rescue CoreBluetoothMac::Error => e
+      raise ConnectionError, "#{e.class}: #{e.message}"
     end
 
     def send(&block)
@@ -57,8 +61,14 @@ module StackchanBleClient
       @tx_char&.unsubscribe
       @transport.disconnect(@peripheral) if @peripheral
       @transport.close
-      @peripheral = @rx_char = @tx_char = @subscription = nil
       self
+    rescue CoreBluetoothMac::Error => e
+      # Transport-level "already disconnected" errors map to ConnectionError
+      # so the caller (notifier worker, etc.) can treat them uniformly with
+      # other transport faults and decide to reconnect.
+      raise ConnectionError, "#{e.class}: #{e.message}"
+    ensure
+      @peripheral = @rx_char = @tx_char = @subscription = nil
     end
 
     private
@@ -71,10 +81,11 @@ module StackchanBleClient
       when :ok    then nil
       when :error then raise DeviceError, "device rejected frame #{frame.inspect}"
       end
+    rescue CoreBluetoothMac::Error => e
+      raise ConnectionError, "#{e.class}: #{e.message}"
     end
 
     def build_default_transport
-      require "corebluetooth_mac"
       CoreBluetoothMac::Central.new
     end
   end
