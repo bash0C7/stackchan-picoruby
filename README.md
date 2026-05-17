@@ -12,7 +12,7 @@ The hardware layer (LCD, RGB LEDs, IO expanders, BLE peripheral) is reimplemente
 
 Massive thanks to:
 
-- The upstream [Stack-chan](https://github.com/stack-chan/stack-chan) project by Shinya Ishikawa and the Stack-chan community — the hardware design, the cute face, the entire concept. The official C++ firmware (referenced read-only as `../StackChan` in this monorepo) was indispensable for pin assignments and cold-boot sequences.
+- The original [Stack-chan](https://github.com/stack-chan/stack-chan) project by Shinya Ishikawa and the Stack-chan community — the hardware design, the cute face, the entire concept. The official C++ firmware (referenced read-only as `../StackChan` in this monorepo) was indispensable for pin assignments and cold-boot sequences.
 - [PicoRuby](https://github.com/picoruby/picoruby) by [@hasumikin](https://github.com/hasumikin) and contributors.
 - [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) for the ESP32 port that made any of this possible.
 
@@ -30,9 +30,9 @@ Massive thanks to:
 - **macOS side**: orchestrator. Sends control frames (face × LED color × animation mode × side selector), receives ACK / ERR bytes.
 - **Frame protocol**: K=V semicolon-delimited frames, single-byte ACK (`.`) or ERR (`?`) reply. Implementation in `mrbgems/picoruby-stackchan-protocol/` and `pc/stackchan-ble-client/`.
 
-## Feature matrix vs upstream
+## Feature matrix vs original
 
-| Subsystem | Upstream (official) | This repo (PicoRuby) | Notes |
+| Subsystem | Original (official) | This repo (PicoRuby) | Notes |
 |---|---|---|---|
 | Core 4 faces (Neutral / Smile / Joy / Surprised) | ✓ | ✓ | Custom geometry, photo-derived ratios |
 | Extended emotions (Angry / Sad / etc.) | ✓ | ✗ | Out of scope — easy to add as new `Face::*` |
@@ -69,14 +69,13 @@ Massive thanks to:
 - [esp-idf](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/get-started/index.html) **v5.4**, installed at `~/esp/esp-idf`
 - Ruby 4.0+ required (rbenv recommended)
 - `bundler`
-- [`ghq`](https://github.com/x-motemen/ghq) for repository layout (optional but assumed)
 
 ### Repository layout
 
-This monorepo expects an **independent sibling clone** of `R2P2-ESP32` (fork required — sdkconfig fragments and BLE bring-up live there). These are **not** git submodules; the path is baked into `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` (absolute) and this repo's Rakefile (relative). Clone them separately:
+This monorepo expects an **independent sibling clone** of `R2P2-ESP32` (fork required — sdkconfig fragments and BLE bring-up live there). These are **not** git submodules; the path is baked into `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` (absolute) and this repo's Rakefile (relative). Clone them under the same parent directory:
 
 ```
-~/dev/src/github.com/bash0C7/
+your/parent/dir/
 ├── stackchan-picoruby/    (this repo)
 └── R2P2-ESP32/            (https://github.com/bash0C7/R2P2-ESP32, fork — clone separately)
 ```
@@ -84,9 +83,10 @@ This monorepo expects an **independent sibling clone** of `R2P2-ESP32` (fork req
 ### First-time setup
 
 ```bash
-ghq get github.com/bash0C7/stackchan-picoruby
-ghq get github.com/bash0C7/R2P2-ESP32
-cd ~/dev/src/github.com/bash0C7/stackchan-picoruby
+cd your/parent/dir
+git clone https://github.com/bash0C7/stackchan-picoruby
+git clone https://github.com/bash0C7/R2P2-ESP32
+cd stackchan-picoruby
 bundle install
 bundle exec rake r2p2:setup       # ~10-20 min, builds host picoruby + sets ESP32-S3 target
 ```
