@@ -137,6 +137,11 @@ module StackchanNotifier
     end
 
     def build_logger(level)
+      # Force line-buffered output so that `... 2>&1 > daemon.log` shows
+      # progress events (BLE connect, reconnect, send failures) the moment
+      # they happen, rather than accumulating in a 4KB block buffer that
+      # only flushes on shutdown.
+      $stdout.sync = true
       logger = Logger.new($stdout)
       logger.level = LEVELS.fetch(level, Logger::INFO)
       logger.formatter = ->(severity, time, _progname, msg) {
