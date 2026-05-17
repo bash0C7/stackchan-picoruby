@@ -54,6 +54,26 @@ def ensure_sdkconfig_fresh
   rm sdkconfig
 end
 
+# idf.py build invokes picoruby's mruby compile internally, but trusts the
+# existing libmruby.a cache and does NOT re-run gem bytecode generation when
+# only mrblib/*.rb files change. Detect mrblib mtime > LIBMRUBY_FILE mtime
+# and drop libmruby.a so the next build forces picoruby rake to re-compile
+# gems. (2026-05-17 finding — Face::Closed addition in
+# mrbgems/picoruby-stackchan-protocol/mrblib/stackchan_protocol.rb was silently
+# dropped by build_flash, manifesting as NameError on device at runtime.)
+def ensure_libmruby_fresh
+  unless File.exist?(LIBMRUBY_FILE)
+    puts "[r2p2] libmruby.a missing — next build will compile gems"
+    return
+  end
+  cfg_mtime = File.mtime(LIBMRUBY_FILE)
+  stale = Dir.glob('mrbgems/**/mrblib/**/*.rb').filter { |p| File.mtime(p) > cfg_mtime }
+  return if stale.empty?
+  puts "[r2p2] mrblib newer than libmruby.a (#{stale.size} files) — clearing libmruby cache"
+  puts "[r2p2]   newest: #{stale.max_by { |p| File.mtime(p) }}"
+  rm LIBMRUBY_FILE
+end
+
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup do
@@ -73,6 +93,7 @@ namespace :r2p2 do
   desc "build with CoreS3 sdkconfig (QUAD PSRAM + 16MB flash, VM=mruby)"
   task :build do
     ensure_sdkconfig_fresh
+    ensure_libmruby_fresh
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
   end
 
@@ -85,6 +106,7 @@ namespace :r2p2 do
   desc 'build + flash in one shot (default workflow for code iteration)'
   task :build_flash do
     ensure_sdkconfig_fresh
+    ensure_libmruby_fresh
     port = espport
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
   end
