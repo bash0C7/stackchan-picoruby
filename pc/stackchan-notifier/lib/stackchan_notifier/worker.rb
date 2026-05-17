@@ -78,15 +78,17 @@ module StackchanNotifier
       end
     end
 
+    # Rinda::TupleSpace#take returns the most-recently-written matching tuple
+    # first (LIFO), so `initial` (passed in from the blocking take above) is
+    # already the latest. This loop just garbage-collects the older queued
+    # tuples so the bag does not grow unbounded.
     def drain_latest(initial)
       loop do
         extra = @ts.take_nonblocking(TUPLE_PATTERN)
         if shutdown_sentinel?(extra)
-          # Honor shutdown discovered mid-drain. The outer loop will break.
           @shutdown_during_drain = true
           break
         end
-        # discard extra, keep draining to empty
       rescue Rinda::RequestExpiredError
         break
       end

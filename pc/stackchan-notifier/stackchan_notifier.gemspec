@@ -12,6 +12,7 @@ Gem::Specification.new do |spec|
     sub-100ms thin clients while a single BLE connection is held in the daemon.
   DESC
   spec.required_ruby_version = ">= 3.3.0"
+  spec.add_runtime_dependency "rinda"
   spec.files = Dir["lib/**/*.rb", "exe/*", "README.md"]
   spec.executables = ["stackchan-notifier-daemon", "stackchan-notify"]
   spec.require_paths = ["lib"]
