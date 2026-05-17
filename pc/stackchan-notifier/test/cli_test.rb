@@ -19,21 +19,21 @@ class CLITest < Test::Unit::TestCase
     assert_equal 0, code
     assert_equal 1, @sent.size
     _, tuple = @sent.first
-    assert_equal [:notify, :smile, 0xFF0000, :blink, 0x000000, :solid, nil], tuple
+    assert_equal [:notify, :smile, 0x00FFFF, :blink, 0x000000, :solid, nil], tuple
   end
 
   def test_both_leds_with_mixed_preset_and_hex
     code = run_cli(%w[--face smile --left_led 0xFF8800,solid --right_led green,breathing])
     assert_equal 0, code
     _, tuple = @sent.first
-    assert_equal [:notify, :smile, 0xFF8800, :solid, 0x00FF00, :breathing, nil], tuple
+    assert_equal [:notify, :smile, 0xFF8800, :solid, 0x55FFFF, :breathing, nil], tuple
   end
 
   def test_duration_appended_to_tuple
     code = run_cli(%w[--face smile --left_led red,blink --duration 5])
     assert_equal 0, code
     _, tuple = @sent.first
-    assert_equal [:notify, :smile, 0xFF0000, :blink, 0x000000, :solid, 5], tuple
+    assert_equal [:notify, :smile, 0x00FFFF, :blink, 0x000000, :solid, 5], tuple
   end
 
   def test_duration_zero_exits_2_with_stderr_message

@@ -15,14 +15,18 @@ module StackchanNotifier
   class CLI
     FACES = %i[neutral smile joy surprised].freeze
     MODES = %i[solid blink breathing off].freeze
+    # Values are packed HSB (0xHHSSBB) matching the wire format used by
+    # the BLE NUS combo frame protocol. H = 255 * degrees / 360; S and B
+    # are 0..255 mapped to 0..1. Achromatic colors (white/gray/black) use
+    # S=0 with B set to the desired brightness.
     PRESETS = {
-      red:    0xFF0000,
-      green:  0x00FF00,
-      blue:   0x0000FF,
-      yellow: 0xFFFF00,
-      white:  0xFFFFFF,
-      gray:   0x808080,
-      black:  0x000000,
+      red:    0x00FFFF,   # H=0°
+      green:  0x55FFFF,   # H=120°
+      blue:   0xAAFFFF,   # H=240°
+      yellow: 0x2AFFFF,   # H=60°
+      white:  0x0000FF,   # S=0, B=full
+      gray:   0x000080,   # S=0, B=half
+      black:  0x000000,   # B=0
     }.freeze
     DEFAULT_LED = [0x000000, :solid].freeze   # unspecified side = visually off
 

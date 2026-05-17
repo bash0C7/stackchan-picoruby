@@ -180,25 +180,27 @@ Claude Code is never blocked.
 | Flag | Required | Domain |
 |---|---|---|
 | `--face NAME` | yes | `neutral` / `smile` / `joy` / `surprised` |
-| `--left_led COLOR,MODE` | no, default `0x000000,solid` (off) | COLOR = preset name or hex; MODE = `solid` / `blink` / `breathing` / `off` |
+| `--left_led COLOR,MODE` | no, default `0x000000,solid` (off) | COLOR = preset name or HSB-packed hex (`0xHHSSBB`); MODE = `solid` / `blink` / `breathing` / `off`. Side is from StackChan's perspective (its left hand) |
 | `--right_led COLOR,MODE` | no, default `0x000000,solid` (off) | same format as `--left_led` |
 | `--duration N` | no, default no auto-restore | positive integer seconds; on expiry the worker writes a neutral + both-LEDs-off tuple |
 | `--socket PATH` | no | overrides default and `STACKCHAN_NOTIFIER_SOCKET` env |
 | `--quiet` | no | suppresses "daemon unavailable" stderr |
 
-**Color presets** (resolved case-sensitively against the bare name):
+**Color presets** (resolved case-sensitively against the bare name; values are
+packed HSB on the wire — `0xHHSSBB` where H is `255 * degrees / 360` and S/B
+are 0..255 mapped to 0..1):
 
-| Name | Hex |
-|---|---|
-| `red` | `0xFF0000` |
-| `green` | `0x00FF00` |
-| `blue` | `0x0000FF` |
-| `yellow` | `0xFFFF00` |
-| `white` | `0xFFFFFF` |
-| `gray` | `0x808080` |
-| `black` | `0x000000` |
+| Name | HSB packed | Notes |
+|---|---|---|
+| `red` | `0x00FFFF` | H=0° |
+| `green` | `0x55FFFF` | H=120° |
+| `blue` | `0xAAFFFF` | H=240° |
+| `yellow` | `0x2AFFFF` | H=60° |
+| `white` | `0x0000FF` | S=0, B=full |
+| `gray` | `0x000080` | S=0, B=half |
+| `black` | `0x000000` | B=0 |
 
-Any 24-bit hex `0x000000..0xFFFFFF` is also accepted directly.
+Any 24-bit hex `0x000000..0xFFFFFF` is also accepted directly **as packed HSB**, not RGB.
 
 Exit codes:
 
