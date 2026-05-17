@@ -43,10 +43,10 @@ Massive thanks to:
 | Servo control (neck pan + tilt) | ✓ | ✗ | Planned (`picoruby-scservo`) |
 | IMU (BMI270 + BMM150) | ✓ | ✗ | Planned (`picoruby-bmi270`) |
 | 3-zone touch (head Si12T) | ✓ | ✗ | Not started |
-| Microphone / Speaker / TTS | ✓ | ✗ | Delegated to macOS side (`rb-foundation-model-mac`) |
+| Microphone / Speaker / TTS | ✓ | ✗ | Delegated to macOS side (future) |
 | Camera (GC0308) | ✓ | ✗ | Out of scope |
 | NFC | ✓ | ✗ | Out of scope |
-| Voice synthesis / LLM | community | (planned, macOS-side) | Via `rb-foundation-model-mac` orchestrator |
+| Voice synthesis / LLM | community | (planned, macOS-side) | Future macOS-side orchestrator |
 
 ## Target hardware
 
@@ -163,7 +163,7 @@ Rakefile                                  workflow wrappers (r2p2:*, build_flash
 
 - [R2P2-ESP32 (fork)](https://github.com/bash0C7/R2P2-ESP32) — CoreS3 sdkconfig fragments, BLE bring-up, BTstack thread bridging
 - [picoruby (fork)](https://github.com/bash0C7/picoruby) — BLE port modifications (BTstack ESP32 port thread safety)
-- [rb-foundation-model-mac](https://github.com/bash0C7/rb-foundation-model-mac) — Apple Foundation Model Ruby bindings (macOS-side orchestration)
+- [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac) — macOS CoreBluetooth Ruby gem (used by `pc/stackchan-ble-client` as the BLE transport, path-loaded in its `Gemfile`)
 
 ## License
 
