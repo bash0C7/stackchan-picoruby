@@ -135,9 +135,18 @@ Baud rate is functionally ignored by USB Serial JTAG — the value is cosmetic. 
 - Device name suffixes are **truncated** by Mac CoreBluetooth scan caching. Do not rely on long discriminators (epoch suffixes etc.) — Mac will only show the base name. Use a fixed `--name-prefix` and tolerate a single board per session.
 - GATT cache trap: Mac CoreBluetooth caches GATT services per device identifier and can serve a `0 services` stale view. The only reliable reset is **Bluetooth OFF → ON** (which restarts `blued`). Cross-check with iPhone (e.g. nRF Connect) when the Mac side stalls.
 
-### Rake task discipline
+### Rakefile: a decoration over R2P2-ESP32's
 
-Long-running rake tasks (`r2p2:build_flash`, `r2p2:setup`) take minutes. The `r2p2:build_flash` task auto-clears the libmruby cache (`clear_libmruby_cache` prerequisite) when invoked — this catches the `idf.py build` silent-bytecode-cache trap that previously caused mrblib changes (e.g. new `Face::*` classes) to be dropped at runtime as `NameError`.
+This repo's `Rakefile` doesn't reimplement the build pipeline — it **wraps** R2P2-ESP32's own `rake` tasks (decorator-style), adding project-specific guards and conveniences. Every `r2p2:*` task ultimately shells into `bash -c '. $IDF_EXPORT && cd $R2P2_ROOT && rake <subtask>'` via the `in_r2p2` helper, so the upstream build flow stays authoritative.
+
+Decorations layered on top of upstream:
+
+- **`espport` auto-detection** — scans `/dev/cu.usbmodem*` and picks one. `ESPPORT=...` env overrides.
+- **`ensure_sdkconfig_fresh`** — if any `SDKCONFIG_DEFAULTS` fragment is newer than the existing `sdkconfig`, `rm sdkconfig` so the next `idf.py build` regenerates it from fragments. (`idf.py build` does **not** re-apply `SDKCONFIG_DEFAULTS` to an already-existing `sdkconfig`, so fragment edits are otherwise silently dropped — caught only at runtime as missing config defines.)
+- **`r2p2:clear_libmruby_cache` (prerequisite of `r2p2:build_flash`)** — unconditionally `rm`s `libmruby.a` so the next build re-runs picoruby's mruby compile from scratch. Without this, `idf.py build` trusts the cached `libmruby.a` and **silently drops `mrblib/**/*.rb` changes** — e.g. a new `Face::Closed` class added to a gem manifests at runtime on the device as `NameError`, not at compile time. (~1-2 extra minutes per build for correctness.)
+- **`r2p2:upload_mrb`** — host-side **mrbc-style flow**: `picorbc` compiles a `.rb` file to `.mrb` bytecode on the host, then `Deploy::Picomodem.upload` (lib/deploy/picomodem.rb) ships it over USB-CDC into the device's `/home/app.mrb`. Autostart on next reset loads the bytecode directly (no on-device compile). This is the iteration-fast path: no rebuild/flash needed when only app logic changes — a full `build_flash` is only needed when gems (`mrbgems/`) themselves change.
+- **`r2p2:wipe_storage`** — `esptool erase_region 0x210000 0x100000` zeroes the storage partition (where `/home/*` lives). Use when an autostart app wedges the shell or PicoModem session won't handshake.
+- **`r2p2:ble_control_smoke`** — composite E2E task: `upload_mrb` + `reset` + `autostart_wait` + invoke `pc/stackchan-ble-client`'s CLI inside a `Bundler.with_unbundled_env` subshell (so the inner Gemfile resolves correctly). Returns the CLI's exit code, so failures surface as rake failures.
 
 `idf.py monitor` cannot run from a TTY-less environment. Use `bin/capture-with-pty SECONDS LOG_FILE CMD...` for bounded captures (Expect-based, auto-`Ctrl-]` after the timeout), or attach manually from a real terminal.
 
