@@ -1,0 +1,10 @@
+source "https://rubygems.org"
+
+gemspec
+
+gem "stackchan_ble_client", path: "../stackchan-ble-client"
+
+group :test do
+  gem "test-unit"
+  gem "rake"
+end
