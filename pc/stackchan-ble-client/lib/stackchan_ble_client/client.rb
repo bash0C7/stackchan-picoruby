@@ -26,6 +26,13 @@ module StackchanBleClient
         devices = @transport.scan(timeout: @scan_timeout)
         devices.select! { |d| d.name&.start_with?(@name_prefix) }
         raise ConnectionError, "no device with name prefix #{@name_prefix.inspect}" if devices.empty?
+
+        # Sort by numeric suffix (epoch) descending so we pick the latest upload.
+        # Non-numeric suffixes sort as 0 (safe fallback for old-style names).
+        devices.sort_by! do |d|
+          suffix = d.name.split("-").last
+          -(suffix.to_i)
+        end
       else
         devices = @transport.scan(name: @device_name, timeout: @scan_timeout)
         raise ConnectionError, "no device named #{@device_name.inspect}" if devices.empty?
