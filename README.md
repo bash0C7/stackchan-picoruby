@@ -1,6 +1,10 @@
 # stackchan-picoruby
 
-A personal port of [Stack-chan](https://github.com/stack-chan/stack-chan) to [PicoRuby](https://github.com/picoruby/picoruby), running on [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) on the [M5Stack StackChan AI Desktop Robot (CoreS3)](https://www.switch-science.com/products/11129).
+> **Status: Work in Progress** — APIs, protocols, and build flow may change without notice.
+
+[Stack-chan](https://github.com/stack-chan/stack-chan) is a super-kawaii robot for the M5Stack platform, created by Shinya Ishikawa and the Stack-chan community.
+
+This repository is a personal port of Stack-chan to [PicoRuby](https://github.com/picoruby/picoruby), running on [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) on the [M5Stack StackChan AI Desktop Robot (CoreS3)](https://www.switch-science.com/products/11129).
 
 The hardware layer (LCD, RGB LEDs, IO expanders, BLE peripheral) is reimplemented as out-of-tree PicoRuby `mrbgems`. Higher-level avatar logic is orchestrated from a macOS-side Ruby client over Nordic UART Service (BLE NUS).
 
@@ -61,20 +65,20 @@ Massive thanks to:
 
 ### Prerequisites
 
-- macOS 14+ (tested on Darwin 25)
+- macOS 26+
 - [esp-idf](https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/get-started/index.html) **v5.4**, installed at `~/esp/esp-idf`
-- Ruby 3.4+ (rbenv recommended)
+- Ruby 4.0+ required (rbenv recommended)
 - `bundler`
 - [`ghq`](https://github.com/x-motemen/ghq) for repository layout (optional but assumed)
 
 ### Repository layout
 
-This monorepo expects a sibling clone of `R2P2-ESP32` (fork required — sdkconfig fragments and BLE bring-up live there):
+This monorepo expects an **independent sibling clone** of `R2P2-ESP32` (fork required — sdkconfig fragments and BLE bring-up live there). These are **not** git submodules; the path is baked into `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` (absolute) and this repo's Rakefile (relative). Clone them separately:
 
 ```
 ~/dev/src/github.com/bash0C7/
 ├── stackchan-picoruby/    (this repo)
-└── R2P2-ESP32/            (https://github.com/bash0C7/R2P2-ESP32, fork)
+└── R2P2-ESP32/            (https://github.com/bash0C7/R2P2-ESP32, fork — clone separately)
 ```
 
 ### First-time setup
