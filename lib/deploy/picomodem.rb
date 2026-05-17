@@ -8,7 +8,7 @@
 # See the original exe header (still in git history as of Phase 2) for the
 # rationale on the handshake-responder phase.
 
-require "uart"
+require "serialport"
 
 module Deploy
   module Picomodem
@@ -34,7 +34,10 @@ module Deploy
       content = File.binread(src)
       stdout.puts "[picomodem] src=#{src} dst=#{dst} port=#{port} size=#{content.bytesize}"
 
-      UART.open(port, baud) do |serial|
+      serial = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
+      serial.dtr = 1
+      stdout.puts "[picomodem] opened #{port} @ #{baud} (DTR=1)"
+      begin
         run_handshake_responder(serial, handshake_seconds, stdout)
         drain(serial)
 
@@ -70,6 +73,8 @@ module Deploy
           raise "[picomodem] DONE_ACK expected, got #{done.inspect}"
         end
         stdout.puts "[picomodem] DONE_ACK ok"
+      ensure
+        serial.close
       end
       true
     end
