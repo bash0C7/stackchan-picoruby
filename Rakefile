@@ -1,5 +1,6 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
 require_relative "lib/deploy/picomodem"
+require_relative "lib/deploy/shell_recovery"
 
 R2P2_ROOT = File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
