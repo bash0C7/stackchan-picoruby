@@ -102,12 +102,13 @@ module StackchanNotifier
 
     def parse_color(str)
       return PRESETS[str.to_sym] if PRESETS.key?(str.to_sym)
-      val = Integer(str, 16)
+      begin
+        val = Integer(str, 16)
+      rescue ArgumentError
+        raise ArgumentError, "color must be a preset name (#{PRESETS.keys.join(' / ')}) or hex (0x000000..0xFFFFFF); got #{str.inspect}"
+      end
       raise ArgumentError, "color out of range (0x000000..0xFFFFFF): #{str}" if val < 0 || val > 0xFFFFFF
       val
-    rescue ArgumentError => e
-      raise if e.message.start_with?("color out of range")
-      raise ArgumentError, "color must be a preset name (#{PRESETS.keys.join(' / ')}) or hex (0x000000..0xFFFFFF); got #{str.inspect}"
     end
 
     def parse_mode(str)
