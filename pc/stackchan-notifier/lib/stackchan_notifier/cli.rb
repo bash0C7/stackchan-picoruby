@@ -59,13 +59,14 @@ module StackchanNotifier
 
       parser = OptionParser.new do |o|
         o.banner = "Usage: stackchan-notify --face NAME --hsb HEX --mode NAME [--side NAME] [--socket PATH] [--quiet]"
-        o.on("--face NAME")   { |v| result[:face] = v.to_sym }
-        o.on("--hsb HEX")     { |v| result[:hsb]  = parse_hex(v) }
-        o.on("--mode NAME")   { |v| result[:mode] = v.to_sym }
-        o.on("--side NAME")   { |v| result[:side] = v.to_sym }
-        o.on("--socket PATH") { |v| result[:socket] = v }
-        o.on("--quiet")       { result[:quiet] = true }
-        o.on("-h", "--help")  { @stdout.puts(o); exit EXIT_OK }
+        o.on("--face NAME",   "one of: #{FACES.join(' / ')}")                                  { |v| result[:face] = v.to_sym }
+        o.on("--hsb HEX",     "color hex, e.g. 0x55FF80 (range 0x000000..0xFFFFFF)")           { |v| result[:hsb]  = parse_hex(v) }
+        o.on("--mode NAME",   "one of: #{MODES.join(' / ')}")                                  { |v| result[:mode] = v.to_sym }
+        o.on("--side NAME",   "one of: #{SIDES.join(' / ')} (default: both)")                  { |v| result[:side] = v.to_sym }
+        o.on("--socket PATH", "DRb Unix socket (env: STACKCHAN_NOTIFIER_SOCKET,",
+                              "default: #{StackchanNotifier.default_socket_path})")            { |v| result[:socket] = v }
+        o.on("--quiet",       "suppress 'daemon unavailable' stderr (CLI still exits 0)")      { result[:quiet] = true }
+        o.on("-h", "--help",  "show this help and exit")                                       { @stdout.puts(o); exit EXIT_OK }
       end
       parser.parse!(argv.dup)
 
