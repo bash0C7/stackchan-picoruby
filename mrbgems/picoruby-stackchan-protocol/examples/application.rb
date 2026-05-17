@@ -230,7 +230,7 @@ class StackChanApp < BLE
     if @blink_tick % 5 == 0
       StackchanProtocol::Face::Closed.new.draw(@display)
       Machine.delay_ms 150
-      @dispatcher.current_face_class.new.draw(@display)
+      @dispatcher.current_face_class.new.redraw_eyes_open(@display)
     end
   end
 
