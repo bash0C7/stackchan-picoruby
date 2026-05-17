@@ -118,6 +118,30 @@ namespace :r2p2 do
     PY
   end
 
+  # Future-proof: present R2P2 build exits main_task after SIGINT and never
+  # re-prints a shell prompt over USB-CDC, so this task does not actually
+  # recover anything on the current build. Kept for the day shell echo
+  # behavior is restored upstream — see lib/deploy/shell_recovery.rb header
+  # for the diagnostic context. For working recovery today, use `wipe_storage`.
+  desc 'interrupt autostart via Ctrl-C and rm /home/app.mrb (press M5Stack reset button immediately before invoking)'
+  task :rm_appmrb do
+    port = espport
+    Deploy::ShellRecovery.rm_app(port: port)
+  end
+
+  # Generic R2P2-ESP32 (CoreS3) storage partition erase: nukes /home/* so the
+  # next boot starts with no autostart payload. Useful for any picoruby app
+  # whose /home/app.mrb panic-loops, jams PicoModem handshake, or otherwise
+  # locks out the shell. Storage partition layout is 0x210000-0x310000 (1MB);
+  # adjust if your sdkconfig partition table differs. ~7s end-to-end.
+  desc 'erase storage partition (0x210000-0x310000, ~1MB) — fast app.mrb recovery without full flash'
+  task :wipe_storage do
+    port = espport
+    Dir.chdir(R2P2_ROOT) do
+      sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} erase_region 0x210000 0x100000'"
+    end
+  end
+
   desc 'upload a Ruby file via PicoModem (SRC=path DST=/home/foo.rb), defaults to examples/app.rb'
   task :upload do
     src  = ENV.fetch('SRC', 'mrbgems/picoruby-stackchan-protocol/examples/app.rb')
