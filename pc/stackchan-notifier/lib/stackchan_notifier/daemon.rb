@@ -112,9 +112,8 @@ module StackchanNotifier
     end
 
     def install_signal_handlers
-      %w[INT TERM].each do |sig|
-        Signal.trap(sig) { stop }
-      end
+      %w[INT TERM].each { |sig| Signal.trap(sig) { stop } }
+      Signal.trap("HUP") { @worker&.force_reconnect }
       self
     end
 

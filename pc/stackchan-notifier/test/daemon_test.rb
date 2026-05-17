@@ -21,6 +21,7 @@ class DaemonTest < Test::Unit::TestCase
   rescue StandardError
     nil
   ensure
+    Signal.trap("HUP", "DEFAULT")
     FileUtils.rm_f(@socket)
   end
 
@@ -82,6 +83,18 @@ class DaemonTest < Test::Unit::TestCase
     code = StackchanNotifier::Daemon.run_with_argv(["--log-level", "verbose"], stderr: stderr)
     assert_equal 2, code
     assert_match(/--log-level/, stderr.string)
+  end
+
+  def test_install_signal_handlers_traps_hup_to_force_reconnect
+    @daemon.start
+    called = 0
+    @daemon.worker.define_singleton_method(:force_reconnect) { called += 1 }
+
+    @daemon.install_signal_handlers
+    Process.kill("HUP", Process.pid)
+    sleep 0.1
+
+    assert_equal 1, called, "SIGHUP should call worker.force_reconnect"
   end
 
   private

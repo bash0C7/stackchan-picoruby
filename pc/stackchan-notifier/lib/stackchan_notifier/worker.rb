@@ -6,9 +6,11 @@ require_relative "tuple_space4ractor"
 module StackchanNotifier
   class Worker
     TUPLE_PATTERN     = [:notify, Symbol, Integer, Symbol, Symbol].freeze
-    SHUTDOWN_SENTINEL = :__shutdown__
-    DEFAULT_BACKOFF   = [1, 2, 4, 8, 30].freeze
-    SHUTDOWN_TUPLE    = [:notify, SHUTDOWN_SENTINEL, 0, SHUTDOWN_SENTINEL, SHUTDOWN_SENTINEL].freeze
+    SHUTDOWN_SENTINEL        = :__shutdown__
+    FORCE_RECONNECT_SENTINEL = :__force_reconnect__
+    DEFAULT_BACKOFF          = [1, 2, 4, 8, 30].freeze
+    SHUTDOWN_TUPLE           = [:notify, SHUTDOWN_SENTINEL, 0, SHUTDOWN_SENTINEL, SHUTDOWN_SENTINEL].freeze
+    FORCE_RECONNECT_TUPLE    = [:notify, FORCE_RECONNECT_SENTINEL, 0, :solid, :both].freeze
 
     def initialize(ts:, client_factory:, logger: nil, backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) })
       @ts             = ts
@@ -43,6 +45,10 @@ module StackchanNotifier
       @thread
     end
 
+    def force_reconnect
+      @ts.write(FORCE_RECONNECT_TUPLE)
+    end
+
     private
 
     def run_loop
@@ -53,6 +59,12 @@ module StackchanNotifier
 
         tuple, was_retry = next_tuple_to_deliver
         next if shutdown_sentinel?(tuple)
+        if force_reconnect_sentinel?(tuple)
+          log(:info, "force reconnect requested; tearing down current BLE connection")
+          disconnect_quietly
+          @pending_retry = nil
+          next
+        end
         break if @shutdown
 
         if deliver(tuple)
@@ -137,6 +149,10 @@ module StackchanNotifier
 
     def shutdown_sentinel?(tuple)
       tuple && tuple[1] == SHUTDOWN_SENTINEL
+    end
+
+    def force_reconnect_sentinel?(tuple)
+      tuple && tuple[1] == FORCE_RECONNECT_SENTINEL
     end
 
     def disconnect_quietly

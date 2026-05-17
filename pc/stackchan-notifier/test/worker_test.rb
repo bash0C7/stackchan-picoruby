@@ -135,6 +135,20 @@ class WorkerTest < Test::Unit::TestCase
     worker.shutdown
   end
 
+  def test_force_reconnect_sentinel_triggers_rescan
+    worker = build_worker
+    worker.start
+    wait_until { @client.connect_count == 1 }
+
+    @ts.write([:notify, :__force_reconnect__, 0, :solid, :both])
+
+    wait_until { @client.connect_count == 2 }
+    assert_equal 2, @client.connect_count, "SIGHUP-equivalent tuple should trigger reconnect"
+    assert_equal 1, @client.disconnect_count, "old connection should be torn down"
+
+    worker.shutdown
+  end
+
   def test_newer_tuple_wins_over_pending_retry
     send_args = []
     reconnect_latch = Queue.new
