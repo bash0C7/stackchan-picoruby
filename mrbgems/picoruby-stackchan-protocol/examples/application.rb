@@ -222,6 +222,16 @@ class StackChanApp < BLE
     if @notify_enabled && @ack_queue.bytesize > 0
       request_can_send_now_event
     end
+    # Blink for liveness indicator. Tick is ~1s on R2P2-ESP32 (memory:
+    # project_picoruby_ble_heartbeat_tick_one_second). 5 tick = ~5s 周期で
+    # 1 tick だけ Closed (目つむり) → 同 tick 内で current face を再描画して
+    # 「瞬き」演出。これがあれば人間がフリーズ vs 稼働中を視認できる。
+    @blink_tick = (@blink_tick || 0) + 1
+    if @blink_tick % 5 == 0
+      StackchanProtocol::Face::Closed.new.draw(@display)
+      Machine.delay_ms 150
+      @dispatcher.current_face_class.new.draw(@display)
+    end
   end
 
   def flush_one_ack
@@ -237,8 +247,13 @@ end
 # 60s 経過後に start() は return する仕様 (引数は ms)。Phase 3 production として
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
-puts "[application] BLE peripheral starting (60s)"
+puts "[application] BLE peripheral starting (loop, 60s windows)"
 peri = StackChanApp.new(display: display, led: led)
 peri.debug = true
-peri.start(60_000)
-puts "[application] start returned (60s elapsed)"
+# Loop indefinitely. peri.start(60_000) blocks for 60s then returns; we restart
+# immediately so the device stays advertise-able for HITL / smoke timing windows.
+# 恒久対応 (peri.start の API 改善 / 無限 advertise) は別 task。
+loop do
+  peri.start(60_000)
+  puts "[application] start returned (60s window expired, restarting)"
+end
