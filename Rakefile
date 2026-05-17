@@ -60,13 +60,13 @@ namespace :r2p2 do
     in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
   end
 
-  desc 'force regenerate mrbgem bytecode (.rb -> .c) before next build. Use when only mrblib/*.rb changed; idf.py build alone keeps stale cached bytecode'
-  task :rebuild_gems do
+  desc 'rm libmruby.a so the next build forces picoruby rake to recompile all gems (catches mrblib/*.rb changes that idf.py build silently ignores)'
+  task :clear_libmruby_cache do
     if File.exist?(LIBMRUBY_FILE)
       rm LIBMRUBY_FILE
-      puts "removed #{LIBMRUBY_FILE} — next build will re-run picoruby rake"
+      puts "[r2p2] cleared libmruby cache (#{LIBMRUBY_FILE}) — next build will recompile gems"
     else
-      puts "libmruby.a already absent — next build will run picoruby rake anyway"
+      puts "[r2p2] libmruby cache already absent"
     end
   end
 
@@ -83,7 +83,7 @@ namespace :r2p2 do
   end
 
   desc 'build + flash in one shot (default workflow for code iteration)'
-  task :build_flash do
+  task :build_flash => :clear_libmruby_cache do
     ensure_sdkconfig_fresh
     port = espport
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
