@@ -157,6 +157,14 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 
 `idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
 
+### autostart 詰まり recovery の階層
+
+`/home/app.mrb` が boot loop / advertise 失敗 / PicoModem 通信不能等で詰まったときは、以下を **必ずこの順で** 試す。下に行くほど時間かかるが確実性高い。**1 段で 2 周以上空回ししたら次の段に上げる** — 同じ手を 3 周繰り返したら自動 recovery 粘り過ぎ、即上に進む。
+
+1. **`rake r2p2:wipe_storage`** (7s) — esptool で storage partition (0x210000-0x310000, 1MB) erase + hard reset。app.mrb 限定で速い。**ただし 1 回前の upload の PicoModem session が device 側に残ってると次の handshake が `FILE_ACK got nil` で詰む**。この場合は wipe 直後 sleep 15s 待って再 upload で復活することが多い
+2. **`rake r2p2:build_flash`** (5〜10 分) — 4 partition 全部 flash で device 完全に作り直す。wipe で 2-3 周回詰まって混乱したら **panic mode に入ってる** ので、落ち着いて build_flash に戻す。memory に「wipe で何とかなる」と書いてあっても**この階層の優先順位の方が上**(2026-05-17 wipe 不調セッションの教訓)
+3. **人間に依頼** — wipe + build_flash も詰まる / USB device が消える / 物理状態確認が要る、なら下表の通り
+
 ### 物理 / shell-level op は人間に振る (recovery を粘らない)
 
 claude 側で rake task を組み合わせて自動 recovery を粘るより、**最初から人間に振る**。1 セッションで自動 recovery を 3-4 周回した結果、ESP32-S3 native USB-CDC の特性 (RTS pulse で chip reset しない、autostart 中の STDIN 占有、cat の re-enumerate EOF) で詰まることがほぼ確定:
