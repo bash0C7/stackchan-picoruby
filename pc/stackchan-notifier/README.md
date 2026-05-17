@@ -14,7 +14,7 @@ A BLE scan + connect cycle takes ~3–5 seconds on macOS. Doing that on every
 hook invocation would make `Stop` and `PreToolUse` painful. Instead:
 
 - A long-running daemon holds **one** BLE connection.
-- Hook scripts are thin DRb clients that write a 5-element tuple to the
+- Hook scripts are thin DRb clients that write a 7-element tuple to the
   daemon's TupleSpace over a Unix socket — typically <100 ms wall time.
 - The BLE worker thread drains additional pending tuples non-blockingly and
   sends only the **latest** one as a combo frame, so bursts of hook events
