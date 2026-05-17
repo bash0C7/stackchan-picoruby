@@ -23,10 +23,13 @@ module StackchanProtocol
       "B" => :both,
     }.freeze
 
+    attr_reader :current_face_class
+
     def initialize(display:, led:, stdout: $stdout)
       @display = display
       @led     = led
       @stdout  = stdout
+      @current_face_class = Face::Neutral
     end
 
     def handle(frame)
@@ -45,6 +48,7 @@ module StackchanProtocol
     def handle_face(frame)
       face_class = FACE_TABLE[frame["F"]]
       return false unless face_class
+      @current_face_class = face_class
       face_class.new.draw(@display)
       true
     end
