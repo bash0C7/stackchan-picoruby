@@ -78,16 +78,18 @@ module StackchanNotifier
 
       parser = OptionParser.new do |o|
         o.banner = "Usage: stackchan-notify --face NAME [--left_led COLOR,MODE] [--right_led COLOR,MODE] [--duration N] [--socket PATH] [--quiet]"
-        o.on("--face NAME",          "one of: #{FACES.join(' / ')}")                                { |v| result[:face] = v.to_sym }
-        o.on("--left_led SPEC",      "left LED, e.g. red,blink or 0xFF0000,blink",
-                                     "default: 0x000000,solid (off)")                              { |v| result[:left]  = parse_led(v) }
-        o.on("--right_led SPEC",     "right LED, same format as --left_led",
-                                     "default: 0x000000,solid (off)")                              { |v| result[:right] = parse_led(v) }
-        o.on("--duration N", Integer, "auto-restore to neutral + both LEDs off after N seconds")    { |v| result[:duration] = v }
-        o.on("--socket PATH",        "DRb Unix socket (env: STACKCHAN_NOTIFIER_SOCKET,",
-                                     "default: #{StackchanNotifier.default_socket_path})")         { |v| result[:socket] = v }
-        o.on("--quiet",              "suppress 'daemon unavailable' stderr (CLI still exits 0)")   { result[:quiet] = true }
-        o.on("-h", "--help",         "show this help and exit")                                    { @stdout.puts(o); print_extras; exit EXIT_OK }
+        o.on("--face NAME",            "one of: #{FACES.join(' / ')}")                              { |v| result[:face] = v.to_sym }
+        o.on("--left_led COLOR,MODE",  "LED for StackChan's left hand (default: 0x000000,solid = off).",
+                                       "COLOR = preset name (#{PRESETS.keys.join(' / ')}) or packed HSB hex 0xHHSSBB.",
+                                       "MODE  = #{MODES.join(' / ')}.")                            { |v| result[:left]  = parse_led(v) }
+        o.on("--right_led COLOR,MODE", "LED for StackChan's right hand (default: 0x000000,solid = off).",
+                                       "COLOR = preset name (#{PRESETS.keys.join(' / ')}) or packed HSB hex 0xHHSSBB.",
+                                       "MODE  = #{MODES.join(' / ')}.")                            { |v| result[:right] = parse_led(v) }
+        o.on("--duration N", Integer,  "auto-restore to neutral + both LEDs off after N seconds")  { |v| result[:duration] = v }
+        o.on("--socket PATH",          "DRb Unix socket (env: STACKCHAN_NOTIFIER_SOCKET,",
+                                       "default: #{StackchanNotifier.default_socket_path})")       { |v| result[:socket] = v }
+        o.on("--quiet",                "suppress 'daemon unavailable' stderr (CLI still exits 0)") { result[:quiet] = true }
+        o.on("-h", "--help",           "show this help and exit")                                  { @stdout.puts(o); print_extras; exit EXIT_OK }
       end
       parser.parse!(argv.dup)
 
@@ -109,7 +111,7 @@ module StackchanNotifier
       begin
         val = Integer(str, 16)
       rescue ArgumentError
-        raise ArgumentError, "color must be a preset name (#{PRESETS.keys.join(' / ')}) or hex (0x000000..0xFFFFFF); got #{str.inspect}"
+        raise ArgumentError, "color must be a preset name (#{PRESETS.keys.join(' / ')}) or packed HSB hex 0xHHSSBB (0x000000..0xFFFFFF); got #{str.inspect}"
       end
       raise ArgumentError, "color out of range (0x000000..0xFFFFFF): #{str}" if val < 0 || val > 0xFFFFFF
       val
