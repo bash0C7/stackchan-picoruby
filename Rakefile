@@ -1,10 +1,6 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
-begin
-  require_relative "lib/deploy/picomodem"
-  require_relative "lib/deploy/shell_recovery"
-rescue LoadError
-  # Optional dependencies for deploy tasks
-end
+require_relative "lib/deploy/picomodem"
+require_relative "lib/deploy/shell_recovery"
 require 'rake/testtask'
 
 Rake::TestTask.new(:test) do |t|
