@@ -17,6 +17,14 @@ class FaceTableTest < Test::Unit::TestCase
     assert_equal "3", StackchanBleClient::FaceTable::FACE_INDICES.fetch(:surprised)
   end
 
+  def test_sad_index_is_four
+    assert_equal "4", StackchanBleClient::FaceTable::FACE_INDICES.fetch(:sad)
+  end
+
+  def test_angry_index_is_five
+    assert_equal "5", StackchanBleClient::FaceTable::FACE_INDICES.fetch(:angry)
+  end
+
   def test_unknown_face_raises_key_error
     assert_raise(KeyError) do
       StackchanBleClient::FaceTable::FACE_INDICES.fetch(:bogus)
