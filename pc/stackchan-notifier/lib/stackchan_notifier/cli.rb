@@ -13,7 +13,7 @@ module StackchanNotifier
   #       Claude Code on missing infrastructure)
   #   2 = invalid CLI arguments (visible misconfiguration)
   class CLI
-    FACES = %i[neutral smile joy surprised].freeze
+    FACES = %i[neutral smile joy surprised sad angry].freeze
     MODES = %i[solid blink breathing off].freeze
     # Values are packed HSB (0xHHSSBB) matching the wire format used by
     # the BLE NUS combo frame protocol. H = 255 * degrees / 360; S and B

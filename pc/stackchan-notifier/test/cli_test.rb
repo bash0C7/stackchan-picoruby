@@ -72,6 +72,27 @@ class CLITest < Test::Unit::TestCase
     assert_match(/--face required/, @stderr.string)
   end
 
+  def test_face_sad_accepted
+    code = run_cli(%w[--face sad --left_led red,solid])
+    assert_equal 0, code, @stderr.string
+    _, tuple = @sent.first
+    assert_equal :sad, tuple[1]
+  end
+
+  def test_face_angry_accepted
+    code = run_cli(%w[--face angry --left_led red,solid])
+    assert_equal 0, code, @stderr.string
+    _, tuple = @sent.first
+    assert_equal :angry, tuple[1]
+  end
+
+  def test_face_unknown_rejected_lists_sad_and_angry
+    code = run_cli(%w[--face confused --left_led red,solid])
+    assert_equal 2, code
+    assert_match(/sad/, @stderr.string)
+    assert_match(/angry/, @stderr.string)
+  end
+
   def test_quiet_suppresses_daemon_unavailable_stderr
     failing = ->(_s, _t) { raise DRb::DRbConnError, "connection refused" }
     code = run_cli(%w[--face smile --quiet], sender: failing)
