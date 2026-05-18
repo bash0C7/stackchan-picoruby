@@ -57,7 +57,7 @@ class RubyClassExtractTest < Test::Unit::TestCase
     fix.unlink
   end
 
-  def test_tempfile_is_writable_at_load_time
+  def test_load_classes_from_handles_minimal_class
     fix = Tempfile.new(['fixture', '.rb'])
     fix.write("class Beacon\nend\n")
     fix.close

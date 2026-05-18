@@ -10,18 +10,13 @@ module RubyClassExtract
     result = Prism.parse(source)
     raise "parse error: #{result.errors}" unless result.success?
 
-    extracted = collect_class_module_source(result.value, exclude_superclasses)
+    extracted = []
+    walk(result.value, exclude_superclasses, extracted)
     tmpfile = Tempfile.new(['ruby_class_extract', '.rb'])
     tmpfile.write(extracted.join("\n"))
     tmpfile.close
     load tmpfile.path
     nil
-  end
-
-  def collect_class_module_source(node, exclude_superclasses)
-    out = []
-    walk(node, exclude_superclasses, out)
-    out
   end
 
   def walk(node, exclude_superclasses, out)
