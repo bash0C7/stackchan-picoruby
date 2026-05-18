@@ -99,6 +99,24 @@ def ensure_sdkconfig_fresh
   rm sdkconfig
 end
 
+# Abort if `idf_monitor.py` is already attached to the serial port. macOS
+# allows multiple readers on /dev/cu.usbmodem*, but USB CDC bytes are
+# delivered to whichever reader claims them first → uploader's FILE_ACK
+# disappears into monitor's stdin, esptool's chip-detect handshake races
+# against monitor's auto-reset suppression, and humans see "FILE_ACK got
+# nil" with no obvious cause. Detect via `ps` (python ... idf_monitor.py)
+# and tell the human to detach (Ctrl+]). Guarded tasks: every r2p2:* that
+# opens or writes to the serial port.
+def ensure_no_concurrent_monitor
+  ps_out = `ps -axo pid=,command= 2>/dev/null`
+  hits = ps_out.lines.select { |l| l =~ %r{python[^\s]*\s.*idf_monitor\.py} }
+  return if hits.empty?
+  pids = hits.map { |l| l.strip.split(' ', 2).first }
+  abort "[monitor guard] idf_monitor.py is running (pid=#{pids.join(',')}). " \
+        "A human session likely has `rake r2p2:monitor` open — Ctrl+] to detach, " \
+        "then retry. If stale: kill #{pids.join(' ')}"
+end
+
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup do
@@ -123,12 +141,14 @@ namespace :r2p2 do
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
   task :flash do
+    ensure_no_concurrent_monitor
     port = espport
     in_r2p2 %Q{ESPPORT=#{port} rake flash}
   end
 
   desc 'build + flash in one shot (default workflow for code iteration)'
   task :build_flash => :clear_libmruby_cache do
+    ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     port = espport
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
@@ -136,12 +156,14 @@ namespace :r2p2 do
 
   desc 'idf.py monitor (HUMAN USE ONLY — claude code Bash has no TTY)'
   task :monitor do
+    ensure_no_concurrent_monitor
     port = espport
     in_r2p2 %Q{ESPPORT=#{port} rake monitor}
   end
 
   desc 'cat ESPPORT into SERIAL_LOG (claude code: launch via run_in_background, then rake r2p2:reset)'
   task :capture do
+    ensure_no_concurrent_monitor
     port = espport
     log = ENV.fetch('SERIAL_LOG', SERIAL_LOG_DEFAULT)
     mkdir_p File.dirname(log)
@@ -150,6 +172,7 @@ namespace :r2p2 do
 
   desc 'pulse RTS to reset CoreS3 (claude code has no TTY for `idf.py monitor`)'
   task :reset do
+    ensure_no_concurrent_monitor
     port = espport
     sh ESP_PYTHON, '-c', <<~PY
       import serial, time
@@ -170,6 +193,7 @@ namespace :r2p2 do
   # for the diagnostic context. For working recovery today, use `wipe_storage`.
   desc 'interrupt autostart via Ctrl-C and rm /home/app.mrb (press M5Stack reset button immediately before invoking)'
   task :rm_appmrb do
+    ensure_no_concurrent_monitor
     port = espport
     Deploy::ShellRecovery.rm_app(port: port)
   end
@@ -181,6 +205,7 @@ namespace :r2p2 do
   # adjust if your sdkconfig partition table differs. ~7s end-to-end.
   desc 'erase storage partition (0x210000-0x310000, ~1MB) — fast app.mrb recovery without full flash'
   task :wipe_storage do
+    ensure_no_concurrent_monitor
     port = espport
     Dir.chdir(R2P2_ROOT) do
       sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} erase_region 0x210000 0x100000'"
@@ -189,6 +214,7 @@ namespace :r2p2 do
 
   desc 'host-compile SRC=path/to/foo.rb to .mrb and upload to DST=/home/path/foo.mrb'
   task :upload_mrb do
+    ensure_no_concurrent_monitor
     src = ENV.fetch('SRC') { abort 'SRC=path/to/foo.rb required for r2p2:upload_mrb' }
     dst = ENV.fetch('DST') { abort 'DST=/home/...mrb required for r2p2:upload_mrb' }
     src_path = File.expand_path(src, __dir__)
@@ -198,10 +224,25 @@ namespace :r2p2 do
 
   desc 'host-compile SRC=path/to/app.rb and upload as autostart payload /home/app.mrb'
   task :upload_appmrb do
+    ensure_no_concurrent_monitor
     src = ENV.fetch('SRC') { abort 'SRC=path required for r2p2:upload_appmrb' }
     src_path = File.expand_path(src, __dir__)
     abort "SRC not found: #{src_path}" unless File.exist?(src_path)
     upload_mrb_via_picomodem(src: src_path, dst: '/home/app.mrb', port: espport)
+  end
+
+  desc 'full device rebuild chain: build_flash → wipe_storage → upload_appmrb → reset (SRC=app.rb required, ~7 min total)'
+  task :full_rebuild do
+    src = ENV.fetch('SRC') { abort 'SRC=path/to/app.rb required for r2p2:full_rebuild' }
+    ensure_no_concurrent_monitor
+    Rake::Task['r2p2:build_flash'].invoke
+    sleep 3  # USB CDC renum settle after esptool flash
+    Rake::Task['r2p2:wipe_storage'].invoke
+    sleep 12 # USB renum + R2P2 shell come-up after esptool erase_region
+    ENV['SRC'] = src
+    Rake::Task['r2p2:upload_appmrb'].invoke
+    Rake::Task['r2p2:reset'].invoke
+    puts "[r2p2:full_rebuild] PASS — firmware rebuilt + #{src} deployed as /home/app.mrb + device reset"
   end
 
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
