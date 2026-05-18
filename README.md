@@ -30,6 +30,67 @@ Massive thanks to:
 - **macOS side**: orchestrator. Sends control frames (face × LED color × animation mode × side selector), receives ACK (`.`) or ERR (`?`) replies.
 - **Frame protocol**: K=V semicolon-delimited frames with single-byte ACK or ERR replies. See `mrbgems/picoruby-stackchan-protocol/` and `pc/stackchan-ble-client/` for implementation.
 
+## Project structure
+
+| Layer | Location | Build cycle |
+|---|---|---|
+| Drivers | `mrbgems/picoruby-*` + R2P2-ESP32 ports | `stackchan-device-build-flash` (~5-10 min) |
+| Protocol framework (FrameParser) | `mrbgems/picoruby-stackchan-protocol` | `stackchan-device-build-flash` |
+| Application (Face DSL, Dispatcher, BLE peripheral) | `mrbgems/picoruby-stackchan-protocol/examples/application.rb` | `stackchan-device-deploy-app` (~20 s) |
+| Host tests | `test/`, `lib/ruby_class_extract.rb` | `bundle exec rake test` |
+
+The single `application.rb` is the autostart payload; on-device requires
+only resolve under PicoRuby. Host tests load the file via prism AST
+extraction (`lib/ruby_class_extract.rb`).
+
+## Dev iteration
+
+```
+edit application.rb -> rake test            # host tests (~3 s)
+                    -> /stackchan-device-iterate  # device deploy + boot verify (~50 s)
+```
+
+## Deploy skills
+
+| Skill | Slash alias | Purpose |
+|---|---|---|
+| stackchan-device-build-flash | yes | rebuild firmware + flash |
+| stackchan-device-setup | yes | host picoruby + target setup |
+| stackchan-device-reset | yes | RTS pulse + 15 s settle |
+| stackchan-device-wipe | yes | erase /home storage partition |
+| stackchan-device-capture-boot | yes | log device serial to /tmp/boot.log |
+| stackchan-device-face-verify | yes | host golden SHA + device ACK |
+| stackchan-device-deploy-app | yes | upload .mrb + reset |
+| stackchan-device-cold-recovery | yes | wipe + redeploy + reset |
+| stackchan-device-full-rebuild | yes | build_flash + cold-recovery |
+| stackchan-device-boot-verify | yes | reset + capture + auto-analyze |
+| stackchan-device-iterate | yes | upload + reset + capture + analyze |
+
+Internal (no slash alias): upload-app, upload-lib, crash-analyze, ble-smoke
+— driven by claude during chain flows.
+
+## Recovery hierarchy
+
+If a deploy goes wrong, escalate in this order:
+
+1. `/stackchan-device-cold-recovery` — wipe + retry, ~30 s
+2. `/stackchan-device-full-rebuild` — rebuild firmware first, ~5-10 min
+3. Human help — USB replug / monitor + `rm /home/app.mrb` / download mode
+
+Do not iterate on step 1 more than twice; escalate.
+
+## Host tests
+
+```
+bundle install
+bundle exec rake test
+```
+
+Tests cover Face geometry, Dispatcher routing, golden-SHA regression, and
+the RubyClassExtract library itself. They DO NOT exercise on-device
+behavior — that is verified via `/stackchan-device-iterate` and
+`/stackchan-device-face-verify`.
+
 ## Feature matrix vs original
 
 | Subsystem | Original (official) | This repo (PicoRuby) | Notes |
