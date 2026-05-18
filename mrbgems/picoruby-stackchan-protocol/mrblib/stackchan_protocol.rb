@@ -26,6 +26,11 @@ module StackchanProtocol
     SURPRISED_MOUTH_HALF_W = 6
     SURPRISED_MOUTH_HALF_H = 12
 
+    # Angry brow geometry — V-shaped chevrons above each eye, inner ends drop.
+    BROW_OFFSET_Y    = 18   # baseline 18px above eye centerline
+    BROW_HALF_LENGTH = 16   # horizontal extent each side of eye cx
+    BROW_INNER_DROP  = 8    # inner end of brow drops 8px relative to outer end
+
     class Base
       DELTA_Y = 0
 
@@ -85,6 +90,26 @@ module StackchanProtocol
 
     class Sad < Base
       DELTA_Y = -8
+    end
+
+    class Angry < Base
+      DELTA_Y = 0   # neutral mouth
+
+      def draw(display)
+        super
+        # Left brow: outer end up, inner end down (V-slant toward bridge of nose).
+        display.draw_line(
+          EYE_LEFT_CX - BROW_HALF_LENGTH, EYE_LEFT_CY - BROW_OFFSET_Y,
+          EYE_LEFT_CX + BROW_HALF_LENGTH, EYE_LEFT_CY - BROW_OFFSET_Y + BROW_INNER_DROP,
+          EYE_COLOR
+        )
+        # Right brow: mirror — inner end down, outer end up.
+        display.draw_line(
+          EYE_RIGHT_CX - BROW_HALF_LENGTH, EYE_RIGHT_CY - BROW_OFFSET_Y + BROW_INNER_DROP,
+          EYE_RIGHT_CX + BROW_HALF_LENGTH, EYE_RIGHT_CY - BROW_OFFSET_Y,
+          EYE_COLOR
+        )
+      end
     end
 
     class Surprised < Base

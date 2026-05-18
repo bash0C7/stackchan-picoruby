@@ -207,3 +207,47 @@ class FaceSadTest < Test::Unit::TestCase
     assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
   end
 end
+
+class FaceAngryTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+  end
+
+  def test_brow_constants_have_expected_values
+    assert_equal 18, StackchanProtocol::Face::BROW_OFFSET_Y
+    assert_equal 16, StackchanProtocol::Face::BROW_HALF_LENGTH
+    assert_equal 8,  StackchanProtocol::Face::BROW_INNER_DROP
+  end
+
+  def test_draw_sequence_is_neutral_plus_two_brow_lines
+    StackchanProtocol::Face::Angry.new.draw(@display)
+    methods = @display.calls.map(&:first)
+    # fill, 2 eyes, 2 neutral mouth lines, 2 brow lines
+    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
+  end
+
+  def test_left_brow_line_slants_down_inward
+    StackchanProtocol::Face::Angry.new.draw(@display)
+    line_calls = @display.calls.select { |c| c.first == :draw_line }
+    # last two draw_line calls are brows (after the two mouth lines)
+    left_brow = line_calls[2].last
+    # outer end (94, 82) → inner end (126, 90)
+    assert_equal [94, 82, 126, 90, ILI9342::Color::WHITE], left_brow
+  end
+
+  def test_right_brow_line_slants_down_inward
+    StackchanProtocol::Face::Angry.new.draw(@display)
+    line_calls = @display.calls.select { |c| c.first == :draw_line }
+    right_brow = line_calls[3].last
+    # inner end (194, 90) → outer end (226, 82)
+    assert_equal [194, 90, 226, 82, ILI9342::Color::WHITE], right_brow
+  end
+
+  def test_angry_neutral_mouth_geometry_preserved
+    StackchanProtocol::Face::Angry.new.draw(@display)
+    line_calls = @display.calls.select { |c| c.first == :draw_line }
+    # first two draw_line calls are the neutral mouth (DELTA_Y=0)
+    assert_equal [135, 140, 160, 140, ILI9342::Color::WHITE], line_calls[0].last
+    assert_equal [160, 140, 185, 140, ILI9342::Color::WHITE], line_calls[1].last
+  end
+end
