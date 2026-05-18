@@ -21,6 +21,7 @@ unless defined?(ILI9342)
   module ILI9342
     module Color
       WHITE = 0xFFFF
+      BLACK = 0x0000
     end
   end
 end
