@@ -10,6 +10,29 @@ Rake::TestTask.new(:test) do |t|
   t.warning = false
 end
 
+namespace :face do
+  desc "Compute SHA256 of StackchanApp::Face::<NAME>.new.draw call sequence and " \
+       "write spec/golden/face_<NAME>.sha256. " \
+       "Usage: bundle exec rake face:register_golden FACE=neutral|smile|joy|surprised|sad|angry"
+  task :register_golden do
+    name = ENV.fetch('FACE') { abort 'FACE=<name> required' }
+    $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
+    $LOAD_PATH.unshift(File.expand_path('test', __dir__))
+
+    require 'test_helper'         # loads StackchanApp::Face::* via RubyClassExtract
+    require 'face_golden_hash'    # plain module, no Test::Unit autorun risk
+
+    klass = FaceGoldenHash::FACE_CASES.fetch(name.to_sym) do
+      abort "unknown FACE=#{name}; one of: #{FaceGoldenHash::FACE_CASES.keys.join(' / ')}"
+    end
+
+    sha = FaceGoldenHash.compute_sha(klass)
+    out = File.expand_path("spec/golden/face_#{name}.sha256", __dir__)
+    File.write(out, sha + "\n")
+    puts "[face:register_golden] wrote #{out} sha=#{sha}"
+  end
+end
+
 R2P2_ROOT = File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
