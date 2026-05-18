@@ -8,6 +8,8 @@ module StackchanProtocol
       "1" => Face::Smile,
       "2" => Face::Joy,
       "3" => Face::Surprised,
+      "4" => Face::Sad,
+      "5" => Face::Angry,
     }.freeze
 
     MODE_TABLE = {

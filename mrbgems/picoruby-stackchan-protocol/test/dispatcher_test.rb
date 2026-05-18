@@ -35,6 +35,26 @@ class DispatcherFaceTest < Test::Unit::TestCase
     assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_rect], methods
   end
 
+  def test_F_4_draws_sad
+    @disp.handle({ "F" => "4" })
+    # Sad call sequence is identical shape to Smile, but corner y is 148 not 132.
+    line = @display.calls.select { |c| c.first == :draw_line }.first.last
+    assert_equal 148, line[1]
+  end
+
+  def test_F_5_draws_angry
+    @disp.handle({ "F" => "5" })
+    methods = @display.calls.map(&:first)
+    # fill, 2 eyes, 2 neutral mouth, 2 brow lines
+    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
+  end
+
+  def test_F_4_and_F_5_write_ack
+    @disp.handle({ "F" => "4" })
+    assert_equal ["."], @stdout.writes
+    @stdout.writes.clear if @stdout.writes.respond_to?(:clear)
+  end
+
   def test_F_unknown_writes_error
     @disp.handle({ "F" => "9" })
     assert_equal ["?"], @stdout.writes
