@@ -24,6 +24,108 @@ require 'ble'
 # recover. Phase 2 used 2s which was borderline — Phase 3 raises it to 5s.
 sleep_ms 5000
 
+# ================================
+# === StackchanApp::Face module ==
+# ================================
+module StackchanApp
+  module Face
+    EYE_LEFT_CX  = 110
+    EYE_RIGHT_CX = 210
+    EYE_LEFT_CY  = 100
+    EYE_RIGHT_CY = 100
+    EYE_RADIUS   = 18
+    EYE_COLOR    = ILI9342::Color::WHITE
+
+    MOUTH_CX     = 160
+    MOUTH_CY     = 140
+    MOUTH_HALF_WIDTH = 25
+
+    SURPRISED_MOUTH_HALF_W = 6
+    SURPRISED_MOUTH_HALF_H = 12
+
+    BROW_OFFSET_Y    = 18
+    BROW_HALF_LENGTH = 16
+    BROW_INNER_DROP  = 8
+
+    class Base
+      DELTA_Y = 0
+
+      def draw(display)
+        display.fill(0x0000)
+        draw_eyes(display)
+        draw_mouth(display)
+      end
+
+      def draw_eyes(display)
+        display.draw_ellipse(EYE_LEFT_CX,  EYE_LEFT_CY,  EYE_RADIUS, EYE_RADIUS, EYE_COLOR, fill: true)
+        display.draw_ellipse(EYE_RIGHT_CX, EYE_RIGHT_CY, EYE_RADIUS, EYE_RADIUS, EYE_COLOR, fill: true)
+      end
+
+      def draw_mouth(display)
+        corner_y = MOUTH_CY - self.class::DELTA_Y
+        display.draw_line(MOUTH_CX - MOUTH_HALF_WIDTH, corner_y,
+                          MOUTH_CX,                    MOUTH_CY, EYE_COLOR)
+        display.draw_line(MOUTH_CX,                    MOUTH_CY,
+                          MOUTH_CX + MOUTH_HALF_WIDTH, corner_y, EYE_COLOR)
+      end
+
+      def redraw_eyes_open(display)
+        draw_eyes(display)
+      end
+    end
+
+    class Neutral < Base
+      DELTA_Y = 0
+    end
+
+    class Smile < Base
+      DELTA_Y = 8
+    end
+
+    class Joy < Base
+      DELTA_Y = 18
+    end
+
+    class Sad < Base
+      DELTA_Y = -8
+    end
+
+    class Angry < Base
+      DELTA_Y = 0
+
+      def draw(display)
+        super
+        display.draw_line(
+          EYE_LEFT_CX - BROW_HALF_LENGTH, EYE_LEFT_CY - BROW_OFFSET_Y,
+          EYE_LEFT_CX + BROW_HALF_LENGTH, EYE_LEFT_CY - BROW_OFFSET_Y + BROW_INNER_DROP,
+          EYE_COLOR
+        )
+        display.draw_line(
+          EYE_RIGHT_CX - BROW_HALF_LENGTH, EYE_RIGHT_CY - BROW_OFFSET_Y + BROW_INNER_DROP,
+          EYE_RIGHT_CX + BROW_HALF_LENGTH, EYE_RIGHT_CY - BROW_OFFSET_Y,
+          EYE_COLOR
+        )
+      end
+    end
+
+    class Surprised < Base
+      def draw_mouth(display)
+        display.draw_rect(MOUTH_CX - SURPRISED_MOUTH_HALF_W, MOUTH_CY - SURPRISED_MOUTH_HALF_H,
+                          SURPRISED_MOUTH_HALF_W * 2, SURPRISED_MOUTH_HALF_H * 2, EYE_COLOR, fill: true)
+      end
+    end
+
+    class Closed < Base
+      def draw_eyes(display)
+        display.draw_line(EYE_LEFT_CX  - EYE_RADIUS, EYE_LEFT_CY,
+                          EYE_LEFT_CX  + EYE_RADIUS, EYE_LEFT_CY,  EYE_COLOR)
+        display.draw_line(EYE_RIGHT_CX - EYE_RADIUS, EYE_RIGHT_CY,
+                          EYE_RIGHT_CX + EYE_RADIUS, EYE_RIGHT_CY, EYE_COLOR)
+      end
+    end
+  end
+end
+
 # [2] cold-boot init — pinch-perfect copy of app.rb's init block (Phase 2
 # bring-up smoke v13-aw9523-p0). Order is critical; see CLAUDE.md
 # "CoreS3 cold-boot 初期化シーケンス" section for the why behind each I2C write.
@@ -105,7 +207,7 @@ end
 Machine.delay_ms(50)
 led.show
 led.brightness = 100
-StackchanProtocol::Face::Neutral.new.draw(display)
+StackchanApp::Face::Neutral.new.draw(display)
 puts "[application] LCD + LED cold-boot done"
 
 # cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Neutral.draw) は
@@ -228,7 +330,7 @@ class StackChanApp < BLE
     # 「瞬き」演出。これがあれば人間がフリーズ vs 稼働中を視認できる。
     @blink_tick = (@blink_tick || 0) + 1
     if @blink_tick % 5 == 0
-      StackchanProtocol::Face::Closed.new.draw(@display)
+      StackchanApp::Face::Closed.new.draw(@display)
       Machine.delay_ms 150
       @dispatcher.current_face_class.new.redraw_eyes_open(@display)
     end

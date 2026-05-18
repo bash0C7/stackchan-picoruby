@@ -28,12 +28,3 @@ end
 # Load all class/module definitions from application.rb that are not
 # BLE-derived (StackChanApp itself uses on-device BLE API and is skipped).
 RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE])
-
-# Placeholder until Task 3 inlines StackchanApp into application.rb.
-unless defined?(StackchanApp::Face)
-  module StackchanApp
-    module Face
-      class Placeholder; end
-    end
-  end
-end
