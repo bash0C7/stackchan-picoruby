@@ -51,8 +51,8 @@ class DispatcherFaceTest < Test::Unit::TestCase
 
   def test_F_4_and_F_5_write_ack
     @disp.handle({ "F" => "4" })
-    assert_equal ["."], @stdout.writes
-    @stdout.writes.clear if @stdout.writes.respond_to?(:clear)
+    @disp.handle({ "F" => "5" })
+    assert_equal [".", "."], @stdout.writes
   end
 
   def test_F_unknown_writes_error
