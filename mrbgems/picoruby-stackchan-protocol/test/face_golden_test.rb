@@ -11,6 +11,9 @@ require "face_golden_hash"
 class FaceGoldenTest < Test::Unit::TestCase
   GOLDEN_DIR = File.expand_path("../spec/golden", __dir__)
 
+  # Face::Closed is intentionally excluded: it is an internal blink-animation
+  # frame (called directly from application.rb), not a BLE-addressable face
+  # with an FACE_TABLE F-key. Golden regression covers wire-protocol faces only.
   FACE_CASES = {
     neutral:   StackchanProtocol::Face::Neutral,
     smile:     StackchanProtocol::Face::Smile,
