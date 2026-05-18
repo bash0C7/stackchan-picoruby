@@ -64,6 +64,20 @@ def in_r2p2(*args)
   sh %Q{bash -c '. #{ESP_IDF_EXPORT} && cd #{R2P2_ROOT} && #{cmd}'}
 end
 
+def upload_mrb_via_picomodem(src:, dst:, port:)
+  picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
+  abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
+  build_dir = File.expand_path('tmp/build', __dir__)
+  mkdir_p build_dir
+  base = File.basename(src, File.extname(src))
+  mrb_path = File.join(build_dir, "#{base}.mrb")
+  rm_f mrb_path
+  sh picorbc, '-o', mrb_path, src
+  abort "picorbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
+  puts "[upload_mrb] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes)"
+  Deploy::Picomodem.upload(src: mrb_path, dst: dst, port: port)
+end
+
 # idf.py never re-applies SDKCONFIG_DEFAULTS to an already-existing sdkconfig,
 # so edits to any fragment listed in SDKCONFIG_DEFAULTS_CORES3 are silently
 # ignored on the next build. Detect that case by mtime and nuke sdkconfig so
@@ -173,37 +187,21 @@ namespace :r2p2 do
     end
   end
 
-  desc 'upload a Ruby file via PicoModem (SRC=path DST=/home/foo.rb), defaults to examples/app.rb'
-  task :upload do
-    src  = ENV.fetch('SRC', 'mrbgems/picoruby-stackchan-protocol/examples/app.rb')
-    dst  = ENV.fetch('DST', '/home/app.rb')
-    port = espport
-    abs_src = File.expand_path(src, __dir__)
-    Deploy::Picomodem.upload(src: abs_src, dst: dst, port: port)
-  end
-
-  desc 'host-compile SRC=path/to/foo.rb to .mrb and upload as /home/app.mrb (autostart bytecode path; bypasses on-device compile)'
+  desc 'host-compile SRC=path/to/foo.rb to .mrb and upload to DST=/home/path/foo.mrb'
   task :upload_mrb do
-    src = ENV.fetch('SRC') { abort 'SRC=path/to/file.rb is required for r2p2:upload_mrb' }
+    src = ENV.fetch('SRC') { abort 'SRC=path/to/foo.rb required for r2p2:upload_mrb' }
+    dst = ENV.fetch('DST') { abort 'DST=/home/...mrb required for r2p2:upload_mrb' }
     src_path = File.expand_path(src, __dir__)
     abort "SRC not found: #{src_path}" unless File.exist?(src_path)
+    upload_mrb_via_picomodem(src: src_path, dst: dst, port: espport)
+  end
 
-    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
-    unless File.executable?(picorbc)
-      abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first (host picoruby build)"
-    end
-
-    build_dir = File.expand_path('tmp/build', __dir__)
-    mkdir_p build_dir
-    base = File.basename(src_path, File.extname(src_path))
-    mrb_path = File.join(build_dir, "#{base}.mrb")
-    rm_f mrb_path
-    sh picorbc, '-o', mrb_path, src_path
-    abort "picorbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
-    puts "[upload_mrb] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes)"
-
-    port = espport
-    Deploy::Picomodem.upload(src: mrb_path, dst: '/home/app.mrb', port: port)
+  desc 'host-compile SRC=path/to/app.rb and upload as autostart payload /home/app.mrb'
+  task :upload_appmrb do
+    src = ENV.fetch('SRC') { abort 'SRC=path required for r2p2:upload_appmrb' }
+    src_path = File.expand_path(src, __dir__)
+    abort "SRC not found: #{src_path}" unless File.exist?(src_path)
+    upload_mrb_via_picomodem(src: src_path, dst: '/home/app.mrb', port: espport)
   end
 
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
@@ -224,7 +222,7 @@ namespace :r2p2 do
     # → Retired epoch suffix infrastructure. Device discovery now uses fixed base name.
     # Single board per session, so "StackChan-PicoRuby" prefix is unique.
     ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
-    Rake::Task['r2p2:upload_mrb'].invoke
+    Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
     puts "[smoke] waiting #{autostart_wait}s for autostart (5s escape + BLE init + advertise)"
@@ -261,7 +259,7 @@ namespace :r2p2 do
 
     # Leg 1: host golden SHA — fast (<2s), no device touch.
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('mrbgems/picoruby-stackchan-protocol', __dir__)) do
+      Dir.chdir(__dir__) do  # project root, where test/face_golden_test.rb lives
         ok = system('bundle', 'exec', 'rake', 'test',
                     "TESTOPTS=--name=FaceGoldenTest#test_#{face}_matches_golden")
         abort "[face_verify] host golden SHA FAIL for face=#{face}" unless ok
