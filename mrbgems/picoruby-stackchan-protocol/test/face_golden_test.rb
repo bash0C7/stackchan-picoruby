@@ -1,5 +1,5 @@
 require "test_helper"
-require "digest"
+require "face_golden_hash"
 
 # Lock the call-sequence SHA of each Face class against a golden file in
 # spec/golden/face_<name>.sha256. Deviation from spec's "RGB565 buffer SHA"
@@ -20,32 +20,11 @@ class FaceGoldenTest < Test::Unit::TestCase
     angry:     StackchanProtocol::Face::Angry,
   }.freeze
 
-  # Deterministic string for a single FakeDisplay#calls entry:
-  #   "method_name|arg0,arg1,...,argN-1,{fill:true/false}"
-  # The trailing keyword-arg hash (when present) is serialized in key:value
-  # form so different Ruby hash insertion orders are still equal.
-  def self.serialize_call(call)
-    method, args = call
-    parts = args.map do |a|
-      case a
-      when Hash
-        "{" + a.sort_by { |k, _| k.to_s }.map { |k, v| "#{k}:#{v}" }.join(",") + "}"
-      else
-        a.to_s
-      end
-    end
-    "#{method}|#{parts.join(",")}"
-  end
-
-  def self.canonical_dump(calls)
-    calls.map { |c| serialize_call(c) }.join("\n")
-  end
-
-  def self.compute_sha(face_class)
-    display = FakeDisplay.new
-    face_class.new.draw(display)
-    Digest::SHA256.hexdigest(canonical_dump(display.calls))
-  end
+  # Delegate to FaceGoldenHash so the Rake registration task and the test
+  # assertions share a single serialization source of truth.
+  def self.serialize_call(call) = FaceGoldenHash.serialize_call(call)
+  def self.canonical_dump(calls) = FaceGoldenHash.canonical_dump(calls)
+  def self.compute_sha(face_class) = FaceGoldenHash.compute_sha(face_class)
 
   FACE_CASES.each do |name, klass|
     define_method("test_#{name}_matches_golden") do
