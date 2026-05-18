@@ -232,7 +232,7 @@ namespace :r2p2 do
     Bundler.with_unbundled_env do
       Dir.chdir(File.expand_path('mrbgems/picoruby-stackchan-protocol', __dir__)) do
         ok = system('bundle', 'exec', 'rake', 'test',
-                    "TESTOPTS=--name=/FaceGoldenTest#test_#{face}_matches_golden/")
+                    "TESTOPTS=--name=FaceGoldenTest#test_#{face}_matches_golden")
         abort "[face_verify] host golden SHA FAIL for face=#{face}" unless ok
       end
     end
