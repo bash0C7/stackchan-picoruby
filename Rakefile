@@ -222,4 +222,30 @@ namespace :r2p2 do
     puts "[smoke] PASS — face=#{face} LED=#{color} #{mode} (side=#{side}) — visual check please"
   end
 
+  desc 'face verify: host golden-SHA assert + device BLE write + ACK (FACE=neutral|smile|joy|surprised|sad|angry, requires registered golden)'
+  task :face_verify do
+    face = ENV.fetch('FACE') { abort 'FACE=<name> required for r2p2:face_verify' }
+    valid_faces = %w[neutral smile joy surprised sad angry]
+    abort "unknown FACE=#{face}; one of: #{valid_faces.join(' / ')}" unless valid_faces.include?(face)
+
+    # Leg 1: host golden SHA — fast (<2s), no device touch.
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('mrbgems/picoruby-stackchan-protocol', __dir__)) do
+        ok = system('bundle', 'exec', 'rake', 'test',
+                    "TESTOPTS=--name=/FaceGoldenTest#test_#{face}_matches_golden/")
+        abort "[face_verify] host golden SHA FAIL for face=#{face}" unless ok
+      end
+    end
+    puts "[face_verify] host golden SHA PASS for face=#{face}"
+
+    # Leg 2: device BLE round-trip — slower (~20-30s with autostart wait).
+    ENV['FACE'] = face
+    ENV['COLOR'] ||= 'white'
+    ENV['MODE']  ||= 'solid'
+    ENV['SIDE']  ||= 'both'
+    Rake::Task['r2p2:ble_control_smoke'].invoke
+
+    puts "[face_verify] PASS — face=#{face} host SHA matched + device ACK received"
+  end
+
 end
