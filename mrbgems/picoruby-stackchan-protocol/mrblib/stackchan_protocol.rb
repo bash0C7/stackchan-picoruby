@@ -83,6 +83,10 @@ module StackchanProtocol
       DELTA_Y = 18
     end
 
+    class Sad < Base
+      DELTA_Y = -8
+    end
+
     class Surprised < Base
       def draw_mouth(display)
         display.draw_rect(

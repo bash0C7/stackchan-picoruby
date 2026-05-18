@@ -182,3 +182,28 @@ class FaceSubclassesTest < Test::Unit::TestCase
     assert_equal [135, 122, 160, 140, ILI9342::Color::WHITE], line_calls.first.last
   end
 end
+
+class FaceSadTest < Test::Unit::TestCase
+  def setup
+    @display = FakeDisplay.new
+  end
+
+  def test_sad_delta_y_is_negative_eight
+    assert_equal(-8, StackchanProtocol::Face::Sad::DELTA_Y)
+  end
+
+  def test_sad_corners_droop_below_center
+    StackchanProtocol::Face::Sad.new.draw_mouth(@display)
+    # corner_y = MOUTH_CY - (-8) = 140 - (-8) = 148
+    # left segment: (135, 148) -> (160, 140)
+    assert_equal [135, 148, 160, 140, ILI9342::Color::WHITE], @display.calls[0].last
+    # right segment: (160, 140) -> (185, 148)
+    assert_equal [160, 140, 185, 148, ILI9342::Color::WHITE], @display.calls[1].last
+  end
+
+  def test_sad_draw_sequence_matches_smile_shape
+    StackchanProtocol::Face::Sad.new.draw(@display)
+    methods = @display.calls.map(&:first)
+    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
+  end
+end
