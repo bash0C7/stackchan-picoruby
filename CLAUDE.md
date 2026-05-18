@@ -45,6 +45,18 @@ PC連携アバターパターン：
 - **StackChan側**：R2P2-ESP32 + PicoRuby スクリプト。I/O 端末として動作。センサ値を読んでシリアルで送信、PCからのコマンドでサーボ/LED/表情を駆動
 - **PC側**：Ruby (rb-foundation-model-mac) でローカルAI判断。**Mac との通信は WiFi (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) を本命**。R2P2-ESP32 は sdkconfig で `CONFIG_ESP_WIFI_ENABLED=y` 既に有効、SSLSocket も mbedTLS で完成。BLE は `picoruby-ble` の ESP32 port (BTstack binding) が未成熟なため当面 deferred。USB-serial は uploader / debug 用途で残す
 
+### Firmware vs application boundary
+
+- Firmware (mrbgems, requires `build_flash`): hardware drivers + stable
+  protocol framework (`StackchanProtocol::FrameParser` only).
+- Application (`mrbgems/picoruby-stackchan-protocol/examples/application.rb`,
+  deploy via `upload_appmrb`): all StackChan business logic — `Face` DSL,
+  `Dispatcher`, BLE peripheral, cold-boot init.
+- Host tests load application class definitions via prism AST through
+  `lib/ruby_class_extract.rb`. Application code must keep class
+  definitions free of `< BLE` patterns at the class-body top level so the
+  exclusion filter can skip them cleanly.
+
 ## CoreS3 cold-boot 初期化シーケンス (bring-up finding)
 
 **LCD と WS2812 を cold-boot で確実に出すには、ESP32 SoC の SPI/GPIO init だけでは不足。** 必ず system I2C bus (SDA=GPIO 12 / SCL=GPIO 11) で以下を順に叩く:
@@ -96,13 +108,31 @@ PC連携アバターパターン：
 - 結果要約 + pass/fail 報告は haiku に任せ、失敗の深掘り・design 判断は main (opus) が memory + spec から組む
 - 例外は `r2p2:setup` (host mruby 一から組む 10〜20 分): 通常 subagent (haiku) で大きい timeout (600000ms+) で foreground 実行
 
-### PicoModem upload timing
+### Device deploy: skills only, no ad-hoc rake
 
-- **upload リトライは 6 秒以上待ってから**。直前の probe / 失敗 upload で device 側 `read_exact` の TIMEOUT_MS=5000ms 経過待ちが入る
-- `rake r2p2:flash` 直後は **8〜12 秒待って boot 完了させる**
-- 「shell 生きてるか確認」は STX 単発送信 → 1 秒以内に `\n^B\n\x06` 来れば OK (ただし後で 6 秒待つ)
-- autostart が走ってる時は PicoModem 不可。recovery は **人間に monitor 立ち上げてもらって `rm /home/app.rb` → `Ctrl-]`** が確実 (下記 HW op ルール参照)
-- **uploader (`pc/stackchan-protocol/exe/picomodem-upload`) は Ruby + uart gem の自前実装**。Python に書き直さない (global の No Python ルール準拠)
+All device interactions go through `stackchan-device-*` skills (slash
+commands available for the human-facing subset). Do NOT invoke `rake
+r2p2:*` directly from main context — use the skill so output stays
+bounded and the chain composition is auditable.
+
+The `.rb` direct-upload path is forbidden. Always go through `upload_mrb`
+(generic) or `upload_appmrb` (autostart); on-device PicoRuby cannot
+compile application.rb-scale scripts (codegen stack overflow). Host
+picorbc compilation is mandatory.
+
+Iteration cycle:
+
+| Step | Skill |
+|---|---|
+| edit + host test | `bundle exec rake test` |
+| device iterate | `/stackchan-device-iterate` |
+| HITL face check | `/stackchan-device-face-verify FACE=...` |
+
+Recovery escalation (escalate after 2 tries):
+
+1. `/stackchan-device-cold-recovery`
+2. `/stackchan-device-full-rebuild`
+3. Human-driven recovery (USB replug, monitor manual, download mode)
 
 ## R2P2-ESP32 ビルド・flash フロー（CoreS3 ターゲット）
 
@@ -157,29 +187,12 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 
 `idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
 
-### autostart 詰まり recovery の階層
+### Recovery
 
-`/home/app.mrb` が boot loop / advertise 失敗 / PicoModem 通信不能等で詰まったときは、以下を **必ずこの順で** 試す。下に行くほど時間かかるが確実性高い。**1 段で 2 周以上空回ししたら次の段に上げる** — 同じ手を 3 周繰り返したら自動 recovery 粘り過ぎ、即上に進む。
-
-1. **`rake r2p2:wipe_storage`** (7s) — esptool で storage partition (0x210000-0x310000, 1MB) erase + hard reset。app.mrb 限定で速い。**ただし 1 回前の upload の PicoModem session が device 側に残ってると次の handshake が `FILE_ACK got nil` で詰む**。この場合は wipe 直後 sleep 15s 待って再 upload で復活することが多い
-2. **`rake r2p2:build_flash`** (5〜10 分) — 4 partition 全部 flash で device 完全に作り直す。wipe で 2-3 周回詰まって混乱したら **panic mode に入ってる** ので、落ち着いて build_flash に戻す。memory に「wipe で何とかなる」と書いてあっても**この階層の優先順位の方が上**(2026-05-17 wipe 不調セッションの教訓)
-3. **人間に依頼** — wipe + build_flash も詰まる / USB device が消える / 物理状態確認が要る、なら下表の通り
-
-### 物理 / shell-level op は人間に振る (recovery を粘らない)
-
-claude 側で rake task を組み合わせて自動 recovery を粘るより、**最初から人間に振る**。1 セッションで自動 recovery を 3-4 周回した結果、ESP32-S3 native USB-CDC の特性 (RTS pulse で chip reset しない、autostart 中の STDIN 占有、cat の re-enumerate EOF) で詰まることがほぼ確定:
-
-| 状況 | 人間に振るアクション |
-|---|---|
-| Upload で `FILE_ACK got nil` 連続 | monitor 立ち上げ → R2P2 shell prompt まで待つ → `rm /home/app.rb` → `Ctrl-]` で抜ける → claude 側で `rake r2p2:upload` |
-| board が silent (cat 0 byte) / boot ログを確実に見たい | 人間が別ターミナルで `cd ../../bash0C7/R2P2-ESP32 && rake monitor` (Ctrl-] 抜け含む) |
-| USB device が消えた | USB 抜き挿し |
-| storage を完全 wipe したい | BOOT 押しながら USB 挿し → download mode 強制 → claude 側で flash |
-| 板の物理状態 (LED 光ってる？画面に何が出てる？) | 目視確認をお願い (serial trace は補助) |
-
-- claude code の Bash は TTY が無いから `idf.py monitor` / `rake monitor` を直接呼ぶと即詰む
-- **`bin/capture-with-pty SECONDS LOG CMD...`** で PTY 付き短時間キャプチャができる (expect ベース)。`bin/capture-with-pty 30 /tmp/boot.log rake r2p2:monitor` で 30 秒キャプチャ → Ctrl-] 自動送出 → log 確定。USB-CDC re-enumerate にも idf_monitor 自前 reconnect で耐える
-- 軽量だけが目的なら `cat /dev/cu.usbmodem1101 > tmp/longrun/serial.log` を `run_in_background` で起動 → `rake r2p2:reset` → log を Read でも一応動く。ただし USB-CDC re-enumerate で EOF するリスクあり、確実性は capture-with-pty > cat > 人間視認
+See `stackchan-device-cold-recovery` / `-full-rebuild` skills and the
+README recovery section. Memory entries describing the old wipe → flash
+hierarchy are obsolete; the skills encode the same logic and supersede
+them.
 
 ### R2P2 shell REPL は二段構成
 
