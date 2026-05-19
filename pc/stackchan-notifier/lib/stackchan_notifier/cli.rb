@@ -1,8 +1,7 @@
 require "optparse"
-require "drb/drb"
-require "drb/unix"
 
 require_relative "../stackchan_notifier"
+require_relative "cli_base"
 
 module StackchanNotifier
   # Thin client invoked by Claude Code hooks. Reads args, writes one tuple to
@@ -33,13 +32,8 @@ module StackchanNotifier
     EXIT_OK      = 0
     EXIT_BAD_ARG = 2
 
-    def self.run(argv, stdout: $stdout, stderr: $stderr, sender: method(:drb_send))
+    def self.run(argv, stdout: $stdout, stderr: $stderr, sender: CliBase.method(:drb_send))
       new(stdout: stdout, stderr: stderr, sender: sender).run(argv)
-    end
-
-    def self.drb_send(socket, tuple)
-      DRb.start_service
-      DRbObject.new_with_uri("drbunix:#{socket}").write(tuple)
     end
 
     def initialize(stdout:, stderr:, sender:)
@@ -50,13 +44,13 @@ module StackchanNotifier
 
     def run(argv)
       opts = parse(argv)
-      tuple = [
-        :notify,
-        opts[:face],
-        opts[:left][0],  opts[:left][1],
-        opts[:right][0], opts[:right][1],
-        opts[:duration],
-      ]
+      tuple = [:cmd, :notify, {
+        face:     opts[:face],
+        left:     opts[:left],
+        right:    opts[:right],
+        duration: opts[:duration],
+        silent:   opts[:silent],
+      }]
       try_send(opts[:socket], tuple, quiet: opts[:quiet])
       EXIT_OK
     rescue OptionParser::ParseError, ArgumentError => e
@@ -72,6 +66,7 @@ module StackchanNotifier
         left:     DEFAULT_LED,
         right:    DEFAULT_LED,
         duration: nil,
+        silent:   false,
         socket:   ENV["STACKCHAN_NOTIFIER_SOCKET"] || StackchanNotifier.default_socket_path,
         quiet:    false,
       }
@@ -88,6 +83,7 @@ module StackchanNotifier
         o.on("--duration N", Integer,  "auto-restore to neutral + both LEDs off after N seconds")  { |v| result[:duration] = v }
         o.on("--socket PATH",          "DRb Unix socket (env: STACKCHAN_NOTIFIER_SOCKET,",
                                        "default: #{StackchanNotifier.default_socket_path})")       { |v| result[:socket] = v }
+        o.on("--silent",               "suppress servo motion (face + LED still sent)")            { result[:silent] = true }
         o.on("--quiet",                "suppress 'daemon unavailable' stderr (CLI still exits 0)") { result[:quiet] = true }
         o.on("-h", "--help",           "show this help and exit")                                  { @stdout.puts(o); print_extras; exit EXIT_OK }
       end
@@ -130,10 +126,10 @@ module StackchanNotifier
     end
 
     def try_send(socket, tuple, quiet:)
-      @sender.call(socket, tuple)
-    rescue DRb::DRbConnError, Errno::ENOENT, Errno::ECONNREFUSED, Errno::EACCES => e
-      return if quiet
-      @stderr.puts "stackchan-notify: daemon unavailable (#{e.class}: #{e.message})"
+      CliBase.try_send(
+        sender: @sender, socket: socket, tuple: tuple,
+        stderr: @stderr, quiet: quiet, program_name: "stackchan-notify",
+      )
     end
   end
 end

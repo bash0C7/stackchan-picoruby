@@ -19,21 +19,42 @@ class CLITest < Test::Unit::TestCase
     assert_equal 0, code
     assert_equal 1, @sent.size
     _, tuple = @sent.first
-    assert_equal [:notify, :smile, 0x00FFFF, :blink, 0x000000, :solid, nil], tuple
+    assert_equal :cmd,    tuple[0]
+    assert_equal :notify, tuple[1]
+    params = tuple[2]
+    assert_equal :smile,               params[:face]
+    assert_equal [0x00FFFF, :blink],   params[:left]
+    assert_equal [0x000000, :solid],   params[:right]
+    assert_nil                         params[:duration]
+    assert_equal false,                params[:silent]
   end
 
   def test_both_leds_with_mixed_preset_and_hex
     code = run_cli(%w[--face smile --left_led 0xFF8800,solid --right_led green,breathing])
     assert_equal 0, code
     _, tuple = @sent.first
-    assert_equal [:notify, :smile, 0xFF8800, :solid, 0x55FFFF, :breathing, nil], tuple
+    assert_equal :cmd,    tuple[0]
+    assert_equal :notify, tuple[1]
+    params = tuple[2]
+    assert_equal :smile,                 params[:face]
+    assert_equal [0xFF8800, :solid],     params[:left]
+    assert_equal [0x55FFFF, :breathing], params[:right]
+    assert_nil                           params[:duration]
+    assert_equal false,                  params[:silent]
   end
 
   def test_duration_appended_to_tuple
     code = run_cli(%w[--face smile --left_led red,blink --duration 5])
     assert_equal 0, code
     _, tuple = @sent.first
-    assert_equal [:notify, :smile, 0x00FFFF, :blink, 0x000000, :solid, 5], tuple
+    assert_equal :cmd,    tuple[0]
+    assert_equal :notify, tuple[1]
+    params = tuple[2]
+    assert_equal :smile,             params[:face]
+    assert_equal [0x00FFFF, :blink], params[:left]
+    assert_equal [0x000000, :solid], params[:right]
+    assert_equal 5,                  params[:duration]
+    assert_equal false,              params[:silent]
   end
 
   def test_duration_zero_exits_2_with_stderr_message
@@ -76,14 +97,14 @@ class CLITest < Test::Unit::TestCase
     code = run_cli(%w[--face sad --left_led red,solid])
     assert_equal 0, code, @stderr.string
     _, tuple = @sent.first
-    assert_equal :sad, tuple[1]
+    assert_equal :sad, tuple[2][:face]
   end
 
   def test_face_angry_accepted
     code = run_cli(%w[--face angry --left_led red,solid])
     assert_equal 0, code, @stderr.string
     _, tuple = @sent.first
-    assert_equal :angry, tuple[1]
+    assert_equal :angry, tuple[2][:face]
   end
 
   def test_face_unknown_rejected_lists_sad_and_angry
@@ -123,5 +144,25 @@ class CLITest < Test::Unit::TestCase
     assert_equal "/tmp/custom.sock", socket
   ensure
     ENV.delete("STACKCHAN_NOTIFIER_SOCKET")
+  end
+
+  def test_silent_flag_sets_silent_true_in_tuple
+    sent = []
+    sender = ->(_socket, tuple) { sent << tuple }
+    StackchanNotifier::CLI.run(
+      %w[--face joy --silent],
+      stdout: StringIO.new, stderr: StringIO.new, sender: sender,
+    )
+    assert_equal true, sent[0][2][:silent]
+  end
+
+  def test_default_silent_is_false
+    sent = []
+    sender = ->(_socket, tuple) { sent << tuple }
+    StackchanNotifier::CLI.run(
+      %w[--face joy],
+      stdout: StringIO.new, stderr: StringIO.new, sender: sender,
+    )
+    assert_equal false, sent[0][2][:silent]
   end
 end
