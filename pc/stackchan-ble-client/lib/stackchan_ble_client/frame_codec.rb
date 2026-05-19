@@ -50,12 +50,12 @@ module StackchanBleClient
       encode_pairs(pairs)
     end
 
-    def parse_ack(byte)
-      case byte
+    def parse_ack(frame)
+      case frame[0, 1]
       when ACK_OK    then :ok
       when ACK_ERROR then :error
       else
-        raise ArgumentError, "unknown ack byte: #{byte.inspect}"
+        raise ArgumentError, "unknown ack frame: #{frame.inspect}"
       end
     end
 

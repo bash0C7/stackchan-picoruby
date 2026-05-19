@@ -112,4 +112,22 @@ class FrameCodecAckTest < Test::Unit::TestCase
       StackchanBleClient::FrameCodec.parse_ack("X")
     end
   end
+
+  def test_parse_ack_accepts_newline_terminated_ok_frame
+    assert_equal :ok, StackchanBleClient::FrameCodec.parse_ack(".\n")
+  end
+
+  def test_parse_ack_accepts_newline_terminated_error_frame
+    assert_equal :error, StackchanBleClient::FrameCodec.parse_ack("?\n")
+  end
+
+  def test_parse_ack_still_accepts_bare_ack_byte_for_backcompat_with_existing_tests
+    # The wire format is ".\n", but parse_ack only looks at the first byte so
+    # bare-byte callers (older tests, future single-byte ACKs) keep working.
+    assert_equal :ok, StackchanBleClient::FrameCodec.parse_ack(".")
+  end
+
+  def test_parse_ack_rejects_frame_starting_with_unknown_byte
+    assert_raise(ArgumentError) { StackchanBleClient::FrameCodec.parse_ack("<Y_actual:0,P_actual:600>\n") }
+  end
 end
