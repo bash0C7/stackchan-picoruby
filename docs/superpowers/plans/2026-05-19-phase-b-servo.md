@@ -1047,7 +1047,7 @@ In `mrbgems/picoruby-stackchan-protocol/examples/application.rb`, find the `slee
 # Dispatcher can return <ERROR:servo_unavailable> while Phase A features stay live.
 @head = nil
 begin
-  servo_uart = UART.new(unit: :UART1, txd_pin: 7, rxd_pin: 6, baudrate: 1_000_000)
+  servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 7, rxd_pin: 6, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
   yaw_servo.enable_torque

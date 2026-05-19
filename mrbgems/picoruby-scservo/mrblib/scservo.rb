@@ -68,7 +68,7 @@ class SCServo
     sum = body.inject(0) { |acc, b| acc + b }
     cksum = (~sum) & 0xFF
     packet = HEADER + body + [cksum]
-    @uart.write(packet)
+    @uart.write(packet.pack('C*'))   # picoruby-uart#write requires String of bytes
   end
 
   def encode_unsigned(v)
@@ -90,9 +90,10 @@ class SCServo
   def drain_rx
     # Best-effort consume of any pending WritePos status bytes so the next
     # read_pos does not misinterpret them. Sized for two servos * 6 bytes + margin.
+    # picoruby-uart#readpartial(n) returns String (up to n bytes) or nil immediately.
     remaining = DRAIN_BUDGET_BYTES
     loop do
-      chunk = @uart.read(remaining, timeout_ms: DRAIN_TIMEOUT_MS)
+      chunk = @uart.readpartial(remaining)
       break if chunk.nil? || chunk.empty?
       remaining -= chunk.length
       break if remaining <= 0
