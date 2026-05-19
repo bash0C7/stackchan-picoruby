@@ -43,4 +43,41 @@ class SCServoTest < Test::Unit::TestCase
     actual_data = uart.writes.first[6, 6]
     assert_equal expected_data, actual_data
   end
+
+  def test_read_pos_emits_request_packet
+    uart = FakeUART.new
+    # Pre-stage a valid response
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    servo = SCServo.new(uart, id: 1)
+    servo.read_pos
+    # request: ID=1, LEN=4, INSTR=2, REG=0x38, BYTES_TO_READ=2
+    # sum=1+4+2+0x38+2 = 1+4+2+56+2 = 65 = 0x41 -> cksum=~0x41 & 0xFF = 0xBE
+    expected_req = [0xFF, 0xFF, 0x01, 0x04, 0x02, 0x38, 0x02, 0xBE]
+    assert_equal expected_req, uart.writes.first
+  end
+
+  def test_read_pos_returns_parsed_position
+    uart = FakeUART.new
+    # Response: pos = 0x01F4 = 500
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    servo = SCServo.new(uart, id: 1)
+    assert_equal 500, servo.read_pos
+  end
+
+  def test_read_pos_decodes_negative
+    uart = FakeUART.new
+    # pos = 300 with sign bit -> [0x2C, 0x81], -> -300
+    # Length and checksum recalc: ID=1, LEN=4, ERR=0, pos_L=0x2C, pos_H=0x81
+    # sum=1+4+0+0x2C+0x81 = 1+4+44+129 = 178 = 0xB2 -> cksum=~0xB2 & 0xFF = 0x4D
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x2C, 0x81, 0x4D] }
+    servo = SCServo.new(uart, id: 1)
+    assert_equal(-300, servo.read_pos)
+  end
+
+  def test_read_pos_returns_nil_on_timeout
+    uart = FakeUART.new
+    uart.read_queue << :timeout
+    servo = SCServo.new(uart, id: 1)
+    assert_nil servo.read_pos
+  end
 end
