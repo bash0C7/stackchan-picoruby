@@ -91,6 +91,7 @@ PC連携アバターパターン：
 ### mrbgem pitfall (実機で詰まりがち)
 
 - **on-device の `require` 名は gem 名から `picoruby-` を strip した hyphen 形**。`picoruby-stackchan-protocol` → `require 'stackchan-protocol'` (underscore で書くと `LoadError`)。host テスト (CRuby + Bundler) は `$LOAD_PATH` で underscore でも解決するから on-device だけが prebuilt list (`mrbgems/picogem_init.c`) に依存
+- **`mrblib/*.rb` 内で sibling ファイルへの `require` を書くと device で fail**。host は test_helper.rb で `$LOAD_PATH` に mrblib を unshift してるから通るが、device の PicoRuby は mrblib path を `$LOAD_PATH` に乗せん。gem build が `mrblib/**/*.rb` を全部 gem bytecode に自動 bundle するので、sibling require は不要かつ有害。`require 'gemname/foo'` は **cross-gem** にのみ使う (`require 'mbedtls'`, `require 'ble'` 等)。2026-05-19 boot-verify が `(unknown):0: cannot load such file -- stackchan_protocol/frame_parser (LoadError)` を catch、reviewer 3 段 (spec/quality/final) が miss してた
 - **`build_config/xtensa-esp-picoruby.rb` に新 gem 行追加 → `rake r2p2:setup` 必須**。`rake r2p2:build_flash` 単独では `gem_init.c` / `picogem_init.c` が再生成されず新 gem が含まれない
 - **既存 gem の `mrblib/*.rb` 内容を変えただけなら軽量修復ルート**: `cd $R2P2/components/picoruby-esp32/picoruby && MRUBY_CONFIG=$R2P2/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb rake` → `idf.py build flash`。重い `r2p2:setup` フル不要
 - **`conf.gem` 表記は `gemdir:` のみ**。`path:` は picoruby の `MRuby::LoadGems` に拒否される
@@ -101,12 +102,37 @@ PC連携アバターパターン：
 - `examples/app.rb` (現状の bring-up smoke v13) は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
 - production 用の dispatcher loop を入れる場合は **「特定 frame (例 `E\n`) で exit」または「STX 検出で shell に hand-off」の exit hatch を frame protocol に組み込む** ことを前提にする (Q2-C リファクタ項目)
 
-### rake は subagent foreground で 1 個ずつ
+### rake は subagent foreground で、可能なら chain task 1 個
 
 - **本プロジェクトの rake task は全て subagent (general-purpose, model: haiku) 経由で foreground 起動**。screen `-dmS` longrun pattern は build / flash / upload / test いずれも使わない (`~/dev/src/CLAUDE.md` の 2 分超ロングバッチ規約に対する **本プロジェクト局所の override**)
-- subagent には rake を **1 個 foreground 実行するだけ** 投げる。background process / 長 sleep / 複合 wait は main の Bash で組み立てる (例「reset しつつ boot log 取る」は ① main で `cat > log &` ② subagent で `rake r2p2:reset` ③ main で `sleep 12 && kill` ④ main で log read)
+- **直列に走る複数 rake task は 1 invocation の chain task にまとめる**。`rake xxx yyy zzz` で順次実行可能。`r2p2:full_rebuild` (`build_flash → wipe → upload → reset`) のように Rakefile 側で chain task として定義し、USB renum 待ちの sleep / monitor guard も task 内で決定論的に持たせる。これが 4 subagent dispatch より一貫性高い
+- subagent には rake を **1 chain task foreground 実行するだけ** 投げる。background process / 長 sleep / 複合 wait は main の Bash で組み立てる (例「capture しながら reset」は ① main で `bin/capture-with-pty ... &` ② subagent で `rake r2p2:reset` ③ main で 通知待ち ④ main で log read)
 - 結果要約 + pass/fail 報告は haiku に任せ、失敗の深掘り・design 判断は main (opus) が memory + spec から組む
-- 例外は `r2p2:setup` (host mruby 一から組む 10〜20 分): 通常 subagent (haiku) で大きい timeout (600000ms+) で foreground 実行
+- 例外は `r2p2:setup` (host mruby 一から組む 10〜20 分): 通常 subagent (haiku) で大きい timeout (1200000ms+) で foreground 実行
+- **serial port を触る全 rake task は冒頭で `ensure_no_concurrent_monitor` を呼ぶ**。人間が `rake r2p2:monitor` を開いてると CDC byte 競合で uploader/flasher が silent fail するため事前 abort
+
+### serial capture は `bin/capture-with-pty` 必須、生 `cat /dev/cu.usbmodem*` 禁止
+
+reset で USB CDC が再列挙すると raw `cat` は中断する。2 回の boot 失敗で初めて気付くより、最初から `bin/capture-with-pty` (expect で PTY 経由 idf.py monitor) を使う:
+
+```bash
+bin/capture-with-pty 30 /tmp/stackchan-picoruby-debug/boot.log \
+  bundle exec rake r2p2:monitor
+```
+
+`r2p2:monitor` 内部の idf_monitor が renum gracefully に handle するので、reset を別 turn で投下しても取りこぼさない。`stackchan-device-capture-boot` skill が同パターンを encode 済み。
+
+### debug log は `/tmp/stackchan-picoruby-debug/` 配下に集約
+
+skill (atomic) は subagent dispatch 時に `tee /tmp/stackchan-picoruby-debug/<skill-name>.log` を必ず仕込む。grep / cross-reference / 失敗後再現に必要。/tmp 配下なので OS が清掃する、commit 不要
+
+### boot 失敗の診断は full log を取ってから仮説立てる
+
+2 行だけ見て「BLE NameError っぽい」と飛びつくと、実際は 1 行目 `(unknown):0: cannot load such file -- xxx (LoadError)` が真因で BLE は二次症状、というケースで時間を溶かす。boot log は必ず:
+
+1. `bin/capture-with-pty` で **cold-boot 全体** を取る (truncate されてないこと wc で確認)
+2. `grep -nE "LoadError|cannot load|NameError|Guru Meditation|Returned from app_main" <log>` で **最初の異常から順に** 読む
+3. 二次症状 (派生 error) は無視、root cause だけ追う
 
 ### Device deploy: skills only, no ad-hoc rake
 
