@@ -10,6 +10,17 @@ APPLICATION_RB = File.expand_path(
   '../mrbgems/picoruby-stackchan-protocol/examples/application.rb', __dir__
 )
 
+# Stub on-device Machine module so SCServo#read_bytes deadline logic works on host.
+# delay_ms advances a monotonic counter; uptime_us returns it so timeouts resolve
+# after READ_TIMEOUT_MS iterations of the poll loop.
+unless defined?(Machine)
+  module Machine
+    @@offset_us = 0
+    def self.uptime_us; @@offset_us; end
+    def self.delay_ms(ms); @@offset_us += ms * 1_000; end
+  end
+end
+
 # Pre-declare on-device-only base classes so RubyClassExtract can compare
 # against them without actually loading BLE etc.
 Object.const_set(:BLE, Class.new) unless defined?(BLE)

@@ -134,8 +134,9 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_after_write_pos_isolates_response
     uart = FakeUART.new
-    uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]  # stale WritePos ACK
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]  # stale WritePos ACK (cleared by clear_rx_buffer)
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC] }  # fresh ACK for write_pos
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }  # read_pos response
     servo = SCServo.new(uart, id: 1)
     servo.write_pos(500, time_ms: 0, speed: 0)
     assert_equal 500, servo.read_pos

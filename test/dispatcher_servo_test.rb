@@ -40,8 +40,8 @@ class DispatcherServoTest < Test::Unit::TestCase
     @yaw_servo.next_read = 498
     @pitch_servo.next_read = 500
     @disp.handle({ "Y" => "-300", "P" => "500" })
-    # 1st write: ACK byte ".", 2nd write: detail frame "<Y_actual:498,P_actual:500>\n"
-    assert_equal ".", @stdout.writes[0]
+    # 1st write: ACK frame ".\n", 2nd write: detail frame "<Y_actual:498,P_actual:500>\n"
+    assert_equal ".\n", @stdout.writes[0]
     assert_equal "<Y_actual:498,P_actual:500>\n", @stdout.writes[1]
   end
 
@@ -49,7 +49,7 @@ class DispatcherServoTest < Test::Unit::TestCase
     @yaw_servo.next_read   = nil
     @pitch_servo.next_read = 500
     @disp.handle({ "Y" => "-300", "P" => "500" })
-    assert_equal ".", @stdout.writes[0]
+    assert_equal ".\n", @stdout.writes[0]
     assert_equal "<ERROR:servo_timeout,axis:yaw>\n", @stdout.writes[1]
   end
 
@@ -82,8 +82,8 @@ class DispatcherServoTest < Test::Unit::TestCase
       display: @display, led: @led, stdout: @stdout, head: nil
     )
     disp.handle({ "Y" => "100" })
-    # ACK still ".", but detail frame indicates unavailable
-    assert_equal ".", @stdout.writes[0]
+    # ACK frame ".\n", detail frame indicates unavailable
+    assert_equal ".\n", @stdout.writes[0]
     assert_equal "<ERROR:servo_unavailable>\n", @stdout.writes[1]
   end
 end

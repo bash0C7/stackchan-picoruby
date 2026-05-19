@@ -6,7 +6,7 @@ class FakeUART
   def initialize
     @writes      = []
     @read_queue  = []           # each element: { bytes: [..], delay_ms: 0 } or :timeout
-    @pending_rx  = []           # flat array of bytes consumed by read(n, ...)
+    @pending_rx  = []           # flat array of bytes consumed by readpartial(n)
   end
 
   def write(bytes)
@@ -15,7 +15,23 @@ class FakeUART
     @writes << (bytes.is_a?(String) ? bytes.bytes : bytes)
   end
 
+  # Mirrors UART#clear_rx_buffer — drains any stale bytes before a new transaction.
+  def clear_rx_buffer
+    @pending_rx.clear
+  end
+
+  # Mirrors UART#flush — no-op in test double (no real hardware buffer to flush).
+  def flush
+  end
+
+  # When pending_rx is exhausted, pulls the next read_queue entry into pending_rx.
+  # Returns nil for :timeout entries or when no data is available.
   def readpartial(n)
+    if @pending_rx.empty? && !@read_queue.empty?
+      item = @read_queue.shift
+      return nil if item == :timeout
+      @pending_rx.concat(item[:bytes])
+    end
     return nil if @pending_rx.empty?
     take = [@pending_rx.length, n].min
     chunk_array = @pending_rx.shift(take)

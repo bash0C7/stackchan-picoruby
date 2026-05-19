@@ -195,6 +195,11 @@ module StackchanApp
     YAW_RANGE   = (-1280..1280)
     PITCH_RANGE = (30..870)
 
+    # Factory-firmware zero positions (hal_servo.cpp:173,182).
+    # zero_pos_1 (yaw, ID=1) = 460, zero_pos_2 (pitch, ID=2) = 620.
+    SERVO_YAW_ZERO   = 460
+    SERVO_PITCH_ZERO = 620
+
     def initialize(yaw_servo, pitch_servo)
       @yaw   = yaw_servo
       @pitch = pitch_servo
@@ -521,12 +526,17 @@ end
 
 if @head
   begin
+    # Small ±100 sweep around factory zero_pos to visually confirm servo
+    # communication without stressing the mechanism. See Head::SERVO_YAW_ZERO /
+    # SERVO_PITCH_ZERO for the zero-position origin (hal_servo.cpp:173,182).
+    y0 = StackchanApp::Head::SERVO_YAW_ZERO
+    p0 = StackchanApp::Head::SERVO_PITCH_ZERO
     [
-      ["up",     "0",     "800"],
-      ["down",   "0",     "200"],
-      ["right",  "1000",  "450"],
-      ["left",   "-1000", "450"],
-      ["center", "0",     "450"],
+      ["yaw+",   (y0 + 100).to_s, p0.to_s],
+      ["pitch+", y0.to_s,         (p0 + 100).to_s],
+      ["yaw-",   (y0 - 100).to_s, p0.to_s],
+      ["pitch-", y0.to_s,         (p0 - 100).to_s],
+      ["center", y0.to_s,         p0.to_s],
     ].each do |label, y, p|
       puts "[boot] self-test servo: #{label} Y=#{y} P=#{p}"
       @head.apply({"Y" => y, "P" => p, "T" => "600"})

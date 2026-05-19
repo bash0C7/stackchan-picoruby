@@ -34,11 +34,11 @@ class DispatcherFaceTest < Test::Unit::TestCase
 
   def test_F_known_writes_ack_dot
     @disp.handle({ "F" => "0" })
-    assert_includes @stdout.writes, "."
+    assert_includes @stdout.writes, ".\n"
   end
 
   def test_F_unknown_writes_question_mark
     @disp.handle({ "F" => "99" })
-    assert_includes @stdout.writes, "?"
+    assert_includes @stdout.writes, "?\n"
   end
 end
