@@ -40,6 +40,7 @@ module StackchanNotifier
       @thread                 = nil
       @gatt_cache_trap_count  = 0
       @gatt_cache_trap_logged = false
+      @shutdown_during_drain  = false
     end
 
     def start

@@ -190,7 +190,7 @@ Claude Code is never blocked.
 
 | Flag | Required | Domain |
 |---|---|---|
-| `--face NAME` | yes | `neutral` / `smile` / `joy` / `surprised` |
+| `--face NAME` | yes | `neutral` / `smile` / `joy` / `surprised` / `sad` / `angry` |
 | `--left_led COLOR,MODE` | no, default `0x000000,solid` (off) | COLOR = preset name or HSB-packed hex (`0xHHSSBB`); MODE = `solid` / `blink` / `breathing` / `off`. Side is from StackChan's perspective (its left hand) |
 | `--right_led COLOR,MODE` | no, default `0x000000,solid` (off) | same format as `--left_led` |
 | `--duration N` | no, default no auto-restore | positive integer seconds; on expiry the worker writes a neutral + both-LEDs-off tuple |
@@ -240,8 +240,8 @@ stackchan-servo --yaw 0 --pitch 450 --time 500
 |---|---|---|
 | `--yaw N` | raw units (typical -1000 to 1000) | horizontal head rotation (StackChan left/right) |
 | `--pitch N` | raw units (typical 100 to 800) | vertical head tilt (up/down) |
-| `--time N` | positive integer milliseconds | interpolation duration; auto-reset on expiry |
-| `--velocity N` | positive integer units/ms | mutually exclusive with `--time`; sets movement speed |
+| `--time N` | positive integer milliseconds | interpolation duration |
+| `--velocity N` | positive integer units/ms | sets movement speed; if both `--time` and `--velocity` are passed, `--time` takes precedence (FrameCodec drops `--velocity`) |
 | `--socket PATH` | override default | same as `stackchan-notify` |
 | `--quiet` | — | suppress daemon unavailable stderr |
 
@@ -297,7 +297,8 @@ These are the next-session items.
 
 - [seki/ts4r](https://github.com/seki/ts4r) — `TupleSpace4Ractor` originals
 - [Programming with a DJ controller, not vibe coding](https://speakerdeck.com/m_seki/programming-with-a-dj-controller-not-vibe-coding) — design philosophy reference
-- [`docs/superpowers/specs/2026-05-17-claude-code-notification-bridge-design.md`](../../docs/superpowers/specs/2026-05-17-claude-code-notification-bridge-design.md) — full design spec
+- [`docs/superpowers/specs/2026-05-17-claude-code-notification-bridge-design.md`](../../docs/superpowers/specs/2026-05-17-claude-code-notification-bridge-design.md) — v1.0 design spec
+- [`docs/superpowers/specs/2026-05-19-notifier-multi-command-dispatch-design.md`](../../docs/superpowers/specs/2026-05-19-notifier-multi-command-dispatch-design.md) — v2.0 multi-command dispatch spec
 - [`pc/stackchan-ble-client`](../stackchan-ble-client) — BLE transport this daemon delegates to
 - [Stack-chan official repo](https://github.com/stack-chan/stack-chan) — the original Stack-chan project
 

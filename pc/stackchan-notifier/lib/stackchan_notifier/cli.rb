@@ -29,9 +29,6 @@ module StackchanNotifier
     }.freeze
     DEFAULT_LED = [0x000000, :solid].freeze   # unspecified side = visually off
 
-    EXIT_OK      = 0
-    EXIT_BAD_ARG = 2
-
     def self.run(argv, stdout: $stdout, stderr: $stderr, sender: CliBase.method(:drb_send))
       new(stdout: stdout, stderr: stderr, sender: sender).run(argv)
     end
@@ -52,10 +49,10 @@ module StackchanNotifier
         silent:   opts[:silent],
       }]
       try_send(opts[:socket], tuple, quiet: opts[:quiet])
-      EXIT_OK
+      CliBase::EXIT_OK
     rescue OptionParser::ParseError, ArgumentError => e
       @stderr.puts "stackchan-notify: #{e.message}"
-      EXIT_BAD_ARG
+      CliBase::EXIT_BAD_ARG
     end
 
     private
@@ -85,7 +82,7 @@ module StackchanNotifier
                                        "default: #{StackchanNotifier.default_socket_path})")       { |v| result[:socket] = v }
         o.on("--silent",               "suppress servo motion (face + LED still sent)")            { result[:silent] = true }
         o.on("--quiet",                "suppress 'daemon unavailable' stderr (CLI still exits 0)") { result[:quiet] = true }
-        o.on("-h", "--help",           "show this help and exit")                                  { @stdout.puts(o); print_extras; exit EXIT_OK }
+        o.on("-h", "--help",           "show this help and exit")                                  { @stdout.puts(o); print_extras; exit CliBase::EXIT_OK }
       end
       parser.parse!(argv.dup)
 

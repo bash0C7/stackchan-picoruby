@@ -180,3 +180,39 @@ class WorkerPendingRetryTest < Test::Unit::TestCase
     assert_not_nil drop_warn
   end
 end
+
+class WorkerDrainSentinelPriorityTest < Test::Unit::TestCase
+  def setup
+    @ts = StackchanNotifier::TupleSpace4Ractor.new
+    @client = FakeBleClient.new
+    @notify_h = RecordingHandler.new(:notify)
+    @log = []
+    @worker = StackchanNotifier::Worker.new(
+      ts:             @ts,
+      client_factory: -> { @client },
+      handlers:       make_handlers_with(notify: @notify_h),
+      logger:         build_capturing_logger(@log),
+    )
+  end
+
+  def teardown
+    @worker.shutdown(timeout: 1.0) if @worker.thread
+  end
+
+  def test_shutdown_sentinel_during_drain_exits_cleanly
+    # TupleSpace4Ractor is LIFO: write order A, B, C → take order C, B, A.
+    # Write shutdown FIRST (bottom of stack), then real tuples on top.
+    # First take returns the top real tuple as initial; drain then hits the
+    # shutdown sentinel at the bottom, setting @shutdown_during_drain = true.
+    @ts.write(StackchanNotifier::Worker::SHUTDOWN_TUPLE)
+    @ts.write([:cmd, :notify, { face: :smile, left: [0,:solid], right: [0,:solid], duration: nil, silent: true }])
+    @ts.write([:cmd, :notify, { face: :joy,   left: [0,:solid], right: [0,:solid], duration: nil, silent: true }])
+
+    @worker.start
+    # drain_latest_per_kind should surface the shutdown sentinel and set
+    # @shutdown_during_drain = true, causing the worker to exit after the burst.
+    wait_until(timeout: 2.0) { !@worker.thread || !@worker.thread.alive? }
+    # The key assertion is the worker thread exited cleanly without external shutdown.
+    assert(@worker.thread.nil? || !@worker.thread.alive?, "worker should have exited after seeing shutdown sentinel during drain")
+  end
+end
