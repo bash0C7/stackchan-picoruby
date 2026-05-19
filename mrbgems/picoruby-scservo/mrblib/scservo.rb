@@ -88,7 +88,15 @@ class SCServo
   end
 
   def drain_rx
-    # Stub for Task 5; do nothing until we add the real drain.
+    # Best-effort consume of any pending WritePos status bytes so the next
+    # read_pos does not misinterpret them. Sized for two servos * 6 bytes + margin.
+    remaining = DRAIN_BUDGET_BYTES
+    loop do
+      chunk = @uart.read(remaining, timeout_ms: DRAIN_TIMEOUT_MS)
+      break if chunk.nil? || chunk.empty?
+      remaining -= chunk.length
+      break if remaining <= 0
+    end
     nil
   end
 

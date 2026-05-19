@@ -119,4 +119,25 @@ class SCServoTest < Test::Unit::TestCase
       SCServo.new(uart, id: 1).set_mode(:wat)
     end
   end
+
+  def test_write_pos_drains_pending_writepos_ack_bytes
+    uart = FakeUART.new
+    # Simulate two servos' WritePos ACKs accumulated in the line buffer
+    uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC,
+                       0xFF, 0xFF, 0x02, 0x02, 0x00, 0xFB]
+    servo = SCServo.new(uart, id: 1)
+    servo.write_pos(500, time_ms: 0, speed: 0)
+    # After write_pos, drain must have emptied pending_rx so subsequent read_pos
+    # sees only the response we stage next.
+    assert_empty uart.pending_rx
+  end
+
+  def test_read_pos_after_write_pos_isolates_response
+    uart = FakeUART.new
+    uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]  # stale WritePos ACK
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    servo = SCServo.new(uart, id: 1)
+    servo.write_pos(500, time_ms: 0, speed: 0)
+    assert_equal 500, servo.read_pos
+  end
 end
