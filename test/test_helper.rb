@@ -14,6 +14,9 @@ APPLICATION_RB = File.expand_path(
 # against them without actually loading BLE etc.
 Object.const_set(:BLE, Class.new) unless defined?(BLE)
 
+# Pre-declare UART module so SCServo's `require 'uart'` resolves on host
+Object.const_set(:UART, Module.new) unless defined?(UART)
+
 # Pre-define ILI9342::Color and other on-device constants referenced by Face
 # class bodies. Application code references these as bare constants inside
 # class definitions, so they must resolve at load time.
@@ -29,3 +32,11 @@ end
 # Load all class/module definitions from application.rb that are not
 # BLE-derived (StackChanApp itself uses on-device BLE API and is skipped).
 RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE])
+
+require 'fake_uart'
+
+# Load the picoruby-scservo gem's pure Ruby class from the mrbgems tree
+SCSERVO_PATH = File.expand_path(
+  '../mrbgems/picoruby-scservo/mrblib/scservo.rb', __dir__
+)
+load SCSERVO_PATH
