@@ -188,6 +188,51 @@ module StackchanApp
       end
     end
   end
+
+  class Head
+    YAW_RANGE   = (-1280..1280)
+    PITCH_RANGE = (30..870)
+
+    def initialize(yaw_servo, pitch_servo)
+      @yaw   = yaw_servo
+      @pitch = pitch_servo
+    end
+
+    def apply(frame)
+      time_ms, speed = resolve_time_speed(frame)
+      if frame.key?("Y")
+        y = clamp(frame["Y"].to_i, YAW_RANGE)
+        @yaw.write_pos(y, time_ms: time_ms, speed: speed)
+      end
+      if frame.key?("P")
+        p = clamp(frame["P"].to_i, PITCH_RANGE)
+        @pitch.write_pos(p, time_ms: time_ms, speed: speed)
+      end
+    end
+
+    def read_actual
+      { "Y_actual" => @yaw.read_pos, "P_actual" => @pitch.read_pos }
+    end
+
+    private
+
+    def resolve_time_speed(frame)
+      # T-priority: T present -> use T, else V if present, else both zero (max speed)
+      if frame.key?("T")
+        [frame["T"].to_i, 0]
+      elsif frame.key?("V")
+        [0, frame["V"].to_i]
+      else
+        [0, 0]
+      end
+    end
+
+    def clamp(v, range)
+      return range.first if v < range.first
+      return range.last  if v > range.last
+      v
+    end
+  end
 end
 
 # ====================================
