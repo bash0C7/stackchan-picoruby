@@ -111,3 +111,36 @@ class SendBuilderAggregationTest < Test::Unit::TestCase
     end
   end
 end
+
+class SendBuilderHeadTest < Test::Unit::TestCase
+  def test_head_yaw_and_pitch_with_time
+    b = StackchanBleClient::SendBuilder.new
+    b.head(yaw: -300, pitch: 500, time_ms: 2000)
+    assert_equal ["<Y:-300,P:500,T:2000>\n"], b.to_frames
+  end
+
+  def test_head_yaw_only_with_velocity
+    b = StackchanBleClient::SendBuilder.new
+    b.head(yaw: 100, velocity: 50)
+    assert_equal ["<Y:100,V:50>\n"], b.to_frames
+  end
+
+  def test_head_last_wins_for_same_key
+    b = StackchanBleClient::SendBuilder.new
+    b.head(yaw: 100)
+    b.head(yaw: 200, pitch: 400, time_ms: 1000)
+    assert_equal ["<Y:200,P:400,T:1000>\n"], b.to_frames
+  end
+
+  def test_head_coexists_with_face_and_led_in_first_occurrence_order
+    b = StackchanBleClient::SendBuilder.new
+    b.face(:joy)
+    b.head(yaw: 0, pitch: 450)
+    b.led(:red)
+    assert_equal [
+      "<F:2>\n",
+      "<Y:0,P:450>\n",
+      "<L:1,R:255,G:0,B:0,S:B,M:s>\n",
+    ], b.to_frames
+  end
+end

@@ -38,6 +38,18 @@ module StackchanBleClient
       encode_pairs("L" => "1", "R" => r.to_s, "G" => g.to_s, "B" => b.to_s, "S" => side_char, "M" => mode_char)
     end
 
+    def encode_head(yaw:, pitch:, time_ms:, velocity:)
+      if yaw.nil? && pitch.nil?
+        raise ArgumentError, "encode_head requires at least one of yaw / pitch"
+      end
+      pairs = {}
+      pairs["Y"] = yaw.to_s   if yaw
+      pairs["P"] = pitch.to_s if pitch
+      pairs["T"] = time_ms.to_s  if time_ms
+      pairs["V"] = velocity.to_s if velocity && !time_ms
+      encode_pairs(pairs)
+    end
+
     def parse_ack(byte)
       case byte
       when ACK_OK    then :ok

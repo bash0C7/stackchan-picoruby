@@ -52,6 +52,52 @@ class FrameCodecEncodeLedTest < Test::Unit::TestCase
   end
 end
 
+class FrameCodecHeadTest < Test::Unit::TestCase
+  def test_encode_head_all_axes_and_time
+    out = StackchanBleClient::FrameCodec.encode_head(
+      yaw: -300, pitch: 500, time_ms: 2000, velocity: nil
+    )
+    assert_equal "<Y:-300,P:500,T:2000>\n", out
+  end
+
+  def test_encode_head_with_velocity
+    out = StackchanBleClient::FrameCodec.encode_head(
+      yaw: 100, pitch: nil, time_ms: nil, velocity: 50
+    )
+    assert_equal "<Y:100,V:50>\n", out
+  end
+
+  def test_encode_head_yaw_only_no_time_no_velocity
+    out = StackchanBleClient::FrameCodec.encode_head(
+      yaw: 0, pitch: nil, time_ms: nil, velocity: nil
+    )
+    assert_equal "<Y:0>\n", out
+  end
+
+  def test_encode_head_pitch_only
+    out = StackchanBleClient::FrameCodec.encode_head(
+      yaw: nil, pitch: 500, time_ms: nil, velocity: nil
+    )
+    assert_equal "<P:500>\n", out
+  end
+
+  def test_encode_head_neither_axis_raises
+    assert_raise(ArgumentError) do
+      StackchanBleClient::FrameCodec.encode_head(
+        yaw: nil, pitch: nil, time_ms: 100, velocity: nil
+      )
+    end
+  end
+
+  def test_encode_head_time_wins_over_velocity
+    # T and V are mutually exclusive; T takes precedence when both given
+    out = StackchanBleClient::FrameCodec.encode_head(
+      yaw: 200, pitch: nil, time_ms: 1500, velocity: 80
+    )
+    assert_equal "<Y:200,T:1500>\n", out
+  end
+end
+
 class FrameCodecAckTest < Test::Unit::TestCase
   def test_ack_ok_byte
     assert_equal :ok, StackchanBleClient::FrameCodec.parse_ack(".")

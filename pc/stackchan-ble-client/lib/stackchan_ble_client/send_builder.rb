@@ -18,6 +18,12 @@ module StackchanBleClient
       record([:led, side], { kind: :led, form: form, value: value, side: side, mode: mode })
     end
 
+    def head(yaw: nil, pitch: nil, time_ms: nil, velocity: nil)
+      record(:head, {
+        kind: :head, yaw: yaw, pitch: pitch, time_ms: time_ms, velocity: velocity,
+      })
+    end
+
     def to_frames
       @order.map { |key| encode(@commands.fetch(key)) }
     end
@@ -36,6 +42,11 @@ module StackchanBleClient
       when :led
         r, g, b = resolve_color(cmd[:form], cmd[:value])
         FrameCodec.encode_led(r: r, g: g, b: b, side: cmd[:side], mode: cmd[:mode])
+      when :head
+        FrameCodec.encode_head(
+          yaw: cmd[:yaw], pitch: cmd[:pitch],
+          time_ms: cmd[:time_ms], velocity: cmd[:velocity],
+        )
       end
     end
 
