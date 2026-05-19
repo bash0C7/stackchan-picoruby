@@ -13,7 +13,7 @@ Subagent (haiku), 120000ms timeout.
 
 Dispatch:
 
-> Run `bundle exec rake r2p2:upload_mrb SRC=$SRC DST=$DST` in the foreground with 120000ms timeout. Both SRC and DST are required env vars. Report exit code + DONE_ACK. Under 100 words.
+> Run `bundle exec rake r2p2:upload_mrb SRC=$SRC DST=$DST` in the foreground with 120000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/upload-lib.log`. Both SRC and DST are required env vars. Report exit code + DONE_ACK. Under 100 words.
 
 ## Required env
 

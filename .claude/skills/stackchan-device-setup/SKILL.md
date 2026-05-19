@@ -13,7 +13,7 @@ Subagent (haiku), 1200000ms (20 min) timeout.
 
 Dispatch:
 
-> Run `bundle exec rake r2p2:setup` in the foreground with a 1200000ms timeout. Do not modify any code. Report exit code and the final 30 lines. Under 200 words.
+> Run `bundle exec rake r2p2:setup` in the foreground with a 1200000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/setup.log`. Do not modify any code. Report exit code and the final 30 lines. Under 200 words.
 
 ## Pass / fail signal
 

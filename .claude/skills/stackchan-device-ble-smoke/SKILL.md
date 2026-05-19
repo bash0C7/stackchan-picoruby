@@ -13,7 +13,7 @@ Subagent (haiku), 300000ms timeout.
 
 Dispatch:
 
-> Run `FACE=$FACE COLOR=$COLOR MODE=$MODE SIDE=$SIDE bundle exec rake r2p2:ble_control_smoke` foreground with 300000ms timeout. Do not modify code. Report exit code and any `[smoke] PASS` / `[smoke] FAIL` line verbatim. Under 150 words.
+> Run `FACE=$FACE COLOR=$COLOR MODE=$MODE SIDE=$SIDE bundle exec rake r2p2:ble_control_smoke` foreground with 300000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/ble-smoke-$FACE.log`. Do not modify code. Report exit code and any `[smoke] PASS` / `[smoke] FAIL` line verbatim. Under 150 words.
 
 ## Required env
 

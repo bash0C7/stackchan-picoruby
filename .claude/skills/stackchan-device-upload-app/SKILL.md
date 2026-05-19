@@ -13,7 +13,7 @@ Subagent (haiku), 120000ms timeout.
 
 Dispatch:
 
-> Run `bundle exec rake r2p2:upload_appmrb SRC=$SRC` in the foreground with a 120000ms timeout. SRC is the path to the application Ruby file relative to repo root. Do not modify any code. Report exit code, the picorbc compiled size line, and any FILE_ACK / DONE_ACK lines. Under 150 words.
+> Run `bundle exec rake r2p2:upload_appmrb SRC=$SRC` in the foreground with a 120000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/upload-app.log`. SRC is the path to the application Ruby file relative to repo root. Do not modify any code. Report exit code, the picorbc compiled size line, and any FILE_ACK / DONE_ACK lines. Under 150 words.
 
 ## Required env
 
@@ -24,6 +24,7 @@ Dispatch:
 - Exit 0 + `DONE_ACK ok` → success.
 - `FILE_ACK got nil` → device autostart loop occupies STDIN; escalate to wipe.
 - `picorbc compilation failed` → script syntax error; fix application.rb.
+- `[monitor guard] idf_monitor.py is running` → human has `rake r2p2:monitor` open; Ctrl+] then retry.
 
 ## Escalation
 

@@ -13,7 +13,7 @@ Subagent (haiku), 300000ms timeout.
 
 Dispatch:
 
-> Run `bundle exec rake r2p2:face_verify FACE=$FACE` foreground with 300000ms timeout. Report exit code and the two PASS lines (`[face_verify] host golden SHA PASS for face=...` and `[face_verify] PASS ...`) verbatim. Under 150 words.
+> Run `bundle exec rake r2p2:face_verify FACE=$FACE` foreground with 300000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/face-verify-$FACE.log`. Report exit code and the two PASS lines (`[face_verify] host golden SHA PASS for face=...` and `[face_verify] PASS ...`) verbatim. Under 150 words.
 
 ## Required env
 

@@ -13,12 +13,13 @@ Subagent (haiku), 60000ms timeout.
 
 Dispatch:
 
-> Run `bundle exec rake r2p2:wipe_storage` in the foreground with 60000ms timeout, then sleep 15 to let the device settle. Report exit code. Under 80 words.
+> Run `bundle exec rake r2p2:wipe_storage` in the foreground with 60000ms timeout from the repo root, teeing stdout+stderr into `/tmp/stackchan-picoruby-debug/wipe.log`, then sleep 15 to let the device settle. Report exit code. Under 80 words.
 
 ## Pass / fail signal
 
 - Exit 0 + `Erase operation completed successfully` → storage cleared.
 - Exit non-zero → USB driver / esptool / port permission issue. Manual intervention.
+- `[monitor guard] idf_monitor.py is running` → human has `rake r2p2:monitor` open; Ctrl+] then retry.
 
 ## Escalation
 
