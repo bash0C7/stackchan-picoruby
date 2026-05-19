@@ -22,7 +22,7 @@ A BLE scan + connect cycle takes ~3–5 seconds on macOS. Doing that on every
 hook invocation would make `Stop` and `PreToolUse` painful. Instead:
 
 - A long-running daemon holds **one** BLE connection.
-- Hook scripts are thin DRb clients that write a 7-element tuple to the
+- Hook scripts are thin DRb clients that write a `[:cmd, Symbol, Hash]` tuple to the
   daemon's TupleSpace over a Unix socket — typically <100 ms wall time.
 - The BLE worker thread drains additional pending tuples non-blockingly and
   sends only the **latest** one as a combo frame, so bursts of hook events
@@ -222,24 +222,26 @@ Exit codes:
 
 ### `stackchan-servo` reference
 
-Direct servo control without touching face/LED:
+Direct servo control without touching face/LED. Yaw and pitch are specified in
+raw servo encoder units (not degrees):
 
 ```bash
-# Pan (horizontal) to -90° left
-stackchan-servo --pan -90
+# Yaw (horizontal) to -500 (left)
+stackchan-servo --yaw -500
 
-# Tilt (vertical) to 45° up
-stackchan-servo --tilt 45
+# Pitch (vertical) to 400 (up)
+stackchan-servo --pitch 400
 
-# Both together
-stackchan-servo --pan 45 --tilt 0
+# Both together with 500 ms interpolation
+stackchan-servo --yaw 0 --pitch 450 --time 500
 ```
 
 | Flag | Domain | Notes |
 |---|---|---|
-| `--pan DEGREES` | -180 to 180 | horizontal head motion (StackChan left/right) |
-| `--tilt DEGREES` | -90 to 90 | vertical head tilt (up/down); 0 = center |
-| `--duration N` | positive integer seconds | auto-reset to center on expiry |
+| `--yaw N` | raw units (typical -1000 to 1000) | horizontal head rotation (StackChan left/right) |
+| `--pitch N` | raw units (typical 100 to 800) | vertical head tilt (up/down) |
+| `--time N` | positive integer milliseconds | interpolation duration; auto-reset on expiry |
+| `--velocity N` | positive integer units/ms | mutually exclusive with `--time`; sets movement speed |
 | `--socket PATH` | override default | same as `stackchan-notify` |
 | `--quiet` | — | suppress daemon unavailable stderr |
 
