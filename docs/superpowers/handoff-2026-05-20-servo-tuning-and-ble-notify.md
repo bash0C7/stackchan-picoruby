@@ -1,14 +1,17 @@
 # Handoff 2026-05-20: cold-boot self-test tuning + BLE notify next-up
 
+> **更新 2026-05-20 (session 2):** Task 1/2/3 全完了。Task 4 (servo range calibration) を新規追加。
+
 ## TL;DR for next session
 
-1. **Cold-boot self-test を小さくして元位置復帰** — `application.rb` の自己診断 sweep を「ちょっと動く + ニュートラル復帰」に絞る。観測の目的は「servo 通信生きてる」を視認するだけで OK、現在の `Y=±1000 / P=200..800` は範囲外で「無茶な方向」を向く。
-2. **次の実装は BLE 経由 notify** — protocol 層は完成済み (frame-delimited wire、device→client notify 1 frame/通知)。next: PC 側 `stackchan-notifier` から BLE 経由で `Y/P/V/T` frame を投げて servo を動かす経路を E2E 確認 → notify (LED/face) 経由のフックも整える。
-3. **Repo state は clean** — 本 handoff 直前に下記すべて commit 済み (untracked 残らず)。
+1. ~~Cold-boot self-test を小さくして元位置復帰~~ **DONE (154db90)** — ±30/3-step/T=50
+2. ~~BLE 経由 servo 制御 E2E 検証~~ **DONE (2026-05-20 実機確認)** — write_pos は正常。read_pos はハーフデュプレックスエコー問題で要調査 (別タスク)
+3. ~~派生クリーンアップ~~ **DONE** — scservo_test 52/52 PASS、doc pin 表記修正
+4. **NEW: Servo range キャリブレーション** — `SERVO_PITCH_ZERO=620` が実機で「真上向き」と判明。正確な正面向きポジション / 可動範囲を人間目視で calibrate する。
 
 ## Resume trigger
 
-User 任意。「servo tuning 続き」「BLE notify 実装」「次やる」 等で開始。
+User 任意。「servo tuning 続き」「キャリブレーション」「次やる」 等で開始。
 
 ## Phase B "servo bring-up" 結末 (2026-05-20 確定)
 
@@ -35,6 +38,29 @@ User 任意。「servo tuning 続き」「BLE notify 実装」「次やる」 �
 物理的にも sweep で動くこと user 視認済み。ただし `Y_actual` / `P_actual` の値が範囲外 (SCSCL は 0-1023 unsigned position) で、commanded `Y=±1000 / P=200..800` も factory firmware の zero_pos calibration (`zero_pos_1=460 / zero_pos_2=620` per `hal_servo.cpp:173,182`) を経由してへんから「無茶な方向」を向く。これは tuning マターで、protocol 層は健全。
 
 ## やってほしい作業 (優先順)
+
+### 4. NEW: Servo range キャリブレーション (人間目視必須)
+
+**経緯:** 2026-05-20 session 2 で `SERVO_PITCH_ZERO=620` を命令したところ servo が「真上向き」で止まることを user が視認。`--pitch 512` に変更したら servo が可視的に動いた (BLE E2E PASS 確認)。つまり:
+
+- `P=620` = 真上方向 (forward ではない)
+- `P=512` = より forward に近い (推定)
+- `SERVO_YAW_ZERO=460`, `SERVO_PITCH_ZERO=620` の定数は実機と不一致
+
+**作業内容:**
+1. pitch sweep: `--pitch` を 400 / 450 / 500 / 512 / 550 / 600 / 620 と変化させながら BLE コマンド発行、各位置で human が「正面向き/上向き/下向き」を記録
+2. yaw sweep: `--yaw` を 350 / 400 / 430 / 460 / 490 / 520 / 560 で同様に記録 (460 が正面向きか確認)
+3. 結果から `SERVO_YAW_ZERO` / `SERVO_PITCH_ZERO` を修正
+4. 自己テスト定数と BLE smoke task のデフォルト値も更新
+
+**コマンド例:**
+```bash
+# pitch 単体チェック (yaw は固定)
+cd pc/stackchan-ble-client
+bundle exec exe/stackchan-ble-control --name-prefix StackChan-PicoRuby --yaw 460 --pitch 512 --time 50 servo
+```
+
+**注:** read_pos は現在ハーフデュプレックスエコー問題でゴミ値を返す。位置確認は人間目視のみで行う。
 
 ### 1. Cold-boot self-test を縮小 + 元位置復帰
 
@@ -69,6 +95,14 @@ User 任意。「servo tuning 続き」「BLE notify 実装」「次やる」 �
 
 ## Commit graph (この session の deliverable)
 
+session 2 (2026-05-20) 追加分:
+```
+154db90 fix(servo): shrink self-test to ±30/3-step + add ble_servo_smoke rake task
+ebb70ef fix(servo): add SERVO_*_ZERO constants + replace hardcoded positions
+c7ee44d fix(scservo/test): revive scservo_test 52/52 PASS + fix dispatcher ACK frames
+```
+
+session 1 (2026-05-20) 分:
 ```
 3674a7c feat(rake): add r2p2:wait[seconds] for chained single-process device flows
 e42df29 fix(stackchan-protocol): swap UART TX/RX pins for servo bus + add raw PING diagnostic
