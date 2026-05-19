@@ -2,30 +2,35 @@ require "rinda/tuplespace"
 require "stackchan_ble_client"
 
 require_relative "tuple_space4ractor"
+require_relative "handlers/notify_handler"
+require_relative "handlers/servo_handler"
+require_relative "handlers/raw_handler"
 
 module StackchanNotifier
   class Worker
-    TUPLE_PATTERN            = [:notify, Symbol, Integer, Symbol, Integer, Symbol, nil].freeze
+    TUPLE_PATTERN            = [:cmd, Symbol, Hash].freeze
     SHUTDOWN_SENTINEL        = :__shutdown__
     FORCE_RECONNECT_SENTINEL = :__force_reconnect__
     DEFAULT_BACKOFF          = [1, 2, 4, 8, 30].freeze
-    SHUTDOWN_TUPLE           = [:notify, SHUTDOWN_SENTINEL,        0, :solid, 0, :solid, nil].freeze
-    FORCE_RECONNECT_TUPLE    = [:notify, FORCE_RECONNECT_SENTINEL, 0, :solid, 0, :solid, nil].freeze
-    RESTORE_TUPLE            = [:notify, :neutral,                 0, :solid, 0, :solid, nil].freeze
+    SHUTDOWN_TUPLE           = [:cmd, SHUTDOWN_SENTINEL,        {}].freeze
+    FORCE_RECONNECT_TUPLE    = [:cmd, FORCE_RECONNECT_SENTINEL, {}].freeze
 
-    # GATT cache trap detection. When macOS CoreBluetooth's GATT cache is
-    # stale for our peripheral, every reconnect attempt fails the same way
-    # (`discoverServices timed out after 5000ms`). Detect N such consecutive
-    # failures and surface a single actionable ERROR — the daemon cannot
-    # programmatically clear the cache (no public API as of macOS 14), so
-    # the user has to power-cycle the StackChan to recover.
+    DEFAULT_HANDLERS = {
+      notify: Handlers::NotifyHandler.new,
+      servo:  Handlers::ServoHandler.new,
+      raw:    Handlers::RawHandler.new,
+    }.freeze
+
     GATT_CACHE_TRAP_THRESHOLD = 3
     GATT_CACHE_TRAP_PATTERN   = /discoverServices timed out/i
 
-    def initialize(ts:, client_factory:, logger: nil, backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) }, restore_sleep_fn: ->(s) { sleep(s) })
+    def initialize(ts:, client_factory:, logger: nil, handlers: nil,
+                   backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) },
+                   restore_sleep_fn: ->(s) { sleep(s) })
       @ts               = ts
       @client_factory   = client_factory
       @logger           = logger
+      @handlers         = handlers || DEFAULT_HANDLERS
       @backoff          = backoff
       @sleep_fn         = sleep_fn
       @restore_sleep_fn = restore_sleep_fn
@@ -33,7 +38,6 @@ module StackchanNotifier
       @client                 = nil
       @connect_attempt        = 0
       @thread                 = nil
-      @restore_thread         = nil
       @gatt_cache_trap_count  = 0
       @gatt_cache_trap_logged = false
     end
@@ -46,9 +50,7 @@ module StackchanNotifier
 
     def shutdown(timeout: 5.0)
       return self unless @thread
-      cancel_pending_restore
       @shutdown = true
-      # Unblock the blocking take so the loop notices @shutdown.
       @ts.write(SHUTDOWN_TUPLE)
       joined = @thread.join(timeout)
       log(:warn, "worker thread did not exit within #{timeout}s") unless joined
@@ -73,9 +75,9 @@ module StackchanNotifier
         ensure_connected
         break if @shutdown
 
-        tuple, was_retry = next_tuple_to_deliver
-        next if shutdown_sentinel?(tuple)
-        if @pending_force_reconnect || force_reconnect_sentinel?(tuple)
+        per_kind_list, was_retry = next_burst_to_deliver
+        next if per_kind_list.nil? || per_kind_list.empty?
+        if @pending_force_reconnect
           @pending_force_reconnect = false
           log(:info, "force reconnect requested; tearing down current BLE connection")
           disconnect_quietly
@@ -84,13 +86,13 @@ module StackchanNotifier
         end
         break if @shutdown
 
-        if deliver(tuple)
+        if deliver_burst(per_kind_list)
           @pending_retry = nil
         elsif was_retry
-          log(:warn, "send failed twice; dropping #{tuple.inspect}")
+          log(:warn, "send failed twice; dropping #{per_kind_list.inspect}")
           @pending_retry = nil
         else
-          @pending_retry = tuple
+          @pending_retry = per_kind_list
         end
       end
       disconnect_quietly
@@ -138,18 +140,24 @@ module StackchanNotifier
       @gatt_cache_trap_logged = true
     end
 
-    def next_tuple_to_deliver
+    def next_burst_to_deliver
       if @pending_retry
+        # Peek if newer tuples have arrived; if so, drain them as fresh burst
         newer = try_take_newer
         if newer
           @pending_retry = nil
-          [drain_latest(newer), false]
+          [drain_latest_per_kind(newer), false]
         else
           [@pending_retry, true]
         end
       else
         initial = @ts.take(TUPLE_PATTERN)
-        [drain_latest(initial), false]
+        return [nil, false] if shutdown_sentinel?(initial)
+        if force_reconnect_sentinel?(initial)
+          @pending_force_reconnect = true
+          return [[], false]
+        end
+        [drain_latest_per_kind(initial), false]
       end
     end
 
@@ -159,53 +167,59 @@ module StackchanNotifier
       nil
     end
 
-    # Rinda::TupleSpace#take returns the most-recently-written matching tuple
-    # first (LIFO), so `initial` (passed in from the blocking take above) is
-    # already the latest. This loop just garbage-collects the older queued
-    # tuples so the bag does not grow unbounded.
-    def drain_latest(initial)
+    # Collapse the queued burst into [[:kind, latest_params], ...] preserving
+    # first-kind-seen order. TupleSpace4Ractor take is LIFO so the first tuple
+    # returned (initial) is the newest write — "first occurrence wins" gives us
+    # latest-per-kind semantics. Sentinel tuples surfaced during the drain set
+    # @shutdown_during_drain / @pending_force_reconnect flags.
+    def drain_latest_per_kind(initial)
+      latest = {}
+      order  = []
+      # First-seen wins because TupleSpace is LIFO: initial and each subsequent
+      # take_nonblocking return newest-first. We record on first encounter only.
+      apply  = ->(t) {
+        _, kind, params = t
+        unless latest.key?(kind)
+          order  << kind
+          latest[kind] = params
+        end
+      }
+      apply.call(initial)
       loop do
         extra = @ts.take_nonblocking(TUPLE_PATTERN)
         if shutdown_sentinel?(extra)
           @shutdown_during_drain = true
           break
         end
-        @pending_force_reconnect = true if force_reconnect_sentinel?(extra)
+        if force_reconnect_sentinel?(extra)
+          @pending_force_reconnect = true
+          next
+        end
+        apply.call(extra)
       rescue Rinda::RequestExpiredError
         break
       end
-      initial
+      order.map { |k| [k, latest[k]] }
     end
 
-    def deliver(tuple)
-      cancel_pending_restore
-      _, face, left_color, left_mode, right_color, right_mode, duration = tuple
-      @client.send do |s|
-        s.face(face)
-        s.led(:hsb, left_color,  side: :left,  mode: left_mode)
-        s.led(:hsb, right_color, side: :right, mode: right_mode)
+    def deliver_burst(per_kind_list)
+      per_kind_list.each do |kind, params|
+        handler = @handlers[kind]
+        unless handler
+          log(:warn, "no handler for kind=#{kind}; dropping params=#{params.inspect}")
+          next
+        end
+        handler.deliver(client: @client, params: params, ctx: handler_ctx)
       end
-      schedule_restore(duration) if duration && duration > 0
       true
     rescue StackchanBleClient::Error, IOError, SystemCallError => e
-      # Task 1 retry slot will re-deliver the same tuple after ensure_connected
-      # reconnects, so a single send failure is recoverable noise — INFO. The
-      # WARN escalation lives in run_loop's "send failed twice; dropping" path.
       log(:info, "send failed: #{e.class}: #{e.message}; will reconnect")
       disconnect_quietly
       false
     end
 
-    def schedule_restore(seconds)
-      @restore_thread = Thread.new(seconds) do |secs|
-        @restore_sleep_fn.call(secs)
-        @ts.write(RESTORE_TUPLE)
-      end
-    end
-
-    def cancel_pending_restore
-      @restore_thread&.kill
-      @restore_thread = nil
+    def handler_ctx
+      { ts: @ts, restore_sleep_fn: @restore_sleep_fn }
     end
 
     def shutdown_sentinel?(tuple)
