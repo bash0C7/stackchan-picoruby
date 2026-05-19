@@ -12,16 +12,26 @@ class FakeStdin
   end
 end
 
-# Records #write history. Each entry is the string passed (1-byte expected).
-class FakeStdout
-  attr_reader :writes
+# Records each #write call as a separate frame entry.
+# Use #frames to assert on whole-frame writes.
+# #history (back-compat) returns all frames concatenated.
+class FakeStdio
+  attr_reader :frames
 
   def initialize
-    @writes = []
+    @frames = []
   end
 
   def write(s)
-    @writes << s.to_s
+    @frames << s.to_s
     s.to_s.bytesize
   end
+
+  # Back-compat: concatenated string of all written frames.
+  def history
+    @frames.join
+  end
 end
+
+# Alias for tests that still reference FakeStdout.
+FakeStdout = FakeStdio

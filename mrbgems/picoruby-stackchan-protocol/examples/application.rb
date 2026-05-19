@@ -242,8 +242,8 @@ end
 # ====================================
 module StackchanApp
   class Dispatcher
-    ERROR_BYTE = "?"
-    ACK_BYTE   = "."
+    ERROR_FRAME = "?\n"
+    ACK_FRAME   = ".\n"
 
     FACE_TABLE = {
       "0" => Face::Neutral,
@@ -286,11 +286,11 @@ module StackchanApp
       # Servo success/failure is reported in detail frame, not in ACK/ERROR byte
       # If attempts is empty (no F/L), success defaults to true
       success = attempts.empty? || attempts.all? { |ok| ok }
-      @stdout.write(success ? ACK_BYTE : ERROR_BYTE)
+      @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
       emit_servo_detail(frame) if servo_present
     rescue => e
       log_error(e)
-      @stdout.write(ERROR_BYTE)
+      @stdout.write(ERROR_FRAME)
     end
 
     private
