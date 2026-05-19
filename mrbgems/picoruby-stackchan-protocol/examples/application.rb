@@ -451,15 +451,49 @@ puts "[application] LCD + LED cold-boot done"
 # Dispatcher can return <ERROR:servo_unavailable> while Phase A features stay live.
 @head = nil
 begin
-  servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 7, rxd_pin: 6, baudrate: 1_000_000)
+  # Pin mapping: per StackChan/firmware/main/hal/hal_servo.cpp:169
+  #   _scs_bus.begin(UART_NUM_1, 1000000, /*tx_pin=*/6, /*rx_pin=*/7)
+  # so the ESP32 transmits on GPIO 6 (to the servo bus' RX) and receives on
+  # GPIO 7 (from the servo bus' TX). Earlier picoruby app had these swapped,
+  # which produced perfectly silent RX (no echo, no servo response).
+  servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 6, rxd_pin: 7, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
-  yaw_servo.enable_torque
-  pitch_servo.enable_torque
+  y_ack = yaw_servo.enable_torque
+  p_ack = pitch_servo.enable_torque
+  puts "[boot] enable_torque returns: y=#{y_ack.inspect} p=#{p_ack.inspect}"
   @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
   puts "[boot] servo init OK"
 rescue => e
   puts "[boot] servo init failed: #{e.class}: #{e.message}"
+end
+
+# Diagnostic: bypass SCServo wrapper, send raw SCS PING packets via UART
+# and hex-dump whatever bytes arrive on RX. Purpose: distinguish
+#   (a) servo UART TX dead          -> raw=<empty>
+#   (b) half-duplex echo            -> raw begins FF FF <id> 02 01 <~cksum>
+#                                       (= the PING packet we just sent)
+#   (c) servo responds correctly    -> raw begins FF FF <id> 02 00 <~cksum>
+#                                       (= status packet ERR=0)
+#   (d) wrong baud / framing        -> raw is garbage with no FF FF
+if servo_uart
+  [1, 2].each do |servo_id|
+    servo_uart.clear_rx_buffer
+    sum = servo_id + 2 + 1
+    cksum = (~sum) & 0xFF
+    pkt = [0xFF, 0xFF, servo_id, 2, 1, cksum]
+    servo_uart.write(pkt.pack('C*'))
+    servo_uart.flush
+    Machine.delay_ms(80)
+    raw = servo_uart.readpartial(64)
+    if raw && !raw.empty?
+      hex = ""
+      raw.bytes.each { |b| hex << sprintf("%02X ", b) }
+      puts "[diag id=#{servo_id}] PING tx=FF FF #{sprintf("%02X", servo_id)} 02 01 #{sprintf("%02X", cksum)} raw_rx=#{hex.strip}"
+    else
+      puts "[diag id=#{servo_id}] PING raw_rx=<empty>"
+    end
+  end
 end
 
 # Cold-boot self-test: human-visible LED + servo motion so anyone watching
