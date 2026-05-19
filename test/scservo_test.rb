@@ -134,11 +134,25 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_after_write_pos_isolates_response
     uart = FakeUART.new
-    uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]  # stale WritePos ACK (cleared by clear_rx_buffer)
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC] }  # fresh ACK for write_pos
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }  # read_pos response
+    # stale bytes in pending_rx are cleared by clear_rx_buffer at the start of gen_write
+    uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]
+    # write_pos TX echo (13 bytes) is drained by drain_echo; servo ACK follows
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC] }
+    # read_pos TX echo (8 bytes) is drained by drain_echo; position response follows
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
     servo = SCServo.new(uart, id: 1)
     servo.write_pos(500, time_ms: 0, speed: 0)
+    assert_equal 500, servo.read_pos
+  end
+
+  def test_drain_echo_prevents_tx_echo_from_corrupting_read_pos
+    # On a real half-duplex bus the master's 8-byte read request echoes back on RX.
+    # FakeUART#write automatically adds those bytes to pending_rx to simulate this.
+    # drain_echo must consume them before check_head reads the servo's actual response.
+    uart = FakeUART.new
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    servo = SCServo.new(uart, id: 1)
+    # Without drain_echo, check_head would parse the echo as the response → wrong value.
     assert_equal 500, servo.read_pos
   end
 end

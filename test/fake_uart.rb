@@ -12,7 +12,11 @@ class FakeUART
   def write(bytes)
     # Production picoruby-uart#write requires String; FakeUART accepts both
     # so test assertions can compare byte arrays directly.
-    @writes << (bytes.is_a?(String) ? bytes.bytes : bytes)
+    byte_array = bytes.is_a?(String) ? bytes.bytes : bytes
+    @writes << byte_array
+    # Half-duplex TTL bus: master's TX bytes echo back on RX immediately.
+    # SCServo#drain_echo reads and discards these before reading the servo response.
+    @pending_rx.concat(byte_array)
   end
 
   # Mirrors UART#clear_rx_buffer — drains any stale bytes before a new transaction.

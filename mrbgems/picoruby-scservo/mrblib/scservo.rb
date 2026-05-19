@@ -54,8 +54,9 @@ class SCServo
   # timeout / id mismatch / length mismatch / checksum mismatch.
   def read_pos
     @uart.clear_rx_buffer
-    send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
+    n = send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
     @uart.flush
+    drain_echo(n)
     return nil unless check_head
     # SCS.cpp:184 — first read = 3 bytes (ID, LEN, ERR).
     body_header = read_bytes(3, READ_TIMEOUT_MS)
@@ -101,8 +102,9 @@ class SCServo
   # SCS::genWrite (SCS.cpp:93-99) — rFlush + writeBuf(INST_WRITE) + wFlush + Ack.
   def gen_write(params)
     @uart.clear_rx_buffer
-    send_packet(INSTR_WRITE, params)
+    n = send_packet(INSTR_WRITE, params)
     @uart.flush
+    drain_echo(n)
     ack
   end
 
@@ -121,6 +123,24 @@ class SCServo
     cksum = (~sum) & 0xFF
     packet = HEADER + body + [cksum]
     @uart.write(packet.pack('C*'))
+    packet.length
+  end
+
+  # On a half-duplex TTL bus, the master's own TX bytes echo back on RX.
+  # Drain exactly n bytes (the echo of the packet just sent) before reading
+  # the servo's response.
+  def drain_echo(n)
+    deadline = (Machine.uptime_us / 1000) + READ_TIMEOUT_MS
+    drained = 0
+    while drained < n
+      chunk = @uart.readpartial(n - drained)
+      if chunk && !chunk.empty?
+        drained += chunk.bytesize
+      else
+        return if (Machine.uptime_us / 1000) > deadline
+        Machine.delay_ms(1)
+      end
+    end
   end
 
   # SCS::checkHead (SCS.cpp:278-298) — slide a 2-byte window byte-by-byte
