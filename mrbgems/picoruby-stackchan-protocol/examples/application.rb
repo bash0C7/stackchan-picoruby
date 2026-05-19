@@ -13,10 +13,12 @@ require 'spi'
 require 'gpio'
 require 'i2c'
 require 'machine'
+require 'uart'
 require 'ili9342'
 require 'py32-io-expander'
 require 'stackchan-led'
 require 'stackchan-protocol'
+require 'scservo'
 require 'ble'
 
 # [1] 5-second escape hatch. If a previous app.mrb crash-loops the device,
@@ -410,11 +412,14 @@ if ver_bytes && ver_bytes.length > 0
   puts sprintf("[application] PY32 REG_VERSION = 0x%02X", ver_bytes.bytes[0])
 end
 
+puts "[debug] before PY32IOExpander.new"
 py32 = PY32IOExpander.new(i2c)
+puts "[debug] after PY32IOExpander.new"
 py32.set_direction(0, true)
 py32.set_pull_mode(0, true)
 py32.digital_write(0, true)
 Machine.delay_ms(200)
+puts "[debug] PY32 GPIO0 enabled"
 
 led_init_attempt = 0
 led = nil
@@ -428,10 +433,12 @@ rescue IOError
   end
   raise
 end
+puts "[debug] StackchanLed.new ok"
 
 Machine.delay_ms(50)
 led.show
 led.brightness = 100
+puts "[debug] led.show + brightness ok"
 StackchanApp::Face::Neutral.new.draw(display)
 puts "[application] LCD + LED cold-boot done"
 
