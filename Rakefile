@@ -170,6 +170,13 @@ namespace :r2p2 do
     sh "cat #{port} > #{log}"
   end
 
+  desc 'sleep N seconds inside the rake process — use to chain device tasks in one invocation, e.g. `rake r2p2:wipe_storage r2p2:wait[15] r2p2:upload_appmrb r2p2:reset` (quote in shells that gobble brackets)'
+  task :wait, [:seconds] do |_t, args|
+    seconds = (args[:seconds] || ENV['WAIT'] || 1).to_f
+    puts "[r2p2:wait] sleeping #{seconds}s"
+    sleep seconds
+  end
+
   desc 'pulse RTS to reset CoreS3 (claude code has no TTY for `idf.py monitor`)'
   task :reset do
     ensure_no_concurrent_monitor
