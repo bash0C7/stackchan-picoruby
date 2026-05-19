@@ -104,6 +104,74 @@ class FakeSubscription
   def next_value(timeout:)
     @queue.shift  # ignore timeout — fake delivers synchronously
   end
+
+  def script_returns(*values)
+    values.each { |v| @queue << v }
+  end
+
+  def remaining_count
+    @queue.size
+  end
+end
+
+# Minimal scripted-transport fakes for servo detail-drain tests.
+class ScriptedFakeRxChar
+  attr_reader :writes
+  def initialize(subscription)
+    @subscription = subscription
+    @writes = []
+  end
+
+  def write_without_response(payload)
+    @writes << payload
+    # Delivery is pre-scripted in the subscription; no push needed here.
+  end
+end
+
+class ScriptedFakeTxChar
+  def initialize(subscription)
+    @subscription = subscription
+  end
+
+  def subscribe
+    @subscription
+  end
+
+  def unsubscribe; end
+end
+
+class ScriptedFakePeripheral
+  def initialize(rx_char:, tx_char:)
+    @rx_char = rx_char
+    @tx_char = tx_char
+  end
+
+  def discover_services(timeout:); end
+  def services; []; end
+  def find_characteristic(uuid)
+    case uuid.downcase
+    when "6e400002-b5a3-f393-e0a9-e50e24dcca9e" then @rx_char
+    when "6e400003-b5a3-f393-e0a9-e50e24dcca9e" then @tx_char
+    else nil
+    end
+  end
+end
+
+class ScriptedFakeTransport
+  def initialize(peripheral:)
+    @peripheral = peripheral
+  end
+
+  def scan(name: nil, timeout: nil)
+    [FakeDevice.new(name || "Foo")]
+  end
+
+  def connect(_device, timeout:)
+    @peripheral
+  end
+
+  def disconnect(_peripheral); end
+  def close; end
 end
 
 class ClientConnectTest < Test::Unit::TestCase
@@ -197,5 +265,44 @@ class ClientSendTest < Test::Unit::TestCase
       s.led(:green, side: :right, mode: :breathing)
     end
     assert_equal 4, @transport.writes.size
+  end
+end
+
+class ClientServoDetailDrainTest < Test::Unit::TestCase
+  def make_client(subscription)
+    rx_char  = ScriptedFakeRxChar.new(subscription)
+    tx_char  = ScriptedFakeTxChar.new(subscription)
+    periph   = ScriptedFakePeripheral.new(rx_char: rx_char, tx_char: tx_char)
+    transport = ScriptedFakeTransport.new(peripheral: periph)
+    StackchanBleClient::Client.new(device_name: "Foo", transport: transport)
+  end
+
+  def test_servo_frame_drains_trailing_detail_frame_from_subscription
+    subscription = FakeSubscription.new
+    subscription.script_returns(".\n", "<Y_actual:0,P_actual:600>\n")
+    client = make_client(subscription)
+    client.connect
+
+    client.send do |s|
+      s.head(yaw: 0, pitch: 600, time_ms: 250, velocity: nil)
+    end
+
+    assert_equal 0, subscription.remaining_count,
+                 "servo frame's trailing detail frame must be drained from subscription queue"
+  end
+
+  def test_non_servo_frame_does_not_attempt_extra_read
+    subscription = FakeSubscription.new
+    subscription.script_returns(".\n")  # only ONE notification scripted
+    client = make_client(subscription)
+    client.connect
+
+    # No exception — face frame consumes exactly 1 ACK, no detail read attempted.
+    assert_nothing_raised do
+      client.send { |s| s.face(:joy) }
+    end
+
+    assert_equal 0, subscription.remaining_count,
+                 "face frame must not attempt to read a detail frame"
   end
 end

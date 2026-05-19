@@ -8,20 +8,24 @@ module StackchanBleClient
     NUS_RX_CHAR = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
     NUS_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
+    attr_reader :last_detail_frame
+
     def initialize(device_name:, name_prefix: nil, scan_timeout: 10.0, connect_timeout: 5.0, ack_timeout: 3.0, transport: nil)
-      @device_name     = device_name
-      @name_prefix     = name_prefix
-      @scan_timeout    = scan_timeout
-      @connect_timeout = connect_timeout
-      @ack_timeout     = ack_timeout
-      @transport       = transport || build_default_transport
-      @peripheral      = nil
-      @rx_char         = nil
-      @tx_char         = nil
-      @subscription    = nil
+      @device_name       = device_name
+      @name_prefix       = name_prefix
+      @scan_timeout      = scan_timeout
+      @connect_timeout   = connect_timeout
+      @ack_timeout       = ack_timeout
+      @transport         = transport || build_default_transport
+      @peripheral        = nil
+      @rx_char           = nil
+      @tx_char           = nil
+      @subscription      = nil
+      @last_detail_frame = nil
     end
 
     def connect
+      @last_detail_frame = nil
       # If name_prefix is set, scan without name filter and match by prefix.
       # Otherwise, use exact name match (legacy behavior).
       if @name_prefix
@@ -77,12 +81,22 @@ module StackchanBleClient
       @rx_char.write_without_response(frame)
       ack = @subscription.next_value(timeout: @ack_timeout)
       raise TimeoutError, "ACK timeout for frame #{frame.inspect}" if ack.nil?
-      case FrameCodec.parse_ack(ack)
+      status = FrameCodec.parse_ack(ack)
+      if servo_frame?(frame)
+        @last_detail_frame = @subscription.next_value(timeout: @ack_timeout)
+      end
+      case status
       when :ok    then nil
       when :error then raise DeviceError, "device rejected frame #{frame.inspect}"
       end
     rescue CoreBluetoothMac::Error => e
       raise ConnectionError, "#{e.class}: #{e.message}"
+    end
+
+    def servo_frame?(frame)
+      # Device emits a detail frame after any frame containing Y/P/V/T axis keys.
+      # Mirror the device-side Dispatcher.servo_present check.
+      !!(frame =~ /[YPVT]:/)
     end
 
     def build_default_transport
