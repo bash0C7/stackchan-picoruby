@@ -153,6 +153,7 @@ end
 Existing Dispatcher (Phase A) handles `F` / `M` / `S` / `R` / `G` / `B`. Phase B adds a head branch:
 
 ```ruby
+# (Phase A) earlier in handle(): emit byte ACK `.` or `?` as today
 if frame.key?("Y") || frame.key?("P") || frame.key?("V") || frame.key?("T")
   @head.apply(frame)
   actual = @head.read_actual
@@ -161,12 +162,14 @@ if frame.key?("Y") || frame.key?("P") || frame.key?("V") || frame.key?("T")
     failed << "yaw"   if actual["Y_actual"].nil? && frame.key?("Y")
     failed << "pitch" if actual["P_actual"].nil? && frame.key?("P")
     axis = failed.size == 2 ? "both" : failed.first
-    send_frame("<ERROR:servo_timeout,axis:#{axis}>")
+    send_extra_frame("<ERROR:servo_timeout,axis:#{axis}>")
   else
-    send_frame("<Y_actual:#{actual['Y_actual']},P_actual:#{actual['P_actual']}>")
+    send_extra_frame("<Y_actual:#{actual['Y_actual']},P_actual:#{actual['P_actual']}>")
   end
 end
 ```
+
+`send_extra_frame` is a new helper that emits a separate NUS notify carrying the detail frame **after** the existing byte ACK. Implementation reuses the existing BTstack notify path (`@parser.ack_queue.push` style) but with full frame string instead of single byte.
 
 Servo handling is independent from existing face / LED branches; mixed frames (e.g. `<F:3,Y:-200>`) flow through both branches in the same dispatch call (Phase A combo precedent).
 
@@ -219,10 +222,13 @@ New event-to-frame mapping in the notifier hook config maps notification events 
 
 ### Path B: device → Mac (response)
 
-8. Immediately after `apply`, Dispatcher calls `@head.read_actual`
-9. `SCServo#read_pos` sends a SCS ReadPos request, waits up to 50 ms for response, parses the returned 16-bit raw position
-10. If both reads succeeded: NUS TX notify `<Y_actual:-298,P_actual:497>\n`. If either read timed out: NUS TX notify `<ERROR:servo_timeout,axis:yaw|pitch|both>\n`
-11. Mac client receives the response and reports it via exit code / stdout
+8. Immediately after `apply`, Dispatcher emits the existing Phase A single-byte ACK (`.` = OK or `?` = error) via NUS TX notify, preserving compatibility with face / LED handling
+9. Dispatcher then calls `@head.read_actual`; `SCServo#read_pos` sends a SCS ReadPos request, waits up to 50 ms for response, parses the returned 16-bit raw position
+10. Dispatcher emits an **additional NUS TX notify** with detail:
+    - On success: `<Y_actual:-298,P_actual:497>\n`
+    - On timeout: `<ERROR:servo_timeout,axis:yaw|pitch|both>\n`
+    The Phase A wire stays untouched (still byte `.`/`?` for face/LED). The Phase B servo branch sends both: byte ACK first, then the structured detail frame. Mac client matches detail frame by leading `<` (frame) vs single byte
+11. Mac client receives both notifies in order, ACK byte sets the exit code domain, detail frame supplies actual position / error info to stdout
 
 ### Timing note
 
