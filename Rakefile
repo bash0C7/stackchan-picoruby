@@ -255,11 +255,11 @@ namespace :r2p2 do
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
   # servo frame via stackchan-ble-control. YAW/PITCH/TIME_MS default to
   # factory zero_pos ±50 sweep (safe range: no mechanical stress).
-  desc 'BLE servo E2E smoke (YAW=510 PITCH=620 TIME_MS=1000 AUTOSTART_WAIT=12)'
+  desc 'BLE servo E2E smoke (YAW=490 PITCH=620 TIME_MS=50 AUTOSTART_WAIT=12)'
   task :ble_servo_smoke do
-    yaw      = ENV.fetch('YAW',      '510')    # SERVO_YAW_ZERO(460) + 50
+    yaw      = ENV.fetch('YAW',      '490')    # SERVO_YAW_ZERO(460) + 30
     pitch    = ENV.fetch('PITCH',    '620')    # SERVO_PITCH_ZERO(620) center
-    time_ms  = ENV.fetch('TIME_MS',  '1000')
+    time_ms  = ENV.fetch('TIME_MS',  '50')     # 50 × 10ms = 500ms motion
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
 
     ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'

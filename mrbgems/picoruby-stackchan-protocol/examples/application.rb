@@ -526,21 +526,20 @@ end
 
 if @head
   begin
-    # Small ±100 sweep around factory zero_pos to visually confirm servo
-    # communication without stressing the mechanism. See Head::SERVO_YAW_ZERO /
-    # SERVO_PITCH_ZERO for the zero-position origin (hal_servo.cpp:173,182).
+    # Minimal ±30 nudge around factory zero_pos — enough to confirm servo
+    # communication is alive without big movement or long waits.
+    # T=50: quick motion (50 × 10ms = 500ms if SCSCL unit=10ms).
+    # delay_ms(300): settle before next step.
     y0 = StackchanApp::Head::SERVO_YAW_ZERO
     p0 = StackchanApp::Head::SERVO_PITCH_ZERO
     [
-      ["yaw+",   (y0 + 100).to_s, p0.to_s],
-      ["pitch+", y0.to_s,         (p0 + 100).to_s],
-      ["yaw-",   (y0 - 100).to_s, p0.to_s],
-      ["pitch-", y0.to_s,         (p0 - 100).to_s],
-      ["center", y0.to_s,         p0.to_s],
+      ["yaw+",   (y0 + 30).to_s, p0.to_s],
+      ["yaw-",   (y0 - 30).to_s, p0.to_s],
+      ["center", y0.to_s,        p0.to_s],
     ].each do |label, y, p|
       puts "[boot] self-test servo: #{label} Y=#{y} P=#{p}"
-      @head.apply({"Y" => y, "P" => p, "T" => "600"})
-      Machine.delay_ms(800)
+      @head.apply({"Y" => y, "P" => p, "T" => "50"})
+      Machine.delay_ms(300)
     end
     actual = @head.read_actual
     puts "[boot] self-test servo read=#{actual.inspect}"
