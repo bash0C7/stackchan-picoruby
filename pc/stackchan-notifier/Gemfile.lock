@@ -17,7 +17,7 @@ PATH
 PATH
   remote: .
   specs:
-    stackchan_notifier (0.1.0)
+    stackchan_notifier (2.0.0)
       logger
       rinda
 
@@ -59,7 +59,7 @@ CHECKSUMS
   rb-corebluetooth-mac (0.2.1)
   rinda (0.2.0) sha256=bb4566af73c9b78e80bc41202140860e33150ee2a0eacdf6dfe583e1aa0b03fa
   stackchan_ble_client (0.1.0)
-  stackchan_notifier (0.1.0)
+  stackchan_notifier (2.0.0)
   swift_gem (0.1.0)
   test-unit (3.7.7) sha256=3c89d5ff0690a16bef9946156c4624390402b9d54dfcf4ce9cbd5b06bead1e45
 

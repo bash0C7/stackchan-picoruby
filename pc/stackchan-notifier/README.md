@@ -5,6 +5,14 @@ animations over BLE NUS. A practical showcase of this repo's BLE control stack
 ([`pc/stackchan-ble-client`](../stackchan-ble-client) + the
 `picoruby-stackchan-protocol` firmware-side gem) — not a new device subsystem.
 
+> **v2.0 (2026-05-19):** The wire tuple shape changed from `[:notify, ...]`
+> 7-element positional to `[:cmd, Symbol, Hash]`. `stackchan-notify` CLI args
+> are unchanged. Two new CLIs joined: `stackchan-servo` (head motion) and
+> `stackchan-raw` (arbitrary wire frame). `stackchan-notify --face NAME` now
+> also drives the head via a daemon-side `NotifyMotionTable` lookup, unless
+> `--silent` is passed. Old `stackchan-notify` 1.x clients are NOT
+> wire-compatible with a 2.0 daemon — upgrade both together.
+
 > **Status: WIP — host implementation + tests are complete, but end-to-end
 > verification against a real CoreS3 is deferred to a follow-up session.**
 
@@ -32,13 +40,16 @@ exposed over DRb. The "latest-wins drain" strategy follows the same author's
 │ Claude Code (per-session, short)    │
 │   hook fires                        │
 └──────────────┬──────────────────────┘
-               │ exec
+               │ exec one of:
+               ├─ stackchan-notify (face + LEDs)
+               ├─ stackchan-servo (head motion)
+               └─ stackchan-raw (custom frame)
                ▼
 ┌─────────────────────────────────────┐
-│ stackchan-notify CLI (~50 ms)       │
-│   parses --face/--left_led/         │
-│   --right_led/--duration flags      │
-│   writes one tuple via DRb, exits   │
+│ CLI (~50 ms)                        │
+│   parses flags                      │
+│   writes tuple [:cmd, ...] via DRb  │
+│   exits                             │
 └──────────────┬──────────────────────┘
                │ DRb over Unix socket
                │ (drbunix:/tmp/stackchan-notifier-<uid>.sock)
@@ -51,7 +62,7 @@ exposed over DRb. The "latest-wins drain" strategy follows the same author's
 │  └─────────────────────┘    │ - auto-reconnect     │   │
 │                              └──────────┬───────────┘   │
 └─────────────────────────────────────────┼───────────────┘
-                                          │ NUS combo frame
+                                          │ NUS combo frame(s)
                                           ▼
                               ┌───────────────────────┐
                               │ StackChan (CoreS3)    │
@@ -209,13 +220,51 @@ Exit codes:
 | `0` | success, **or** daemon unavailable (intentional — never block Claude Code on missing infra) |
 | `2` | invalid arguments (visible misconfiguration) |
 
+### `stackchan-servo` reference
+
+Direct servo control without touching face/LED:
+
+```bash
+# Pan (horizontal) to -90° left
+stackchan-servo --pan -90
+
+# Tilt (vertical) to 45° up
+stackchan-servo --tilt 45
+
+# Both together
+stackchan-servo --pan 45 --tilt 0
+```
+
+| Flag | Domain | Notes |
+|---|---|---|
+| `--pan DEGREES` | -180 to 180 | horizontal head motion (StackChan left/right) |
+| `--tilt DEGREES` | -90 to 90 | vertical head tilt (up/down); 0 = center |
+| `--duration N` | positive integer seconds | auto-reset to center on expiry |
+| `--socket PATH` | override default | same as `stackchan-notify` |
+| `--quiet` | — | suppress daemon unavailable stderr |
+
+### `stackchan-raw` reference
+
+Send an arbitrary NUS combo frame for full customization:
+
+```bash
+# Hex-encoded frame bytes (see stackchan-protocol spec for format)
+stackchan-raw --frame 0x41FF0001AB02...
+```
+
+| Flag | Domain | Notes |
+|---|---|---|
+| `--frame HEX` | 16+ char hex string | must be a valid NUS combo frame |
+| `--socket PATH` | override default | same as above |
+| `--quiet` | — | suppress errors |
+
 ## Testing
 
 ```bash
 bundle exec rake test
 ```
 
-Tests: 40 tests, 82 assertions.
+Tests: 70 tests.
 
 Covers (no real BLE required):
 
