@@ -78,6 +78,7 @@ module StackchanBleClient
     private
 
     def send_frame(frame)
+      @last_detail_frame = nil
       @rx_char.write_without_response(frame)
       ack = @subscription.next_value(timeout: @ack_timeout)
       raise TimeoutError, "ACK timeout for frame #{frame.inspect}" if ack.nil?
