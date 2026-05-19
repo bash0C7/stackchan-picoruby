@@ -253,6 +253,40 @@ namespace :r2p2 do
   end
 
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
+  # servo frame via stackchan-ble-control. YAW/PITCH/TIME_MS default to
+  # factory zero_pos ±50 sweep (safe range: no mechanical stress).
+  desc 'BLE servo E2E smoke (YAW=510 PITCH=620 TIME_MS=1000 AUTOSTART_WAIT=12)'
+  task :ble_servo_smoke do
+    yaw      = ENV.fetch('YAW',      '510')    # SERVO_YAW_ZERO(460) + 50
+    pitch    = ENV.fetch('PITCH',    '620')    # SERVO_PITCH_ZERO(620) center
+    time_ms  = ENV.fetch('TIME_MS',  '1000')
+    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
+
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    Rake::Task['r2p2:upload_appmrb'].invoke
+    Rake::Task['r2p2:reset'].invoke
+
+    puts "[servo_smoke] waiting #{autostart_wait}s for autostart + BLE advertise"
+    sleep autostart_wait
+
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                    '--name-prefix', 'StackChan-PicoRuby',
+                    '--yaw',  yaw,
+                    '--pitch', pitch,
+                    '--time', time_ms,
+                    'servo')
+        unless ok
+          exit $?.exitstatus
+        end
+      end
+    end
+
+    puts "[servo_smoke] PASS — yaw=#{yaw} pitch=#{pitch} time_ms=#{time_ms} — visual motion check please"
+  end
+
+  # E2E smoke: upload application.mrb → reset → wait autostart → send a
   # control frame via stackchan-ble-control combo. Exits with the CLI's
   # exit code so the rake invocation surfaces structured failure (0/2/3/4/5).
   desc 'BLE control E2E smoke (COLOR=red MODE=blink FACE=joy SIDE=both AUTOSTART_WAIT=12)'

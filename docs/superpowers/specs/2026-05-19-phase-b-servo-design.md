@@ -49,7 +49,9 @@ Gesture macros (nod / shake / look_at), self-initiated push notifications (heart
                                   ▼
                   ┌──────────────────────────────────────────────────────┐
                   │ picoruby-uart (既存組込済)                            │
-                  │   UART_NUM_1, 1_000_000 baud, RXD=GPIO 6, TXD=GPIO 7 │
+                  │   UART_NUM_1, 1_000_000 baud, TXD=GPIO 6, RXD=GPIO 7 │
+                  │   ※ 2026-05-20 fix: 旧 spec は RXD/TXD を逆記載。    │
+                  │     公式 hal_servo.cpp:169 と e42df29 commit で訂正。  │
                   └───────────────┬──────────────────────────────────────┘
                                   ▼
                             ┌──────────┐
