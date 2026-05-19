@@ -1399,72 +1399,18 @@ git commit -m "feat(ble-control): add servo subcommand with --yaw/--pitch/--time
 
 ---
 
-## Task 13: stackchan-notifier servo hook
+## Task 13: stackchan-notifier servo hook — SUPERSEDED
 
-**Files:**
-- Modify: `pc/stackchan-notifier/lib/stackchan_notifier/worker.rb`
+This task's "10-line plug-in" plan assumed a `handle_tuple` case-dispatch
+that did not exist in the notifier Worker. Replaced by the deeper
+multi-command refactor in
+`docs/superpowers/specs/2026-05-19-notifier-multi-command-dispatch-design.md`
+and its plan
+`docs/superpowers/plans/2026-05-19-notifier-multi-command-dispatch.md`.
 
-- [ ] **Step 1: Read current worker.rb to understand the case structure**
-
-```bash
-grep -n "case tuple\|when :" /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/pc/stackchan-notifier/lib/stackchan_notifier/worker.rb
-```
-
-Identify the existing `case` block in `handle_tuple` and the existing `:notify` (or equivalent) case branch shape.
-
-- [ ] **Step 2: Inspect the existing :notify case body to learn the pattern**
-
-```bash
-grep -n -A 20 "when :notify" /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/pc/stackchan-notifier/lib/stackchan_notifier/worker.rb
-```
-
-Note how the existing case dispatches to BLE actions (likely shelling out to `stackchan-ble-control` or using `StackchanBleClient` directly).
-
-- [ ] **Step 3: Add `:servo` case branch following the same pattern**
-
-In `pc/stackchan-notifier/lib/stackchan_notifier/worker.rb`, add inside the `handle_tuple` case (matching the existing notify pattern, e.g. via shelling out to ble-control):
-
-```ruby
-      when :servo
-        # tuple shape: [:servo, { yaw: int_or_nil, pitch: int_or_nil, time_ms: int_or_nil, velocity: int_or_nil, name_prefix: str_or_nil }]
-        params = tuple[1] || {}
-        args = ["servo"]
-        args.concat(["--yaw",    params[:yaw].to_s])      if params[:yaw]
-        args.concat(["--pitch",  params[:pitch].to_s])    if params[:pitch]
-        args.concat(["--time",   params[:time_ms].to_s])  if params[:time_ms]
-        args.concat(["--velocity", params[:velocity].to_s]) if params[:velocity]
-        cli_args = []
-        cli_args.concat(["--name-prefix", params[:name_prefix]]) if params[:name_prefix]
-        cli_args.concat(args)
-        # Match the existing :notify branch's invocation idiom (system / spawn / inline client)
-        invoke_ble_control(cli_args)
-```
-
-If the existing pattern uses a helper method (e.g. `invoke_ble_control`), reuse it. If the existing pattern uses inline `system` or `Open3`, mirror that exactly — don't introduce a new style.
-
-- [ ] **Step 4: Add a unit test if the notifier has a test directory**
-
-```bash
-ls /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/pc/stackchan-notifier/test/ 2>/dev/null || echo "no test dir"
-```
-
-If there's a `test/` directory, add `pc/stackchan-notifier/test/servo_dispatch_test.rb` following the existing test pattern. The test should drive `Worker#handle_tuple` with `[:servo, { yaw: -300, pitch: 500, time_ms: 2000 }]` and assert that the BLE-control invocation receives the expected argv (using whatever mock/stub idiom the existing tests use). If no `test/` directory exists, skip the unit test — the integration will be covered by Task 14's HITL.
-
-- [ ] **Step 5: Run notifier tests if they exist**
-
-```bash
-cd /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/pc/stackchan-notifier
-bundle exec rake test 2>/dev/null || echo "no rake test"
-```
-
-Delegate to haiku subagent. Expected: PASS if tests exist; otherwise skip.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add pc/stackchan-notifier/lib/stackchan_notifier/worker.rb pc/stackchan-notifier/test/
-git commit -m "feat(notifier): add :servo tuple dispatch for hook-driven servo commands"
-```
+Closed by the notifier 2.0 refactor commits (see those plan tasks 1–13).
+Phase B servo dispatch from hooks is now available via
+`stackchan-servo --yaw N --pitch M`.
 
 ---
 
