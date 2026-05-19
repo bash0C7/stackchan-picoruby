@@ -44,18 +44,46 @@ class DaemonTest < Test::Unit::TestCase
   def test_drb_round_trip_in_process_delivers_tuple_to_ble
     @daemon.start
     remote = DRbObject.new_with_uri(@daemon.drb_uri)
-    remote.write([:notify, :smile, 0xFF8800, :blink, 0x00FF00, :solid, nil])
+    remote.write([:cmd, :notify, {
+      face: :smile, left: [0xFF8800, :blink], right: [0x00FF00, :solid],
+      duration: nil, silent: true,
+    }])
 
     wait_until { @client.sent.size == 1 }
 
     cmds = @client.sent.first
-    assert_equal :smile, cmds[0][:name]
+    assert_equal :smile,   cmds[0][:name]
     assert_equal 0xFF8800, cmds[1][:value]
     assert_equal :blink,   cmds[1][:mode]
     assert_equal :left,    cmds[1][:side]
     assert_equal 0x00FF00, cmds[2][:value]
     assert_equal :solid,   cmds[2][:mode]
     assert_equal :right,   cmds[2][:side]
+  end
+
+  def test_daemon_dispatches_servo_tuple
+    @daemon.start
+    remote = DRbObject.new_with_uri(@daemon.drb_uri)
+    remote.write([:cmd, :servo, { yaw: 100, pitch: 450, time_ms: 200, velocity: nil }])
+
+    wait_until { @client.sent.any? { |s| s.is_a?(Array) && s.any? { |c| c[:kind] == :head } } }
+
+    head_cmd = @client.sent.flatten.find { |c| c.is_a?(Hash) && c[:kind] == :head }
+    assert_equal 100, head_cmd[:yaw]
+    assert_equal 450, head_cmd[:pitch]
+    assert_equal 200, head_cmd[:time_ms]
+    assert_nil        head_cmd[:velocity]
+  end
+
+  def test_daemon_dispatches_raw_tuple
+    @daemon.start
+    remote = DRbObject.new_with_uri(@daemon.drb_uri)
+    remote.write([:cmd, :raw, { frame: "<F:2>" }])
+
+    wait_until { @client.sent.any? { |s| s.is_a?(Hash) && s[:kind] == :raw_send } }
+
+    raw = @client.sent.find { |s| s.is_a?(Hash) && s[:kind] == :raw_send }
+    assert_equal "<F:2>\n", raw[:frame]
   end
 
   def test_stale_socket_file_is_cleaned_on_start
