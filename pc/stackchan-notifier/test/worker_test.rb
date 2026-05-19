@@ -107,3 +107,76 @@ class WorkerDrainPerKindTest < Test::Unit::TestCase
     assert_empty @notify_h.calls
   end
 end
+
+class WorkerReconnectTest < Test::Unit::TestCase
+  def setup
+    @ts       = StackchanNotifier::TupleSpace4Ractor.new
+    @sleeps   = []
+    @sleep_fn = ->(s) { @sleeps << s }   # capture but do not actually sleep
+    @notify_h = RecordingHandler.new(:notify)
+  end
+
+  def teardown
+    @worker.shutdown(timeout: 2.0) if @worker&.thread
+  end
+
+  def test_connect_failure_backs_off_then_reconnects_and_delivers
+    attempts = 0
+    failing_then_ok = lambda do
+      attempts += 1
+      raise StackchanBleClient::Error, "boom" if attempts == 1
+      FakeBleClient.new
+    end
+    @worker = StackchanNotifier::Worker.new(
+      ts:             @ts,
+      client_factory: failing_then_ok,
+      handlers:       make_handlers_with(notify: @notify_h),
+      logger:         build_capturing_logger([]),
+      sleep_fn:       @sleep_fn,
+    )
+    @ts.write([:cmd, :notify, { face: :joy, left: [0,:solid], right: [0,:solid], duration: nil, silent: false }])
+    @worker.start
+
+    wait_until(timeout: 2.0) { !@notify_h.calls.empty? }
+    assert_equal 2, attempts                          # first failed, second succeeded
+    assert_equal 1, @sleeps.size                      # one backoff sleep between
+    assert_equal :joy, @notify_h.calls[0][:params][:face]
+  end
+end
+
+class WorkerPendingRetryTest < Test::Unit::TestCase
+  def setup
+    @ts       = StackchanNotifier::TupleSpace4Ractor.new
+    @notify_h = RecordingHandler.new(:notify)
+    @log      = []
+  end
+
+  def teardown
+    @worker.shutdown(timeout: 2.0) if @worker&.thread
+  end
+
+  def test_send_failure_retries_once_then_drops_with_warn
+    # Use a handler that tracks call count and raises on every call
+    raise_count = 0
+    always_raise_h = Object.new
+    always_raise_h.define_singleton_method(:deliver) do |client:, params:, ctx:|
+      raise_count += 1
+      raise StackchanBleClient::Error, "boom#{raise_count}"
+    end
+
+    @worker = StackchanNotifier::Worker.new(
+      ts:             @ts,
+      client_factory: -> { FakeBleClient.new },
+      handlers:       make_handlers_with(notify: always_raise_h),
+      logger:         build_severity_capturing_logger(@log),
+      sleep_fn:       ->(_) {},
+    )
+    @ts.write([:cmd, :notify, { face: :joy, left: [0,:solid], right: [0,:solid], duration: nil, silent: false }])
+    @worker.start
+
+    wait_until(timeout: 3.0) { @log.any? { |sev, msg| sev == "WARN" && msg.include?("send failed twice") } }
+    # After two failures it should be dropped — assert we don't keep retrying forever
+    drop_warn = @log.find { |sev, msg| sev == "WARN" && msg.include?("send failed twice") }
+    assert_not_nil drop_warn
+  end
+end

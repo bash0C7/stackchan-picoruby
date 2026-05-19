@@ -77,6 +77,11 @@ module StackchanNotifier
 
         per_kind_list, was_retry = next_burst_to_deliver
         next if per_kind_list.nil? || per_kind_list.empty?
+        if @shutdown_during_drain
+          @shutdown_during_drain = false
+          @shutdown = true
+          break
+        end
         if @pending_force_reconnect
           @pending_force_reconnect = false
           log(:info, "force reconnect requested; tearing down current BLE connection")
