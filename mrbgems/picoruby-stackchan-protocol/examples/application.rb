@@ -435,6 +435,21 @@ led.brightness = 100
 StackchanApp::Face::Neutral.new.draw(display)
 puts "[application] LCD + LED cold-boot done"
 
+# Phase B: servo bring-up. Failure must NOT block face/LED — keep @head=nil so
+# Dispatcher can return <ERROR:servo_unavailable> while Phase A features stay live.
+@head = nil
+begin
+  servo_uart = UART.new(unit: :UART1, txd_pin: 7, rxd_pin: 6, baudrate: 1_000_000)
+  yaw_servo   = SCServo.new(servo_uart, id: 1)
+  pitch_servo = SCServo.new(servo_uart, id: 2)
+  yaw_servo.enable_torque
+  pitch_servo.enable_torque
+  @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
+  puts "[boot] servo init OK"
+rescue => e
+  puts "[boot] servo init failed: #{e.class}: #{e.message}"
+end
+
 # cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Neutral.draw) は
 # 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
 # yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
@@ -462,9 +477,10 @@ class StackChanApp < BLE
   NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
   NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
-  def initialize(display:, led:)
+  def initialize(display:, led:, head: nil)
     @display = display
     @led     = led
+    @head    = head
     @adv_data = build_adv_data
     db = build_gatt_database
     @db = db
@@ -475,7 +491,7 @@ class StackChanApp < BLE
     @parser = StackchanProtocol::FrameParser.new
     @ack_queue = ""
     @dispatcher = StackchanApp::Dispatcher.new(
-      display: @display, led: @led, stdout: self
+      display: @display, led: @led, head: @head, stdout: self
     )
     puts "[application] initialize: super(:peripheral) entering"
     super(:peripheral, db.profile_data)
@@ -575,7 +591,7 @@ end
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
 puts "[application] BLE peripheral starting (loop, 60s windows)"
-peri = StackChanApp.new(display: display, led: led)
+peri = StackChanApp.new(display: display, led: led, head: @head)
 peri.debug = true
 # Loop indefinitely. peri.start(60_000) blocks for 60s then returns; we restart
 # immediately so the device stays advertise-able for HITL / smoke timing windows.
