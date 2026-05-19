@@ -51,6 +51,7 @@ module StackchanBleClient
     end
 
     def parse_ack(frame)
+      # frame[0, 1] is safe on a bare 1-char ACK byte too — returns the same char.
       case frame[0, 1]
       when ACK_OK    then :ok
       when ACK_ERROR then :error
