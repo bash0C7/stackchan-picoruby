@@ -267,10 +267,11 @@ module StackchanApp
 
     attr_reader :current_face_class
 
-    def initialize(display:, led:, stdout: $stdout)
+    def initialize(display:, led:, stdout: $stdout, head: nil)
       @display = display
       @led     = led
       @stdout  = stdout
+      @head    = head
       @current_face_class = Face::Neutral
     end
 
@@ -278,8 +279,13 @@ module StackchanApp
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
       attempts << handle_led(frame)  if frame.key?("L")
-      success = !attempts.empty? && attempts.all? { |ok| ok }
+      servo_present = frame.key?("Y") || frame.key?("P") || frame.key?("V") || frame.key?("T")
+      handle_head(frame) if servo_present
+      # Servo success/failure is reported in detail frame, not in ACK/ERROR byte
+      # If attempts is empty (no F/L), success defaults to true
+      success = attempts.empty? || attempts.all? { |ok| ok }
       @stdout.write(success ? ACK_BYTE : ERROR_BYTE)
+      emit_servo_detail(frame) if servo_present
     rescue => e
       log_error(e)
       @stdout.write(ERROR_BYTE)
@@ -305,6 +311,38 @@ module StackchanApp
       b = (frame["B"] || "0").to_i
       @led.animate_side(side, r, g, b, mode)
       true
+    end
+
+    def handle_head(frame)
+      return if @head.nil?
+      @head.apply(frame)
+    end
+
+    def emit_servo_detail(frame)
+      if @head.nil?
+        @stdout.write("<ERROR:servo_unavailable>\n")
+        return
+      end
+      actual = @head.read_actual
+      failed = []
+      failed << "yaw"   if actual["Y_actual"].nil? && frame.key?("Y")
+      failed << "pitch" if actual["P_actual"].nil? && frame.key?("P")
+      if failed.any?
+        axis = failed.size == 2 ? "both" : failed.first
+        @stdout.write("<ERROR:servo_timeout,axis:#{axis}>\n")
+      else
+        y = frame.key?("Y") ? actual["Y_actual"] : nil
+        p = frame.key?("P") ? actual["P_actual"] : nil
+        parts = []
+        parts << "Y_actual:#{y}" if y
+        parts << "P_actual:#{p}" if p
+        # If only T or V given (no Y/P), still report both axes for visibility
+        if parts.empty?
+          parts << "Y_actual:#{actual['Y_actual']}"
+          parts << "P_actual:#{actual['P_actual']}"
+        end
+        @stdout.write("<#{parts.join(',')}>\n")
+      end
     end
 
     def log_error(e)
