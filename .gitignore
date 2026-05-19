@@ -3,4 +3,5 @@
 *~
 /tmp/
 /build/
+pc/*/tmp/
 .claude/settings.local.json
