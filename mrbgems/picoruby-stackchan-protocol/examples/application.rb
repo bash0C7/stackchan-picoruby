@@ -501,7 +501,7 @@ class StackChanApp < BLE
     @tx_cccd_handle = nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION)
     @notify_enabled = false
     @parser = StackchanProtocol::FrameParser.new
-    @ack_queue = ""
+    @notify_queue = []
     @dispatcher = StackchanApp::Dispatcher.new(
       display: @display, led: @led, head: @head, stdout: self
     )
@@ -510,9 +510,11 @@ class StackChanApp < BLE
     puts "[application] initialize: super returned"
   end
 
-  # AckSink contract: Dispatcher calls `write(byte)` to deliver an ACK byte.
-  def write(byte)
-    @ack_queue += byte
+  # AckSink contract: Dispatcher calls write(frame_string) with one complete
+  # newline-terminated frame. We queue each frame as a separate element so the
+  # heartbeat-driven flush sends exactly one BLE notification per frame.
+  def write(frame)
+    @notify_queue << frame
   end
 
   def build_adv_data
@@ -550,8 +552,9 @@ class StackChanApp < BLE
     when HCI_EVENT_DISCONNECTION_COMPLETE
       puts "[application] disconnected"
       @notify_enabled = false
+      @notify_queue = []
     when ATT_EVENT_CAN_SEND_NOW
-      flush_one_ack
+      flush_one_frame
     end
   end
 
@@ -573,8 +576,8 @@ class StackChanApp < BLE
     end
     # Tick LED animator
     @led.tick(Machine.uptime_us / 1000)
-    # Request can_send_now if we have ACK bytes queued and the central is subscribed
-    if @notify_enabled && @ack_queue.bytesize > 0
+    # Request can_send_now if we have frames queued and the central is subscribed
+    if @notify_enabled && !@notify_queue.empty?
       request_can_send_now_event
     end
     # Blink for liveness indicator. Tick is ~1s on R2P2-ESP32 (memory:
@@ -589,11 +592,10 @@ class StackChanApp < BLE
     end
   end
 
-  def flush_one_ack
-    return if @ack_queue.bytesize == 0
-    byte = @ack_queue[0, 1]
-    @ack_queue = @ack_queue[1, @ack_queue.bytesize - 1] || ""
-    push_read_value(@tx_handle, byte)
+  def flush_one_frame
+    return if @notify_queue.empty?
+    frame = @notify_queue.shift
+    push_read_value(@tx_handle, frame)
     notify(@tx_handle)
   end
 end
