@@ -59,6 +59,11 @@ class FakeBleClient
     self
   end
 
+  def raw_send(frame)
+    @sent << { kind: :raw_send, frame: frame }
+    self
+  end
+
   def disconnect
     @disconnect_count += 1
     self
@@ -75,5 +80,8 @@ class FakeSendBuilder
   end
   def led(form, value = nil, side: :both, mode: :solid)
     @commands << { kind: :led, form: form, value: value, side: side, mode: mode }
+  end
+  def head(yaw: nil, pitch: nil, time_ms: nil, velocity: nil)
+    @commands << { kind: :head, yaw: yaw, pitch: pitch, time_ms: time_ms, velocity: velocity }
   end
 end
