@@ -412,14 +412,19 @@ if ver_bytes && ver_bytes.length > 0
   puts sprintf("[application] PY32 REG_VERSION = 0x%02X", ver_bytes.bytes[0])
 end
 
-puts "[debug] before PY32IOExpander.new"
+# NOTE: The puts statements in this block are REQUIRED to prevent a
+# LoadProhibited crash at PY32 init region. See memory entry
+# `project-py32-init-puts-required` — empirically each puts shifts the
+# crash position one line later; with 5 puts the boot completes. Treat
+# these as production boot markers, NOT removable debug logs.
+puts "[boot] step:py32-init-begin"
 py32 = PY32IOExpander.new(i2c)
-puts "[debug] after PY32IOExpander.new"
+puts "[boot] step:py32-instance"
 py32.set_direction(0, true)
 py32.set_pull_mode(0, true)
 py32.digital_write(0, true)
 Machine.delay_ms(200)
-puts "[debug] PY32 GPIO0 enabled"
+puts "[boot] step:py32-gpio-enabled"
 
 led_init_attempt = 0
 led = nil
@@ -433,12 +438,12 @@ rescue IOError
   end
   raise
 end
-puts "[debug] StackchanLed.new ok"
+puts "[boot] step:led-init-ok"
 
 Machine.delay_ms(50)
 led.show
 led.brightness = 100
-puts "[debug] led.show + brightness ok"
+puts "[boot] step:led-show-ok"
 StackchanApp::Face::Neutral.new.draw(display)
 puts "[application] LCD + LED cold-boot done"
 
