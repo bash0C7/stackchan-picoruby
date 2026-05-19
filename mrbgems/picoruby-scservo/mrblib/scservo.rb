@@ -42,6 +42,24 @@ class SCServo
     decode_signed(bytes[5], bytes[6])
   end
 
+  def enable_torque(on = true)
+    value = on ? 0x01 : 0x00
+    send_packet(INSTR_WRITE, [REG_TORQUE, value])
+    drain_rx
+    nil
+  end
+
+  def set_mode(mode)
+    value = case mode
+            when :position then 0x00
+            when :pwm      then 0x01
+            else raise ArgumentError, "unknown mode: #{mode.inspect}"
+            end
+    send_packet(INSTR_WRITE, [REG_MODE, value])
+    drain_rx
+    nil
+  end
+
   private
 
   def send_packet(instr, params)

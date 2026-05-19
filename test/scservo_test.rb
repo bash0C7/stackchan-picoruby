@@ -80,4 +80,43 @@ class SCServoTest < Test::Unit::TestCase
     servo = SCServo.new(uart, id: 1)
     assert_nil servo.read_pos
   end
+
+  def test_enable_torque_writes_reg_0x28_value_1
+    uart = FakeUART.new
+    SCServo.new(uart, id: 1).enable_torque
+    # ID=1 LEN=4 INSTR=3 REG=0x28 DATA=1
+    # sum=1+4+3+0x28+1 = 1+4+3+40+1 = 49 = 0x31 -> cksum=~0x31 & 0xFF = 0xCE
+    expected = [0xFF, 0xFF, 0x01, 0x04, 0x03, 0x28, 0x01, 0xCE]
+    assert_equal expected, uart.writes.first
+  end
+
+  def test_disable_torque_writes_reg_0x28_value_0
+    uart = FakeUART.new
+    SCServo.new(uart, id: 1).enable_torque(false)
+    # sum=1+4+3+0x28+0 = 48 = 0x30 -> cksum = 0xCF
+    expected = [0xFF, 0xFF, 0x01, 0x04, 0x03, 0x28, 0x00, 0xCF]
+    assert_equal expected, uart.writes.first
+  end
+
+  def test_set_mode_position_writes_reg_0x21_value_0
+    uart = FakeUART.new
+    SCServo.new(uart, id: 1).set_mode(:position)
+    # sum=1+4+3+0x21+0 = 1+4+3+33+0 = 41 = 0x29 -> cksum = 0xD6
+    expected = [0xFF, 0xFF, 0x01, 0x04, 0x03, 0x21, 0x00, 0xD6]
+    assert_equal expected, uart.writes.first
+  end
+
+  def test_set_mode_pwm_writes_reg_0x21_value_1
+    uart = FakeUART.new
+    SCServo.new(uart, id: 1).set_mode(:pwm)
+    expected = [0xFF, 0xFF, 0x01, 0x04, 0x03, 0x21, 0x01, 0xD5]
+    assert_equal expected, uart.writes.first
+  end
+
+  def test_set_mode_unknown_raises
+    uart = FakeUART.new
+    assert_raise(ArgumentError) do
+      SCServo.new(uart, id: 1).set_mode(:wat)
+    end
+  end
 end
