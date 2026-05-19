@@ -80,6 +80,7 @@ begin
     client.send do |s|
       s.head(yaw: yaw, pitch: pitch, time_ms: time_ms, velocity: velocity)
     end
+    STDOUT.puts "[detail] #{client.last_detail_frame.inspect}"
   when "raw"
     frame = ARGV.shift or abort "error: raw requires <frame>"
     frame += "\n" unless frame.end_with?("\n")

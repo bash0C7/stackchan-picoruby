@@ -216,6 +216,10 @@ module StackchanNotifier
           next
         end
         handler.deliver(client: @client, params: params, ctx: handler_ctx)
+        # DEBUG: surface last detail frame so we can see what device returned.
+        if @client.respond_to?(:last_detail_frame)
+          log(:info, "kind=#{kind} last_detail=#{@client.last_detail_frame.inspect}")
+        end
       end
       true
     rescue StackchanBleClient::Error, IOError, SystemCallError => e

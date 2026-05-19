@@ -462,6 +462,53 @@ rescue => e
   puts "[boot] servo init failed: #{e.class}: #{e.message}"
 end
 
+# Cold-boot self-test: human-visible LED + servo motion so anyone watching
+# the device can tell at a glance whether each subsystem (LED bus / servo
+# UART TX / servo UART RX) is alive. Each step puts a log line so a Mac-side
+# `bin/capture-with-pty` operator can correlate visual with serial trace.
+# Failure of any leg is non-fatal — BLE startup proceeds either way.
+puts "[boot] self-test begin"
+
+begin
+  puts "[boot] self-test led: left red solid"
+  led.animate_side(:left, 255, 0, 0, :solid)
+  led.tick(Machine.uptime_us / 1000)
+  Machine.delay_ms(1500)
+  puts "[boot] self-test led: right blue solid"
+  led.animate_side(:right, 0, 0, 255, :solid)
+  led.tick(Machine.uptime_us / 1000)
+  Machine.delay_ms(1500)
+  puts "[boot] self-test led: both off"
+  led.animate_side(:both, 0, 0, 0, :off)
+  led.tick(Machine.uptime_us / 1000)
+rescue => e
+  puts "[boot] self-test led raised: #{e.class}: #{e.message}"
+end
+
+if @head
+  begin
+    [
+      ["up",     "0",     "800"],
+      ["down",   "0",     "200"],
+      ["right",  "1000",  "450"],
+      ["left",   "-1000", "450"],
+      ["center", "0",     "450"],
+    ].each do |label, y, p|
+      puts "[boot] self-test servo: #{label} Y=#{y} P=#{p}"
+      @head.apply({"Y" => y, "P" => p, "T" => "600"})
+      Machine.delay_ms(800)
+    end
+    actual = @head.read_actual
+    puts "[boot] self-test servo read=#{actual.inspect}"
+  rescue => e
+    puts "[boot] self-test servo raised: #{e.class}: #{e.message}"
+  end
+else
+  puts "[boot] self-test servo: SKIP (@head nil)"
+end
+
+puts "[boot] self-test end"
+
 # cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Neutral.draw) は
 # 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
 # yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
