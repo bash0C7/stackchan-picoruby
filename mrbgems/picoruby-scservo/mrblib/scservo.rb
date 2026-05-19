@@ -17,4 +17,49 @@ class SCServo
     @uart = uart
     @id   = id
   end
+
+  def write_pos(pos, time_ms: 0, speed: 0)
+    pos_enc   = encode_signed(pos)
+    time_enc  = encode_unsigned(time_ms)
+    speed_enc = encode_unsigned(speed)
+    data = [REG_GOAL_POS_L,
+            pos_enc[0],   pos_enc[1],
+            time_enc[0],  time_enc[1],
+            speed_enc[0], speed_enc[1]]
+    send_packet(INSTR_WRITE, data)
+    drain_rx
+    nil
+  end
+
+  private
+
+  def send_packet(instr, params)
+    length = params.length + 2   # instr + params + checksum, minus the LEN byte itself
+    body = [@id, length, instr] + params
+    sum = body.inject(0) { |acc, b| acc + b }
+    cksum = (~sum) & 0xFF
+    packet = HEADER + body + [cksum]
+    @uart.write(packet)
+  end
+
+  def encode_unsigned(v)
+    v &= 0xFFFF
+    [v & 0xFF, (v >> 8) & 0xFF]
+  end
+
+  def encode_signed(v)
+    # SCS uses sign-magnitude: bit 15 of the 16-bit value is the sign bit.
+    if v < 0
+      mag = (-v) & 0x7FFF
+      [mag & 0xFF, ((mag >> 8) & 0x7F) | 0x80]
+    else
+      mag = v & 0x7FFF
+      [mag & 0xFF, (mag >> 8) & 0x7F]
+    end
+  end
+
+  def drain_rx
+    # Stub for Task 5; do nothing until we add the real drain.
+    nil
+  end
 end
