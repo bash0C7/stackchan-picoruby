@@ -303,6 +303,13 @@ module StackchanApp
     end
 
     def handle(frame)
+      # Legacy raw Y/P keys are retired (2026-05-21 direction-key migration).
+      # Reject outright so old PC clients see the migration via ERROR ACK
+      # rather than getting silently dropped.
+      if frame.key?("Y") || frame.key?("P")
+        @stdout.write(ERROR_FRAME)
+        return
+      end
       return handle_torque(frame)   if frame.key?("torque")
       return handle_selftest(frame) if frame.key?("selftest")
 

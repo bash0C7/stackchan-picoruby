@@ -147,6 +147,18 @@ class TestDispatcherFrameContract < Test::Unit::TestCase
     assert_equal StackchanApp::Head::SERVO_YAW_ZERO, call[:yaw_raw]
   end
 
+  def test_legacy_y_key_returns_error
+    @dispatcher.handle({ "Y" => "460" })
+    assert_equal ["?\n"], @stdout.frames
+    assert_empty @head.apply_calls
+  end
+
+  def test_legacy_p_key_returns_error
+    @dispatcher.handle({ "P" => "620" })
+    assert_equal ["?\n"], @stdout.frames
+    assert_empty @head.apply_calls
+  end
+
   def test_detail_reports_yl_actual_when_raw_above_zero
     @head = FakeHead.new(yaw_pos: StackchanApp::Head::SERVO_YAW_ZERO + 25,
                          pitch_pos: StackchanApp::Head::SERVO_PITCH_ZERO + 9)
