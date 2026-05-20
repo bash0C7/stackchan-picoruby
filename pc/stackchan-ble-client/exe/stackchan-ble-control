@@ -5,12 +5,13 @@ require "bundler/setup"
 require "optparse"
 require "stackchan_ble_client"
 
-EXIT_OK         = 0
-EXIT_ADAPTER    = 2
-EXIT_TIMEOUT    = 3
-EXIT_CONNECTION = 4
-EXIT_ASSERTION  = 5
-EXIT_UNCAT      = 9
+EXIT_OK                    = 0
+EXIT_ADAPTER               = 2
+EXIT_TIMEOUT               = 3
+EXIT_CONNECTION            = 4
+EXIT_ASSERTION             = 5
+EXIT_CALIBRATION_NEEDED    = 6
+EXIT_UNCAT                 = 9
 
 device_name = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
 name_prefix = nil
@@ -30,15 +31,16 @@ parser = OptionParser.new do |opts|
   end
   opts.on("--face NAME")  { |v| $combo_face  = v.to_sym }
   opts.on("--led SPEC")   { |v| $combo_led   = v }   # "<color> <mode>" e.g. "red blink"
-  opts.on("--yaw V")      { |v| $servo_yaw      = v }
-  opts.on("--pitch V")    { |v| $servo_pitch    = v }
+  opts.on("--yaw-left N")  { |v| $yaw_left  = Integer(v, 10) }
+  opts.on("--yaw-right N") { |v| $yaw_right = Integer(v, 10) }
+  opts.on("--pitch-up N")  { |v| $pitch_up  = Integer(v, 10) }
   opts.on("--time V")     { |v| $servo_time     = v }
   opts.on("--velocity V") { |v| $servo_velocity = v }
 end
 parser.parse!(ARGV)
 
 command = ARGV.shift
-abort "error: command required (face / led / led-rgb / led-hsb / combo / servo / raw)" unless command
+abort "error: command required (face / led / led-rgb / led-hsb / combo / servo / torque / selftest / raw)" unless command
 
 # If name_prefix is provided, use prefix matching; otherwise use exact device_name match
 client = StackchanBleClient::Client.new(device_name: device_name, name_prefix: name_prefix)
@@ -72,19 +74,31 @@ begin
       s.led(led_color.to_sym, side: side, mode: (led_mode || "solid").to_sym)
     end
   when "servo"
-    abort "error: servo requires at least one of --yaw / --pitch" if $servo_yaw.nil? && $servo_pitch.nil?
-    yaw      = $servo_yaw      && Integer($servo_yaw, 10)
-    pitch    = $servo_pitch    && Integer($servo_pitch, 10)
+    if $yaw_left.nil? && $yaw_right.nil? && $pitch_up.nil?
+      abort "error: servo requires at least one of --yaw-left / --yaw-right / --pitch-up"
+    end
     time_ms  = $servo_time     && Integer($servo_time, 10)
     velocity = $servo_velocity && Integer($servo_velocity, 10)
     client.send do |s|
-      s.head(yaw: yaw, pitch: pitch, time_ms: time_ms, velocity: velocity)
+      s.head(yaw_left: $yaw_left, yaw_right: $yaw_right, pitch_up: $pitch_up,
+             time_ms: time_ms, velocity: velocity)
     end
-    STDOUT.puts "[detail] #{client.last_detail_frame.inspect}"
+    detail = client.last_detail_frame
+    STDOUT.puts "[detail] #{detail.inspect}"
+    if detail && detail.include?("unknown")
+      warn "[WARN] servo actual reports unknown — manual calibration recommended (move servos by hand or use ±1 magnitude probing)"
+      exit EXIT_CALIBRATION_NEEDED
+    end
   when "raw"
     frame = ARGV.shift or abort "error: raw requires <frame>"
     frame += "\n" unless frame.end_with?("\n")
     client.raw_send(frame)
+  when "torque"
+    state = ARGV.shift or abort "error: torque requires on or off"
+    abort "error: torque arg must be on or off" unless %w[on off].include?(state)
+    client.send { |s| s.torque(on: state == "on") }
+  when "selftest"
+    client.send { |s| s.selftest }
   else
     abort "error: unknown command #{command.inspect}"
   end
