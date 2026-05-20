@@ -80,6 +80,26 @@ PC連携アバターパターン：
 2. 答えが無い・根拠が必要なら `/Users/bash/dev/src/github.com/picoruby/picoruby` を Explore subagent で調査
 3. 仕様確認できないまま「禁止メソッド」前提で書かない
 
+## BLE servo control protocol (post-2026-05-21)
+
+Servo positions are normalized to direction-key + magnitude (NOT raw values):
+
+- **yaw**: `<YL:0..100>` (StackChan's left) or `<YR:0..100>` (right), mutually exclusive (YL wins on conflict)
+- **pitch**: `<PU:0..100>` (up only — down is not protocol-reachable; if needed, use `<torque:off>` and move by hand)
+- **timing**: `<T:ms>` (duration) or `<V:speed>` (velocity), at most one
+- **torque (rare)**: `<torque:on>` / `<torque:off>` (full word key — frequency rare, readability priority)
+- **selftest (rare)**: `<selftest:run>` (yaw ±10 raw nudge — UART round-trip alive check)
+
+Cold-boot starts torque OFF + `Face::Closed` (idle indicator). Operator physically aligns
+head to forward, then sends `<torque:on>` to engage. Detail frame on position commands
+reports `<YL_actual:N,PU_actual:N>` or `<YL_actual:unknown,PU_actual:unknown>` (where
+unknown is a protocol-level signal that operator manual calibration is needed).
+
+CLI: `bundle exec exe/stackchan-ble-control --yaw-left 50 --pitch-up 30 --time 500 servo`,
+`... torque on`, `... selftest`. Exit code 6 = `EXIT_CALIBRATION_NEEDED`.
+
+Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`
+
 ## 開発ルール
 
 - ドライバー開発は基本 https://picoruby.org/terminal で実装・実機検証

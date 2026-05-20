@@ -395,6 +395,13 @@ section 8 の手順をそのまま実行。pass criterion は section 2 のゴ�
 - **require 名 = gem 名から `picoruby-` を strip した形**。`picoruby-stackchan-protocol` → `require 'stackchan-protocol'` (hyphen)。host テストの `require 'stackchan_protocol'` (underscore) はファイル名解決経由で問題なし
 - **port は機体によって `/dev/cu.usbmodem101` or `1101`**。Rakefile / 検証 doc は ESPPORT 環境変数で上書き可
 
+## Servo protocol
+
+Servo control was redesigned 2026-05-21 to use direction-key + magnitude
+(`<YL:N,YR:N,PU:N>` with `<torque:on|off>` and `<selftest:run>` system frames).
+See `2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md` for the
+canonical frame syntax and semantics.
+
 ## 12. 完了の判定（再掲）
 
 「セクション 2. ゴール」の 6 項目すべて実機確認できたら本 spec は終了。

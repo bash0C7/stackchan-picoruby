@@ -1,5 +1,11 @@
 # Phase B: Servo Control (Yaw / Pitch with Time-Velocity Policy) Design
 
+> **⚠ SUPERSEDED by `2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`.**
+> The raw Y/P frame protocol described in this document was retired on 2026-05-21
+> in favour of a direction-key + magnitude protocol (`<YL:N,YR:N,PU:N>`).
+> Cold-boot also no longer auto-enables torque or runs self-test.
+> This document is preserved as a Phase B historical reference only.
+
 Date: 2026-05-19
 
 ## Goal
