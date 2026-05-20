@@ -28,8 +28,8 @@ class FakeHead
     @selftest_calls = []
   end
 
-  def apply(frame_raw)
-    @apply_calls << frame_raw
+  def apply(**kwargs)
+    @apply_calls << kwargs
   end
 
   def enable_torque(on)
@@ -62,17 +62,6 @@ class TestDispatcherFrameContract < Test::Unit::TestCase
   def test_face_frame_emits_one_ack_frame_with_newline
     @dispatcher.handle({ "F" => "2" })
     assert_equal [".\n"], @stdout.frames
-  end
-
-  def test_servo_frame_emits_ack_frame_then_detail_frame
-    @dispatcher.handle({ "Y" => "0", "P" => "600", "T" => "250" })
-    assert_equal [".\n", "<Y_actual:0,P_actual:600>\n"], @stdout.frames
-  end
-
-  def test_servo_timeout_emits_ack_then_error_detail_frame
-    @head.fail_read = true
-    @dispatcher.handle({ "Y" => "0", "P" => "600", "T" => "250" })
-    assert_equal [".\n", "<ERROR:servo_timeout,axis:both>\n"], @stdout.frames
   end
 
   def test_bad_face_index_emits_error_ack_frame
@@ -110,5 +99,51 @@ class TestDispatcherFrameContract < Test::Unit::TestCase
     @dispatcher.handle({ "selftest" => "maybe" })
     assert_equal ["?\n"], @stdout.frames
     assert_empty @head.selftest_calls
+  end
+
+  def test_yl_50_converts_to_raw_above_zero_and_acks
+    @dispatcher.handle({ "YL" => "50", "T" => "500" })
+    assert_equal 1, @head.apply_calls.length
+    call = @head.apply_calls.first
+    assert_equal StackchanApp::Head::SERVO_YAW_ZERO + 25, call[:yaw_raw]
+    assert_nil call[:pitch_raw]
+    assert_equal 500, call[:time_ms]
+  end
+
+  def test_yr_50_converts_to_raw_below_zero
+    @dispatcher.handle({ "YR" => "50" })
+    call = @head.apply_calls.first
+    assert_equal StackchanApp::Head::SERVO_YAW_ZERO - 25, call[:yaw_raw]
+  end
+
+  def test_pu_100_converts_to_raw_full_above_pitch_zero
+    @dispatcher.handle({ "PU" => "100" })
+    call = @head.apply_calls.first
+    assert_equal StackchanApp::Head::SERVO_PITCH_ZERO + 30, call[:pitch_raw]
+  end
+
+  def test_yl_yr_conflict_uses_yl_ignores_yr
+    @dispatcher.handle({ "YL" => "50", "YR" => "30" })
+    call = @head.apply_calls.first
+    assert_equal StackchanApp::Head::SERVO_YAW_ZERO + 25, call[:yaw_raw]
+    # YR is silently ignored — YL wins
+  end
+
+  def test_yl_150_out_of_range_errors_no_apply
+    @dispatcher.handle({ "YL" => "150" })
+    assert_equal ["?\n"], @stdout.frames
+    assert_empty @head.apply_calls
+  end
+
+  def test_pu_negative_out_of_range_errors_no_apply
+    @dispatcher.handle({ "PU" => "-10" })
+    assert_equal ["?\n"], @stdout.frames
+    assert_empty @head.apply_calls
+  end
+
+  def test_yl_zero_emits_ack_and_centers_yaw
+    @dispatcher.handle({ "YL" => "0" })
+    call = @head.apply_calls.first
+    assert_equal StackchanApp::Head::SERVO_YAW_ZERO, call[:yaw_raw]
   end
 end

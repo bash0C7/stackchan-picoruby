@@ -211,8 +211,11 @@ module StackchanApp
   end
 
   class Head
-    YAW_RANGE   = (-1280..1280)
-    PITCH_RANGE = (30..870)
+    # Raw servo position range available per axis around the factory zero.
+    # YAW_RANGE_RAW=50 → ±50 raw units = ±5° (SCS servos use 0.087°/unit).
+    # PITCH_RANGE_RAW=30 → +30 raw units, pitch-down not supported.
+    YAW_RANGE_RAW   = 50
+    PITCH_RANGE_RAW = 30
 
     # Factory-firmware zero positions (hal_servo.cpp:173,182).
     # zero_pos_1 (yaw, ID=1) = 460, zero_pos_2 (pitch, ID=2) = 620.
@@ -224,25 +227,29 @@ module StackchanApp
       @pitch = pitch_servo
     end
 
-    def apply(frame)
-      time_ms, speed = resolve_time_speed(frame)
-      if frame.key?("Y")
-        y = clamp(frame["Y"].to_i, YAW_RANGE)
-        @yaw.write_pos(y, time_ms: time_ms, speed: speed)
-      end
-      if frame.key?("P")
-        p = clamp(frame["P"].to_i, PITCH_RANGE)
-        @pitch.write_pos(p, time_ms: time_ms, speed: speed)
-      end
+    # Apply pre-computed raw positions. Dispatcher does the YL/YR/PU →
+    # signed raw conversion; Head only writes what it's told.
+    def apply(yaw_raw: nil, pitch_raw: nil, time_ms: 0, velocity: 0)
+      @yaw.write_pos(yaw_raw, time_ms: time_ms, speed: velocity)     if yaw_raw
+      @pitch.write_pos(pitch_raw, time_ms: time_ms, speed: velocity) if pitch_raw
     end
 
+    # Enable/disable torque on both servos. No-op for absent servos.
+    def enable_torque(on)
+      @yaw.enable_torque(on)   if @yaw
+      @pitch.enable_torque(on) if @pitch
+    end
+
+    # Returns raw positions keyed by axis. nil for missing/unreachable servos.
+    # Note: symbol keys. Dispatcher's emit_servo_detail rewrite (Task 11) will
+    # read these symbol keys; the old string-keyed format ("Y_actual" /
+    # "P_actual") is removed.
     def read_actual
-      { "Y_actual" => @yaw.read_pos, "P_actual" => @pitch.read_pos }
+      { yaw: (@yaw && @yaw.read_pos), pitch: (@pitch && @pitch.read_pos) }
     end
 
-    # Cold-boot bring-up self-test: nudge yaw ±10 raw and return to center,
-    # 50ms motion each step. Confirms UART round-trip is alive without
-    # significant mechanical stress. Non-fatal if @yaw is nil.
+    # Cold-boot bring-up self-test: nudge yaw ±10 raw and return to center.
+    # Unchanged from Task 9 — copied here as part of the Head class rewrite.
     def selftest
       return false if @yaw.nil?
       y0 = SERVO_YAW_ZERO
@@ -251,25 +258,6 @@ module StackchanApp
         Machine.delay_ms(80)
       end
       true
-    end
-
-    private
-
-    def resolve_time_speed(frame)
-      # T-priority: T present -> use T, else V if present, else both zero (max speed)
-      if frame.key?("T")
-        [frame["T"].to_i, 0]
-      elsif frame.key?("V")
-        [0, frame["V"].to_i]
-      else
-        [0, 0]
-      end
-    end
-
-    def clamp(v, range)
-      return range.first if v < range.first
-      return range.last  if v > range.last
-      v
     end
   end
 end
@@ -317,16 +305,19 @@ module StackchanApp
     def handle(frame)
       return handle_torque(frame)   if frame.key?("torque")
       return handle_selftest(frame) if frame.key?("selftest")
+
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
       attempts << handle_led(frame)  if frame.key?("L")
-      servo_present = frame.key?("Y") || frame.key?("P") || frame.key?("V") || frame.key?("T")
-      handle_head(frame) if servo_present
-      # Servo success/failure is reported in detail frame, not in ACK/ERROR byte
-      # If attempts is empty (no F/L), success defaults to true
-      success = attempts.empty? || attempts.all? { |ok| ok }
-      @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
-      emit_servo_detail(frame) if servo_present
+      servo_present = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
+      if servo_present
+        success = handle_head(frame)
+        @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
+        emit_servo_detail(frame) if success
+      else
+        success = attempts.empty? || attempts.all? { |ok| ok }
+        @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
+      end
     rescue => e
       log_error(e)
       @stdout.write(ERROR_FRAME)
@@ -387,8 +378,34 @@ module StackchanApp
     end
 
     def handle_head(frame)
-      return if @head.nil?
-      @head.apply(frame)
+      yaw_raw   = nil
+      pitch_raw = nil
+
+      if frame.key?("YL")
+        mag = frame["YL"].to_i
+        return false unless mag >= 0 && mag <= 100
+        yaw_raw = Head::SERVO_YAW_ZERO + (mag * Head::YAW_RANGE_RAW / 100)
+      elsif frame.key?("YR")
+        mag = frame["YR"].to_i
+        return false unless mag >= 0 && mag <= 100
+        yaw_raw = Head::SERVO_YAW_ZERO - (mag * Head::YAW_RANGE_RAW / 100)
+      end
+
+      if frame.key?("PU")
+        mag = frame["PU"].to_i
+        return false unless mag >= 0 && mag <= 100
+        pitch_raw = Head::SERVO_PITCH_ZERO + (mag * Head::PITCH_RANGE_RAW / 100)
+      end
+
+      return false unless yaw_raw || pitch_raw
+      return true if @head.nil?
+      @head.apply(
+        yaw_raw:   yaw_raw,
+        pitch_raw: pitch_raw,
+        time_ms:   (frame["T"] || "0").to_i,
+        velocity:  (frame["V"] || "0").to_i,
+      )
+      true
     end
 
     def emit_servo_detail(frame)
