@@ -105,6 +105,24 @@ module StackchanApp
         clear_eye_region(display)
         draw_eyes(display)
       end
+
+      # Eye-only update that closes the eyes (horizontal line), used for blink
+      # animation. Mirrors redraw_eyes_open but draws closed-eye geometry. Does
+      # NOT fill background — preserves whatever mouth / other face state is
+      # already on screen.
+      def redraw_eyes_closed(display)
+        clear_eye_region(display)
+        display.draw_line(
+          EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+          EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+          EYE_COLOR
+        )
+        display.draw_line(
+          EYE_RIGHT_CX - CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+          EYE_RIGHT_CX + CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+          EYE_COLOR
+        )
+      end
     end
 
     class Neutral < Base
@@ -181,12 +199,13 @@ module StackchanApp
         )
       end
 
-      # Override Base#draw to do eye-only update: no full-screen fill, no mouth
-      # redraw. This is used as the "blink close" frame so screen does not
-      # flicker visibly.
+      # Full-face draw: black background + closed eyes only (no mouth).
+      # Used as the "torque off" idle indicator. For blink animation use
+      # Base#redraw_eyes_closed instead (eye-only, no flicker).
       def draw(display)
-        clear_eye_region(display)
+        display.fill(BACKGROUND_COLOR)
         draw_eyes(display)
+        # No mouth — torque-off idle face is intentionally mouthless.
       end
     end
   end
