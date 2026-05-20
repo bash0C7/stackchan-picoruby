@@ -155,4 +155,27 @@ class SCServoTest < Test::Unit::TestCase
     # Without drain_echo, check_head would parse the echo as the response → wrong value.
     assert_equal 500, servo.read_pos
   end
+
+  def test_read_pos_raw_debug_returns_full_rx_bytes_as_hex
+    uart = FakeUART.new
+    # Stage a valid status packet response: FF FF 01 04 00 F4 01 05
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    servo = SCServo.new(uart, id: 1)
+    raw = servo.read_pos_raw_debug
+    assert_kind_of String, raw
+    # Hex string of all bytes received on RX (echo + response)
+    assert_match(/FF FF 01 04 00 F4 01 05/, raw)
+  end
+
+  def test_read_pos_raw_debug_returns_echo_bytes_when_no_servo_response
+    # If servo doesn't respond, read_pos_raw_debug still captures the TX echo.
+    # This is the actual diagnostic value: confirm echo IS there (half-duplex working),
+    # but servo's response is missing (servo problem, not line).
+    uart = FakeUART.new
+    servo = SCServo.new(uart, id: 1)
+    raw = servo.read_pos_raw_debug
+    assert_kind_of String, raw
+    # Just the TX echo: ID=1, LEN=4, INSTR=2, REG=0x38, BYTES=2, cksum=0xBE
+    assert_match(/FF FF 01 04 02 38 02 BE/, raw)
+  end
 end

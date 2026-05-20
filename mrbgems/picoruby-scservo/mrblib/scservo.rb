@@ -81,6 +81,30 @@ class SCServo
     decode_signed(data.bytes[0], data.bytes[1])
   end
 
+  # Diagnostic-only method: send the same READ packet as read_pos, then
+  # read up to 32 bytes (echo + response + slack) without checksum / id /
+  # length validation. Returns a hex-formatted string of whatever was on RX,
+  # or "<empty>" if nothing came back. Used to debug the read_pos timeout
+  # hypothesis (echo behaviour / register address / clear_rx_buffer).
+  def read_pos_raw_debug
+    @uart.clear_rx_buffer
+    send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
+    @uart.flush
+    # Wait briefly for servo to respond. SCS servos typically reply within
+    # 5-10ms; 80ms is a generous budget for diagnostic capture.
+    Machine.delay_ms(80)
+    raw = ""
+    loop do
+      chunk = @uart.readpartial(32)
+      break if chunk.nil? || chunk.empty?
+      raw << chunk
+    end
+    return "<empty>" if raw.empty?
+    hex = ""
+    raw.bytes.each { |b| hex << sprintf("%02X ", b) }
+    hex.strip
+  end
+
   # SCSCL::EnableTorque (SCSCL.cpp:65-68) → SCS::writeByte (SCS.cpp:152-158).
   def enable_torque(on = true)
     value = on ? 0x01 : 0x00
