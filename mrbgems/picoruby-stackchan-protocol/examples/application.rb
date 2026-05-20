@@ -361,8 +361,7 @@ module StackchanApp
       end
       @head.selftest
       @stdout.write(ACK_FRAME)
-      # Detail frame emission deferred to Task 11 (where emit_servo_detail
-      # is rewritten with YL/YR/PU_actual syntax).
+      emit_servo_detail({ "YL" => "0", "PU" => "0" })  # synthetic frame: report current actuals
     end
 
     def handle_led(frame)
@@ -408,31 +407,33 @@ module StackchanApp
       true
     end
 
-    def emit_servo_detail(frame)
-      if @head.nil?
-        @stdout.write("<ERROR:servo_unavailable>\n")
-        return
-      end
+    def emit_servo_detail(_frame)
       actual = @head.read_actual
-      failed = []
-      failed << "yaw"   if actual["Y_actual"].nil? && frame.key?("Y")
-      failed << "pitch" if actual["P_actual"].nil? && frame.key?("P")
-      if failed.any?
-        axis = failed.size == 2 ? "both" : failed.first
-        @stdout.write("<ERROR:servo_timeout,axis:#{axis}>\n")
+      yaw_raw   = actual[:yaw]
+      pitch_raw = actual[:pitch]
+
+      yaw_part = if yaw_raw.nil?
+        "YL_actual:unknown"
       else
-        y = frame.key?("Y") ? actual["Y_actual"] : nil
-        p = frame.key?("P") ? actual["P_actual"] : nil
-        parts = []
-        parts << "Y_actual:#{y}" if y
-        parts << "P_actual:#{p}" if p
-        # If only T or V given (no Y/P), still report both axes for visibility
-        if parts.empty?
-          parts << "Y_actual:#{actual['Y_actual']}"
-          parts << "P_actual:#{actual['P_actual']}"
+        delta = yaw_raw - Head::SERVO_YAW_ZERO
+        if delta >= 0
+          mag = delta * 100 / Head::YAW_RANGE_RAW
+          "YL_actual:#{mag}"
+        else
+          mag = (-delta) * 100 / Head::YAW_RANGE_RAW
+          "YR_actual:#{mag}"
         end
-        @stdout.write("<#{parts.join(',')}>\n")
       end
+
+      pitch_part = if pitch_raw.nil?
+        "PU_actual:unknown"
+      else
+        delta = pitch_raw - Head::SERVO_PITCH_ZERO
+        mag = delta >= 0 ? (delta * 100 / Head::PITCH_RANGE_RAW) : 0
+        "PU_actual:#{mag}"
+      end
+
+      @stdout.write("<#{yaw_part},#{pitch_part}>\n")
     end
 
     def log_error(e)
