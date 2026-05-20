@@ -186,4 +186,26 @@ class SCServoTest < Test::Unit::TestCase
     # Just the TX echo: ID=1, LEN=4, INSTR=2, REG=0x38, BYTES=2, cksum=0xBE
     assert_match(/FF FF 01 04 02 38 02 BE/, raw)
   end
+
+  def test_read_pos_retries_up_to_three_times_before_returning_nil
+    uart = FakeUART.new
+    # No response ever queued — all three attempts should drain to nil
+    servo = SCServo.new(uart, id: 1)
+    result = servo.read_pos
+    assert_nil result
+    # send_packet should have been called 3 times (3 retry attempts)
+    assert_equal 3, uart.writes.length
+  end
+
+  def test_read_pos_returns_value_on_second_attempt
+    uart = FakeUART.new
+    # First attempt: empty (queue empty), second attempt: valid response
+    uart.read_queue_after_writes = {
+      2 => [{ bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }]
+    }
+    servo = SCServo.new(uart, id: 1)
+    result = servo.read_pos
+    assert_equal 500, result
+    assert_equal 2, uart.writes.length
+  end
 end

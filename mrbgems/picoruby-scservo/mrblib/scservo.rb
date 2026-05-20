@@ -50,35 +50,14 @@ class SCServo
   end
 
   # SCSCL::ReadPos (SCSCL.cpp:89-100) → SCS::readWord (SCS.cpp:232-242)
-  # → SCS::Read (SCS.cpp:172-217). Returns the signed position or nil on
-  # timeout / id mismatch / length mismatch / checksum mismatch.
+  # → SCS::Read (SCS.cpp:172-217). Retries up to 3 times on failure, returning
+  # the signed position or nil after all attempts exhausted.
   def read_pos
-    @uart.clear_rx_buffer
-    n = send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
-    @uart.flush
-    drain_echo(n)
-    return nil unless check_head
-    # SCS.cpp:184 — first read = 3 bytes (ID, LEN, ERR).
-    body_header = read_bytes(3, READ_TIMEOUT_MS)
-    return nil if body_header.nil?
-    id_byte  = body_header.bytes[0]
-    len_byte = body_header.bytes[1]
-    err_byte = body_header.bytes[2]
-    return nil if id_byte != @id
-    # SCS.cpp:192 — LEN must equal nLen+2 (data + err + checksum byte counts).
-    return nil if len_byte != (2 + 2)
-    # SCS.cpp:196 — second read = nLen bytes (the actual data).
-    data = read_bytes(2, READ_TIMEOUT_MS)
-    return nil if data.nil?
-    # SCS.cpp:201 — third read = 1 byte (checksum).
-    cksum_byte = read_bytes(1, READ_TIMEOUT_MS)
-    return nil if cksum_byte.nil?
-    # SCS.cpp:205-213 — checksum = ~(ID + LEN + ERR + data...).
-    calc_sum = id_byte + len_byte + err_byte
-    data.bytes.each { |b| calc_sum += b }
-    expected = (~calc_sum) & 0xFF
-    return nil if cksum_byte.bytes[0] != expected
-    decode_signed(data.bytes[0], data.bytes[1])
+    3.times do
+      result = read_pos_once
+      return result unless result.nil?
+    end
+    nil
   end
 
   # Diagnostic-only method: send the same READ packet as read_pos, then
@@ -122,6 +101,38 @@ class SCServo
   end
 
   private
+
+  # SCSCL::ReadPos single attempt. Used by read_pos retry wrapper.
+  # Returns signed position on success, nil on any failure (timeout, id mismatch,
+  # length mismatch, checksum mismatch).
+  def read_pos_once
+    @uart.clear_rx_buffer
+    n = send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
+    @uart.flush
+    drain_echo(n)
+    return nil unless check_head
+    # SCS.cpp:184 — first read = 3 bytes (ID, LEN, ERR).
+    body_header = read_bytes(3, READ_TIMEOUT_MS)
+    return nil if body_header.nil?
+    id_byte  = body_header.bytes[0]
+    len_byte = body_header.bytes[1]
+    err_byte = body_header.bytes[2]
+    return nil if id_byte != @id
+    # SCS.cpp:192 — LEN must equal nLen+2 (data + err + checksum byte counts).
+    return nil if len_byte != (2 + 2)
+    # SCS.cpp:196 — second read = nLen bytes (the actual data).
+    data = read_bytes(2, READ_TIMEOUT_MS)
+    return nil if data.nil?
+    # SCS.cpp:201 — third read = 1 byte (checksum).
+    cksum_byte = read_bytes(1, READ_TIMEOUT_MS)
+    return nil if cksum_byte.nil?
+    # SCS.cpp:205-213 — checksum = ~(ID + LEN + ERR + data...).
+    calc_sum = id_byte + len_byte + err_byte
+    data.bytes.each { |b| calc_sum += b }
+    expected = (~calc_sum) & 0xFF
+    return nil if cksum_byte.bytes[0] != expected
+    decode_signed(data.bytes[0], data.bytes[1])
+  end
 
   # SCS::genWrite (SCS.cpp:93-99) — rFlush + writeBuf(INST_WRITE) + wFlush + Ack.
   def gen_write(params)

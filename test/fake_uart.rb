@@ -2,12 +2,14 @@ class FakeUART
   attr_reader :writes
   attr_accessor :read_queue
   attr_accessor :pending_rx   # bytes that drain_rx should consume
+  attr_accessor :read_queue_after_writes  # hash: { write_count => [{ bytes: [...] }, ...] }
 
   def initialize(echo: true)
     @writes      = []
     @read_queue  = []           # each element: { bytes: [..], delay_ms: 0 } or :timeout
     @pending_rx  = []           # flat array of bytes consumed by readpartial(n)
     @echo        = echo         # when false, TX bytes do not auto-echo on RX
+    @read_queue_after_writes = {} # indexed by write count; values are arrays of queue items
   end
 
   def write(bytes)
@@ -19,6 +21,10 @@ class FakeUART
     # SCServo#drain_echo reads and discards these before reading the servo response.
     # When @echo=false, TX bytes do not loop back (production no-echo scenario).
     @pending_rx.concat(byte_array) if @echo
+    # After recording the write, check if any responses should be queued for this write count.
+    if @read_queue_after_writes && (queued = @read_queue_after_writes[@writes.length])
+      queued.each { |item| @read_queue << item }
+    end
   end
 
   # Mirrors UART#clear_rx_buffer — drains any stale bytes before a new transaction.
