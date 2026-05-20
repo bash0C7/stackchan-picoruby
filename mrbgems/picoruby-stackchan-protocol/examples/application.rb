@@ -501,6 +501,19 @@ if servo_uart
   end
 end
 
+# Diagnostic: capture raw RX bytes from a single read_pos request so we can
+# analyze why read_pos returns nil. Expected layouts:
+#   echo only        : raw begins FF FF <id> 04 38 02 <cksum> ...  (= our READ pkt)
+#   no echo, response: raw begins FF FF <id> 04 00 <pos_l> <pos_h> <cksum>
+#   wrong register   : response uses different LEN / data byte count
+#   silent failure   : raw=<empty>
+if @head
+  [yaw_servo, pitch_servo].each do |s|
+    sid = s.instance_variable_get(:@id)
+    puts "[diag read_pos_raw id=#{sid}] #{s.read_pos_raw_debug}"
+  end
+end
+
 # Cold-boot self-test: human-visible LED + servo motion so anyone watching
 # the device can tell at a glance whether each subsystem (LED bus / servo
 # UART TX / servo UART RX) is alive. Each step puts a log line so a Mac-side
