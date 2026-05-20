@@ -18,10 +18,20 @@ module StackchanBleClient
       record([:led, side], { kind: :led, form: form, value: value, side: side, mode: mode })
     end
 
-    def head(yaw: nil, pitch: nil, time_ms: nil, velocity: nil)
+    def head(yaw_left: nil, yaw_right: nil, pitch_up: nil, time_ms: nil, velocity: nil)
       record(:head, {
-        kind: :head, yaw: yaw, pitch: pitch, time_ms: time_ms, velocity: velocity,
+        kind: :head,
+        yaw_left: yaw_left, yaw_right: yaw_right, pitch_up: pitch_up,
+        time_ms: time_ms, velocity: velocity,
       })
+    end
+
+    def torque(on:)
+      record(:torque, { kind: :torque, on: on })
+    end
+
+    def selftest
+      record(:selftest, { kind: :selftest })
     end
 
     def to_frames
@@ -44,9 +54,13 @@ module StackchanBleClient
         FrameCodec.encode_led(r: r, g: g, b: b, side: cmd[:side], mode: cmd[:mode])
       when :head
         FrameCodec.encode_head(
-          yaw: cmd[:yaw], pitch: cmd[:pitch],
+          yaw_left: cmd[:yaw_left], yaw_right: cmd[:yaw_right], pitch_up: cmd[:pitch_up],
           time_ms: cmd[:time_ms], velocity: cmd[:velocity],
         )
+      when :torque
+        FrameCodec.encode_torque(on: cmd[:on])
+      when :selftest
+        FrameCodec.encode_selftest
       end
     end
 

@@ -284,7 +284,7 @@ class ClientServoDetailDrainTest < Test::Unit::TestCase
     client.connect
 
     client.send do |s|
-      s.head(yaw: 0, pitch: 600, time_ms: 250, velocity: nil)
+      s.head(yaw_left: 0, pitch_up: 600, time_ms: 250)
     end
 
     assert_equal 0, subscription.remaining_count,
