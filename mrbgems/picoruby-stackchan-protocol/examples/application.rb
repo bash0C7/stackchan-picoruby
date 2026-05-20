@@ -240,6 +240,19 @@ module StackchanApp
       { "Y_actual" => @yaw.read_pos, "P_actual" => @pitch.read_pos }
     end
 
+    # Cold-boot bring-up self-test: nudge yaw ±10 raw and return to center,
+    # 50ms motion each step. Confirms UART round-trip is alive without
+    # significant mechanical stress. Non-fatal if @yaw is nil.
+    def selftest
+      return false if @yaw.nil?
+      y0 = SERVO_YAW_ZERO
+      [(y0 + 10), (y0 - 10), y0].each do |target|
+        @yaw.write_pos(target, time_ms: 50, speed: 0)
+        Machine.delay_ms(80)
+      end
+      true
+    end
+
     private
 
     def resolve_time_speed(frame)
@@ -302,7 +315,8 @@ module StackchanApp
     end
 
     def handle(frame)
-      return handle_torque(frame) if frame.key?("torque")
+      return handle_torque(frame)   if frame.key?("torque")
+      return handle_selftest(frame) if frame.key?("selftest")
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
       attempts << handle_led(frame)  if frame.key?("L")
@@ -343,6 +357,21 @@ module StackchanApp
       else
         @stdout.write(ERROR_FRAME)
       end
+    end
+
+    def handle_selftest(frame)
+      unless frame["selftest"] == "run"
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      if @head.nil?
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      @head.selftest
+      @stdout.write(ACK_FRAME)
+      # Detail frame emission deferred to Task 11 (where emit_servo_detail
+      # is rewritten with YL/YR/PU_actual syntax).
     end
 
     def handle_led(frame)

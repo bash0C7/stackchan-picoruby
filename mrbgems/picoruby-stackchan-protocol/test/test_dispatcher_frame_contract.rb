@@ -99,4 +99,16 @@ class TestDispatcherFrameContract < Test::Unit::TestCase
     assert_equal ["?\n"], @stdout.frames
     assert_empty @head.torque_calls
   end
+
+  def test_selftest_run_invokes_head_selftest_and_acks
+    @dispatcher.handle({ "selftest" => "run" })
+    assert_equal [true], @head.selftest_calls
+    assert_equal [".\n"], @stdout.frames
+  end
+
+  def test_selftest_invalid_value_errors
+    @dispatcher.handle({ "selftest" => "maybe" })
+    assert_equal ["?\n"], @stdout.frames
+    assert_empty @head.selftest_calls
+  end
 end
