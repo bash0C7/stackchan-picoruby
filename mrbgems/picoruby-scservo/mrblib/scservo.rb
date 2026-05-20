@@ -126,20 +126,14 @@ class SCServo
     packet.length
   end
 
-  # On a half-duplex TTL bus, the master's own TX bytes echo back on RX.
-  # Drain exactly n bytes (the echo of the packet just sent) before reading
-  # the servo's response.
+  # On a half-duplex TTL bus, the master's own TX bytes echo back on RX
+  # immediately during/after transmission. Drain up to n bytes non-blocking —
+  # stop as soon as no byte is available. This avoids blocking past the
+  # servo's response window while still clearing any echo that did arrive.
   def drain_echo(n)
-    deadline = (Machine.uptime_us / 1000) + READ_TIMEOUT_MS
-    drained = 0
-    while drained < n
-      chunk = @uart.readpartial(n - drained)
-      if chunk && !chunk.empty?
-        drained += chunk.bytesize
-      else
-        return if (Machine.uptime_us / 1000) > deadline
-        Machine.delay_ms(1)
-      end
+    n.times do
+      chunk = @uart.readpartial(1)
+      break unless chunk && !chunk.empty?
     end
   end
 
