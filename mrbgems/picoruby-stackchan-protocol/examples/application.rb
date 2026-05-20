@@ -561,6 +561,12 @@ begin
   servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 6, rxd_pin: 7, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
+  # SCS EEPROM default is torque ON, so we must explicitly disable to honor
+  # the cold-boot torque-OFF design (operator physically aligns then sends
+  # <torque:on>). Plan §Task 14 assumed default-OFF — Task 15 HITL revealed
+  # the EEPROM-default state.
+  yaw_servo.enable_torque(false)
+  pitch_servo.enable_torque(false)
   @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
   puts "[boot] servo init OK (torque OFF, awaiting <torque:on>)"
 rescue => e
