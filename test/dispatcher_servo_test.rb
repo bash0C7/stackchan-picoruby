@@ -29,30 +29,61 @@ class DispatcherServoTest < Test::Unit::TestCase
   end
 
   def test_Y_frame_routes_to_yaw
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+    @yaw_servo.next_read = 485
+    @pitch_servo.next_read = 635
+    @disp.handle({ "YL" => "50", "PU" => "50", "T" => "2000" })
+    assert_equal [[485, 2000, 0]], @yaw_servo.writes
+    assert_equal [[635, 2000, 0]], @pitch_servo.writes
   end
 
   def test_servo_frame_emits_ack_byte_then_detail_frame
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+    @yaw_servo.next_read = 485
+    @pitch_servo.next_read = 635
+    @disp.handle({ "YL" => "50", "PU" => "50" })
+    # 1st write: ACK frame ".\n", 2nd write: detail frame "<YL_actual:50,PU_actual:50>\n"
+    assert_equal ".\n", @stdout.writes[0]
+    assert_equal "<YL_actual:50,PU_actual:50>\n", @stdout.writes[1]
   end
 
   def test_servo_frame_with_nil_read_emits_error_frame
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+    @yaw_servo.next_read   = nil
+    @pitch_servo.next_read = 635
+    @disp.handle({ "YL" => "50", "PU" => "50" })
+    assert_equal ".\n", @stdout.writes[0]
+    assert_equal "<YL_actual:unknown,PU_actual:50>\n", @stdout.writes[1]
   end
 
   def test_servo_frame_with_both_nil_axis_is_both
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+    @yaw_servo.next_read   = nil
+    @pitch_servo.next_read = nil
+    @disp.handle({ "YL" => "50", "PU" => "50" })
+    assert_equal "<YL_actual:unknown,PU_actual:unknown>\n", @stdout.writes[1]
   end
 
-  def test_servo_frame_with_only_yaw_specified_only_yaw_axis_in_error
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+  def test_servo_frame_with_only_yaw_specified_still_reports_both_actuals
+    @yaw_servo.next_read   = nil
+    @pitch_servo.next_read = 620   # zero position
+    @disp.handle({ "YL" => "50" })
+    # New protocol always reports both axes; only YL was sent but both are output
+    assert_equal "<YL_actual:unknown,PU_actual:0>\n", @stdout.writes[1]
   end
 
   def test_mixed_face_and_servo_frame_dispatches_both
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+    @yaw_servo.next_read = 485
+    @pitch_servo.next_read = 635
+    @disp.handle({ "F" => "0", "YL" => "50", "PU" => "50" })
+    assert @display.calls.any? { |c| c.first == :draw_ellipse }
+    assert_equal [[485, 0, 0]], @yaw_servo.writes
+    assert_equal [[635, 0, 0]], @pitch_servo.writes
   end
 
   def test_dispatcher_without_head_returns_unavailable
-    omit "deferred to Task 12 rewrite (file targets direction-key YL/YR/PU syntax)"
+    disp = StackchanApp::Dispatcher.new(
+      display: @display, led: @led, stdout: @stdout, head: nil
+    )
+    disp.handle({ "YL" => "50" })
+    # ACK frame ".\n", detail frame with nil-head guard indicates unavailable
+    assert_equal ".\n", @stdout.writes[0]
+    assert_equal "<YL_actual:unknown,PU_actual:unknown>\n", @stdout.writes[1]
   end
 end

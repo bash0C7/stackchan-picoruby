@@ -408,6 +408,10 @@ module StackchanApp
     end
 
     def emit_servo_detail(_frame)
+      if @head.nil?
+        @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")
+        return
+      end
       actual = @head.read_actual
       yaw_raw   = actual[:yaw]
       pitch_raw = actual[:pitch]
