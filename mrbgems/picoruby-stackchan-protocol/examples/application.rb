@@ -544,11 +544,13 @@ Machine.delay_ms(50)
 led.show
 led.brightness = 100
 puts "[boot] step:led-show-ok"
-StackchanApp::Face::Neutral.new.draw(display)
-puts "[application] LCD + LED cold-boot done"
+StackchanApp::Face::Closed.new.draw(display)
+puts "[application] LCD cold-boot done (torque-OFF idle)"
 
-# Phase B: servo bring-up. Failure must NOT block face/LED — keep @head=nil so
-# Dispatcher can return <ERROR:servo_unavailable> while Phase A features stay live.
+# Servo bring-up — torque is intentionally left OFF so the operator can
+# physically align the head before sending <torque:on>. Failure must NOT
+# block face/LED — keep @head=nil so Dispatcher can emit the "unknown"
+# detail signal while Phase A features stay live.
 @head = nil
 begin
   # Pin mapping: per StackChan/firmware/main/hal/hal_servo.cpp:169
@@ -559,11 +561,8 @@ begin
   servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 6, rxd_pin: 7, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
-  y_ack = yaw_servo.enable_torque
-  p_ack = pitch_servo.enable_torque
-  puts "[boot] enable_torque returns: y=#{y_ack.inspect} p=#{p_ack.inspect}"
   @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
-  puts "[boot] servo init OK"
+  puts "[boot] servo init OK (torque OFF, awaiting <torque:on>)"
 rescue => e
   puts "[boot] servo init failed: #{e.class}: #{e.message}"
 end
@@ -609,58 +608,12 @@ if @head
   end
 end
 
-# Cold-boot self-test: human-visible LED + servo motion so anyone watching
-# the device can tell at a glance whether each subsystem (LED bus / servo
-# UART TX / servo UART RX) is alive. Each step puts a log line so a Mac-side
-# `bin/capture-with-pty` operator can correlate visual with serial trace.
-# Failure of any leg is non-fatal — BLE startup proceeds either way.
-puts "[boot] self-test begin"
+# Cold-boot self-test removed 2026-05-21 — protocol now exposes
+# <selftest:run> for on-demand UART round-trip check, and the cold-boot
+# face/servo state (Face::Closed + torque OFF) is itself the idle indicator
+# that operators read for "alive vs. wedged" at a glance.
 
-begin
-  puts "[boot] self-test led: left red solid"
-  led.animate_side(:left, 255, 0, 0, :solid)
-  led.tick(Machine.uptime_us / 1000)
-  Machine.delay_ms(1500)
-  puts "[boot] self-test led: right blue solid"
-  led.animate_side(:right, 0, 0, 255, :solid)
-  led.tick(Machine.uptime_us / 1000)
-  Machine.delay_ms(1500)
-  puts "[boot] self-test led: both off"
-  led.animate_side(:both, 0, 0, 0, :off)
-  led.tick(Machine.uptime_us / 1000)
-rescue => e
-  puts "[boot] self-test led raised: #{e.class}: #{e.message}"
-end
-
-if @head
-  begin
-    # Minimal ±30 nudge around factory zero_pos — enough to confirm servo
-    # communication is alive without big movement or long waits.
-    # T=50: quick motion (50 × 10ms = 500ms if SCSCL unit=10ms).
-    # delay_ms(300): settle before next step.
-    y0 = StackchanApp::Head::SERVO_YAW_ZERO
-    p0 = StackchanApp::Head::SERVO_PITCH_ZERO
-    [
-      ["yaw+",   (y0 + 30).to_s, p0.to_s],
-      ["yaw-",   (y0 - 30).to_s, p0.to_s],
-      ["center", y0.to_s,        p0.to_s],
-    ].each do |label, y, p|
-      puts "[boot] self-test servo: #{label} Y=#{y} P=#{p}"
-      @head.apply({"Y" => y, "P" => p, "T" => "50"})
-      Machine.delay_ms(300)
-    end
-    actual = @head.read_actual
-    puts "[boot] self-test servo read=#{actual.inspect}"
-  rescue => e
-    puts "[boot] self-test servo raised: #{e.class}: #{e.message}"
-  end
-else
-  puts "[boot] self-test servo: SKIP (@head nil)"
-end
-
-puts "[boot] self-test end"
-
-# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Neutral.draw) は
+# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Closed.draw) は
 # 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
 # yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
 # されない (silent fail、device-side log だけ HCI WORKING 出る)。
