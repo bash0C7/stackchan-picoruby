@@ -34,6 +34,10 @@ module StackchanBleClient
       record(:selftest, { kind: :selftest })
     end
 
+    def read_pos
+      record(:read_pos, { kind: :read_pos })
+    end
+
     def to_frames
       @order.map { |key| encode(@commands.fetch(key)) }
     end
@@ -61,6 +65,8 @@ module StackchanBleClient
         FrameCodec.encode_torque(on: cmd[:on])
       when :selftest
         FrameCodec.encode_selftest
+      when :read_pos
+        FrameCodec.encode_read_pos
       end
     end
 

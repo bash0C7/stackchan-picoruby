@@ -107,6 +107,12 @@ class FrameCodecSelftestTest < Test::Unit::TestCase
   end
 end
 
+class FrameCodecReadPosTest < Test::Unit::TestCase
+  def test_encode_read_pos
+    assert_equal "<read:pos>\n", StackchanBleClient::FrameCodec.encode_read_pos
+  end
+end
+
 class FrameCodecAckTest < Test::Unit::TestCase
   def test_ack_ok_byte
     assert_equal :ok, StackchanBleClient::FrameCodec.parse_ack(".")

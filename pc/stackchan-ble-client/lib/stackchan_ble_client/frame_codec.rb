@@ -62,6 +62,10 @@ module StackchanBleClient
       encode_pairs("selftest" => "run")
     end
 
+    def encode_read_pos
+      encode_pairs("read" => "pos")
+    end
+
     def parse_ack(frame)
       # frame[0, 1] is safe on a bare 1-char ACK byte too — returns the same char.
       case frame[0, 1]

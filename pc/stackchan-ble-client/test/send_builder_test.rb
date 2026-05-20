@@ -166,3 +166,11 @@ class SendBuilderSelftestTest < Test::Unit::TestCase
     assert_equal ["<selftest:run>\n"], builder.to_frames
   end
 end
+
+class SendBuilderReadPosTest < Test::Unit::TestCase
+  def test_read_pos
+    builder = StackchanBleClient::SendBuilder.new
+    builder.read_pos
+    assert_equal ["<read:pos>\n"], builder.to_frames
+  end
+end

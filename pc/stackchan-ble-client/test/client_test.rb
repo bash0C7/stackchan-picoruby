@@ -305,4 +305,30 @@ class ClientServoDetailDrainTest < Test::Unit::TestCase
     assert_equal 0, subscription.remaining_count,
                  "face frame must not attempt to read a detail frame"
   end
+
+  def test_read_pos_frame_drains_trailing_detail_frame_from_subscription
+    subscription = FakeSubscription.new
+    subscription.script_returns(".\n", "<yaw_raw:485,pitch_raw:628>\n")
+    client = make_client(subscription)
+    client.connect
+
+    client.send do |s|
+      s.read_pos
+    end
+
+    assert_equal "<yaw_raw:485,pitch_raw:628>\n", client.last_detail_frame
+  end
+
+  def test_read_pos_unknown_detail_frame_still_drained
+    subscription = FakeSubscription.new
+    subscription.script_returns(".\n", "<yaw_raw:unknown,pitch_raw:unknown>\n")
+    client = make_client(subscription)
+    client.connect
+
+    client.send do |s|
+      s.read_pos
+    end
+
+    assert_equal "<yaw_raw:unknown,pitch_raw:unknown>\n", client.last_detail_frame
+  end
 end
