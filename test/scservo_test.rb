@@ -167,11 +167,19 @@ class SCServoTest < Test::Unit::TestCase
     assert_match(/FF FF 01 04 00 F4 01 05/, raw)
   end
 
+  def test_read_pos_raw_debug_returns_empty_marker_when_no_response
+    # Production scenario: UART wiring does NOT loop back echo AND servo is unresponsive.
+    # FakeUART.new(echo: false) simulates this case; must exercise the "<empty>" path.
+    uart = FakeUART.new(echo: false)
+    servo = SCServo.new(uart, id: 1)
+    assert_equal "<empty>", servo.read_pos_raw_debug
+  end
+
   def test_read_pos_raw_debug_returns_echo_bytes_when_no_servo_response
-    # If servo doesn't respond, read_pos_raw_debug still captures the TX echo.
-    # This is the actual diagnostic value: confirm echo IS there (half-duplex working),
+    # If servo doesn't respond but UART echo works, read_pos_raw_debug captures the TX echo.
+    # This is a diagnostic value: confirm echo IS there (half-duplex working),
     # but servo's response is missing (servo problem, not line).
-    uart = FakeUART.new
+    uart = FakeUART.new(echo: true)
     servo = SCServo.new(uart, id: 1)
     raw = servo.read_pos_raw_debug
     assert_kind_of String, raw

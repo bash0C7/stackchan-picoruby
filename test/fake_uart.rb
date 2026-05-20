@@ -3,10 +3,11 @@ class FakeUART
   attr_accessor :read_queue
   attr_accessor :pending_rx   # bytes that drain_rx should consume
 
-  def initialize
+  def initialize(echo: true)
     @writes      = []
     @read_queue  = []           # each element: { bytes: [..], delay_ms: 0 } or :timeout
     @pending_rx  = []           # flat array of bytes consumed by readpartial(n)
+    @echo        = echo         # when false, TX bytes do not auto-echo on RX
   end
 
   def write(bytes)
@@ -14,9 +15,10 @@ class FakeUART
     # so test assertions can compare byte arrays directly.
     byte_array = bytes.is_a?(String) ? bytes.bytes : bytes
     @writes << byte_array
-    # Half-duplex TTL bus: master's TX bytes echo back on RX immediately.
+    # Half-duplex TTL bus: master's TX bytes echo back on RX immediately (when @echo=true).
     # SCServo#drain_echo reads and discards these before reading the servo response.
-    @pending_rx.concat(byte_array)
+    # When @echo=false, TX bytes do not loop back (production no-echo scenario).
+    @pending_rx.concat(byte_array) if @echo
   end
 
   # Mirrors UART#clear_rx_buffer — drains any stale bytes before a new transaction.
