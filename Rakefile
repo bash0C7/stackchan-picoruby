@@ -13,7 +13,7 @@ end
 namespace :face do
   desc "Compute SHA256 of StackchanApp::Face::<NAME>.new.draw call sequence and " \
        "write spec/golden/face_<NAME>.sha256. " \
-       "Usage: bundle exec rake face:register_golden FACE=neutral|smile|joy|surprised|sad|angry"
+       "Usage: bundle exec rake face:register_golden FACE=neutral|smile|joy|surprised|sad|angry|closed"
   task :register_golden do
     name = ENV.fetch('FACE') { abort 'FACE=<name> required' }
     $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
