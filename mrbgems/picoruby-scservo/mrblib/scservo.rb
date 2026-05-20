@@ -167,7 +167,6 @@ class SCServo
   # method signature for compatibility but make it a no-op so check_head sees
   # the real status packet immediately.
   def drain_echo(_n)
-    # no-op — see scservo.rb header comment
   end
 
   # SCS::checkHead (SCS.cpp:278-298) — slide a 2-byte window byte-by-byte
