@@ -312,6 +312,7 @@ module StackchanApp
       end
       return handle_torque(frame)   if frame.key?("torque")
       return handle_selftest(frame) if frame.key?("selftest")
+      return handle_read_pos(frame)  if frame.key?("read")
 
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
@@ -369,6 +370,24 @@ module StackchanApp
       @head.selftest
       @stdout.write(ACK_FRAME)
       emit_servo_detail({ "YL" => "0", "PU" => "0" })  # synthetic frame: report current actuals
+    end
+
+    def handle_read_pos(frame)
+      unless frame["read"] == "pos"
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      if @head.nil?
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      @stdout.write(ACK_FRAME)
+      actual = @head.read_actual
+      yaw_raw   = actual[:yaw]
+      pitch_raw = actual[:pitch]
+      yaw_part   = yaw_raw.nil?   ? "yaw_raw:unknown"   : "yaw_raw:#{yaw_raw}"
+      pitch_part = pitch_raw.nil? ? "pitch_raw:unknown" : "pitch_raw:#{pitch_raw}"
+      @stdout.write("<#{yaw_part},#{pitch_part}>\n")
     end
 
     def handle_led(frame)

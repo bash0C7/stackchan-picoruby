@@ -190,4 +190,34 @@ class TestDispatcherFrameContract < Test::Unit::TestCase
     detail = @stdout.frames.last
     assert_equal "<YL_actual:unknown,PU_actual:unknown>\n", detail
   end
+
+  def test_read_pos_acks_then_emits_yaw_raw_pitch_raw_detail
+    @head.instance_variable_set(:@yaw_pos, 485)
+    @head.instance_variable_set(:@pitch_pos, 628)
+    @dispatcher.handle({ "read" => "pos" })
+    assert_equal 2, @stdout.frames.length
+    assert_equal ".\n", @stdout.frames[0]
+    assert_equal "<yaw_raw:485,pitch_raw:628>\n", @stdout.frames[1]
+  end
+
+  def test_read_pos_with_invalid_value_emits_error
+    @dispatcher.handle({ "read" => "bogus" })
+    assert_equal ["?\n"], @stdout.frames
+  end
+
+  def test_read_pos_emits_unknown_when_head_read_actual_returns_nil_parts
+    @head.fail_read = true
+    @dispatcher.handle({ "read" => "pos" })
+    assert_equal 2, @stdout.frames.length
+    assert_equal ".\n", @stdout.frames[0]
+    assert_equal "<yaw_raw:unknown,pitch_raw:unknown>\n", @stdout.frames[1]
+  end
+
+  def test_read_pos_emits_error_when_head_is_nil
+    dispatcher = StackchanApp::Dispatcher.new(
+      display: @display, led: @led, stdout: @stdout, head: nil
+    )
+    dispatcher.handle({ "read" => "pos" })
+    assert_equal ["?\n"], @stdout.frames
+  end
 end
