@@ -81,7 +81,7 @@ class FakeSendBuilder
   def led(form, value = nil, side: :both, mode: :solid)
     @commands << { kind: :led, form: form, value: value, side: side, mode: mode }
   end
-  def head(yaw: nil, pitch: nil, time_ms: nil, velocity: nil)
-    @commands << { kind: :head, yaw: yaw, pitch: pitch, time_ms: time_ms, velocity: velocity }
+  def head(yaw_left: nil, yaw_right: nil, pitch_up: nil, time_ms: nil, velocity: nil)
+    @commands << { kind: :head, yaw_left: yaw_left, yaw_right: yaw_right, pitch_up: pitch_up, time_ms: time_ms, velocity: velocity }
   end
 end

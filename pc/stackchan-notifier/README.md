@@ -222,24 +222,25 @@ Exit codes:
 
 ### `stackchan-servo` reference
 
-Direct servo control without touching face/LED. Yaw and pitch are specified in
-raw servo encoder units (not degrees):
+Direct servo control without touching face/LED. Yaw and pitch are specified as
+normalized magnitudes (0–100):
 
 ```bash
-# Yaw (horizontal) to -500 (left)
-stackchan-servo --yaw -500
+# Yaw (horizontal) to the left at 50% magnitude
+stackchan-servo --yaw-left 50
 
-# Pitch (vertical) to 400 (up)
-stackchan-servo --pitch 400
+# Pitch (vertical) upward at 50% magnitude
+stackchan-servo --pitch-up 50
 
 # Both together with 500 ms interpolation
-stackchan-servo --yaw 0 --pitch 450 --time 500
+stackchan-servo --yaw-left 50 --pitch-up 50 --time 500
 ```
 
 | Flag | Domain | Notes |
 |---|---|---|
-| `--yaw N` | raw units (typical -1000 to 1000) | horizontal head rotation (StackChan left/right) |
-| `--pitch N` | raw units (typical 100 to 800) | vertical head tilt (up/down) |
+| `--yaw-left N` | normalized magnitude 0–100 | horizontal head rotation (StackChan left) |
+| `--yaw-right N` | normalized magnitude 0–100 | horizontal head rotation (StackChan right); mutually exclusive with `--yaw-left` |
+| `--pitch-up N` | normalized magnitude 0–100 | vertical head tilt (upward); `--pitch-down` is not supported by the current protocol |
 | `--time N` | positive integer milliseconds | interpolation duration |
 | `--velocity N` | positive integer units/ms | sets movement speed; if both `--time` and `--velocity` are passed, `--time` takes precedence (FrameCodec drops `--velocity`) |
 | `--socket PATH` | override default | same as `stackchan-notify` |

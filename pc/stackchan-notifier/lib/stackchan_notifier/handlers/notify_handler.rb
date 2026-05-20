@@ -17,10 +17,11 @@ module StackchanNotifier
             motion = NotifyMotionTable.lookup(params[:face])
             if motion
               s.head(
-                yaw:      motion[:yaw],
-                pitch:    motion[:pitch],
-                time_ms:  motion[:time_ms],
-                velocity: nil,
+                yaw_left:  motion[:yaw_left],
+                yaw_right: motion[:yaw_right],
+                pitch_up:  motion[:pitch_up],
+                time_ms:   motion[:time_ms],
+                velocity:  nil,
               )
             end
           end
