@@ -252,15 +252,21 @@ namespace :r2p2 do
     puts "[r2p2:full_rebuild] PASS — firmware rebuilt + #{src} deployed as /home/app.mrb + device reset"
   end
 
-  # E2E smoke: upload application.mrb → reset → wait autostart → send a
-  # servo frame via stackchan-ble-control. YAW/PITCH/TIME_MS default to
-  # factory zero_pos ±50 sweep (safe range: no mechanical stress).
-  desc 'BLE servo E2E smoke (YAW=490 PITCH=620 TIME_MS=50 AUTOSTART_WAIT=12)'
+  # E2E smoke: upload application.mrb → reset → wait autostart → torque ON
+  # → send a YL/YR/PU position frame via stackchan-ble-control. Defaults
+  # exercise a half-left + center-pitch sweep within the protocol's
+  # normalized magnitude range (0-100).
+  desc 'BLE servo E2E smoke (YL=50 PU=0 T=500 AUTOSTART_WAIT=12 — torque is enabled automatically)'
   task :ble_servo_smoke do
-    yaw      = ENV.fetch('YAW',      '490')    # SERVO_YAW_ZERO(460) + 30
-    pitch    = ENV.fetch('PITCH',    '620')    # SERVO_PITCH_ZERO(620) center
-    time_ms  = ENV.fetch('TIME_MS',  '50')     # 50 × 10ms = 500ms motion
+    yl       = ENV['YL']
+    yr       = ENV['YR']
+    pu       = ENV.fetch('PU', '0')
+    time_ms  = ENV.fetch('T',  '500')
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
+
+    if yl.nil? && yr.nil?
+      yl = '50'  # default: half-left sweep
+    end
 
     ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
@@ -273,17 +279,107 @@ namespace :r2p2 do
       Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
         ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
                     '--name-prefix', 'StackChan-PicoRuby',
-                    '--yaw',  yaw,
-                    '--pitch', pitch,
-                    '--time', time_ms,
-                    'servo')
+                    'torque', 'on')
+        abort "[servo_smoke] torque on FAIL" unless ok
+        sleep 1
+        args = ['bundle', 'exec', 'exe/stackchan-ble-control',
+                '--name-prefix', 'StackChan-PicoRuby',
+                '--time', time_ms, '--pitch-up', pu]
+        args += ['--yaw-left',  yl] if yl
+        args += ['--yaw-right', yr] if yr
+        args << 'servo'
+        ok = system(*args)
         unless ok
           exit $?.exitstatus
         end
       end
     end
 
-    puts "[servo_smoke] PASS — yaw=#{yaw} pitch=#{pitch} time_ms=#{time_ms} — visual motion check please"
+    puts "[servo_smoke] PASS — YL=#{yl} YR=#{yr} PU=#{pu} T=#{time_ms} — visual motion check please"
+  end
+
+  # E2E smoke: cold-boot → torque on → torque off cycle. Visual: face
+  # transitions Closed → Neutral (torque on) → Closed (torque off);
+  # servos audibly engage / disengage at each step.
+  desc 'BLE torque on/off E2E smoke (cold-boot → torque on → torque off cycle)'
+  task :ble_torque_smoke do
+    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    Rake::Task['r2p2:upload_appmrb'].invoke
+    Rake::Task['r2p2:reset'].invoke
+
+    puts "[torque_smoke] waiting #{autostart_wait}s for autostart"
+    sleep autostart_wait
+
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+        %w[on off].each do |state|
+          ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                      '--name-prefix', 'StackChan-PicoRuby',
+                      'torque', state)
+          abort "[torque_smoke] torque #{state} FAIL" unless ok
+          sleep 2
+        end
+      end
+    end
+
+    puts "[torque_smoke] PASS — torque on/off cycle complete (visual: face changed Closed→Neutral→Closed)"
+  end
+
+  # HITL servo calibration check — sweeps 5 positions, prompts human Y/N
+  # for each. Operator MUST be present at the device. The operator first
+  # physically aligns the head forward (cold-boot is torque-off Face::Closed
+  # so this is a hand-move), then engages torque on, then the rake task
+  # walks through the 5-position visual sweep.
+  desc 'HITL servo calibration check — sweeps 5 positions, prompts human Y/N for each'
+  task :ble_calibration_check do
+    autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
+    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    Rake::Task['r2p2:upload_appmrb'].invoke
+    Rake::Task['r2p2:reset'].invoke
+
+    puts "[cal] waiting #{autostart_wait}s for autostart"
+    sleep autostart_wait
+
+    puts "[cal] OPERATOR: physically align StackChan's head to face forward, then press ENTER"
+    STDIN.gets
+
+    positions = [
+      { label: 'center (forward)', args: ['--yaw-left', '0',   '--pitch-up', '0'],   expect: 'facing forward' },
+      { label: 'yaw-right end',    args: ['--yaw-right', '100'],                       expect: "head turned to StackChan's right (operator's left)" },
+      { label: 'yaw-left end',     args: ['--yaw-left',  '100'],                       expect: "head turned to StackChan's left (operator's right)" },
+      { label: 'pitch-up end',     args: ['--yaw-left', '0', '--pitch-up', '100'],   expect: 'head tilted fully up' },
+      { label: 'center (return)',  args: ['--yaw-left', '0', '--pitch-up', '0'],     expect: 'facing forward again' },
+    ]
+
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                    '--name-prefix', 'StackChan-PicoRuby',
+                    'torque', 'on')
+        abort '[cal] torque on FAIL' unless ok
+        sleep 1
+
+        positions.each_with_index do |pos, i|
+          puts "\n[cal #{i + 1}/5] sending #{pos[:label]} → expect: #{pos[:expect]}"
+          ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
+                      '--name-prefix', 'StackChan-PicoRuby',
+                      '--time', '800',
+                      *pos[:args], 'servo')
+          abort "[cal] frame send FAIL at #{pos[:label]}" unless ok
+          sleep 1.5
+          print '   Did StackChan move as expected? [y/N]: '
+          ans = STDIN.gets.to_s.strip.downcase
+          abort "[cal] FAIL at #{pos[:label]} (operator marked N)" unless ans == 'y'
+        end
+
+        system('bundle', 'exec', 'exe/stackchan-ble-control',
+               '--name-prefix', 'StackChan-PicoRuby',
+               'torque', 'off')
+      end
+    end
+
+    puts "\n[cal] PASS — all 5 positions visually confirmed"
   end
 
   # E2E smoke: upload application.mrb → reset → wait autostart → send a
