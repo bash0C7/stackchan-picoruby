@@ -10,19 +10,36 @@ RubyClassExtract.load_classes_from(
 )
 
 # Minimal FakeHead for Dispatcher host tests.
-# Simulates a servo head: #apply records the command, #read_actual returns
-# the positions given at construction (or nil for both axes when fail_read=true).
+# Records all driver-facing calls so each test can assert on what the
+# Dispatcher routed to the head. read_actual still uses string keys
+# ("Y_actual" / "P_actual") for backward compatibility with existing
+# servo tests; the symbol-key migration lands with Task 11 when the
+# Dispatcher's emit_servo_detail is rewritten.
 class FakeHead
   attr_accessor :fail_read
+  attr_reader :torque_calls, :apply_calls, :selftest_calls
 
   def initialize(yaw_pos:, pitch_pos:)
-    @yaw_pos   = yaw_pos
-    @pitch_pos = pitch_pos
-    @fail_read = false
+    @yaw_pos        = yaw_pos
+    @pitch_pos      = pitch_pos
+    @fail_read      = false
+    @torque_calls   = []
+    @apply_calls    = []
+    @selftest_calls = []
   end
 
-  def apply(_frame)
-    # no-op for host tests
+  def apply(frame_raw)
+    @apply_calls << frame_raw
+  end
+
+  def enable_torque(on)
+    @torque_calls << on
+    true
+  end
+
+  def selftest
+    @selftest_calls << true
+    true
   end
 
   def read_actual
@@ -61,5 +78,25 @@ class TestDispatcherFrameContract < Test::Unit::TestCase
   def test_bad_face_index_emits_error_ack_frame
     @dispatcher.handle({ "F" => "99" })
     assert_equal ["?\n"], @stdout.frames
+  end
+
+  def test_torque_on_enables_torque_draws_neutral_and_acks
+    @dispatcher.handle({ "torque" => "on" })
+    assert_equal [true], @head.torque_calls
+    assert_equal StackchanApp::Face::Neutral, @dispatcher.current_face_class
+    assert_equal [".\n"], @stdout.frames
+  end
+
+  def test_torque_off_disables_torque_draws_closed_and_acks
+    @dispatcher.handle({ "torque" => "off" })
+    assert_equal [false], @head.torque_calls
+    assert_equal StackchanApp::Face::Closed, @dispatcher.current_face_class
+    assert_equal [".\n"], @stdout.frames
+  end
+
+  def test_torque_invalid_value_errors
+    @dispatcher.handle({ "torque" => "maybe" })
+    assert_equal ["?\n"], @stdout.frames
+    assert_empty @head.torque_calls
   end
 end

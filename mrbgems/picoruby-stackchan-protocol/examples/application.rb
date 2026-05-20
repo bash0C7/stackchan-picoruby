@@ -302,6 +302,7 @@ module StackchanApp
     end
 
     def handle(frame)
+      return handle_torque(frame) if frame.key?("torque")
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
       attempts << handle_led(frame)  if frame.key?("L")
@@ -325,6 +326,23 @@ module StackchanApp
       @current_face_class = face_class
       face_class.new.draw(@display)
       true
+    end
+
+    def handle_torque(frame)
+      case frame["torque"]
+      when "on"
+        @head.enable_torque(true) if @head
+        @current_face_class = Face::Neutral
+        Face::Neutral.new.draw(@display)
+        @stdout.write(ACK_FRAME)
+      when "off"
+        @head.enable_torque(false) if @head
+        @current_face_class = Face::Closed
+        Face::Closed.new.draw(@display)
+        @stdout.write(ACK_FRAME)
+      else
+        @stdout.write(ERROR_FRAME)
+      end
     end
 
     def handle_led(frame)
