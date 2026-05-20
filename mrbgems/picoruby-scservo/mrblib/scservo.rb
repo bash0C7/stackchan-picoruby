@@ -161,15 +161,13 @@ class SCServo
     packet.length
   end
 
-  # On a half-duplex TTL bus, the master's own TX bytes echo back on RX
-  # immediately during/after transmission. Drain up to n bytes non-blocking —
-  # stop as soon as no byte is available. This avoids blocking past the
-  # servo's response window while still clearing any echo that did arrive.
-  def drain_echo(n)
-    n.times do
-      chunk = @uart.readpartial(1)
-      break unless chunk && !chunk.empty?
-    end
+  # On ESP32-S3 UART1, TX bytes do NOT loop back on RX in our wiring
+  # (verified 2026-05-21 via read_pos_raw_debug capture). drain_echo is a
+  # vestigial half-duplex assumption from the Arduino reference; we keep the
+  # method signature for compatibility but make it a no-op so check_head sees
+  # the real status packet immediately.
+  def drain_echo(_n)
+    # no-op — see scservo.rb header comment
   end
 
   # SCS::checkHead (SCS.cpp:278-298) — slide a 2-byte window byte-by-byte

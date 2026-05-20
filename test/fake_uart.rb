@@ -4,11 +4,15 @@ class FakeUART
   attr_accessor :pending_rx   # bytes that drain_rx should consume
   attr_accessor :read_queue_after_writes  # hash: { write_count => [{ bytes: [...] }, ...] }
 
-  def initialize(echo: true)
+  def initialize(echo: false)
     @writes      = []
     @read_queue  = []           # each element: { bytes: [..], delay_ms: 0 } or :timeout
     @pending_rx  = []           # flat array of bytes consumed by readpartial(n)
-    @echo        = echo         # when false, TX bytes do not auto-echo on RX
+    @echo        = echo         # when true, TX bytes loop back on RX (half-duplex sim).
+                                # Default false reflects ESP32-S3 UART1 reality (no
+                                # loopback) verified 2026-05-21. Tests that need
+                                # half-duplex echo (e.g. read_pos_raw_debug echo path)
+                                # must pass echo: true explicitly.
     @read_queue_after_writes = {} # indexed by write count; values are arrays of queue items
   end
 

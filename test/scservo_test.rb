@@ -197,6 +197,15 @@ class SCServoTest < Test::Unit::TestCase
     assert_equal 3, uart.writes.length
   end
 
+  def test_drain_echo_does_not_consume_rx_bytes
+    uart = FakeUART.new
+    uart.read_queue << { bytes: [0xAA, 0xBB, 0xCC] }
+    servo = SCServo.new(uart, id: 1)
+    servo.send(:drain_echo, 3)
+    # All bytes still available
+    assert_equal 3, uart.readpartial(3).bytesize
+  end
+
   def test_read_pos_returns_value_on_second_attempt
     uart = FakeUART.new
     # First attempt: empty (queue empty), second attempt: valid response
