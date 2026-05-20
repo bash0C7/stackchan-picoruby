@@ -1,6 +1,8 @@
 # Handoff 2026-05-20: cold-boot self-test tuning + BLE notify next-up
 
-> **更新 2026-05-20 (session 2):** Task 1/3 完了、Task 2 は write_pos 確認済 / read_pos は未解決 (次セッション継続)。Task 4 (servo range calibration) 新規追加 (人間目視必須)。
+> **更新 2026-05-20 (session 2 後半):** user 指示で方向転換。Task 4 (calibration) は新 design (cold-boot torque-off + normalized -100..+100 protocol + 明示 `<T:on>`/`<T:off>`/`<S:test>` BLE frame) に **supersede された**。Task 2 の read_pos は新 design では依存しないので **deferred**。新 design spec/plan を別 doc で策定中。
+>
+> **更新 2026-05-20 (session 2 前半):** Task 1/3 完了、Task 2 は write_pos 確認済 / read_pos は未解決 (次セッション継続)。Task 4 (servo range calibration) 新規追加 (人間目視必須)。
 
 ## TL;DR for next session
 
