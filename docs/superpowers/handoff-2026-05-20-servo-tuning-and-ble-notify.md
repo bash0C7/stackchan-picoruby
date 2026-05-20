@@ -1,17 +1,35 @@
 # Handoff 2026-05-20: cold-boot self-test tuning + BLE notify next-up
 
-> **更新 2026-05-20 (session 2):** Task 1/2/3 全完了。Task 4 (servo range calibration) を新規追加。
+> **更新 2026-05-20 (session 2):** Task 1/3 完了、Task 2 は write_pos 確認済 / read_pos は未解決 (次セッション継続)。Task 4 (servo range calibration) 新規追加 (人間目視必須)。
 
 ## TL;DR for next session
 
 1. ~~Cold-boot self-test を小さくして元位置復帰~~ **DONE (154db90)** — ±30/3-step/T=50
-2. ~~BLE 経由 servo 制御 E2E 検証~~ **DONE (2026-05-20 実機確認)** — write_pos は正常。read_pos はハーフデュプレックスエコー問題で要調査 (別タスク)
-3. ~~派生クリーンアップ~~ **DONE** — scservo_test 52/52 PASS、doc pin 表記修正
+2. **BLE 経由 servo 制御 E2E 検証 — write_pos PASS / read_pos 未解決**
+   - write_pos: 実機物理動作確認済 (user「動いた」、`--pitch 512` で可視動作)
+   - read_pos: drain_echo blocking → non-blocking と 2 段階で deploy したが `servo_timeout` のまま。仮説: ESP32-S3 UART が TX→RX エコーを行わず、別経路で stale bytes が混入してる。次セッションで raw byte dump 取って分析する必要あり (19a9585, 07be894)
+3. ~~派生クリーンアップ~~ **DONE** — scservo_test 53/53 PASS、doc pin 表記修正
 4. **NEW: Servo range キャリブレーション** — `SERVO_PITCH_ZERO=620` が実機で「真上向き」と判明。正確な正面向きポジション / 可動範囲を人間目視で calibrate する。
 
 ## Resume trigger
 
-User 任意。「servo tuning 続き」「キャリブレーション」「次やる」 等で開始。
+User 任意。「servo tuning 続き」「read_pos デバッグ」「キャリブレーション」「次やる」 等で開始。
+
+## read_pos debugging next steps
+
+Session 2 で試した方策と結果:
+
+| アプローチ | commit | 結果 |
+|---|---|---|
+| blocking drain_echo (READ_TIMEOUT_MS poll) | 19a9585 | timeout 100ms × バイト数で response window 食い潰し → `servo_timeout` |
+| non-blocking drain_echo (read-as-available) | 07be894 | 同じく `servo_timeout` — drain は echo を消費せず、check_head も response を見つけられない |
+
+仮説の優先順位:
+1. **ESP32-S3 UART は TX→RX echo しない** (echo bytes は最初から無い) — drain_echo は no-op、check_head が timeout する別原因がある
+2. servo response が register 0x38 (PRESENT_POS_L) に来てない (SCS series 違いで register 違う?) — `../StackChan/firmware/main/hal/drivers/FTServo_Arduino/SCSCL.h` を read して address 再確認
+3. clear_rx_buffer 自体が PicoRuby UART で動いてない / lazy
+
+次セッション最初のステップ: scservo.rb に `read_raw_bytes` デバッグ method 足して、`read_pos` 内で受信した生バイトを `puts` で吐く → BLE 経由で 1 回呼んで boot.log 取る → bytes を見て原因特定。
 
 ## Phase B "servo bring-up" 結末 (2026-05-20 確定)
 
