@@ -708,7 +708,7 @@ class StackChanApp < BLE
     # 「瞬き」演出。これがあれば人間がフリーズ vs 稼働中を視認できる。
     @blink_tick = (@blink_tick || 0) + 1
     if @blink_tick % 5 == 0
-      StackchanApp::Face::Closed.new.draw(@display)
+      @dispatcher.current_face_class.new.redraw_eyes_closed(@display)
       Machine.delay_ms 150
       @dispatcher.current_face_class.new.redraw_eyes_open(@display)
     end
