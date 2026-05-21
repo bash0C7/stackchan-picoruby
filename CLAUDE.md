@@ -45,6 +45,10 @@ PC連携アバターパターン：
 - **StackChan側**：R2P2-ESP32 + PicoRuby スクリプト。I/O 端末として動作。センサ値を読んでシリアルで送信、PCからのコマンドでサーボ/LED/表情を駆動
 - **PC側**：Ruby (rb-foundation-model-mac) でローカルAI判断。Mac との通信は BLE NUS (picoruby-ble の ESP32 port を fork で thread-safe 化、`pc/stackchan-ble-client` 経由)。WiFi 経路 (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) は sdkconfig 有効 + mbedTLS 完成済み、wiring 未着手。USB-serial は uploader / debug 用途
 
+### 設計の核心
+
+核心機能は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink animation は装飾の二次扱い。HITL は通常「サーボ正面の物理アライン (個体ごとの raw zero ズレを人間が手で吸収)」を指し、顔の見た目承認とは別。新 design / refactor / question 構成では「サーボ絶対位置制御の精度」を最優先軸にする。
+
 ### Firmware vs application boundary
 
 - Firmware (mrbgems, requires `build_flash`): hardware drivers + stable
@@ -153,6 +157,14 @@ bin/capture-with-pty 30 /tmp/stackchan-picoruby-debug/boot.log \
 ### debug log は `/tmp/stackchan-picoruby-debug/` 配下に集約
 
 skill (atomic) は subagent dispatch 時に `tee /tmp/stackchan-picoruby-debug/<skill-name>.log` を必ず仕込む。grep / cross-reference / 失敗後再現に必要。/tmp 配下なので OS が清掃する、commit 不要
+
+### Coordination は sleep でなく log-watch
+
+subagent dispatch chain や device flash → boot → smoke のような multi-step timing-dependent flow で `sleep N` をハードコードしない。待ち過ぎ = 時間損失、待ち不足 = 次段失敗 → retry → 累積遅延。
+
+- 正解: serial log (`bin/capture-with-pty` or `cat` バックグラウンド + tail/grep) を watch → 「`main_task: Returned from app_main()`」「`$> ` shell prompt」「`HCI WORKING — advertising`」等の既知マーカーを grep 検出 → そこで次段に進む
+- subagent 間は log file / sentinel file 経由で「次行ってよし」シグナルを共有
+- reset / handshake / 接続初期化のような low-level プロトコルは「過去動いてた」と放置せず、ESP-IDF docs / esptool reset 実装 / idf_monitor / picoruby 本家の USB-CDC handling を定期的に照らして妥当性再検証する (DTR/RTS 操作順序・タイミング・close 時挙動が CDC state machine から逸脱してないか)
 
 ### boot 失敗の診断は full log を取ってから仮説立てる
 
