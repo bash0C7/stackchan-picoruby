@@ -71,6 +71,7 @@ AXP/AW/PY32/LCD init → Face::Closed → sleep_ms 3000
 | `V` | int | servo velocity (Phase B 維持) | servo |
 | `torque` | `on` / `off` | torque enable/disable (full word key、rare event) | system |
 | `selftest` | `run` | yaw ±10 raw 微小 sweep self-test (rare event) | system |
+| `read` | `pos` | 現在 raw servo position 読出 (calibration CLI 専用、後続 spec で詳述) | system |
 
 ### 衝突回避ルール
 
@@ -269,7 +270,7 @@ raw frame は host PR sweep 後に `grep -rn 'Y:[0-9]' / 'P:[0-9]' / '--yaw [0-9
 
 - **PRESENT_LOAD / PRESENT_MOVING (level 2 read)** — read_pos と同経路、本 PR では未試験。read_pos 解決後の future evolution で追加検討
 - **detail frame 完全自動化** — HITL 5 位置目視は本 PR では人間判定 (numerical assertion は read_pos 解決時のみ available)
-- **calibration の persistent storage** — 個体ごとの raw zero 補正値を flash に保存する話は別 spec
+- **calibration の persistent storage** — 個体ごとの raw zero 補正値を flash に保存する話は別 spec (operator manual cal CLI は `docs/superpowers/specs/2026-05-21-manual-calibration-cli-design.md`、persistent storage はそこでも out-of-scope)
 - **Bluetooth pairing / authentication** — 現状 open NUS、本 PR では変更なし
 
 ## 関連 memory (claude auto-memory、`~/.claude/projects/<repo>/memory/` 配下)

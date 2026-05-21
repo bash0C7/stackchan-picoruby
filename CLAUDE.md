@@ -89,6 +89,7 @@ Servo positions are normalized to direction-key + magnitude (NOT raw values):
 - **timing**: `<T:ms>` (duration) or `<V:speed>` (velocity), at most one
 - **torque (rare)**: `<torque:on>` / `<torque:off>` (full word key — frequency rare, readability priority)
 - **selftest (rare)**: `<selftest:run>` (yaw ±10 raw nudge — UART round-trip alive check)
+- **read_pos (rare)**: `<read:pos>` (full-word key) — returns `<yaw_raw:N,pitch_raw:M>` detail (or `unknown` parts). Used only by `stackchan-ble-control calibrate`; no other operational caller.
 
 Cold-boot starts torque OFF + `Face::Closed` (idle indicator). Operator physically aligns
 head to forward, then sends `<torque:on>` to engage. Detail frame on position commands
@@ -97,6 +98,9 @@ unknown is a protocol-level signal that operator manual calibration is needed).
 
 CLI: `bundle exec exe/stackchan-ble-control --yaw-left 50 --pitch-up 30 --time 500 servo`,
 `... torque on`, `... selftest`. Exit code 6 = `EXIT_CALIBRATION_NEEDED`.
+
+Calibration: `bundle exec exe/stackchan-ble-control calibrate --align-only` (daily startup: torque off → operator aligns forward → torque on).
+Anchor recal: `bundle exec exe/stackchan-ble-control calibrate [--samples N] [--format ruby|json|env]` (5-pose, prints SERVO_*_ZERO / RANGE_RAW constants for paste into application.rb). Exit code 6 = device read unknown, 7 = verify fail / abort. Spec: `docs/superpowers/specs/2026-05-21-manual-calibration-cli-design.md`.
 
 Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`
 

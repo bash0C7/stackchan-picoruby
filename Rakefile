@@ -463,4 +463,10 @@ namespace :r2p2 do
     puts "[face_verify] PASS — face=#{face} host SHA matched + device ACK received"
   end
 
+  desc "smoke test the calibrate CLI in --align-only mode (interactive, requires connected device)"
+  task :ble_calibration_smoke do
+    ensure_no_concurrent_monitor
+    sh "cd pc/stackchan-ble-client && bundle exec exe/stackchan-ble-control calibrate --align-only --name-prefix StackChan"
+  end
+
 end
