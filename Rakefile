@@ -6,8 +6,16 @@ require 'rake/testtask'
 Rake::TestTask.new(:test) do |t|
   t.libs << 'lib'
   t.libs << 'test'
-  t.test_files = FileList['test/**/*_test.rb']
+  t.test_files = FileList['test/**/*_test.rb'].exclude('test/test_isolator/fixtures/**/*')
   t.warning = false
+end
+
+desc "Run tests with Ruby::Box per-file isolation (RUBY_BOX=1)"
+task :test_isolated do
+  test_files = Dir["test/**/*_test.rb"].reject { |f| f.start_with?("test/test_isolator/fixtures/") }
+  abort "No test files found under test/" if test_files.empty?
+  runner = File.expand_path("lib/test_isolator/runner_main.rb", __dir__)
+  sh({"RUBY_BOX" => "1"}, "bundle", "exec", "ruby", "-I#{File.expand_path('lib', __dir__)}", "-Itest", runner, *test_files)
 end
 
 namespace :face do

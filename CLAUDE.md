@@ -108,6 +108,10 @@ Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-pro
 - 公式 `../StackChan` には書き込まない。ピン配置や初期化シーケンスは読み取って参考にするだけ
 - spec / plan は `docs/superpowers/specs/` `docs/superpowers/plans/` に置く
 
+### Box-isolated test runner (experimental)
+
+`bundle exec rake test_isolated` (vs legacy `rake test`) runs each test file in its own Ruby::Box for cross-file state isolation. Per-suite via each suite's Rakefile. Spec: `docs/superpowers/specs/2026-05-21-test-harness-ruby-box-isolation-design.md`. Legacy `rake test` continues to work (envvar absent → box disabled).
+
 ### mrbgem pitfall (実機で詰まりがち)
 
 - **on-device の `require` 名は gem 名から `picoruby-` を strip した hyphen 形**。`picoruby-stackchan-protocol` → `require 'stackchan-protocol'` (underscore で書くと `LoadError`)。host テスト (CRuby + Bundler) は `$LOAD_PATH` で underscore でも解決するから on-device だけが prebuilt list (`mrbgems/picogem_init.c`) に依存
