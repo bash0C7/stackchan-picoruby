@@ -51,8 +51,15 @@ bundle exec stackchan-ble-control led red blink --side left
 bundle exec stackchan-ble-control led-rgb 0xFF8000 --mode blink
 bundle exec stackchan-ble-control led-hsb 0x00FFFF --side right
 bundle exec stackchan-ble-control combo --face joy --led 'red blink'
+bundle exec stackchan-ble-control --yaw-left 50 --pitch-up 30 --time 500 servo
+bundle exec stackchan-ble-control torque on
+bundle exec stackchan-ble-control selftest
+bundle exec stackchan-ble-control calibrate --align-only
+bundle exec stackchan-ble-control calibrate --samples 3 --format ruby
 bundle exec stackchan-ble-control raw '<F:0>'
 ```
+
+`servo` / `torque` / `selftest` / `calibrate` operate the head servos via BLE. `calibrate --align-only` is the daily startup flow (torque off → operator aligns forward → torque on). `calibrate` without `--align-only` runs the 5-pose anchor recalibration and prints `SERVO_*_ZERO` / `RANGE_RAW` constants for paste into `application.rb`.
 
 Exit codes:
 
@@ -63,6 +70,8 @@ Exit codes:
 | 3 | timeout (scan / connect / ACK) |
 | 4 | connection (lost or refused) |
 | 5 | assertion (unknown face name, device rejected with `?` ACK) |
+| 6 | calibration needed (device returned `unknown` on `<read:pos>` / actual servo position) |
+| 7 | calibration incomplete (verify pose Δ exceeded fail tolerance, or operator aborted) |
 | 9 | uncategorized |
 
 ## License
