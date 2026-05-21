@@ -114,6 +114,8 @@ Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-pro
 
 **Root suite isolation verified (2026-05-21, Phase 6):** root `test/` suite passes under `rake test_isolated` identically to legacy `rake test` (70 tests / 0 failures both modes). No changes to `lib/ruby_class_extract.rb` needed — Prism-extracted classes load via `box.require(tmpfile)` into box-local Object const table correctly.
 
+**Rollback verified (2026-05-21, Phase 7):** Reverting a per-suite commit (e.g., `git revert <SHA>`) removes only that suite's `:test_isolated` task; other suites' isolation and legacy `rake test` remain functional. See plan §Phase 7 for procedure.
+
 ### mrbgem pitfall (実機で詰まりがち)
 
 - **on-device の `require` 名は gem 名から `picoruby-` を strip した hyphen 形**。`picoruby-stackchan-protocol` → `require 'stackchan-protocol'` (underscore で書くと `LoadError`)。host テスト (CRuby + Bundler) は `$LOAD_PATH` で underscore でも解決するから on-device だけが prebuilt list (`mrbgems/picogem_init.c`) に依存
