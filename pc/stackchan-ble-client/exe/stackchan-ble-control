@@ -106,24 +106,21 @@ begin
   when "selftest"
     client.send { |s| s.selftest }
   when "calibrate"
-    samples       = $cal_samples || 3
-    format        = $cal_format  || :ruby
-    align_only    = !!$cal_align_only
-    engage_torque = !!$cal_engage_torque
-    skip_torque   = !!$cal_no_torque_toggle
+    samples     = $cal_samples || 3
+    format      = $cal_format  || :ruby
     prompt_proc = ->(msg) { STDOUT.print "#{msg} "; STDOUT.flush; STDIN.gets }
     begin
-      if align_only
+      if $cal_align_only
         StackchanBleClient::Calibration.run_align_only(
           client: client, prompt: prompt_proc, stdout: STDOUT,
-          skip_torque: skip_torque,
+          skip_torque: $cal_no_torque_toggle,
         )
         exit EXIT_OK
       else
         result = StackchanBleClient::Calibration.run_full_calibrate(
           client: client, prompt: prompt_proc, stdout: STDOUT,
-          samples: samples, engage_torque: engage_torque,
-          skip_torque: skip_torque,
+          samples: samples, engage_torque: $cal_engage_torque,
+          skip_torque: $cal_no_torque_toggle,
         )
         STDOUT.puts "\n#{StackchanBleClient::Calibration.format(result[:anchors], format)}"
         case result[:outcome]
