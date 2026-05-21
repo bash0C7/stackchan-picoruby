@@ -5,13 +5,14 @@ require "bundler/setup"
 require "optparse"
 require "stackchan_ble_client"
 
-EXIT_OK                    = 0
-EXIT_ADAPTER               = 2
-EXIT_TIMEOUT               = 3
-EXIT_CONNECTION            = 4
-EXIT_ASSERTION             = 5
-EXIT_CALIBRATION_NEEDED    = 6
-EXIT_UNCAT                 = 9
+EXIT_OK                       = 0
+EXIT_ADAPTER                  = 2
+EXIT_TIMEOUT                  = 3
+EXIT_CONNECTION               = 4
+EXIT_ASSERTION                = 5
+EXIT_CALIBRATION_NEEDED       = 6
+EXIT_CALIBRATION_INCOMPLETE   = 7
+EXIT_UNCAT                    = 9
 
 device_name = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
 name_prefix = nil
@@ -36,11 +37,16 @@ parser = OptionParser.new do |opts|
   opts.on("--pitch-up N")  { |v| $pitch_up  = Integer(v, 10) }
   opts.on("--time V")     { |v| $servo_time     = v }
   opts.on("--velocity V") { |v| $servo_velocity = v }
+  opts.on("--align-only")       { $cal_align_only       = true }
+  opts.on("--engage-torque")    { $cal_engage_torque    = true }
+  opts.on("--no-torque-toggle") { $cal_no_torque_toggle = true }
+  opts.on("--samples N")        { |v| $cal_samples = Integer(v, 10) }
+  opts.on("--format FORMAT")    { |v| $cal_format  = v.to_sym }
 end
 parser.parse!(ARGV)
 
 command = ARGV.shift
-abort "error: command required (face / led / led-rgb / led-hsb / combo / servo / torque / selftest / raw)" unless command
+abort "error: command required (face / led / led-rgb / led-hsb / combo / servo / torque / selftest / calibrate / raw)" unless command
 
 # If name_prefix is provided, use prefix matching; otherwise use exact device_name match
 client = StackchanBleClient::Client.new(device_name: device_name, name_prefix: name_prefix)
@@ -99,6 +105,44 @@ begin
     client.send { |s| s.torque(on: state == "on") }
   when "selftest"
     client.send { |s| s.selftest }
+  when "calibrate"
+    samples       = $cal_samples || 3
+    format        = $cal_format  || :ruby
+    align_only    = !!$cal_align_only
+    engage_torque = !!$cal_engage_torque
+    skip_torque   = !!$cal_no_torque_toggle
+    prompt_proc = ->(msg) { STDOUT.print "#{msg} "; STDOUT.flush; STDIN.gets }
+    begin
+      if align_only
+        StackchanBleClient::Calibration.run_align_only(
+          client: client, prompt: prompt_proc, stdout: STDOUT,
+          skip_torque: skip_torque,
+        )
+        exit EXIT_OK
+      else
+        result = StackchanBleClient::Calibration.run_full_calibrate(
+          client: client, prompt: prompt_proc, stdout: STDOUT,
+          samples: samples, engage_torque: engage_torque,
+          skip_torque: skip_torque,
+        )
+        STDOUT.puts "\n#{StackchanBleClient::Calibration.format(result[:anchors], format)}"
+        case result[:outcome]
+        when :pass then exit EXIT_OK
+        when :warn
+          warn "[WARN] verify pose Δ exceeded #{StackchanBleClient::Calibration::PASS_TOLERANCE} (yaw=#{result[:anchors][:forward_verify][:yaw_delta]}, pitch=#{result[:anchors][:forward_verify][:pitch_delta]}). Constants printed anyway; review before paste."
+          exit EXIT_OK
+        when :fail
+          warn "[FAIL] verify pose Δ exceeded #{StackchanBleClient::Calibration::FAIL_TOLERANCE}. Calibration incomplete."
+          exit EXIT_CALIBRATION_INCOMPLETE
+        end
+      end
+    rescue StackchanBleClient::Calibration::UnknownReadError => e
+      warn "[FAIL] reason=#{e.message} domain=calibration (device returned unknown)"
+      exit EXIT_CALIBRATION_NEEDED
+    rescue Interrupt
+      warn "[INTERRUPT] operator aborted calibration; torque remains off."
+      exit EXIT_CALIBRATION_INCOMPLETE
+    end
   else
     abort "error: unknown command #{command.inspect}"
   end

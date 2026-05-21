@@ -97,5 +97,59 @@ module StackchanBleClient
         pitch_raw: median(readings.map { |r| r[:pitch_raw] }),
       }
     end
+
+    def run_align_only(client:, prompt:, stdout:, skip_torque: false)
+      unless skip_torque
+        stdout.puts "[1/3] sending <torque:off>..."
+        client.send { |s| s.torque(on: false) }
+        stdout.puts "       ACK ✓ (Face::Closed displayed)"
+      end
+      prompt.call("[2/3] Align head to FORWARD (yaw center, pitch center). Press Enter when aligned (Ctrl-C to abort)...")
+      unless skip_torque
+        stdout.puts "[3/3] sending <torque:on>..."
+        client.send { |s| s.torque(on: true) }
+        stdout.puts "       ACK ✓ (Face::Neutral displayed)"
+      end
+      stdout.puts "[done] Ready for operation."
+    end
+
+    POSE_PROMPTS = [
+      [:forward,    "[2/6] Align head to FORWARD (yaw center, pitch center). Press Enter..."],
+      [:left_max,   "[3/6] Rotate head to STACKCHAN-LEFT MAX (operator's right side). Press Enter..."],
+      [:right_max,  "[4/6] Rotate head to STACKCHAN-RIGHT MAX (operator's left side). Press Enter..."],
+      [:up_max,     "[5/6] Tilt head UP MAX. Press Enter..."],
+      [:fwd_verify, "[6/6] Re-align to FORWARD for verification. Press Enter..."],
+    ].freeze
+
+    def run_full_calibrate(client:, prompt:, stdout:, samples:, engage_torque:, skip_torque: false)
+      unless skip_torque
+        stdout.puts "[1/6] sending <torque:off>..."
+        client.send { |s| s.torque(on: false) }
+        stdout.puts "       ACK ✓"
+      end
+
+      poses = {}
+      POSE_PROMPTS.each do |key, msg|
+        prompt.call(msg)
+        poses[key] = sample_pose(client, samples: samples)
+        stdout.puts "       reading... yaw_raw=#{poses[key][:yaw_raw]} pitch_raw=#{poses[key][:pitch_raw]}"
+      end
+
+      anchors = compute_anchors(
+        forward:    poses[:forward],
+        left_max:   poses[:left_max],
+        right_max:  poses[:right_max],
+        up_max:     poses[:up_max],
+        fwd_verify: poses[:fwd_verify],
+      )
+      outcome = classify_verify(**anchors[:forward_verify])
+
+      if engage_torque && !skip_torque
+        client.send { |s| s.torque(on: true) }
+        stdout.puts "[engage] <torque:on> sent."
+      end
+
+      { outcome: outcome, anchors: anchors, poses: poses }
+    end
   end
 end

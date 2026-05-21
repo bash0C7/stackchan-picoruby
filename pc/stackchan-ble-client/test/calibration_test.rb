@@ -1,4 +1,5 @@
 require "test_helper"
+require "stringio"
 
 class CalibrationMedianTest < Test::Unit::TestCase
   def test_median_of_odd_count
@@ -194,5 +195,172 @@ class CalibrationSampleTest < Test::Unit::TestCase
     client = FakeClient.new(["<yaw_raw:500,pitch_raw:620>\n"])
     pose = StackchanBleClient::Calibration.sample_pose(client, samples: 1)
     assert_equal 500, pose[:yaw_raw]
+  end
+end
+
+class CalibrationAlignOnlyTest < Test::Unit::TestCase
+  class ScriptedClient
+    attr_reader :sent
+    def initialize; @sent = []; end
+    def send(&block)
+      collector = Collector.new(@sent)
+      block.call(collector)
+      self
+    end
+    class Collector
+      def initialize(sink); @sink = sink; end
+      def torque(on:); @sink << [:torque, on]; end
+      def read_pos;    @sink << [:read_pos]; end
+    end
+  end
+
+  def test_run_align_only_sends_torque_off_prompts_then_torque_on
+    client = ScriptedClient.new
+    prompts = []
+    StackchanBleClient::Calibration.run_align_only(
+      client: client,
+      prompt: ->(msg) { prompts << msg },
+      stdout: StringIO.new,
+    )
+    assert_equal [[:torque, false], [:torque, true]], client.sent
+    assert_equal 1, prompts.length
+    assert_match(/FORWARD/, prompts[0])
+  end
+
+  def test_run_align_only_skip_torque_omits_torque_calls_but_keeps_prompt
+    client = ScriptedClient.new
+    prompts = []
+    StackchanBleClient::Calibration.run_align_only(
+      client: client,
+      prompt: ->(msg) { prompts << msg },
+      stdout: StringIO.new,
+      skip_torque: true,
+    )
+    assert_equal [], client.sent
+    assert_equal 1, prompts.length
+    assert_match(/FORWARD/, prompts[0])
+  end
+end
+
+class CalibrationFullRunTest < Test::Unit::TestCase
+  class ScriptedFullClient
+    attr_reader :sent, :detail_frames_left
+    def initialize(detail_frames)
+      @sent = []
+      @detail_frames_left = detail_frames.dup
+    end
+    def send(&block)
+      collector = Collector.new(@sent)
+      block.call(collector)
+      self
+    end
+    def last_detail_frame; @detail_frames_left.shift; end
+    class Collector
+      def initialize(sink); @sink = sink; end
+      def torque(on:); @sink << [:torque, on]; end
+      def read_pos;    @sink << [:read_pos]; end
+    end
+  end
+
+  def make_client_with_poses(forward:, left:, right:, up:, verify:)
+    frames = [forward, left, right, up, verify].map { |p|
+      "<yaw_raw:#{p[0]},pitch_raw:#{p[1]}>\n"
+    }
+    ScriptedFullClient.new(frames)
+  end
+
+  def test_run_full_calibrate_happy_path_returns_anchors_outcome_pass
+    client = make_client_with_poses(
+      forward: [485, 628], left: [530, 628], right: [440, 628],
+      up: [485, 660], verify: [486, 628],
+    )
+    result = StackchanBleClient::Calibration.run_full_calibrate(
+      client: client,
+      prompt: ->(_msg) { nil },
+      stdout: StringIO.new,
+      samples: 1,
+      engage_torque: false,
+    )
+    assert_equal :pass, result[:outcome]
+    assert_equal 485,   result[:anchors][:servo_yaw_zero]
+    assert_equal 45,    result[:anchors][:yaw_range_raw]
+    assert_equal 32,    result[:anchors][:pitch_range_raw]
+    refute_includes client.sent, [:torque, true]
+  end
+
+  def test_run_full_calibrate_engage_torque_sends_torque_on_at_end
+    client = make_client_with_poses(
+      forward: [485, 628], left: [530, 628], right: [440, 628],
+      up: [485, 660], verify: [485, 628],
+    )
+    StackchanBleClient::Calibration.run_full_calibrate(
+      client: client,
+      prompt: ->(_msg) { nil },
+      stdout: StringIO.new,
+      samples: 1,
+      engage_torque: true,
+    )
+    assert_equal [:torque, true], client.sent.last
+  end
+
+  def test_run_full_calibrate_verify_fail_returns_outcome_fail
+    client = make_client_with_poses(
+      forward: [485, 628], left: [530, 628], right: [440, 628],
+      up: [485, 660], verify: [500, 628],
+    )
+    result = StackchanBleClient::Calibration.run_full_calibrate(
+      client: client,
+      prompt: ->(_msg) { nil },
+      stdout: StringIO.new,
+      samples: 1,
+      engage_torque: false,
+    )
+    assert_equal :fail, result[:outcome]
+  end
+
+  def test_run_full_calibrate_propagates_unknown_read_error
+    client = ScriptedFullClient.new([
+      "<yaw_raw:unknown,pitch_raw:unknown>\n",
+    ])
+    assert_raise(StackchanBleClient::Calibration::UnknownReadError) do
+      StackchanBleClient::Calibration.run_full_calibrate(
+        client: client,
+        prompt: ->(_msg) { nil },
+        stdout: StringIO.new,
+        samples: 1,
+        engage_torque: false,
+      )
+    end
+  end
+
+  def test_run_full_calibrate_propagates_operator_abort
+    abort_prompt = ->(_msg) { raise Interrupt }
+    client = ScriptedFullClient.new([])
+    assert_raise(Interrupt) do
+      StackchanBleClient::Calibration.run_full_calibrate(
+        client: client,
+        prompt: abort_prompt,
+        stdout: StringIO.new,
+        samples: 1,
+        engage_torque: false,
+      )
+    end
+  end
+
+  def test_run_full_calibrate_skip_torque_omits_initial_off_and_final_on
+    client = make_client_with_poses(
+      forward: [485, 628], left: [530, 628], right: [440, 628],
+      up: [485, 660], verify: [485, 628],
+    )
+    StackchanBleClient::Calibration.run_full_calibrate(
+      client: client,
+      prompt: ->(_msg) { nil },
+      stdout: StringIO.new,
+      samples: 1,
+      engage_torque: true,
+      skip_torque: true,
+    )
+    refute_includes client.sent, [:torque, false]
+    refute_includes client.sent, [:torque, true]
   end
 end
