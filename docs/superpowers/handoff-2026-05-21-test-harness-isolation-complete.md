@@ -2,20 +2,22 @@
 
 ## TL;DR for next session
 
-`feat/test-harness-ruby-box-isolation` branch lands `rake test_isolated` (per-file Ruby::Box) for **all 6 suites**; legacy `rake test` preserved across every suite. **309 tests / 591 assertions / 0 failures** in both modes. Branch ready for merge.
+`feat/test-harness-ruby-box-isolation` branch lands `rake test_isolated` (per-file Ruby::Box) for **all 6 suites**; legacy `rake test` preserved across every suite. **310 tests / 595 assertions / 0 failures** in both modes (post-fix regression test counted). Branch ready for merge.
 
 Next session: resume calibration plan on `feat/servo-tuning-and-test-fix` (Tasks 15-17: `run_align_only` / `run_full_calibrate` workflow runners + CLI wire-up), then HITL Task 23 on real device.
 
 ## Branch state
 
 - Branch: `feat/test-harness-ruby-box-isolation`
-- HEAD: `a864a86` (`docs(test-harness): rollback rehearsal verified, per-suite revert works`)
+- HEAD: `302e02a` (`fix(test-harness): box-side script interpolation now produces real failure text`)
 - Working tree: clean
 - Branched from: `dd2de99` (calibration helpers partial commit) on `feat/servo-tuning-and-test-fix`
 
-### Commit list (newest first, 10 commits ahead of branch base)
+### Commit list (newest first, 12 commits ahead of branch base parent)
 
 ```
+302e02a fix(test-harness): box-side script interpolation now produces real failure text
+2fbd943 docs(handoff): test harness Ruby::Box isolation branch complete
 a864a86 docs(test-harness): rollback rehearsal verified, per-suite revert works
 48f3271 feat(test-harness): isolate root suite tests via Ruby::Box (verification only)
 801087b feat(test-harness): isolate stackchan-protocol tests via Ruby::Box
@@ -32,13 +34,15 @@ dd2de99 feat(ble-client): calibration helpers — median / anchors / format / sa
 
 | suite | isolated status | tests (legacy / isolated) | assertions (legacy / isolated) |
 |---|---|---|---|
-| `test/` (root) | ✅ isolated | 70 / 70 | 98 / 98 |
+| `test/` (root) | ✅ isolated | 71 / 71 | 102 / 102 |
 | `pc/stackchan-ble-client` | ✅ isolated | 100 / 100 | 183 / 183 |
 | `mrbgems/picoruby-stackchan-led` | ✅ isolated | 47 / 47 | 159 / 159 |
 | `mrbgems/picoruby-py32-io-expander` | ✅ isolated | 33 / 33 | 52 / 52 |
 | `mrbgems/picoruby-ili9342` | ✅ isolated | 24 / 24 | 42 / 42 |
 | `mrbgems/picoruby-stackchan-protocol` | ✅ isolated | 35 / 35 | 57 / 57 |
-| **TOTAL** | | **309 / 309** | **591 / 591** |
+| **TOTAL** | | **310 / 310** | **595 / 595** |
+
+Root suite count went from 70→71 (and 98→102 assertions) when the post-final-review fix commit (`302e02a`) added a regression test for the box-side interpolation bug.
 
 ## DoD checklist (spec §Section 6)
 
