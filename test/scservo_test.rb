@@ -12,12 +12,14 @@ class SCServoTest < Test::Unit::TestCase
     uart = FakeUART.new
     servo = SCServo.new(uart, id: 1)
     servo.write_pos(500, time_ms: 1000, speed: 0)
-    # ID=1, LEN=9, INSTR=0x03, REG=0x2A,
-    # pos=500=0x01F4 -> [0xF4,0x01], time=1000=0x03E8 -> [0xE8,0x03], speed=0 -> [0x00,0x00]
-    # checksum = ~(1+9+3+0x2A+0xF4+1+0xE8+3+0+0) & 0xFF
-    #         = ~(1+9+3+42+244+1+232+3+0+0) & 0xFF = ~0x17 & 0xFF = 0xE8
+    # SCSCL big-endian (End=1):
+    # pos=500=0x01F4 -> [0x01, 0xF4], time=1000=0x03E8 -> [0x03, 0xE8],
+    # speed=0 -> [0x00, 0x00].
+    # checksum = ~(1+9+3+0x2A+0x01+0xF4+0x03+0xE8+0+0) & 0xFF
+    #         = ~(1+9+3+42+1+244+3+232+0+0) & 0xFF
+    #         = ~0x17 & 0xFF = 0xE8
     expected = [0xFF, 0xFF, 0x01, 0x09, 0x03, 0x2A,
-                0xF4, 0x01, 0xE8, 0x03, 0x00, 0x00, 0xE8]
+                0x01, 0xF4, 0x03, 0xE8, 0x00, 0x00, 0xE8]
     assert_equal expected, uart.writes.first
   end
 
@@ -25,29 +27,18 @@ class SCServoTest < Test::Unit::TestCase
     uart = FakeUART.new
     servo = SCServo.new(uart, id: 2)
     servo.write_pos(300, time_ms: 0, speed: 0)
-    # pos=300=0x012C -> [0x2C, 0x01], time=0 -> [0,0], speed=0 -> [0,0]
-    # sum = 2+9+3+0x2A+0x2C+1+0+0+0+0 = 2+9+3+42+44+1 = 101 = 0x65
+    # SCSCL big-endian: pos=300=0x012C -> [0x01, 0x2C], time/speed 0
+    # sum = 2+9+3+0x2A+0x01+0x2C+0+0+0+0 = 2+9+3+42+1+44 = 101 = 0x65
     # checksum = ~0x65 & 0xFF = 0x9A
     expected = [0xFF, 0xFF, 0x02, 0x09, 0x03, 0x2A,
-                0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x9A]
+                0x01, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x9A]
     assert_equal expected, uart.writes.first
-  end
-
-  def test_write_pos_signed_position_uses_sign_bit_high_byte
-    # SCS encodes negative positions with bit 15 = sign on yaw raw scale.
-    # For yaw -300, raw = 300 with sign bit set -> high byte 0x01 | 0x80 = 0x81
-    uart = FakeUART.new
-    servo = SCServo.new(uart, id: 1)
-    servo.write_pos(-300, time_ms: 0, speed: 0)
-    expected_data = [0x2C, 0x81, 0x00, 0x00, 0x00, 0x00]
-    actual_data = uart.writes.first[6, 6]
-    assert_equal expected_data, actual_data
   end
 
   def test_read_pos_emits_request_packet
     uart = FakeUART.new
-    # Pre-stage a valid response
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    # Pre-stage a valid SCSCL big-endian response (pos=500=0x01F4 -> [0x01, 0xF4]).
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     servo.read_pos
     # request: ID=1, LEN=4, INSTR=2, REG=0x38, BYTES_TO_READ=2
@@ -58,20 +49,12 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_returns_parsed_position
     uart = FakeUART.new
-    # Response: pos = 0x01F4 = 500
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    # SCSCL big-endian: pos=500=0x01F4 -> data bytes [0x01, 0xF4]
+    # checksum = ~(1+4+0+0x01+0xF4) & 0xFF = ~(1+4+0+1+244) & 0xFF
+    #         = ~0xFA & 0xFF = 0x05
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     assert_equal 500, servo.read_pos
-  end
-
-  def test_read_pos_decodes_negative
-    uart = FakeUART.new
-    # pos = 300 with sign bit -> [0x2C, 0x81], -> -300
-    # Length and checksum recalc: ID=1, LEN=4, ERR=0, pos_L=0x2C, pos_H=0x81
-    # sum=1+4+0+0x2C+0x81 = 1+4+44+129 = 178 = 0xB2 -> cksum=~0xB2 & 0xFF = 0x4D
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x2C, 0x81, 0x4D] }
-    servo = SCServo.new(uart, id: 1)
-    assert_equal(-300, servo.read_pos)
   end
 
   def test_read_pos_returns_nil_on_timeout
@@ -140,7 +123,7 @@ class SCServoTest < Test::Unit::TestCase
     # (no echo loopback on ESP32-S3 UART1 — Task 3 finding).
     uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]
     uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC] }
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     servo.write_pos(500, time_ms: 0, speed: 0)
     assert_equal 500, servo.read_pos
@@ -148,13 +131,13 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_raw_debug_returns_full_rx_bytes_as_hex
     uart = FakeUART.new
-    # Stage a valid status packet response: FF FF 01 04 00 F4 01 05
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    # Stage a valid SCSCL big-endian status packet (pos=500=[0x01, 0xF4]): FF FF 01 04 00 01 F4 05
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     raw = servo.read_pos_raw_debug
     assert_kind_of String, raw
     # Hex string of all bytes received on RX (echo + response)
-    assert_match(/FF FF 01 04 00 F4 01 05/, raw)
+    assert_match(/FF FF 01 04 00 01 F4 05/, raw)
   end
 
   def test_read_pos_raw_debug_returns_empty_marker_when_no_response
@@ -200,11 +183,27 @@ class SCServoTest < Test::Unit::TestCase
     uart = FakeUART.new
     # First attempt: empty (queue empty), second attempt: valid response
     uart.read_queue_after_writes = {
-      2 => [{ bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }]
+      2 => [{ bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }]
     }
     servo = SCServo.new(uart, id: 1)
     result = servo.read_pos
     assert_equal 500, result
     assert_equal 2, uart.writes.length
+  end
+
+  def test_encode_decode_word_round_trip_scscl_big_endian
+    servo = SCServo.new(FakeUART.new, id: 1)
+    # Round trip across the unsigned u16 domain.
+    [0, 1, 255, 256, 500, 1023, 1024, 2048, 4095, 32768, 65535].each do |v|
+      enc = servo.send(:encode_word, v)
+      assert_equal 2, enc.length, "encode_word(#{v}) length"
+      assert_equal v, servo.send(:decode_word, enc[0], enc[1]),
+                   "round-trip mismatch for #{v}"
+    end
+    # SCSCL End=1: high byte goes on the wire first.
+    assert_equal [0x01, 0xF4], servo.send(:encode_word, 500),
+                 "encode_word(500) must be big-endian [hi, lo]"
+    assert_equal 500, servo.send(:decode_word, 0x01, 0xF4),
+                 "decode_word must treat first arg as high byte"
   end
 end

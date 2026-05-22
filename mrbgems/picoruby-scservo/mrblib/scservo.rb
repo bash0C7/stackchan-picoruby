@@ -39,9 +39,9 @@ class SCServo
   # SCSCL::WritePos (SCSCL.cpp:23-31) — bundled write of POS(2) + TIME(2) + SPEED(2)
   # to REG_GOAL_POS_L. Calls SCS::genWrite which is rFlush + writeBuf + wFlush + Ack.
   def write_pos(pos, time_ms: 0, speed: 0)
-    pos_enc   = encode_signed(pos)
-    time_enc  = encode_unsigned(time_ms)
-    speed_enc = encode_unsigned(speed)
+    pos_enc   = encode_word(pos)
+    time_enc  = encode_word(time_ms)
+    speed_enc = encode_word(speed)
     data = [REG_GOAL_POS_L,
             pos_enc[0],   pos_enc[1],
             time_enc[0],  time_enc[1],
@@ -103,8 +103,8 @@ class SCServo
   private
 
   # SCSCL::ReadPos single attempt. Used by read_pos retry wrapper.
-  # Returns signed position on success, nil on any failure (timeout, id mismatch,
-  # length mismatch, checksum mismatch).
+  # Returns unsigned position (0-4095) on success, nil on any failure
+  # (timeout, id mismatch, length mismatch, checksum mismatch).
   def read_pos_once
     @uart.clear_rx_buffer
     n = send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
@@ -131,7 +131,7 @@ class SCServo
     data.bytes.each { |b| calc_sum += b }
     expected = (~calc_sum) & 0xFF
     return nil if cksum_byte.bytes[0] != expected
-    decode_signed(data.bytes[0], data.bytes[1])
+    decode_word(data.bytes[0], data.bytes[1])
   end
 
   # SCS::genWrite (SCS.cpp:93-99) — rFlush + writeBuf(INST_WRITE) + wFlush + Ack.
@@ -223,33 +223,17 @@ class SCServo
     buf
   end
 
-  # SCS::Host2SCS for big-endian word writes (SCS.cpp:33-42 with End=1).
-  # Returns [low_byte, high_byte] regardless of internal storage order;
-  # used for time / speed which are unsigned 16-bit. End=1 is the SCSCL
-  # default (SCSCL::SCSCL ctor sets End=1).
-  def encode_unsigned(v)
+  # SCSCL wire encoding: SCS::Host2SCS with End=1 (SCS.cpp:33-42 + SCSCL.cpp:12).
+  # Returns [hi, lo] for big-endian transmission; unsigned u16 only.
+  # Position is 0-4095, time/speed are unsigned milliseconds / units.
+  def encode_word(v)
     v &= 0xFFFF
-    [v & 0xFF, (v >> 8) & 0xFF]
+    [(v >> 8) & 0xFF, v & 0xFF]
   end
 
-  # SCS sign-magnitude 16-bit encoding (used for goal position).
-  # The high byte's MSB is the sign bit; the low 15 bits hold magnitude.
-  def encode_signed(v)
-    if v < 0
-      mag = (-v) & 0x7FFF
-      [mag & 0xFF, ((mag >> 8) & 0x7F) | 0x80]
-    else
-      mag = v & 0x7FFF
-      [mag & 0xFF, (mag >> 8) & 0x7F]
-    end
-  end
-
-  # Inverse of encode_signed for ReadPos return.
-  def decode_signed(lo, hi)
-    if (hi & 0x80) != 0
-      -(((hi & 0x7F) << 8) | lo)
-    else
-      ((hi & 0x7F) << 8) | lo
-    end
+  # SCSCL wire decoding: SCS::SCS2Host with End=1 (SCS.cpp:46-58).
+  # Args are in wire order (first byte received = hi).
+  def decode_word(hi, lo)
+    ((hi & 0xFF) << 8) | (lo & 0xFF)
   end
 end
