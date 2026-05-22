@@ -39,9 +39,9 @@ class SCServo
   # SCSCL::WritePos (SCSCL.cpp:23-31) — bundled write of POS(2) + TIME(2) + SPEED(2)
   # to REG_GOAL_POS_L. Calls SCS::genWrite which is rFlush + writeBuf + wFlush + Ack.
   def write_pos(pos, time_ms: 0, speed: 0)
-    pos_enc   = encode_signed(pos)
-    time_enc  = encode_unsigned(time_ms)
-    speed_enc = encode_unsigned(speed)
+    pos_enc   = encode_word(pos)
+    time_enc  = encode_word(time_ms)
+    speed_enc = encode_word(speed)
     data = [REG_GOAL_POS_L,
             pos_enc[0],   pos_enc[1],
             time_enc[0],  time_enc[1],
