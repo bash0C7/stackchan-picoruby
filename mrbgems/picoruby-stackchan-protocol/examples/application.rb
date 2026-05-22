@@ -773,6 +773,12 @@ class StackChanApp < BLE
     frame = @notify_queue.shift
     push_read_value(@tx_handle, frame)
     notify(@tx_handle)
+    # Chain: if more frames are queued, request another CAN_SEND_NOW immediately
+    # so the rest of the queue drains at BLE conn-interval pace (~110ms measured)
+    # instead of waiting for the next heartbeat tick (~1s). Without this, a
+    # 2-frame response (ACK + detail) takes ~1s/frame and a 3-command burst
+    # overruns the host's ack_timeout (3s).
+    request_can_send_now_event unless @notify_queue.empty?
   end
 end
 
