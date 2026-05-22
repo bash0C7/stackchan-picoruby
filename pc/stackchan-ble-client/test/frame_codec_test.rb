@@ -137,6 +137,6 @@ class FrameCodecAckTest < Test::Unit::TestCase
   end
 
   def test_parse_ack_rejects_frame_starting_with_unknown_byte
-    assert_raise(ArgumentError) { StackchanBleClient::FrameCodec.parse_ack("<Y_actual:0,P_actual:600>\n") }
+    assert_raise(ArgumentError) { StackchanBleClient::FrameCodec.parse_ack("<YL_actual:0,PU_actual:50>\n") }
   end
 end

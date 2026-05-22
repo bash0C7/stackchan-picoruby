@@ -279,7 +279,7 @@ class ClientServoDetailDrainTest < Test::Unit::TestCase
 
   def test_servo_frame_drains_trailing_detail_frame_from_subscription
     subscription = FakeSubscription.new
-    subscription.script_returns(".\n", "<Y_actual:0,P_actual:600>\n")
+    subscription.script_returns(".\n", "<YL_actual:0,PU_actual:50>\n")
     client = make_client(subscription)
     client.connect
 
@@ -289,6 +289,24 @@ class ClientServoDetailDrainTest < Test::Unit::TestCase
 
     assert_equal 0, subscription.remaining_count,
                  "servo frame's trailing detail frame must be drained from subscription queue"
+  end
+
+  # Regression: <YL:0> (axis-only, no T/V modifier) must also be recognized
+  # as a servo frame. The old [YPVT]: regex matched single-char keys only
+  # and silently skipped detail-drain for YL/YR/PU without trailing T/V.
+  def test_axis_only_servo_frame_without_time_or_velocity_drains_detail
+    subscription = FakeSubscription.new
+    subscription.script_returns(".\n", "<YR_actual:2,PU_actual:33>\n")
+    client = make_client(subscription)
+    client.connect
+
+    client.send do |s|
+      s.head(yaw_left: 0)
+    end
+
+    assert_equal 0, subscription.remaining_count,
+                 "<YL:0> alone (no T/V) must also drain the trailing detail frame"
+    assert_equal "<YR_actual:2,PU_actual:33>\n", client.last_detail_frame
   end
 
   def test_non_servo_frame_does_not_attempt_extra_read
