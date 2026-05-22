@@ -207,4 +207,20 @@ class SCServoTest < Test::Unit::TestCase
     assert_equal 500, result
     assert_equal 2, uart.writes.length
   end
+
+  def test_encode_decode_word_round_trip_scscl_big_endian
+    servo = SCServo.new(FakeUART.new, id: 1)
+    # Round trip across the unsigned u16 domain.
+    [0, 1, 255, 256, 500, 1023, 1024, 2048, 4095, 32768, 65535].each do |v|
+      enc = servo.send(:encode_word, v)
+      assert_equal 2, enc.length, "encode_word(#{v}) length"
+      assert_equal v, servo.send(:decode_word, enc[0], enc[1]),
+                   "round-trip mismatch for #{v}"
+    end
+    # SCSCL End=1: high byte goes on the wire first.
+    assert_equal [0x01, 0xF4], servo.send(:encode_word, 500),
+                 "encode_word(500) must be big-endian [hi, lo]"
+    assert_equal 500, servo.send(:decode_word, 0x01, 0xF4),
+                 "decode_word must treat first arg as high byte"
+  end
 end

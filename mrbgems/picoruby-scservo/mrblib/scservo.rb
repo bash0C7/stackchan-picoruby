@@ -252,4 +252,18 @@ class SCServo
       ((hi & 0x7F) << 8) | lo
     end
   end
+
+  # SCSCL wire encoding: SCS::Host2SCS with End=1 (SCS.cpp:33-42 + SCSCL.cpp:12).
+  # Returns [hi, lo] for big-endian transmission; unsigned u16 only.
+  # Position is 0-4095, time/speed are unsigned milliseconds / units.
+  def encode_word(v)
+    v &= 0xFFFF
+    [(v >> 8) & 0xFF, v & 0xFF]
+  end
+
+  # SCSCL wire decoding: SCS::SCS2Host with End=1 (SCS.cpp:46-58).
+  # Args are in wire order (first byte received = hi).
+  def decode_word(hi, lo)
+    ((hi & 0xFF) << 8) | (lo & 0xFF)
+  end
 end
