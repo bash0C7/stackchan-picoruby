@@ -223,36 +223,6 @@ class SCServo
     buf
   end
 
-  # SCS::Host2SCS for big-endian word writes (SCS.cpp:33-42 with End=1).
-  # Returns [low_byte, high_byte] regardless of internal storage order;
-  # used for time / speed which are unsigned 16-bit. End=1 is the SCSCL
-  # default (SCSCL::SCSCL ctor sets End=1).
-  def encode_unsigned(v)
-    v &= 0xFFFF
-    [v & 0xFF, (v >> 8) & 0xFF]
-  end
-
-  # SCS sign-magnitude 16-bit encoding (used for goal position).
-  # The high byte's MSB is the sign bit; the low 15 bits hold magnitude.
-  def encode_signed(v)
-    if v < 0
-      mag = (-v) & 0x7FFF
-      [mag & 0xFF, ((mag >> 8) & 0x7F) | 0x80]
-    else
-      mag = v & 0x7FFF
-      [mag & 0xFF, (mag >> 8) & 0x7F]
-    end
-  end
-
-  # Inverse of encode_signed for ReadPos return.
-  def decode_signed(lo, hi)
-    if (hi & 0x80) != 0
-      -(((hi & 0x7F) << 8) | lo)
-    else
-      ((hi & 0x7F) << 8) | lo
-    end
-  end
-
   # SCSCL wire encoding: SCS::Host2SCS with End=1 (SCS.cpp:33-42 + SCSCL.cpp:12).
   # Returns [hi, lo] for big-endian transmission; unsigned u16 only.
   # Position is 0-4095, time/speed are unsigned milliseconds / units.
