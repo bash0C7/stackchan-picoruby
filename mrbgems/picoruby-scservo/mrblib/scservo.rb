@@ -103,8 +103,8 @@ class SCServo
   private
 
   # SCSCL::ReadPos single attempt. Used by read_pos retry wrapper.
-  # Returns signed position on success, nil on any failure (timeout, id mismatch,
-  # length mismatch, checksum mismatch).
+  # Returns unsigned position (0-4095) on success, nil on any failure
+  # (timeout, id mismatch, length mismatch, checksum mismatch).
   def read_pos_once
     @uart.clear_rx_buffer
     n = send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
@@ -131,7 +131,7 @@ class SCServo
     data.bytes.each { |b| calc_sum += b }
     expected = (~calc_sum) & 0xFF
     return nil if cksum_byte.bytes[0] != expected
-    decode_signed(data.bytes[0], data.bytes[1])
+    decode_word(data.bytes[0], data.bytes[1])
   end
 
   # SCS::genWrite (SCS.cpp:93-99) — rFlush + writeBuf(INST_WRITE) + wFlush + Ack.

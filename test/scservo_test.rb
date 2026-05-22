@@ -49,20 +49,12 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_returns_parsed_position
     uart = FakeUART.new
-    # Response: pos = 0x01F4 = 500
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    # SCSCL big-endian: pos=500=0x01F4 -> data bytes [0x01, 0xF4]
+    # checksum = ~(1+4+0+0x01+0xF4) & 0xFF = ~(1+4+0+1+244) & 0xFF
+    #         = ~0xFA & 0xFF = 0x05
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     assert_equal 500, servo.read_pos
-  end
-
-  def test_read_pos_decodes_negative
-    uart = FakeUART.new
-    # pos = 300 with sign bit -> [0x2C, 0x81], -> -300
-    # Length and checksum recalc: ID=1, LEN=4, ERR=0, pos_L=0x2C, pos_H=0x81
-    # sum=1+4+0+0x2C+0x81 = 1+4+44+129 = 178 = 0xB2 -> cksum=~0xB2 & 0xFF = 0x4D
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x2C, 0x81, 0x4D] }
-    servo = SCServo.new(uart, id: 1)
-    assert_equal(-300, servo.read_pos)
   end
 
   def test_read_pos_returns_nil_on_timeout
@@ -131,7 +123,7 @@ class SCServoTest < Test::Unit::TestCase
     # (no echo loopback on ESP32-S3 UART1 — Task 3 finding).
     uart.pending_rx = [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC]
     uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x02, 0x00, 0xFC] }
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     servo.write_pos(500, time_ms: 0, speed: 0)
     assert_equal 500, servo.read_pos
@@ -191,7 +183,7 @@ class SCServoTest < Test::Unit::TestCase
     uart = FakeUART.new
     # First attempt: empty (queue empty), second attempt: valid response
     uart.read_queue_after_writes = {
-      2 => [{ bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }]
+      2 => [{ bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }]
     }
     servo = SCServo.new(uart, id: 1)
     result = servo.read_pos
