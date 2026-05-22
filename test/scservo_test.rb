@@ -37,8 +37,8 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_emits_request_packet
     uart = FakeUART.new
-    # Pre-stage a valid response
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    # Pre-stage a valid SCSCL big-endian response (pos=500=0x01F4 -> [0x01, 0xF4]).
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     servo.read_pos
     # request: ID=1, LEN=4, INSTR=2, REG=0x38, BYTES_TO_READ=2
@@ -131,13 +131,13 @@ class SCServoTest < Test::Unit::TestCase
 
   def test_read_pos_raw_debug_returns_full_rx_bytes_as_hex
     uart = FakeUART.new
-    # Stage a valid status packet response: FF FF 01 04 00 F4 01 05
-    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0xF4, 0x01, 0x05] }
+    # Stage a valid SCSCL big-endian status packet (pos=500=[0x01, 0xF4]): FF FF 01 04 00 01 F4 05
+    uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     raw = servo.read_pos_raw_debug
     assert_kind_of String, raw
     # Hex string of all bytes received on RX (echo + response)
-    assert_match(/FF FF 01 04 00 F4 01 05/, raw)
+    assert_match(/FF FF 01 04 00 01 F4 05/, raw)
   end
 
   def test_read_pos_raw_debug_returns_empty_marker_when_no_response
