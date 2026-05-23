@@ -104,7 +104,7 @@ module StackchanBleClient
         client.send { |s| s.torque(on: false) }
         stdout.puts "       ACK ✓ (Face::Closed displayed)"
       end
-      prompt.call("[2/3] Align head to FORWARD (yaw center, pitch center). Press Enter when aligned (Ctrl-C to abort)...")
+      prompt.call("[2/3] Align FORWARD: head level, LCD facing operator. Press Enter when aligned (Ctrl-C to abort)...")
       unless skip_torque
         stdout.puts "[3/3] sending <torque:on>..."
         client.send { |s| s.torque(on: true) }
@@ -113,12 +113,16 @@ module StackchanBleClient
       stdout.puts "[done] Ready for operation."
     end
 
+    # Logical MAX = 90° from forward (the operational comfort range).
+    # Yaw is physically continuous-rotation (no hard stop), so MAX is a
+    # logical landmark the operator dials in by hand — LCD faces directly
+    # perpendicular to forward. Pitch UP MAX = LCD faces straight ceiling.
     POSE_PROMPTS = [
-      [:forward,    "[2/6] Align head to FORWARD (yaw center, pitch center). Press Enter..."],
-      [:left_max,   "[3/6] Rotate head to STACKCHAN-LEFT MAX (operator's right side). Press Enter..."],
-      [:right_max,  "[4/6] Rotate head to STACKCHAN-RIGHT MAX (operator's left side). Press Enter..."],
-      [:up_max,     "[5/6] Tilt head UP MAX. Press Enter..."],
-      [:fwd_verify, "[6/6] Re-align to FORWARD for verification. Press Enter..."],
+      [:forward,    "[2/6] Align FORWARD: head level, LCD facing operator. Press Enter..."],
+      [:left_max,   "[3/6] LEFT MAX (90°): rotate head so LCD faces operator's RIGHT side. Press Enter..."],
+      [:right_max,  "[4/6] RIGHT MAX (90°): rotate head so LCD faces operator's LEFT side. Press Enter..."],
+      [:up_max,     "[5/6] UP MAX (90°): tilt head so LCD faces ceiling. Press Enter..."],
+      [:fwd_verify, "[6/6] Re-align FORWARD for verification (LCD facing operator). Press Enter..."],
     ].freeze
 
     def run_full_calibrate(client:, prompt:, stdout:, samples:, engage_torque:, skip_torque: false)

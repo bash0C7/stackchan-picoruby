@@ -108,7 +108,38 @@ begin
   when "calibrate"
     samples     = $cal_samples || 3
     format      = $cal_format  || :ruby
-    prompt_proc = ->(msg) { STDOUT.print "#{msg} "; STDOUT.flush; STDIN.gets }
+    # Mac CoreBluetooth idle-disconnect window is ~15-20s. Operator-paced
+    # poses (move head physically + Enter) routinely exceed this. Send an
+    # idempotent <torque:off> keepalive every 10s during prompt wait —
+    # torque is already off throughout sampling, so this is a no-op state
+    # change but generates ACK traffic that keeps the link alive. ACK-only
+    # frame (no detail) so it does not pollute the sample_pose response
+    # buffer. The keepalive thread is fully drained before the prompt
+    # returns to avoid racing with subsequent sample_pose reads.
+    keepalive_interval = 10
+    prompt_proc = lambda do |msg|
+      STDOUT.print "#{msg} "
+      STDOUT.flush
+      keepalive_running = true
+      keepalive_thread = Thread.new do
+        next_send_at = Time.now + keepalive_interval
+        while keepalive_running
+          if Time.now >= next_send_at
+            begin
+              client.raw_send("<torque:off>\n")
+            rescue StandardError => e
+              STDERR.puts "[keepalive] #{e.class}: #{e.message}"
+            end
+            next_send_at = Time.now + keepalive_interval
+          end
+          sleep 0.2
+        end
+      end
+      result = STDIN.gets
+      keepalive_running = false
+      keepalive_thread.join
+      result
+    end
     begin
       if $cal_align_only
         StackchanBleClient::Calibration.run_align_only(
