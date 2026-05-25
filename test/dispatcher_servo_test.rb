@@ -29,17 +29,32 @@ class DispatcherServoTest < Test::Unit::TestCase
   end
 
   def test_Y_frame_routes_to_yaw
-    @yaw_servo.next_read = 632
+    @yaw_servo.next_read = 332
     @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50", "T" => "2000" })
-    # YL:50 → 482 + 50*300/100 = 632; PU:50 → 633 + 50*296/100 = 781
-    assert_equal [[632, 2000, 0]], @yaw_servo.writes
+    # YL (StackChan's left) subtracts: 482 - 50*300/100 = 332; PU:50 → 633 + 50*296/100 = 781
+    assert_equal [[332, 2000, 0]], @yaw_servo.writes
     assert_equal [[781, 2000, 0]], @pitch_servo.writes
   end
 
+  # Direction regression guard (HITL 2026-05-25): YR is StackChan's right,
+  # raw ABOVE the forward zero — the opposite sign from YL.
+  def test_YR_drives_opposite_sign_from_YL
+    @disp.handle({ "YR" => "50", "T" => "1000" })
+    assert_equal [[632, 1000, 0]], @yaw_servo.writes # 482 + 50*300/100
+  end
+
+  def test_YR_read_back_reports_YR_actual
+    @yaw_servo.next_read   = 632   # 482 + 150 → YR:50
+    @pitch_servo.next_read = 633   # zero → PU:0
+    @disp.handle({ "YR" => "50" })
+    assert_equal "<YR_actual:50,PU_actual:0>\n", @stdout.writes[1]
+  end
+
   def test_servo_frame_emits_ack_byte_then_detail_frame
-    # raw 632 → (632-482)*100/300 = YL:50; raw 781 → (781-633)*100/296 = PU:50
-    @yaw_servo.next_read = 632
+    # raw 332 → (482-332)*100/300 = YL:50 (below zero = StackChan's left);
+    # raw 781 → (781-633)*100/296 = PU:50
+    @yaw_servo.next_read = 332
     @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50" })
     # 1st write: ACK frame ".\n", 2nd write: detail frame "<YL_actual:50,PU_actual:50>\n"
@@ -71,11 +86,11 @@ class DispatcherServoTest < Test::Unit::TestCase
   end
 
   def test_mixed_face_and_servo_frame_dispatches_both
-    @yaw_servo.next_read = 632
+    @yaw_servo.next_read = 332
     @pitch_servo.next_read = 781
     @disp.handle({ "F" => "0", "YL" => "50", "PU" => "50" })
     assert @display.calls.any? { |c| c.first == :draw_ellipse }
-    assert_equal [[632, 0, 0]], @yaw_servo.writes
+    assert_equal [[332, 0, 0]], @yaw_servo.writes
     assert_equal [[781, 0, 0]], @pitch_servo.writes
   end
 

@@ -410,14 +410,17 @@ module StackchanApp
       yaw_raw   = nil
       pitch_raw = nil
 
+      # Direction confirmed by HITL 2026-05-25: raw BELOW the forward zero is
+      # StackChan's left (cal LEFT MAX = 182), raw ABOVE is its right
+      # (RIGHT MAX = 783). So YL ("StackChan's left") subtracts, YR adds.
       if frame.key?("YL")
         mag = frame["YL"].to_i
         return false unless mag >= 0 && mag <= 100
-        yaw_raw = Head::SERVO_YAW_ZERO + (mag * Head::YAW_RANGE_RAW / 100)
+        yaw_raw = Head::SERVO_YAW_ZERO - (mag * Head::YAW_RANGE_RAW / 100)
       elsif frame.key?("YR")
         mag = frame["YR"].to_i
         return false unless mag >= 0 && mag <= 100
-        yaw_raw = Head::SERVO_YAW_ZERO - (mag * Head::YAW_RANGE_RAW / 100)
+        yaw_raw = Head::SERVO_YAW_ZERO + (mag * Head::YAW_RANGE_RAW / 100)
       end
 
       if frame.key?("PU")
@@ -449,13 +452,15 @@ module StackchanApp
       yaw_part = if yaw_raw.nil?
         "YL_actual:unknown"
       else
+        # Mirror handle_head: above the zero is StackChan's right (YR),
+        # below is its left (YL).
         delta = yaw_raw - Head::SERVO_YAW_ZERO
         if delta >= 0
           mag = delta * 100 / Head::YAW_RANGE_RAW
-          "YL_actual:#{mag}"
+          "YR_actual:#{mag}"
         else
           mag = (-delta) * 100 / Head::YAW_RANGE_RAW
-          "YR_actual:#{mag}"
+          "YL_actual:#{mag}"
         end
       end
 
