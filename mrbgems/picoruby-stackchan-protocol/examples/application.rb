@@ -105,6 +105,24 @@ module StackchanApp
         clear_eye_region(display)
         draw_eyes(display)
       end
+
+      # Eye-only update that closes the eyes (horizontal line), used for blink
+      # animation. Mirrors redraw_eyes_open but draws closed-eye geometry. Does
+      # NOT fill background — preserves whatever mouth / other face state is
+      # already on screen.
+      def redraw_eyes_closed(display)
+        clear_eye_region(display)
+        display.draw_line(
+          EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+          EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+          EYE_COLOR
+        )
+        display.draw_line(
+          EYE_RIGHT_CX - CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+          EYE_RIGHT_CX + CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+          EYE_COLOR
+        )
+      end
     end
 
     class Neutral < Base
@@ -181,58 +199,69 @@ module StackchanApp
         )
       end
 
-      # Override Base#draw to do eye-only update: no full-screen fill, no mouth
-      # redraw. This is used as the "blink close" frame so screen does not
-      # flicker visibly.
+      # Full-face draw: black background + closed eyes only (no mouth).
+      # Used as the "torque off" idle indicator. For blink animation use
+      # Base#redraw_eyes_closed instead (eye-only, no flicker).
       def draw(display)
-        clear_eye_region(display)
+        display.fill(BACKGROUND_COLOR)
         draw_eyes(display)
+        # No mouth — torque-off idle face is intentionally mouthless.
       end
     end
   end
 
   class Head
-    YAW_RANGE   = (-1280..1280)
-    PITCH_RANGE = (30..870)
+    # Raw servo position range per axis for 90° from forward, measured via
+    # the 5-pose HITL calibration (stackchan-ble-control calibrate, 2026-05-25).
+    # YAW_RANGE_RAW=300 → 90° = 300 raw units (≈0.3°/unit at head output):
+    #   forward=482, LEFT MAX(90°)=182 (-300), RIGHT MAX(90°)=783 (+301).
+    # PITCH_RANGE_RAW=296 → 90° up = 296 raw units; pitch-down not supported:
+    #   forward=633, UP MAX(90°)=929 (+296).
+    YAW_RANGE_RAW   = 300
+    PITCH_RANGE_RAW = 296
+
+    # Forward (zero) positions measured by HITL calibration 2026-05-25.
+    # Supersede the old factory-firmware guess (460/620): operator aligned
+    # the head to forward by hand, then read raw servo position.
+    SERVO_YAW_ZERO   = 482
+    SERVO_PITCH_ZERO = 633
 
     def initialize(yaw_servo, pitch_servo)
       @yaw   = yaw_servo
       @pitch = pitch_servo
     end
 
-    def apply(frame)
-      time_ms, speed = resolve_time_speed(frame)
-      if frame.key?("Y")
-        y = clamp(frame["Y"].to_i, YAW_RANGE)
-        @yaw.write_pos(y, time_ms: time_ms, speed: speed)
-      end
-      if frame.key?("P")
-        p = clamp(frame["P"].to_i, PITCH_RANGE)
-        @pitch.write_pos(p, time_ms: time_ms, speed: speed)
-      end
+    # Apply pre-computed raw positions. Dispatcher does the YL/YR/PU →
+    # signed raw conversion; Head only writes what it's told.
+    def apply(yaw_raw: nil, pitch_raw: nil, time_ms: 0, velocity: 0)
+      @yaw.write_pos(yaw_raw, time_ms: time_ms, speed: velocity)     if yaw_raw
+      @pitch.write_pos(pitch_raw, time_ms: time_ms, speed: velocity) if pitch_raw
     end
 
+    # Enable/disable torque on both servos. No-op for absent servos.
+    def enable_torque(on)
+      @yaw.enable_torque(on)   if @yaw
+      @pitch.enable_torque(on) if @pitch
+    end
+
+    # Returns raw positions keyed by axis. nil for missing/unreachable servos.
+    # Note: symbol keys. Dispatcher's emit_servo_detail rewrite (Task 11) will
+    # read these symbol keys; the old string-keyed format ("Y_actual" /
+    # "P_actual") is removed.
     def read_actual
-      { "Y_actual" => @yaw.read_pos, "P_actual" => @pitch.read_pos }
+      { yaw: (@yaw && @yaw.read_pos), pitch: (@pitch && @pitch.read_pos) }
     end
 
-    private
-
-    def resolve_time_speed(frame)
-      # T-priority: T present -> use T, else V if present, else both zero (max speed)
-      if frame.key?("T")
-        [frame["T"].to_i, 0]
-      elsif frame.key?("V")
-        [0, frame["V"].to_i]
-      else
-        [0, 0]
+    # Cold-boot bring-up self-test: nudge yaw ±10 raw and return to center.
+    # Unchanged from Task 9 — copied here as part of the Head class rewrite.
+    def selftest
+      return false if @yaw.nil?
+      y0 = SERVO_YAW_ZERO
+      [(y0 + 10), (y0 - 10), y0].each do |target|
+        @yaw.write_pos(target, time_ms: 50, speed: 0)
+        Machine.delay_ms(80)
       end
-    end
-
-    def clamp(v, range)
-      return range.first if v < range.first
-      return range.last  if v > range.last
-      v
+      true
     end
   end
 end
@@ -278,16 +307,29 @@ module StackchanApp
     end
 
     def handle(frame)
+      # Legacy raw Y/P keys are retired (2026-05-21 direction-key migration).
+      # Reject outright so old PC clients see the migration via ERROR ACK
+      # rather than getting silently dropped.
+      if frame.key?("Y") || frame.key?("P")
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      return handle_torque(frame)   if frame.key?("torque")
+      return handle_selftest(frame) if frame.key?("selftest")
+      return handle_read_pos(frame)  if frame.key?("read")
+
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
       attempts << handle_led(frame)  if frame.key?("L")
-      servo_present = frame.key?("Y") || frame.key?("P") || frame.key?("V") || frame.key?("T")
-      handle_head(frame) if servo_present
-      # Servo success/failure is reported in detail frame, not in ACK/ERROR byte
-      # If attempts is empty (no F/L), success defaults to true
-      success = attempts.empty? || attempts.all? { |ok| ok }
-      @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
-      emit_servo_detail(frame) if servo_present
+      servo_present = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
+      if servo_present
+        success = handle_head(frame)
+        @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
+        emit_servo_detail(frame) if success
+      else
+        success = attempts.empty? || attempts.all? { |ok| ok }
+        @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
+      end
     rescue => e
       log_error(e)
       @stdout.write(ERROR_FRAME)
@@ -303,6 +345,55 @@ module StackchanApp
       true
     end
 
+    def handle_torque(frame)
+      case frame["torque"]
+      when "on"
+        @head.enable_torque(true) if @head
+        @current_face_class = Face::Neutral
+        Face::Neutral.new.draw(@display)
+        @stdout.write(ACK_FRAME)
+      when "off"
+        @head.enable_torque(false) if @head
+        @current_face_class = Face::Closed
+        Face::Closed.new.draw(@display)
+        @stdout.write(ACK_FRAME)
+      else
+        @stdout.write(ERROR_FRAME)
+      end
+    end
+
+    def handle_selftest(frame)
+      unless frame["selftest"] == "run"
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      if @head.nil?
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      @head.selftest
+      @stdout.write(ACK_FRAME)
+      emit_servo_detail({ "YL" => "0", "PU" => "0" })  # synthetic frame: report current actuals
+    end
+
+    def handle_read_pos(frame)
+      unless frame["read"] == "pos"
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      if @head.nil?
+        @stdout.write(ERROR_FRAME)
+        return
+      end
+      @stdout.write(ACK_FRAME)
+      actual = @head.read_actual
+      yaw_raw   = actual[:yaw]
+      pitch_raw = actual[:pitch]
+      yaw_part   = yaw_raw.nil?   ? "yaw_raw:unknown"   : "yaw_raw:#{yaw_raw}"
+      pitch_part = pitch_raw.nil? ? "pitch_raw:unknown" : "pitch_raw:#{pitch_raw}"
+      @stdout.write("<#{yaw_part},#{pitch_part}>\n")
+    end
+
     def handle_led(frame)
       mode = MODE_TABLE[frame["M"]]
       return false unless mode
@@ -316,35 +407,72 @@ module StackchanApp
     end
 
     def handle_head(frame)
-      return if @head.nil?
-      @head.apply(frame)
+      yaw_raw   = nil
+      pitch_raw = nil
+
+      # Direction confirmed by HITL 2026-05-25: raw BELOW the forward zero is
+      # StackChan's left (cal LEFT MAX = 182), raw ABOVE is its right
+      # (RIGHT MAX = 783). So YL ("StackChan's left") subtracts, YR adds.
+      if frame.key?("YL")
+        mag = frame["YL"].to_i
+        return false unless mag >= 0 && mag <= 100
+        yaw_raw = Head::SERVO_YAW_ZERO - (mag * Head::YAW_RANGE_RAW / 100)
+      elsif frame.key?("YR")
+        mag = frame["YR"].to_i
+        return false unless mag >= 0 && mag <= 100
+        yaw_raw = Head::SERVO_YAW_ZERO + (mag * Head::YAW_RANGE_RAW / 100)
+      end
+
+      if frame.key?("PU")
+        mag = frame["PU"].to_i
+        return false unless mag >= 0 && mag <= 100
+        pitch_raw = Head::SERVO_PITCH_ZERO + (mag * Head::PITCH_RANGE_RAW / 100)
+      end
+
+      return false unless yaw_raw || pitch_raw
+      return true if @head.nil?
+      @head.apply(
+        yaw_raw:   yaw_raw,
+        pitch_raw: pitch_raw,
+        time_ms:   (frame["T"] || "0").to_i,
+        velocity:  (frame["V"] || "0").to_i,
+      )
+      true
     end
 
-    def emit_servo_detail(frame)
+    def emit_servo_detail(_frame)
       if @head.nil?
-        @stdout.write("<ERROR:servo_unavailable>\n")
+        @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")
         return
       end
       actual = @head.read_actual
-      failed = []
-      failed << "yaw"   if actual["Y_actual"].nil? && frame.key?("Y")
-      failed << "pitch" if actual["P_actual"].nil? && frame.key?("P")
-      if failed.any?
-        axis = failed.size == 2 ? "both" : failed.first
-        @stdout.write("<ERROR:servo_timeout,axis:#{axis}>\n")
+      yaw_raw   = actual[:yaw]
+      pitch_raw = actual[:pitch]
+
+      yaw_part = if yaw_raw.nil?
+        "YL_actual:unknown"
       else
-        y = frame.key?("Y") ? actual["Y_actual"] : nil
-        p = frame.key?("P") ? actual["P_actual"] : nil
-        parts = []
-        parts << "Y_actual:#{y}" if y
-        parts << "P_actual:#{p}" if p
-        # If only T or V given (no Y/P), still report both axes for visibility
-        if parts.empty?
-          parts << "Y_actual:#{actual['Y_actual']}"
-          parts << "P_actual:#{actual['P_actual']}"
+        # Mirror handle_head: above the zero is StackChan's right (YR),
+        # below is its left (YL).
+        delta = yaw_raw - Head::SERVO_YAW_ZERO
+        if delta >= 0
+          mag = delta * 100 / Head::YAW_RANGE_RAW
+          "YR_actual:#{mag}"
+        else
+          mag = (-delta) * 100 / Head::YAW_RANGE_RAW
+          "YL_actual:#{mag}"
         end
-        @stdout.write("<#{parts.join(',')}>\n")
       end
+
+      pitch_part = if pitch_raw.nil?
+        "PU_actual:unknown"
+      else
+        delta = pitch_raw - Head::SERVO_PITCH_ZERO
+        mag = delta >= 0 ? (delta * 100 / Head::PITCH_RANGE_RAW) : 0
+        "PU_actual:#{mag}"
+      end
+
+      @stdout.write("<#{yaw_part},#{pitch_part}>\n")
     end
 
     def log_error(e)
@@ -444,11 +572,13 @@ Machine.delay_ms(50)
 led.show
 led.brightness = 100
 puts "[boot] step:led-show-ok"
-StackchanApp::Face::Neutral.new.draw(display)
-puts "[application] LCD + LED cold-boot done"
+StackchanApp::Face::Closed.new.draw(display)
+puts "[application] LCD cold-boot done (torque-OFF idle)"
 
-# Phase B: servo bring-up. Failure must NOT block face/LED — keep @head=nil so
-# Dispatcher can return <ERROR:servo_unavailable> while Phase A features stay live.
+# Servo bring-up — torque is intentionally left OFF so the operator can
+# physically align the head before sending <torque:on>. Failure must NOT
+# block face/LED — keep @head=nil so Dispatcher can emit the "unknown"
+# detail signal while Phase A features stay live.
 @head = nil
 begin
   # Pin mapping: per StackChan/firmware/main/hal/hal_servo.cpp:169
@@ -459,11 +589,14 @@ begin
   servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 6, rxd_pin: 7, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
-  y_ack = yaw_servo.enable_torque
-  p_ack = pitch_servo.enable_torque
-  puts "[boot] enable_torque returns: y=#{y_ack.inspect} p=#{p_ack.inspect}"
+  # SCS EEPROM default is torque ON, so we must explicitly disable to honor
+  # the cold-boot torque-OFF design (operator physically aligns then sends
+  # <torque:on>). Plan §Task 14 assumed default-OFF — Task 15 HITL revealed
+  # the EEPROM-default state.
+  yaw_servo.enable_torque(false)
+  pitch_servo.enable_torque(false)
   @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
-  puts "[boot] servo init OK"
+  puts "[boot] servo init OK (torque OFF, awaiting <torque:on>)"
 rescue => e
   puts "[boot] servo init failed: #{e.class}: #{e.message}"
 end
@@ -496,54 +629,25 @@ if servo_uart
   end
 end
 
-# Cold-boot self-test: human-visible LED + servo motion so anyone watching
-# the device can tell at a glance whether each subsystem (LED bus / servo
-# UART TX / servo UART RX) is alive. Each step puts a log line so a Mac-side
-# `bin/capture-with-pty` operator can correlate visual with serial trace.
-# Failure of any leg is non-fatal — BLE startup proceeds either way.
-puts "[boot] self-test begin"
-
-begin
-  puts "[boot] self-test led: left red solid"
-  led.animate_side(:left, 255, 0, 0, :solid)
-  led.tick(Machine.uptime_us / 1000)
-  Machine.delay_ms(1500)
-  puts "[boot] self-test led: right blue solid"
-  led.animate_side(:right, 0, 0, 255, :solid)
-  led.tick(Machine.uptime_us / 1000)
-  Machine.delay_ms(1500)
-  puts "[boot] self-test led: both off"
-  led.animate_side(:both, 0, 0, 0, :off)
-  led.tick(Machine.uptime_us / 1000)
-rescue => e
-  puts "[boot] self-test led raised: #{e.class}: #{e.message}"
-end
-
+# Diagnostic: capture raw RX bytes from a single read_pos request so we can
+# analyze why read_pos returns nil. Expected layouts:
+#   echo only        : raw begins FF FF <id> 04 38 02 <cksum> ...  (= our READ pkt)
+#   no echo, response: raw begins FF FF <id> 04 00 <pos_l> <pos_h> <cksum>
+#   wrong register   : response uses different LEN / data byte count
+#   silent failure   : raw=<empty>
 if @head
-  begin
-    [
-      ["up",     "0",     "800"],
-      ["down",   "0",     "200"],
-      ["right",  "1000",  "450"],
-      ["left",   "-1000", "450"],
-      ["center", "0",     "450"],
-    ].each do |label, y, p|
-      puts "[boot] self-test servo: #{label} Y=#{y} P=#{p}"
-      @head.apply({"Y" => y, "P" => p, "T" => "600"})
-      Machine.delay_ms(800)
-    end
-    actual = @head.read_actual
-    puts "[boot] self-test servo read=#{actual.inspect}"
-  rescue => e
-    puts "[boot] self-test servo raised: #{e.class}: #{e.message}"
+  [yaw_servo, pitch_servo].each do |s|
+    sid = s.instance_variable_get(:@id)
+    puts "[diag read_pos_raw id=#{sid}] #{s.read_pos_raw_debug}"
   end
-else
-  puts "[boot] self-test servo: SKIP (@head nil)"
 end
 
-puts "[boot] self-test end"
+# Cold-boot self-test removed 2026-05-21 — protocol now exposes
+# <selftest:run> for on-demand UART round-trip check, and the cold-boot
+# face/servo state (Face::Closed + torque OFF) is itself the idle indicator
+# that operators read for "alive vs. wedged" at a glance.
 
-# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Neutral.draw) は
+# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Closed.draw) は
 # 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
 # yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
 # されない (silent fail、device-side log だけ HCI WORKING 出る)。
@@ -634,6 +738,11 @@ class StackChanApp < BLE
       puts "[application] disconnected"
       @notify_enabled = false
       @notify_queue = []
+      # Re-enable advertising so a central can reconnect. With the infinite
+      # run loop (no 60s HCI power-cycle), nothing else re-advertises after a
+      # disconnect — the old loop+start(60_000) relied on the boundary
+      # power-cycle's BTSTACK_EVENT_STATE → advertise side effect for this.
+      advertise(@adv_data)
     when ATT_EVENT_CAN_SEND_NOW
       flush_one_frame
     end
@@ -667,7 +776,7 @@ class StackChanApp < BLE
     # 「瞬き」演出。これがあれば人間がフリーズ vs 稼働中を視認できる。
     @blink_tick = (@blink_tick || 0) + 1
     if @blink_tick % 5 == 0
-      StackchanApp::Face::Closed.new.draw(@display)
+      @dispatcher.current_face_class.new.redraw_eyes_closed(@display)
       Machine.delay_ms 150
       @dispatcher.current_face_class.new.redraw_eyes_open(@display)
     end
@@ -678,6 +787,12 @@ class StackChanApp < BLE
     frame = @notify_queue.shift
     push_read_value(@tx_handle, frame)
     notify(@tx_handle)
+    # Chain: if more frames are queued, request another CAN_SEND_NOW immediately
+    # so the rest of the queue drains at BLE conn-interval pace (~110ms measured)
+    # instead of waiting for the next heartbeat tick (~1s). Without this, a
+    # 2-frame response (ACK + detail) takes ~1s/frame and a 3-command burst
+    # overruns the host's ack_timeout (3s).
+    request_can_send_now_event unless @notify_queue.empty?
   end
 end
 
@@ -685,13 +800,18 @@ end
 # 60s 経過後に start() は return する仕様 (引数は ms)。Phase 3 production として
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
-puts "[application] BLE peripheral starting (loop, 60s windows)"
+puts "[application] BLE peripheral starting (infinite advertise)"
 peri = StackChanApp.new(display: display, led: led, head: @head)
 peri.debug = true
-# Loop indefinitely. peri.start(60_000) blocks for 60s then returns; we restart
-# immediately so the device stays advertise-able for HITL / smoke timing windows.
-# 恒久対応 (peri.start の API 改善 / 無限 advertise) は別 task。
-loop do
-  peri.start(60_000)
-  puts "[application] start returned (60s window expired, restarting)"
-end
+# Run the BTstack run loop indefinitely (start with no timeout). An active
+# central connection is therefore never force-dropped.
+#
+# Previously this was `loop { peri.start(60_000) }`. ble.rb#start runs a
+# polling loop until timeout_ms elapses, then its `ensure` block calls
+# hci_power_control(HCI_POWER_OFF) — powering off the BT controller every
+# 60s and tearing down any live connection at the window boundary. An
+# operator connecting at a random point in the 60s window got 0–60s of link
+# time, which made operator-paced HITL calibration impossible ("timing too
+# tight"). start(nil) never hits the timeout break and only powers off on
+# exception, so the controller stays up and connections persist.
+peri.start

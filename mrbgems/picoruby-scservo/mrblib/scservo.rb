@@ -39,9 +39,9 @@ class SCServo
   # SCSCL::WritePos (SCSCL.cpp:23-31) — bundled write of POS(2) + TIME(2) + SPEED(2)
   # to REG_GOAL_POS_L. Calls SCS::genWrite which is rFlush + writeBuf + wFlush + Ack.
   def write_pos(pos, time_ms: 0, speed: 0)
-    pos_enc   = encode_signed(pos)
-    time_enc  = encode_unsigned(time_ms)
-    speed_enc = encode_unsigned(speed)
+    pos_enc   = encode_word(pos)
+    time_enc  = encode_word(time_ms)
+    speed_enc = encode_word(speed)
     data = [REG_GOAL_POS_L,
             pos_enc[0],   pos_enc[1],
             time_enc[0],  time_enc[1],
@@ -50,12 +50,66 @@ class SCServo
   end
 
   # SCSCL::ReadPos (SCSCL.cpp:89-100) → SCS::readWord (SCS.cpp:232-242)
-  # → SCS::Read (SCS.cpp:172-217). Returns the signed position or nil on
-  # timeout / id mismatch / length mismatch / checksum mismatch.
+  # → SCS::Read (SCS.cpp:172-217). Retries up to 3 times on failure, returning
+  # the signed position or nil after all attempts exhausted.
   def read_pos
+    3.times do
+      result = read_pos_once
+      return result unless result.nil?
+    end
+    nil
+  end
+
+  # Diagnostic-only method: send the same READ packet as read_pos, then
+  # read up to 32 bytes (echo + response + slack) without checksum / id /
+  # length validation. Returns a hex-formatted string of whatever was on RX,
+  # or "<empty>" if nothing came back. Used to debug the read_pos timeout
+  # hypothesis (echo behaviour / register address / clear_rx_buffer).
+  def read_pos_raw_debug
     @uart.clear_rx_buffer
     send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
     @uart.flush
+    # Wait briefly for servo to respond. SCS servos typically reply within
+    # 5-10ms; 80ms is a generous budget for diagnostic capture.
+    Machine.delay_ms(80)
+    raw = ""
+    loop do
+      chunk = @uart.readpartial(32)
+      break if chunk.nil? || chunk.empty?
+      raw << chunk
+    end
+    return "<empty>" if raw.empty?
+    hex = ""
+    raw.bytes.each { |b| hex << sprintf("%02X ", b) }
+    hex.strip
+  end
+
+  # SCSCL::EnableTorque (SCSCL.cpp:65-68) → SCS::writeByte (SCS.cpp:152-158).
+  def enable_torque(on = true)
+    value = on ? 0x01 : 0x00
+    gen_write([REG_TORQUE, value])
+  end
+
+  # SCSCL::SwitchMode → SCS::writeByte to REG_MODE.
+  def set_mode(mode)
+    value = case mode
+            when :position then 0x00
+            when :pwm      then 0x01
+            else raise ArgumentError, "unknown mode: #{mode.inspect}"
+            end
+    gen_write([REG_MODE, value])
+  end
+
+  private
+
+  # SCSCL::ReadPos single attempt. Used by read_pos retry wrapper.
+  # Returns unsigned position (0-4095) on success, nil on any failure
+  # (timeout, id mismatch, length mismatch, checksum mismatch).
+  def read_pos_once
+    @uart.clear_rx_buffer
+    n = send_packet(INSTR_READ, [REG_PRESENT_POS_L, 0x02])
+    @uart.flush
+    drain_echo(n)
     return nil unless check_head
     # SCS.cpp:184 — first read = 3 bytes (ID, LEN, ERR).
     body_header = read_bytes(3, READ_TIMEOUT_MS)
@@ -77,32 +131,15 @@ class SCServo
     data.bytes.each { |b| calc_sum += b }
     expected = (~calc_sum) & 0xFF
     return nil if cksum_byte.bytes[0] != expected
-    decode_signed(data.bytes[0], data.bytes[1])
+    decode_word(data.bytes[0], data.bytes[1])
   end
-
-  # SCSCL::EnableTorque (SCSCL.cpp:65-68) → SCS::writeByte (SCS.cpp:152-158).
-  def enable_torque(on = true)
-    value = on ? 0x01 : 0x00
-    gen_write([REG_TORQUE, value])
-  end
-
-  # SCSCL::SwitchMode → SCS::writeByte to REG_MODE.
-  def set_mode(mode)
-    value = case mode
-            when :position then 0x00
-            when :pwm      then 0x01
-            else raise ArgumentError, "unknown mode: #{mode.inspect}"
-            end
-    gen_write([REG_MODE, value])
-  end
-
-  private
 
   # SCS::genWrite (SCS.cpp:93-99) — rFlush + writeBuf(INST_WRITE) + wFlush + Ack.
   def gen_write(params)
     @uart.clear_rx_buffer
-    send_packet(INSTR_WRITE, params)
+    n = send_packet(INSTR_WRITE, params)
     @uart.flush
+    drain_echo(n)
     ack
   end
 
@@ -121,6 +158,15 @@ class SCServo
     cksum = (~sum) & 0xFF
     packet = HEADER + body + [cksum]
     @uart.write(packet.pack('C*'))
+    packet.length
+  end
+
+  # On ESP32-S3 UART1, TX bytes do NOT loop back on RX in our wiring
+  # (verified 2026-05-21 via read_pos_raw_debug capture). drain_echo is a
+  # vestigial half-duplex assumption from the Arduino reference; we keep the
+  # method signature for compatibility but make it a no-op so check_head sees
+  # the real status packet immediately.
+  def drain_echo(_n)
   end
 
   # SCS::checkHead (SCS.cpp:278-298) — slide a 2-byte window byte-by-byte
@@ -177,33 +223,17 @@ class SCServo
     buf
   end
 
-  # SCS::Host2SCS for big-endian word writes (SCS.cpp:33-42 with End=1).
-  # Returns [low_byte, high_byte] regardless of internal storage order;
-  # used for time / speed which are unsigned 16-bit. End=1 is the SCSCL
-  # default (SCSCL::SCSCL ctor sets End=1).
-  def encode_unsigned(v)
+  # SCSCL wire encoding: SCS::Host2SCS with End=1 (SCS.cpp:33-42 + SCSCL.cpp:12).
+  # Returns [hi, lo] for big-endian transmission; unsigned u16 only.
+  # Position is 0-4095, time/speed are unsigned milliseconds / units.
+  def encode_word(v)
     v &= 0xFFFF
-    [v & 0xFF, (v >> 8) & 0xFF]
+    [(v >> 8) & 0xFF, v & 0xFF]
   end
 
-  # SCS sign-magnitude 16-bit encoding (used for goal position).
-  # The high byte's MSB is the sign bit; the low 15 bits hold magnitude.
-  def encode_signed(v)
-    if v < 0
-      mag = (-v) & 0x7FFF
-      [mag & 0xFF, ((mag >> 8) & 0x7F) | 0x80]
-    else
-      mag = v & 0x7FFF
-      [mag & 0xFF, (mag >> 8) & 0x7F]
-    end
-  end
-
-  # Inverse of encode_signed for ReadPos return.
-  def decode_signed(lo, hi)
-    if (hi & 0x80) != 0
-      -(((hi & 0x7F) << 8) | lo)
-    else
-      ((hi & 0x7F) << 8) | lo
-    end
+  # SCSCL wire decoding: SCS::SCS2Host with End=1 (SCS.cpp:46-58).
+  # Args are in wire order (first byte received = hi).
+  def decode_word(hi, lo)
+    ((hi & 0xFF) << 8) | (lo & 0xFF)
   end
 end

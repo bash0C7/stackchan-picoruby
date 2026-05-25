@@ -53,48 +53,63 @@ class FrameCodecEncodeLedTest < Test::Unit::TestCase
 end
 
 class FrameCodecHeadTest < Test::Unit::TestCase
-  def test_encode_head_all_axes_and_time
-    out = StackchanBleClient::FrameCodec.encode_head(
-      yaw: -300, pitch: 500, time_ms: 2000, velocity: nil
+  def test_encode_head_yaw_left
+    result = StackchanBleClient::FrameCodec.encode_head(
+      yaw_left: 50, yaw_right: nil, pitch_up: nil, time_ms: nil, velocity: nil
     )
-    assert_equal "<Y:-300,P:500,T:2000>\n", out
+    assert_equal "<YL:50>\n", result
   end
 
-  def test_encode_head_with_velocity
-    out = StackchanBleClient::FrameCodec.encode_head(
-      yaw: 100, pitch: nil, time_ms: nil, velocity: 50
+  def test_encode_head_yaw_right_pitch_up_and_time
+    result = StackchanBleClient::FrameCodec.encode_head(
+      yaw_left: nil, yaw_right: 30, pitch_up: 80, time_ms: 500, velocity: nil
     )
-    assert_equal "<Y:100,V:50>\n", out
+    assert_equal "<YR:30,PU:80,T:500>\n", result
   end
 
-  def test_encode_head_yaw_only_no_time_no_velocity
-    out = StackchanBleClient::FrameCodec.encode_head(
-      yaw: 0, pitch: nil, time_ms: nil, velocity: nil
+  def test_encode_head_yaw_left_zero_means_center
+    result = StackchanBleClient::FrameCodec.encode_head(
+      yaw_left: 0, yaw_right: nil, pitch_up: 0, time_ms: nil, velocity: nil
     )
-    assert_equal "<Y:0>\n", out
+    assert_equal "<YL:0,PU:0>\n", result
   end
 
-  def test_encode_head_pitch_only
-    out = StackchanBleClient::FrameCodec.encode_head(
-      yaw: nil, pitch: 500, time_ms: nil, velocity: nil
-    )
-    assert_equal "<P:500>\n", out
-  end
-
-  def test_encode_head_neither_axis_raises
+  def test_encode_head_raises_when_all_axes_nil
     assert_raise(ArgumentError) do
       StackchanBleClient::FrameCodec.encode_head(
-        yaw: nil, pitch: nil, time_ms: 100, velocity: nil
+        yaw_left: nil, yaw_right: nil, pitch_up: nil, time_ms: nil, velocity: nil
       )
     end
   end
 
-  def test_encode_head_time_wins_over_velocity
-    # T and V are mutually exclusive; T takes precedence when both given
-    out = StackchanBleClient::FrameCodec.encode_head(
-      yaw: 200, pitch: nil, time_ms: 1500, velocity: 80
-    )
-    assert_equal "<Y:200,T:1500>\n", out
+  def test_encode_head_raises_when_yaw_left_and_right_both_set
+    assert_raise(ArgumentError) do
+      StackchanBleClient::FrameCodec.encode_head(
+        yaw_left: 50, yaw_right: 30, pitch_up: nil, time_ms: nil, velocity: nil
+      )
+    end
+  end
+end
+
+class FrameCodecTorqueTest < Test::Unit::TestCase
+  def test_encode_torque_on
+    assert_equal "<torque:on>\n", StackchanBleClient::FrameCodec.encode_torque(on: true)
+  end
+
+  def test_encode_torque_off
+    assert_equal "<torque:off>\n", StackchanBleClient::FrameCodec.encode_torque(on: false)
+  end
+end
+
+class FrameCodecSelftestTest < Test::Unit::TestCase
+  def test_encode_selftest
+    assert_equal "<selftest:run>\n", StackchanBleClient::FrameCodec.encode_selftest
+  end
+end
+
+class FrameCodecReadPosTest < Test::Unit::TestCase
+  def test_encode_read_pos
+    assert_equal "<read:pos>\n", StackchanBleClient::FrameCodec.encode_read_pos
   end
 end
 
@@ -122,6 +137,6 @@ class FrameCodecAckTest < Test::Unit::TestCase
   end
 
   def test_parse_ack_rejects_frame_starting_with_unknown_byte
-    assert_raise(ArgumentError) { StackchanBleClient::FrameCodec.parse_ack("<Y_actual:0,P_actual:600>\n") }
+    assert_raise(ArgumentError) { StackchanBleClient::FrameCodec.parse_ack("<YL_actual:0,PU_actual:50>\n") }
   end
 end

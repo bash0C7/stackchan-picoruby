@@ -5,6 +5,7 @@ require_relative "stackchan_ble_client/hsb_to_rgb"
 require_relative "stackchan_ble_client/frame_codec"
 require_relative "stackchan_ble_client/send_builder"
 require_relative "stackchan_ble_client/client"
+require_relative "stackchan_ble_client/calibration"
 
 module StackchanBleClient
   class Error < StandardError; end

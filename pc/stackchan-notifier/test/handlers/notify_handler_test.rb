@@ -36,8 +36,8 @@ class NotifyHandlerTest < Test::Unit::TestCase
     assert_equal({ kind: :face, name: :joy }, cmds[0])
     assert_equal({ kind: :led, form: :hsb, value: 0x00FFFF, side: :left,  mode: :blink }, cmds[1])
     assert_equal({ kind: :led, form: :hsb, value: 0x000000, side: :right, mode: :solid }, cmds[2])
-    # joy motion: yaw 0, pitch 600, time_ms 250
-    assert_equal({ kind: :head, yaw: 0, pitch: 600, time_ms: 250, velocity: nil }, cmds[3])
+    # joy motion: yaw_left nil, yaw_right nil, pitch_up 75, time_ms 250
+    assert_equal({ kind: :head, yaw_left: nil, yaw_right: nil, pitch_up: 75, time_ms: 250, velocity: nil }, cmds[3])
     assert_equal 4, cmds.size
   end
 

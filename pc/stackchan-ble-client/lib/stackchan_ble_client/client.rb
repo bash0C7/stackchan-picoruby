@@ -95,9 +95,12 @@ module StackchanBleClient
     end
 
     def servo_frame?(frame)
-      # Device emits a detail frame after any frame containing Y/P/V/T axis keys.
-      # Mirror the device-side Dispatcher.servo_present check.
-      !!(frame =~ /[YPVT]:/)
+      # Device emits a detail frame after:
+      # - any frame containing YL / YR / PU axis keys (servo command);
+      # - any <read:pos> frame (calibration raw read).
+      # Mirror the device-side dispatcher's "emits detail" set
+      # (application.rb: servo_present = frame.key?("YL")|..|("PU")).
+      !!(frame =~ /(?:YL|YR|PU):/) || frame.start_with?("<read:")
     end
 
     def build_default_transport

@@ -686,7 +686,7 @@ end
 
 - **PY32 register map の完全把握**: REG_LED_CFG bit6 = refresh トリガは確認済みだが、LED count 設定 register、GPIO mode register 番地は実装時に公式 driver 再確認要
 - **Animation 拡張（v2）**: rainbow / sweep / per-pixel 必要になったら別 spec
-- **Servo 駆動（P2）**: Feetech serial 1Mbaud、UART1 GPIO 6/7、ID 1=pan / ID 2=tilt、PY32 P0 で電源 ON
+- **Servo 駆動（P2）**: Feetech serial 1Mbaud、UART1 GPIO 6(TX)/7(RX)、ID 1=pan / ID 2=tilt、PY32 P0 で電源 ON
 - **BLE bridge（P4）**: `picoruby-ble-uart` を build に追加、frame をそのまま BLE characteristic に流す
 - **WiFi bridge（P5）**: `picoruby-network` + `picoruby-socket`、TCP server で frame 受信
 - **AI tool 完了通知 → robot reaction（P6）**: Claude Code hook + cmux integration、PC 側 client 拡張

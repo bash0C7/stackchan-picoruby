@@ -1,5 +1,11 @@
 # Phase B: Servo Control (Yaw / Pitch with Time-Velocity Policy) Design
 
+> **⚠ SUPERSEDED by `2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`.**
+> The raw Y/P frame protocol described in this document was retired on 2026-05-21
+> in favour of a direction-key + magnitude protocol (`<YL:N,YR:N,PU:N>`).
+> Cold-boot also no longer auto-enables torque or runs self-test.
+> This document is preserved as a Phase B historical reference only.
+
 Date: 2026-05-19
 
 ## Goal
@@ -49,7 +55,9 @@ Gesture macros (nod / shake / look_at), self-initiated push notifications (heart
                                   ▼
                   ┌──────────────────────────────────────────────────────┐
                   │ picoruby-uart (既存組込済)                            │
-                  │   UART_NUM_1, 1_000_000 baud, RXD=GPIO 6, TXD=GPIO 7 │
+                  │   UART_NUM_1, 1_000_000 baud, TXD=GPIO 6, RXD=GPIO 7 │
+                  │   ※ 2026-05-20 fix: 旧 spec は RXD/TXD を逆記載。    │
+                  │     公式 hal_servo.cpp:169 と e42df29 commit で訂正。  │
                   └───────────────┬──────────────────────────────────────┘
                                   ▼
                             ┌──────────┐

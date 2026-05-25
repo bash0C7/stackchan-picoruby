@@ -64,13 +64,13 @@ class DaemonTest < Test::Unit::TestCase
   def test_daemon_dispatches_servo_tuple
     @daemon.start
     remote = DRbObject.new_with_uri(@daemon.drb_uri)
-    remote.write([:cmd, :servo, { yaw: 100, pitch: 450, time_ms: 200, velocity: nil }])
+    remote.write([:cmd, :servo, { yaw_left: nil, yaw_right: 100, pitch_up: 450, time_ms: 200, velocity: nil }])
 
     wait_until { @client.sent.any? { |s| s.is_a?(Array) && s.any? { |c| c[:kind] == :head } } }
 
     head_cmd = @client.sent.flatten.find { |c| c.is_a?(Hash) && c[:kind] == :head }
-    assert_equal 100, head_cmd[:yaw]
-    assert_equal 450, head_cmd[:pitch]
+    assert_equal 100, head_cmd[:yaw_right]
+    assert_equal 450, head_cmd[:pitch_up]
     assert_equal 200, head_cmd[:time_ms]
     assert_nil        head_cmd[:velocity]
   end

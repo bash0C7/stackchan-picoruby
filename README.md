@@ -96,12 +96,12 @@ behavior — that is verified via `/stackchan-device-iterate` and
 | Subsystem | Original (official) | This repo (PicoRuby) | Notes |
 |---|---|---|---|
 | Core 4 faces (Neutral / Smile / Joy / Surprised) | ✓ | ✓ | Custom geometry, photo-derived ratios |
-| Extended emotions (Angry / Sad / etc.) | ✓ | ✗ | Easy to add as new `Face::*` classes |
+| Extended emotions (Angry / Sad / Closed) | ✓ | ✓ | `Face::Sad` / `Face::Angry` / `Face::Closed` (idle indicator) |
 | Eye-blink liveness animation | partial | ✓ | Eye-only redraw, no full-screen flicker |
 | RGB LED ring (12 px) | ✓ | ✓ | `solid` / `blink` / `breathing` / `off`, per-side (`L`/`R`/`both`) |
 | BLE control (Nordic UART Service) | (community) | ✓ | NUS RX/TX + ACK queue + heartbeat tick |
 | WiFi + HTTP / MQTT / WebSocket | ✓ | (planned) | `picoruby-net-*` gems available, awaiting wiring |
-| Servo control (neck pan + tilt) | ✓ | ✗ | (planned) |
+| Servo control (yaw + pitch) | ✓ | ✓ | Normalized `YL/YR/PU` protocol + operator BLE calibrate CLI |
 | IMU (BMI270 + BMM150) | ✓ | ✗ | (planned) |
 | 3-zone touch (head Si12T) | ✓ | ✗ | (planned) |
 | Microphone / Speaker / TTS | ✓ | ✗ | Delegates to macOS side (planned) |
@@ -165,8 +165,6 @@ Two files assume the original author's `~/dev/src/github.com/bash0C7/` layout. E
 
 - `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Update 4 `conf.gem gemdir:` lines to point at this repo's `mrbgems/{picoruby-ili9342, picoruby-py32-io-expander, picoruby-stackchan-led, picoruby-stackchan-protocol}`
 - `stackchan-picoruby/pc/stackchan-ble-client/Gemfile` — Update 2 `gem ... path:` lines for `rb-corebluetooth-mac` and `swift_gem`
-
-(A future patch may make these relative; for now, edit by hand.)
 
 #### 3. Bundle install (2 locations)
 

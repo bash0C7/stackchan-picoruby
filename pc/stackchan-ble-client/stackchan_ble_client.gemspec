@@ -12,6 +12,6 @@ Gem::Specification.new do |spec|
   DESC
   spec.required_ruby_version = ">= 3.1.0"
   spec.files = Dir["lib/**/*.rb", "exe/*", "README.md"]
-  spec.executables = ["stackchan-ble-control"]
+  spec.executables = ["stackchan-ble-control", "stackchan-ble-tui"]
   spec.require_paths = ["lib"]
 end

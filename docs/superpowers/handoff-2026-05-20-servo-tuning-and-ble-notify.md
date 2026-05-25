@@ -1,14 +1,37 @@
 # Handoff 2026-05-20: cold-boot self-test tuning + BLE notify next-up
 
+> **更新 2026-05-20 (session 2 後半):** user 指示で方向転換。Task 4 (calibration) は新 design (cold-boot torque-off + normalized -100..+100 protocol + 明示 `<T:on>`/`<T:off>`/`<S:test>` BLE frame) に **supersede された**。Task 2 の read_pos は新 design では依存しないので **deferred**。新 design spec/plan を別 doc で策定中。
+>
+> **更新 2026-05-20 (session 2 前半):** Task 1/3 完了、Task 2 は write_pos 確認済 / read_pos は未解決 (次セッション継続)。Task 4 (servo range calibration) 新規追加 (人間目視必須)。
+
 ## TL;DR for next session
 
-1. **Cold-boot self-test を小さくして元位置復帰** — `application.rb` の自己診断 sweep を「ちょっと動く + ニュートラル復帰」に絞る。観測の目的は「servo 通信生きてる」を視認するだけで OK、現在の `Y=±1000 / P=200..800` は範囲外で「無茶な方向」を向く。
-2. **次の実装は BLE 経由 notify** — protocol 層は完成済み (frame-delimited wire、device→client notify 1 frame/通知)。next: PC 側 `stackchan-notifier` から BLE 経由で `Y/P/V/T` frame を投げて servo を動かす経路を E2E 確認 → notify (LED/face) 経由のフックも整える。
-3. **Repo state は clean** — 本 handoff 直前に下記すべて commit 済み (untracked 残らず)。
+1. ~~Cold-boot self-test を小さくして元位置復帰~~ **DONE (154db90)** — ±30/3-step/T=50
+2. **BLE 経由 servo 制御 E2E 検証 — write_pos PASS / read_pos 未解決**
+   - write_pos: 実機物理動作確認済 (user「動いた」、`--pitch 512` で可視動作)
+   - read_pos: drain_echo blocking → non-blocking と 2 段階で deploy したが `servo_timeout` のまま。仮説: ESP32-S3 UART が TX→RX エコーを行わず、別経路で stale bytes が混入してる。次セッションで raw byte dump 取って分析する必要あり (19a9585, 07be894)
+3. ~~派生クリーンアップ~~ **DONE** — scservo_test 53/53 PASS、doc pin 表記修正
+4. **NEW: Servo range キャリブレーション** — `SERVO_PITCH_ZERO=620` が実機で「真上向き」と判明。正確な正面向きポジション / 可動範囲を人間目視で calibrate する。
 
 ## Resume trigger
 
-User 任意。「servo tuning 続き」「BLE notify 実装」「次やる」 等で開始。
+User 任意。「servo tuning 続き」「read_pos デバッグ」「キャリブレーション」「次やる」 等で開始。
+
+## read_pos debugging next steps
+
+Session 2 で試した方策と結果:
+
+| アプローチ | commit | 結果 |
+|---|---|---|
+| blocking drain_echo (READ_TIMEOUT_MS poll) | 19a9585 | timeout 100ms × バイト数で response window 食い潰し → `servo_timeout` |
+| non-blocking drain_echo (read-as-available) | 07be894 | 同じく `servo_timeout` — drain は echo を消費せず、check_head も response を見つけられない |
+
+仮説の優先順位:
+1. **ESP32-S3 UART は TX→RX echo しない** (echo bytes は最初から無い) — drain_echo は no-op、check_head が timeout する別原因がある
+2. servo response が register 0x38 (PRESENT_POS_L) に来てない (SCS series 違いで register 違う?) — `../StackChan/firmware/main/hal/drivers/FTServo_Arduino/SCSCL.h` を read して address 再確認
+3. clear_rx_buffer 自体が PicoRuby UART で動いてない / lazy
+
+次セッション最初のステップ: scservo.rb に `read_raw_bytes` デバッグ method 足して、`read_pos` 内で受信した生バイトを `puts` で吐く → BLE 経由で 1 回呼んで boot.log 取る → bytes を見て原因特定。
 
 ## Phase B "servo bring-up" 結末 (2026-05-20 確定)
 
@@ -35,6 +58,29 @@ User 任意。「servo tuning 続き」「BLE notify 実装」「次やる」 �
 物理的にも sweep で動くこと user 視認済み。ただし `Y_actual` / `P_actual` の値が範囲外 (SCSCL は 0-1023 unsigned position) で、commanded `Y=±1000 / P=200..800` も factory firmware の zero_pos calibration (`zero_pos_1=460 / zero_pos_2=620` per `hal_servo.cpp:173,182`) を経由してへんから「無茶な方向」を向く。これは tuning マターで、protocol 層は健全。
 
 ## やってほしい作業 (優先順)
+
+### 4. NEW: Servo range キャリブレーション (人間目視必須)
+
+**経緯:** 2026-05-20 session 2 で `SERVO_PITCH_ZERO=620` を命令したところ servo が「真上向き」で止まることを user が視認。`--pitch 512` に変更したら servo が可視的に動いた (BLE E2E PASS 確認)。つまり:
+
+- `P=620` = 真上方向 (forward ではない)
+- `P=512` = より forward に近い (推定)
+- `SERVO_YAW_ZERO=460`, `SERVO_PITCH_ZERO=620` の定数は実機と不一致
+
+**作業内容:**
+1. pitch sweep: `--pitch` を 400 / 450 / 500 / 512 / 550 / 600 / 620 と変化させながら BLE コマンド発行、各位置で human が「正面向き/上向き/下向き」を記録
+2. yaw sweep: `--yaw` を 350 / 400 / 430 / 460 / 490 / 520 / 560 で同様に記録 (460 が正面向きか確認)
+3. 結果から `SERVO_YAW_ZERO` / `SERVO_PITCH_ZERO` を修正
+4. 自己テスト定数と BLE smoke task のデフォルト値も更新
+
+**コマンド例:**
+```bash
+# pitch 単体チェック (yaw は固定)
+cd pc/stackchan-ble-client
+bundle exec exe/stackchan-ble-control --name-prefix StackChan-PicoRuby --yaw 460 --pitch 512 --time 50 servo
+```
+
+**注:** read_pos は現在ハーフデュプレックスエコー問題でゴミ値を返す。位置確認は人間目視のみで行う。
 
 ### 1. Cold-boot self-test を縮小 + 元位置復帰
 
@@ -69,6 +115,14 @@ User 任意。「servo tuning 続き」「BLE notify 実装」「次やる」 �
 
 ## Commit graph (この session の deliverable)
 
+session 2 (2026-05-20) 追加分:
+```
+154db90 fix(servo): shrink self-test to ±30/3-step + add ble_servo_smoke rake task
+ebb70ef fix(servo): add SERVO_*_ZERO constants + replace hardcoded positions
+c7ee44d fix(scservo/test): revive scservo_test 52/52 PASS + fix dispatcher ACK frames
+```
+
+session 1 (2026-05-20) 分:
 ```
 3674a7c feat(rake): add r2p2:wait[seconds] for chained single-process device flows
 e42df29 fix(stackchan-protocol): swap UART TX/RX pins for servo bus + add raw PING diagnostic

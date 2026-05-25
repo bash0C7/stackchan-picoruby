@@ -113,34 +113,64 @@ class SendBuilderAggregationTest < Test::Unit::TestCase
 end
 
 class SendBuilderHeadTest < Test::Unit::TestCase
-  def test_head_yaw_and_pitch_with_time
-    b = StackchanBleClient::SendBuilder.new
-    b.head(yaw: -300, pitch: 500, time_ms: 2000)
-    assert_equal ["<Y:-300,P:500,T:2000>\n"], b.to_frames
+  def test_head_with_yaw_left
+    builder = StackchanBleClient::SendBuilder.new
+    builder.head(yaw_left: 50, time_ms: 500)
+    assert_equal ["<YL:50,T:500>\n"], builder.to_frames
   end
 
-  def test_head_yaw_only_with_velocity
-    b = StackchanBleClient::SendBuilder.new
-    b.head(yaw: 100, velocity: 50)
-    assert_equal ["<Y:100,V:50>\n"], b.to_frames
+  def test_head_with_yaw_right_and_pitch_up
+    builder = StackchanBleClient::SendBuilder.new
+    builder.head(yaw_right: 30, pitch_up: 80)
+    assert_equal ["<YR:30,PU:80>\n"], builder.to_frames
   end
 
   def test_head_last_wins_for_same_key
-    b = StackchanBleClient::SendBuilder.new
-    b.head(yaw: 100)
-    b.head(yaw: 200, pitch: 400, time_ms: 1000)
-    assert_equal ["<Y:200,P:400,T:1000>\n"], b.to_frames
+    builder = StackchanBleClient::SendBuilder.new
+    builder.head(yaw_left: 50)
+    builder.head(yaw_right: 30, pitch_up: 80, time_ms: 1000)
+    assert_equal ["<YR:30,PU:80,T:1000>\n"], builder.to_frames
   end
 
   def test_head_coexists_with_face_and_led_in_first_occurrence_order
-    b = StackchanBleClient::SendBuilder.new
-    b.face(:joy)
-    b.head(yaw: 0, pitch: 450)
-    b.led(:red)
+    builder = StackchanBleClient::SendBuilder.new
+    builder.face(:joy)
+    builder.head(yaw_left: 0, pitch_up: 50)
+    builder.led(:red)
     assert_equal [
       "<F:2>\n",
-      "<Y:0,P:450>\n",
+      "<YL:0,PU:50>\n",
       "<L:1,R:255,G:0,B:0,S:B,M:s>\n",
-    ], b.to_frames
+    ], builder.to_frames
+  end
+end
+
+class SendBuilderTorqueTest < Test::Unit::TestCase
+  def test_torque_on
+    builder = StackchanBleClient::SendBuilder.new
+    builder.torque(on: true)
+    assert_equal ["<torque:on>\n"], builder.to_frames
+  end
+
+  def test_torque_off
+    builder = StackchanBleClient::SendBuilder.new
+    builder.torque(on: false)
+    assert_equal ["<torque:off>\n"], builder.to_frames
+  end
+end
+
+class SendBuilderSelftestTest < Test::Unit::TestCase
+  def test_selftest
+    builder = StackchanBleClient::SendBuilder.new
+    builder.selftest
+    assert_equal ["<selftest:run>\n"], builder.to_frames
+  end
+end
+
+class SendBuilderReadPosTest < Test::Unit::TestCase
+  def test_read_pos
+    builder = StackchanBleClient::SendBuilder.new
+    builder.read_pos
+    assert_equal ["<read:pos>\n"], builder.to_frames
   end
 end

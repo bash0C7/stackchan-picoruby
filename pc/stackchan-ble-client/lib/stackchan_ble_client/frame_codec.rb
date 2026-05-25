@@ -38,16 +38,32 @@ module StackchanBleClient
       encode_pairs("L" => "1", "R" => r.to_s, "G" => g.to_s, "B" => b.to_s, "S" => side_char, "M" => mode_char)
     end
 
-    def encode_head(yaw:, pitch:, time_ms:, velocity:)
-      if yaw.nil? && pitch.nil?
-        raise ArgumentError, "encode_head requires at least one of yaw / pitch"
+    def encode_head(yaw_left:, yaw_right:, pitch_up:, time_ms:, velocity:)
+      if !yaw_left.nil? && !yaw_right.nil?
+        raise ArgumentError, "encode_head: yaw_left and yaw_right are mutually exclusive (specify only one)"
+      end
+      if yaw_left.nil? && yaw_right.nil? && pitch_up.nil?
+        raise ArgumentError, "encode_head requires at least one of yaw_left / yaw_right / pitch_up"
       end
       pairs = {}
-      pairs["Y"] = yaw.to_s   if yaw
-      pairs["P"] = pitch.to_s if pitch
-      pairs["T"] = time_ms.to_s  if time_ms
-      pairs["V"] = velocity.to_s if velocity && !time_ms
+      pairs["YL"] = yaw_left.to_s  unless yaw_left.nil?
+      pairs["YR"] = yaw_right.to_s unless yaw_right.nil?
+      pairs["PU"] = pitch_up.to_s  unless pitch_up.nil?
+      pairs["T"]  = time_ms.to_s   if time_ms
+      pairs["V"]  = velocity.to_s  if velocity && !time_ms
       encode_pairs(pairs)
+    end
+
+    def encode_torque(on:)
+      encode_pairs("torque" => (on ? "on" : "off"))
+    end
+
+    def encode_selftest
+      encode_pairs("selftest" => "run")
+    end
+
+    def encode_read_pos
+      encode_pairs("read" => "pos")
     end
 
     def parse_ack(frame)

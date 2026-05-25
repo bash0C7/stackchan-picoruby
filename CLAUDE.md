@@ -43,7 +43,11 @@ StackChan を PicoRuby（[R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32)）
 PC連携アバターパターン：
 
 - **StackChan側**：R2P2-ESP32 + PicoRuby スクリプト。I/O 端末として動作。センサ値を読んでシリアルで送信、PCからのコマンドでサーボ/LED/表情を駆動
-- **PC側**：Ruby (rb-foundation-model-mac) でローカルAI判断。**Mac との通信は WiFi (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) を本命**。R2P2-ESP32 は sdkconfig で `CONFIG_ESP_WIFI_ENABLED=y` 既に有効、SSLSocket も mbedTLS で完成。BLE は `picoruby-ble` の ESP32 port (BTstack binding) が未成熟なため当面 deferred。USB-serial は uploader / debug 用途で残す
+- **PC側**：Ruby (rb-foundation-model-mac) でローカルAI判断。Mac との通信は BLE NUS (picoruby-ble の ESP32 port を fork で thread-safe 化、`pc/stackchan-ble-client` 経由)。WiFi 経路 (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) は sdkconfig 有効 + mbedTLS 完成済み、wiring 未着手。USB-serial は uploader / debug 用途
+
+### 設計の核心
+
+核心機能は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink animation は装飾の二次扱い。HITL は通常「サーボ正面の物理アライン (個体ごとの raw zero ズレを人間が手で吸収)」を指し、顔の見た目承認とは別。新 design / refactor / question 構成では「サーボ絶対位置制御の精度」を最優先軸にする。
 
 ### Firmware vs application boundary
 
@@ -57,20 +61,22 @@ PC連携アバターパターン：
   definitions free of `< BLE` patterns at the class-body top level so the
   exclusion filter can skip them cleanly.
 
-## CoreS3 cold-boot 初期化シーケンス (bring-up finding)
+## CoreS3 cold-boot 初期化シーケンス
 
 **LCD と WS2812 を cold-boot で確実に出すには、ESP32 SoC の SPI/GPIO init だけでは不足。** 必ず system I2C bus (SDA=GPIO 12 / SCL=GPIO 11) で以下を順に叩く:
 
 1. **AXP2101 PMIC @ 0x34** — `0x97 / 0x69 / 0x30 / 0x90 / 0x94 / 0x95 / 0x27 / 0x99` を全部書く。`0x90 = 0xBF` (LDO 一括 ON) だけでは LCD バックライトと一部 rail が立たない。Reg 0x99 が DLDO1 voltage = LCD/backlight rail
 2. **AW9523 IO Expander @ 0x58** —
-   - `Reg 0x02 (P0 output) = 0b00000111` で **WS2812 用 5V rail を enable**。これを書かないと PY32/WS2812 chip 側を完璧に叩いても暗黒のまま (2026-05-14 検証で発見)
+   - `Reg 0x02 (P0 output) = 0b00000111` で **WS2812 用 5V rail を enable**。これを書かないと PY32/WS2812 chip 側を完璧に叩いても暗黒のまま
    - `Reg 0x03 (P1) 0x81 → 20ms → 0x83` で P1.1 を pulse、これが LCD reset
    - 書き順は reference (`../StackChan/firmware/main/hal/board/stackchan.cc:148-156`): P0 output → P1 output → CONFIG_P0 → CONFIG_P1 → GCR → LEDMODE_P0 → LEDMODE_P1
 3. **PY32 IO Expander** — GPIO 0 (VM_EN) HIGH + 200ms settle、GPIO 13 (WS2812 data line) を push-pull 出力で初期化、`refresh_leds` は read-modify-write 必須 (count を wipe しない)
 4. **ILI9342 driver の `rst_pin` / `bl_pin`** — AW9523 / AXP2101 経由なのでダミー GPIO (例 GPIO 1 等の未配線) を渡す
-5. **BLE を続けるなら cold-boot 完了後に `sleep_ms 3000` で必ず yield する** (2026-05-17 bisect 確定)。cold-boot 全体 (特に Face::Neutral.draw の 150KB pixel push) は同期 SPI/I2C で CPU を占有し、BTstack の FreeRTOS task が初期化を完走できない。yield せず `BLE.new` → `start` に入ると `gap_advertisements_enable(1)` は呼ばれても **RF emit が silent fail** する (device-side log には `HCI WORKING — advertising` が出る、Mac scan / iPhone nRF Connect では一切見えない)。最小値は未測定で 3000ms は安全策
+5. **BLE を続けるなら cold-boot 完了後に `sleep_ms 3000` で必ず yield する**。cold-boot 全体 (特に Face::Neutral.draw の 150KB pixel push) は同期 SPI/I2C で CPU を占有し、BTstack の FreeRTOS task が初期化を完走できない。yield せず `BLE.new` → `start` に入ると `gap_advertisements_enable(1)` は呼ばれても **RF emit が silent fail** する (device-side log には `HCI WORKING — advertising` が出る、Mac scan / iPhone nRF Connect では一切見えない)。3000ms は安全策
 
-実装例: `mrbgems/picoruby-stackchan-protocol/examples/app.rb` 冒頭ブロック (= bring-up smoke v13)、`mrbgems/picoruby-stackchan-protocol/examples/application.rb` (cold-boot 後 sleep_ms 3000 入り)。将来 `picoruby-cores3-board` 的な gem に隠蔽する場合は **必ず AW9523 reg 0x02 = 0b00000111 を含めること**、それと **BLE と組合せる場合の yield 必要性をドキュメント明記すること**。
+実装は `mrbgems/picoruby-stackchan-protocol/examples/application.rb` (cold-boot 後 sleep_ms 3000 入り) を参照。`examples/app.rb` は upload race-free 用の 10 秒 heartbeat → exit パターン。
+
+**PY32 init region の `puts` は削除禁止**: `application.rb` の PY32IOExpander / StackchanLed init 区間 (L412 周辺) の 5 個の `puts` は debug 出力に見えるが必須。削るたび crash 位置が前へズレ、最終的に PY32IOExpander init で LoadProhibited する PicoRuby bytecode-layout-dependent な memory bug。`# REQUIRED FOR PY32 COLD-BOOT` マーカーコメントを付けて keep。
 
 ## PicoRubyの制約・互換性の調べ方
 
@@ -80,6 +86,36 @@ PC連携アバターパターン：
 2. 答えが無い・根拠が必要なら `/Users/bash/dev/src/github.com/picoruby/picoruby` を Explore subagent で調査
 3. 仕様確認できないまま「禁止メソッド」前提で書かない
 
+## BLE servo control protocol
+
+Servo positions are normalized to direction-key + magnitude (NOT raw values):
+
+- **yaw**: `<YL:0..100>` (StackChan's left) or `<YR:0..100>` (right), mutually exclusive (YL wins on conflict)
+- **pitch**: `<PU:0..100>` (up only — down is not protocol-reachable; if needed, use `<torque:off>` and move by hand)
+- **timing**: `<T:ms>` (duration) or `<V:speed>` (velocity), at most one
+- **torque (rare)**: `<torque:on>` / `<torque:off>` (full word key — frequency rare, readability priority)
+- **selftest (rare)**: `<selftest:run>` (yaw ±10 raw nudge — UART round-trip alive check)
+- **read_pos (rare)**: `<read:pos>` (full-word key) — returns `<yaw_raw:N,pitch_raw:M>` detail (or `unknown` parts). Used only by `stackchan-ble-control calibrate`; no other operational caller.
+
+Cold-boot starts torque OFF + `Face::Closed` (idle indicator). Operator physically aligns
+head to forward, then sends `<torque:on>` to engage. Detail frame on position commands
+reports `<YL_actual:N,PU_actual:N>` or `<YL_actual:unknown,PU_actual:unknown>` (where
+unknown is a protocol-level signal that operator manual calibration is needed).
+
+CLI: `bundle exec exe/stackchan-ble-control --yaw-left 50 --pitch-up 30 --time 500 servo`,
+`... torque on`, `... selftest`. Exit code 6 = `EXIT_CALIBRATION_NEEDED`.
+
+Calibration: `bundle exec exe/stackchan-ble-control calibrate --align-only` (daily startup: torque off → operator aligns forward → torque on).
+Anchor recal: `bundle exec exe/stackchan-ble-control calibrate [--samples N] [--format ruby|json|env]` (5-pose, prints SERVO_*_ZERO / RANGE_RAW constants for paste into application.rb). Exit code 6 = device read unknown, 7 = verify fail / abort. Spec: `docs/superpowers/specs/2026-05-21-manual-calibration-cli-design.md`.
+
+### BLE 実装 notes
+
+- **picoruby-ble の `heartbeat_callback` tick は ~1 秒** (NOT 100ms)。NOTIFY 周期や idle-detection timeout を heartbeat 数で計算する時は「tick=1s」前提に
+- **Mac CoreBluetooth idle-disconnect window は経験値 15-20 秒**。無 PDU 状態が続くと link 切断、保持には 10 秒以下の notify or write を流す
+- **Mac BLE scan/connect/write は `rb-corebluetooth-mac` 経由で Bash から claude 自身が叩ける**。advertise 検出や smoke を「人間に iPhone nRF Connect 開いて」と頼まず、`stackchan-ble-control` CLI で autonomous に実行する
+
+Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`
+
 ## 開発ルール
 
 - ドライバー開発は基本 https://picoruby.org/terminal で実装・実機検証
@@ -88,19 +124,33 @@ PC連携アバターパターン：
 - 公式 `../StackChan` には書き込まない。ピン配置や初期化シーケンスは読み取って参考にするだけ
 - spec / plan は `docs/superpowers/specs/` `docs/superpowers/plans/` に置く
 
+### Box-isolated test runner
+
+`bundle exec rake test_isolated` runs each test file in its own Ruby::Box for cross-file state isolation; per-suite via each suite's Rakefile. Legacy `rake test` continues to work (envvar absent → box disabled). Per-suite revert is supported: `git revert <commit>` removes only that suite's `:test_isolated` task; other suites and legacy `rake test` remain functional. Spec: `docs/superpowers/specs/2026-05-21-test-harness-ruby-box-isolation-design.md`.
+
+**設計意図**: 「file A 変更が file B に影響しない」を discipline でなく **構造で機械的に保証**する。AI editor が cross-file 推論をする cognitive load を減らすことが第一目的。runtime correctness より「次に編集する AI が他 file の影響を読まなくて済む構造」を優先する。
+
+**Ruby::Box (Ruby 4.0) test 実装上の制約** (test_isolator/box_runner.rb で吸収済み):
+
+- `Test::Unit::TestCase.subclasses` は box-local — parent からは空、test 収集は **box 内で実行**必要
+- box 内 require 前に `$LOAD_PATH` を code-string API で注入 (gem 解決に必要)
+- 結果は box 内で収集して JSON-serialize で parent に戻す
+- `Test::Unit::UI::Console::TestRunner` の進行ドット出力は `$stdout = StringIO.new` + `ensure` で suppress
+
 ### mrbgem pitfall (実機で詰まりがち)
 
 - **on-device の `require` 名は gem 名から `picoruby-` を strip した hyphen 形**。`picoruby-stackchan-protocol` → `require 'stackchan-protocol'` (underscore で書くと `LoadError`)。host テスト (CRuby + Bundler) は `$LOAD_PATH` で underscore でも解決するから on-device だけが prebuilt list (`mrbgems/picogem_init.c`) に依存
-- **`mrblib/*.rb` 内で sibling ファイルへの `require` を書くと device で fail**。host は test_helper.rb で `$LOAD_PATH` に mrblib を unshift してるから通るが、device の PicoRuby は mrblib path を `$LOAD_PATH` に乗せん。gem build が `mrblib/**/*.rb` を全部 gem bytecode に自動 bundle するので、sibling require は不要かつ有害。`require 'gemname/foo'` は **cross-gem** にのみ使う (`require 'mbedtls'`, `require 'ble'` 等)。2026-05-19 boot-verify が `(unknown):0: cannot load such file -- stackchan_protocol/frame_parser (LoadError)` を catch、reviewer 3 段 (spec/quality/final) が miss してた
+- **`mrblib/*.rb` 内で sibling ファイルへの `require` を書くと device で fail**。host は test_helper.rb で `$LOAD_PATH` に mrblib を unshift してるから通るが、device の PicoRuby は mrblib path を `$LOAD_PATH` に乗せん。gem build が `mrblib/**/*.rb` を全部 gem bytecode に自動 bundle するので、sibling require は不要かつ有害。`require 'gemname/foo'` は **cross-gem** にのみ使う (`require 'mbedtls'`, `require 'ble'` 等)
 - **`build_config/xtensa-esp-picoruby.rb` に新 gem 行追加 → `rake r2p2:setup` 必須**。`rake r2p2:build_flash` 単独では `gem_init.c` / `picogem_init.c` が再生成されず新 gem が含まれない
 - **既存 gem の `mrblib/*.rb` 内容を変えただけなら軽量修復ルート**: `cd $R2P2/components/picoruby-esp32/picoruby && MRUBY_CONFIG=$R2P2/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb rake` → `idf.py build flash`。重い `r2p2:setup` フル不要
 - **`conf.gem` 表記は `gemdir:` のみ**。`path:` は picoruby の `MRuby::LoadGems` に拒否される
+- **picoruby-uart on-device API の 3 つの罠**: (1) unit symbol は `:ESP32_UART0` / `:ESP32_UART1` / `:ESP32_UART2` (`:UART1` 等を渡すと silent Guru Meditation crash)、(2) `write` 引数は **String only**、Array は TypeError なので `array.pack('C*')` で変換、(3) `read(n)` は timeout_ms 無視 — `readpartial(n)` を使って poll を自前で回す
 
 ### bring-up app の書き方 (upload race-free)
 
 - **bring-up app.rb は `loop` を持たず、固定時間 sleep + exit にする**。dispatcher loop が STDIN を独占すると uploader の STX が face byte として消費され、PicoModem session が立たず upload 詰まる
-- `examples/app.rb` (現状の bring-up smoke v13) は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
-- production 用の dispatcher loop を入れる場合は **「特定 frame (例 `E\n`) で exit」または「STX 検出で shell に hand-off」の exit hatch を frame protocol に組み込む** ことを前提にする (Q2-C リファクタ項目)
+- `examples/app.rb` は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
+- production 用の dispatcher loop を入れる場合は **「特定 frame (例 `E\n`) で exit」または「STX 検出で shell に hand-off」の exit hatch を frame protocol に組み込む** ことを前提にする
 
 ### rake は subagent foreground で、可能なら chain task 1 個
 
@@ -125,6 +175,14 @@ bin/capture-with-pty 30 /tmp/stackchan-picoruby-debug/boot.log \
 ### debug log は `/tmp/stackchan-picoruby-debug/` 配下に集約
 
 skill (atomic) は subagent dispatch 時に `tee /tmp/stackchan-picoruby-debug/<skill-name>.log` を必ず仕込む。grep / cross-reference / 失敗後再現に必要。/tmp 配下なので OS が清掃する、commit 不要
+
+### Coordination は sleep でなく log-watch
+
+subagent dispatch chain や device flash → boot → smoke のような multi-step timing-dependent flow で `sleep N` をハードコードしない。待ち過ぎ = 時間損失、待ち不足 = 次段失敗 → retry → 累積遅延。
+
+- 正解: serial log (`bin/capture-with-pty` or `cat` バックグラウンド + tail/grep) を watch → 「`main_task: Returned from app_main()`」「`$> ` shell prompt」「`HCI WORKING — advertising`」等の既知マーカーを grep 検出 → そこで次段に進む
+- subagent 間は log file / sentinel file 経由で「次行ってよし」シグナルを共有
+- reset / handshake / 接続初期化のような low-level プロトコルは「過去動いてた」と放置せず、ESP-IDF docs / esptool reset 実装 / idf_monitor / picoruby 本家の USB-CDC handling を定期的に照らして妥当性再検証する (DTR/RTS 操作順序・タイミング・close 時挙動が CDC state machine から逸脱してないか)
 
 ### boot 失敗の診断は full log を取ってから仮説立てる
 
@@ -177,13 +235,13 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣
 - `bash0C7/R2P2-ESP32/sdkconfig.defaults`：`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`（CoreS3 は 16MB Flash）
 - SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_btstack`（Rakefile にハードコード済み）
 
-### sdkconfig fragment 編集後は自動再生成 (2026-05-15 finding)
+### sdkconfig fragment 編集後は自動再生成
 
 `idf.py build` は **既に存在する sdkconfig に SDKCONFIG_DEFAULTS を再適用しない**。fragment を編集しても次回 build に反映されないので silent regression に詰む。
 
 対策: stackchan-picoruby `Rakefile` の `r2p2:build` / `r2p2:build_flash` は **`ensure_sdkconfig_fresh`** を先に走らせて、いずれかの fragment が `sdkconfig` より新しい場合は `sdkconfig` を rm → 次の idf.py build で再生成される。手動で `rm sdkconfig` する必要は無い。
 
-### BLE on CoreS3: COEX 完全 disable 必須 (2026-05-15 finding)
+### BLE on CoreS3: COEX 完全 disable 必須
 
 BLE-only build (BTstack vendored、WiFi 並走無し) で `CONFIG_SW_COEXIST_ENABLE=y` のままだと、BT controller の内部 task `btdm_controller_on_reset` → `bt_rf_coex_hook_st_set` → `coex_schm_status_bit_clear` → **ROM `coex_schm_lock`** で **uninitialized semaphore handle (`0x82xxxxxx` 等の高 bit set) を semphr_take して LoadProhibited panic**。
 
@@ -197,7 +255,7 @@ CONFIG_ESP_COEX_ENABLED=n
 
 これで `bt.c` 内 `coex_schm_status_bit_clear_wrapper` 等が `#if CONFIG_SW_COEXIST_ENABLE` ガードで no-op になり、BT controller の coex hook も harmless 化、ROM 経路に到達しない。WiFi 起動時に coex 必要になったら戻す (この時は `coex_schm_init` が正しく走るか別 issue として再評価)。
 
-### BTstack は thread-safe ではない (2026-05-15 finding)
+### BTstack は thread-safe ではない
 
 BTstack vendored ESP32 port の README 明記：
 > BTstack is not thread-safe... To call a function from the BTstack thread, you can use *btstack_run_loop_execute_on_main_thread*
@@ -209,6 +267,8 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 - 起動後の runtime call (`hci_power_control` / `gap_advertisements_*` 等) は `btstack_run_loop_execute_on_main_thread` 経由で semaphore 同期 dispatch
 - 同じ btstack thread から呼ばれた場合は dispatch せず直接 call (short-circuit) — deadlock 回避
 
+**位置付け**: BTstack は公式 ESP-IDF docs ではサポートされてへん vendored 実装。host 層 (GATT discovery / advertise behavior / CCCD subscribe semantics 等) の正しさは Bluetooth Core Spec と BTstack 自身の docs を参照する。ESP-IDF docs は controller / PHY / coex 層のみの参考に使う。host 側の bug (GC safety, binding) は picoruby-ble fork で直す。
+
 ### Storage 区画は `idf.py flash` で wipe される
 
 `idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
@@ -216,9 +276,9 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 ### Recovery
 
 See `stackchan-device-cold-recovery` / `-full-rebuild` skills and the
-README recovery section. Memory entries describing the old wipe → flash
-hierarchy are obsolete; the skills encode the same logic and supersede
-them.
+README recovery section.
+
+**autostart 中の Ctrl-C で shell プロンプトは戻らない**: R2P2 は `/home/app.mrb` autostart に SIGINT を投げると main_task が return するだけで shell prompt は出ず、raw serial 経由の blind `rm` recovery は不可。`rake r2p2:wipe_storage` (esptool partition erase、~7s) を使う。
 
 ### R2P2 shell REPL は二段構成
 

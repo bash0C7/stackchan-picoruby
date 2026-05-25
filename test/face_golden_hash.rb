@@ -6,9 +6,6 @@ require "digest"
 # face_golden_test.rb delegates to these methods so the serialization format
 # stays a single source of truth between registration and assertion.
 module FaceGoldenHash
-  # Face::Closed is intentionally excluded: it is an internal blink-animation
-  # frame (called directly from application.rb), not a BLE-addressable face
-  # with an FACE_TABLE F-key. Golden regression covers wire-protocol faces only.
   FACE_CASES = {
     neutral:   StackchanApp::Face::Neutral,
     smile:     StackchanApp::Face::Smile,
@@ -16,6 +13,7 @@ module FaceGoldenHash
     surprised: StackchanApp::Face::Surprised,
     sad:       StackchanApp::Face::Sad,
     angry:     StackchanApp::Face::Angry,
+    closed:    StackchanApp::Face::Closed,
   }.freeze
   # Deterministic string for a single FakeDisplay#calls entry:
   #   "method_name|arg0,arg1,...,argN-1,{fill:true/false}"

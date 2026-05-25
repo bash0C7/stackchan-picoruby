@@ -51,8 +51,15 @@ bundle exec stackchan-ble-control led red blink --side left
 bundle exec stackchan-ble-control led-rgb 0xFF8000 --mode blink
 bundle exec stackchan-ble-control led-hsb 0x00FFFF --side right
 bundle exec stackchan-ble-control combo --face joy --led 'red blink'
+bundle exec stackchan-ble-control --yaw-left 50 --pitch-up 30 --time 500 servo
+bundle exec stackchan-ble-control torque on
+bundle exec stackchan-ble-control selftest
+bundle exec stackchan-ble-control calibrate --align-only
+bundle exec stackchan-ble-control calibrate --samples 3 --format ruby
 bundle exec stackchan-ble-control raw '<F:0>'
 ```
+
+`servo` / `torque` / `selftest` / `calibrate` operate the head servos via BLE. `calibrate --align-only` is the daily startup flow (torque off → operator aligns forward → torque on). `calibrate` without `--align-only` runs the 5-pose anchor recalibration and prints `SERVO_*_ZERO` / `RANGE_RAW` constants for paste into `application.rb`.
 
 Exit codes:
 
@@ -63,7 +70,45 @@ Exit codes:
 | 3 | timeout (scan / connect / ACK) |
 | 4 | connection (lost or refused) |
 | 5 | assertion (unknown face name, device rejected with `?` ACK) |
+| 6 | calibration needed (device returned `unknown` on `<read:pos>` / actual servo position) |
+| 7 | calibration incomplete (verify pose Δ exceeded fail tolerance, or operator aborted) |
 | 9 | uncategorized |
+
+## Interactive TUI
+
+`stackchan-ble-tui` is a remote control for the head. It holds **one** BLE
+connection and sends a frame per typed command, so it is far snappier than
+re-running `stackchan-ble-control` per move. If the link drops while idle (Mac
+CoreBluetooth idle-disconnects after ~15-20s) the next command transparently
+reconnects — the device advertises continuously.
+
+```bash
+bundle exec stackchan-ble-tui --name-prefix StackChan
+```
+
+```
+stackchan> ton          # engage torque (cold-boot starts torque OFF)
+stackchan> yl 100        # yaw 90° toward StackChan's LEFT
+stackchan> fwd           # recentre (yaw 0 + pitch 0)
+stackchan> yr 50         # yaw 45° toward StackChan's RIGHT
+stackchan> pu 100        # pitch 90° up (LCD toward ceiling)
+stackchan> q             # disconnect and exit
+```
+
+| command | action |
+|---|---|
+| `yl N` / `yr N` | yaw toward StackChan's left / right, magnitude 0..100 |
+| `pu N` | pitch up, magnitude 0..100 (down is not protocol-reachable) |
+| `fwd` | recentre: yaw 0 + pitch 0 (forward / level) |
+| `ton` / `toff` | torque on / off |
+| `face NAME` | set face (e.g. `neutral`, `joy`, `closed`) |
+| `t MS` | move duration in ms for subsequent moves (default 800) |
+| `h` / `help` | show command help |
+| `q` / `quit` | disconnect and exit |
+
+After each `yl`/`yr`/`pu`/`fwd` the device's read-back detail frame is printed
+(`detail: "<YL_actual:N,PU_actual:M>"`). The actual lags one move when read
+mid-travel; `unknown` means manual calibration is needed.
 
 ## License
 
