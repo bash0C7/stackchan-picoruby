@@ -36,38 +36,49 @@ exit code 0 でシェルに戻る。 anchor 数値は **取得しない** (頻�
 
 個体差で正面が物理的にズレたとき / 初回 deploy 直後 / RANGE が窮屈または広すぎる感じたとき:
 
+> **設計判断 (2026-05-25 HITL で確定): "MAX" = 物理ストッパではなく論理 90°。**
+> yaw は 360° 連続回転サーボなので物理的な左右端 (hard stop) が存在しない。
+> 「LEFT/RIGHT MAX」は operator が **正面から 90° 回した位置** (LCD が真横を向く)、
+> 「UP MAX」は **正面から 90° 上げた位置** (LCD が天井を向く) と定義する。RANGE_RAW
+> はこの 90° に対応する raw 差分。
+>
+> **yaw 方向 (HITL 確定)**: 正面 zero より raw が **小さい側 = StackChan の左** (LEFT
+> MAX≈182)、**大きい側 = StackChan の右** (RIGHT MAX≈782)。protocol `<YL:N>` は
+> `ZERO - N*RANGE/100` (左)、`<YR:N>` は `ZERO + N*RANGE/100` (右)。pitch は上方向のみ
+> (`<PU:N>` = `ZERO + N*RANGE/100`)、下は protocol-unreachable。
+
 ```
 $ bundle exec exe/stackchan-ble-control calibrate
 [connect] StackChan-PicoRuby
 [1/6] sending <torque:off>... ACK ✓
-[2/6] Align head to FORWARD (yaw center, pitch center).
+[2/6] Align FORWARD: head level, LCD facing operator.
        Press Enter when aligned... <Enter>
-       reading raw position (3 samples)... yaw_raw=485 pitch_raw=628 ✓
-[3/6] Rotate head to STACKCHAN-LEFT MAX (operator's right side).
+       reading raw position (3 samples)... yaw_raw=482 pitch_raw=633 ✓
+[3/6] LEFT MAX (90°): rotate head so LCD faces operator's RIGHT side.
        Press Enter... <Enter>
-       reading... yaw_raw=530 ✓
-[4/6] Rotate head to STACKCHAN-RIGHT MAX (operator's left side).
+       reading... yaw_raw=182 ✓
+[4/6] RIGHT MAX (90°): rotate head so LCD faces operator's LEFT side.
        Press Enter... <Enter>
-       reading... yaw_raw=440 ✓
-[5/6] Tilt head UP MAX. Press Enter... <Enter>
-       reading... pitch_raw=660 ✓
-[6/6] Re-align to FORWARD for verification. Press Enter... <Enter>
-       reading... yaw_raw=486 pitch_raw=628 ✓ (Δyaw=1, Δpitch=0 within ±3)
+       reading... yaw_raw=782 ✓
+[5/6] UP MAX (90°): tilt head so LCD faces ceiling. Press Enter... <Enter>
+       reading... pitch_raw=929 ✓
+[6/6] Re-align FORWARD for verification. Press Enter... <Enter>
+       reading... yaw_raw=483 pitch_raw=633 ✓ (Δyaw=1, Δpitch=0 within tolerance)
 
 ╭─ Calibration result ─────────────╮
-│ FORWARD:    yaw=485 pitch=628    │
-│ LEFT-MAX:   yaw=530   (+45)      │
-│ RIGHT-MAX:  yaw=440   (-45)      │
-│ UP-MAX:     pitch=660 (+32)      │
-│ FWD-VERIFY: yaw=486 pitch=628 ✓ │
+│ FORWARD:    yaw=482 pitch=633    │
+│ LEFT-MAX:   yaw=182  (-300)      │
+│ RIGHT-MAX:  yaw=782  (+300)      │
+│ UP-MAX:     pitch=929 (+296)     │
+│ FWD-VERIFY: yaw=483 pitch=633 ✓ │
 ╰──────────────────────────────────╯
 
 Suggested constants (paste into mrbgems/picoruby-stackchan-protocol/examples/application.rb StackchanApp::Head):
 
-    SERVO_YAW_ZERO   = 485
-    SERVO_PITCH_ZERO = 628
-    YAW_RANGE_RAW    = 45   # min(|L-Z|, |R-Z|) = min(45, 45)
-    PITCH_RANGE_RAW  = 32   # |U-Z| = 32
+    SERVO_YAW_ZERO   = 482
+    SERVO_PITCH_ZERO = 633
+    YAW_RANGE_RAW    = 300  # 90° from forward = min(|L-Z|, |R-Z|) = min(300, 300)
+    PITCH_RANGE_RAW  = 296  # 90° up = |U-Z| = 296
 
 Then redeploy: /stackchan-device-iterate
 ```
@@ -151,7 +162,7 @@ stackchan-ble-control calibrate [--align-only] [--samples N] [--format FORMAT]
 |---|---|---|
 | `--align-only` | off | 系統 A モード (raw 読み skip、torque off → align → torque on のみ) |
 | `--samples N` | 3 | 各 pose で `<read:pos>` を N 回送って中央値を採用。1 で single-shot |
-| `--format FORMAT` | `ruby` | 出力形式: `ruby` / `json` / `env` (`SERVO_YAW_ZERO=485` 等 shell 形式) |
+| `--format FORMAT` | `ruby` | 出力形式: `ruby` / `json` / `env` (`SERVO_YAW_ZERO=482` 等 shell 形式) |
 | `--engage-torque` | off | 系統 B 最終に `<torque:on>` を送る (現セッションでテストしたい場合) |
 | `--no-torque-toggle` | off | torque off / on を CLI 側で送らない (operator が外から制御済の場合) |
 | `--device NAME` / `--name-prefix PREFIX` | env / `nil` | 既存 BLE オプション継承 |
@@ -178,23 +189,23 @@ stackchan-ble-control calibrate [--align-only] [--samples N] [--format FORMAT]
 
 **ruby** (default):
 ```
-SERVO_YAW_ZERO   = 485
-SERVO_PITCH_ZERO = 628
-YAW_RANGE_RAW    = 45
-PITCH_RANGE_RAW  = 32
+SERVO_YAW_ZERO   = 482
+SERVO_PITCH_ZERO = 633
+YAW_RANGE_RAW    = 300
+PITCH_RANGE_RAW  = 296
 ```
 
 **json**:
 ```json
-{"servo_yaw_zero":485,"servo_pitch_zero":628,"yaw_range_raw":45,"pitch_range_raw":32,"forward_verify":{"yaw_delta":1,"pitch_delta":0}}
+{"servo_yaw_zero":482,"servo_pitch_zero":633,"yaw_range_raw":300,"pitch_range_raw":296,"forward_verify":{"yaw_delta":1,"pitch_delta":0}}
 ```
 
 **env** (shell-source 可):
 ```
-SERVO_YAW_ZERO=485
-SERVO_PITCH_ZERO=628
-YAW_RANGE_RAW=45
-PITCH_RANGE_RAW=32
+SERVO_YAW_ZERO=482
+SERVO_PITCH_ZERO=633
+YAW_RANGE_RAW=300
+PITCH_RANGE_RAW=296
 ```
 
 ## Section 4: anchor 計算ルール
@@ -280,7 +291,7 @@ tolerance 値 (3 / 10) は実装フェーズで実機 noise を見て微調整�
 | 4 | `client.send { \|s\| s.read_pos }` で detail frame に `yaw_raw:` 含まれる | host test (mock transport) |
 | 5 | `stackchan-ble-control calibrate --align-only` 実機: torque off → Enter → torque on で Face::Closed → Face::Neutral 遷移 | HITL + boot log |
 | 6 | `stackchan-ble-control calibrate` 実機 5-pose で paste 可能な ruby block 出力 | HITL |
-| 7 | 出力された constants を application.rb に paste → `/stackchan-device-iterate` → `<YL:0,PU:0>` で物理正面、`<YL:100>` で物理左端 | HITL |
+| 7 | 出力された constants を application.rb に paste → `/stackchan-device-iterate` → `<YL:0,PU:0>` で正面、`<YL:100>` で StackChan 左へ論理 90° (LCD 真横)、`<YR:100>` で右へ 90° | HITL |
 | 8 | `--format json` / `--format env` の出力形式 sanity | CLI test |
 | 9 | `--samples 3` で `<read:pos>` 3 回送信、median 採用 (mock で sample 値が 482/485/487 なら median 485) | CLI test |
 | 10 | verify pose Δ > 10 で exit 7、Δ ≤ 3 で ✓、3 < Δ ≤ 10 で WARN 続行 | CLI test |
