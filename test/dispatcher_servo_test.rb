@@ -29,16 +29,18 @@ class DispatcherServoTest < Test::Unit::TestCase
   end
 
   def test_Y_frame_routes_to_yaw
-    @yaw_servo.next_read = 485
-    @pitch_servo.next_read = 635
+    @yaw_servo.next_read = 632
+    @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50", "T" => "2000" })
-    assert_equal [[485, 2000, 0]], @yaw_servo.writes
-    assert_equal [[635, 2000, 0]], @pitch_servo.writes
+    # YL:50 → 482 + 50*300/100 = 632; PU:50 → 633 + 50*296/100 = 781
+    assert_equal [[632, 2000, 0]], @yaw_servo.writes
+    assert_equal [[781, 2000, 0]], @pitch_servo.writes
   end
 
   def test_servo_frame_emits_ack_byte_then_detail_frame
-    @yaw_servo.next_read = 485
-    @pitch_servo.next_read = 635
+    # raw 632 → (632-482)*100/300 = YL:50; raw 781 → (781-633)*100/296 = PU:50
+    @yaw_servo.next_read = 632
+    @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50" })
     # 1st write: ACK frame ".\n", 2nd write: detail frame "<YL_actual:50,PU_actual:50>\n"
     assert_equal ".\n", @stdout.writes[0]
@@ -47,7 +49,7 @@ class DispatcherServoTest < Test::Unit::TestCase
 
   def test_servo_frame_with_nil_read_emits_error_frame
     @yaw_servo.next_read   = nil
-    @pitch_servo.next_read = 635
+    @pitch_servo.next_read = 781   # raw 781 → PU:50
     @disp.handle({ "YL" => "50", "PU" => "50" })
     assert_equal ".\n", @stdout.writes[0]
     assert_equal "<YL_actual:unknown,PU_actual:50>\n", @stdout.writes[1]
@@ -62,19 +64,19 @@ class DispatcherServoTest < Test::Unit::TestCase
 
   def test_servo_frame_with_only_yaw_specified_still_reports_both_actuals
     @yaw_servo.next_read   = nil
-    @pitch_servo.next_read = 620   # zero position
+    @pitch_servo.next_read = 633   # zero position (SERVO_PITCH_ZERO)
     @disp.handle({ "YL" => "50" })
     # New protocol always reports both axes; only YL was sent but both are output
     assert_equal "<YL_actual:unknown,PU_actual:0>\n", @stdout.writes[1]
   end
 
   def test_mixed_face_and_servo_frame_dispatches_both
-    @yaw_servo.next_read = 485
-    @pitch_servo.next_read = 635
+    @yaw_servo.next_read = 632
+    @pitch_servo.next_read = 781
     @disp.handle({ "F" => "0", "YL" => "50", "PU" => "50" })
     assert @display.calls.any? { |c| c.first == :draw_ellipse }
-    assert_equal [[485, 0, 0]], @yaw_servo.writes
-    assert_equal [[635, 0, 0]], @pitch_servo.writes
+    assert_equal [[632, 0, 0]], @yaw_servo.writes
+    assert_equal [[781, 0, 0]], @pitch_servo.writes
   end
 
   def test_dispatcher_without_head_returns_unavailable

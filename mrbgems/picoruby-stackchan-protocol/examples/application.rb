@@ -211,16 +211,20 @@ module StackchanApp
   end
 
   class Head
-    # Raw servo position range available per axis around the factory zero.
-    # YAW_RANGE_RAW=50 → ±50 raw units = ±5° (SCS servos use 0.087°/unit).
-    # PITCH_RANGE_RAW=30 → +30 raw units, pitch-down not supported.
-    YAW_RANGE_RAW   = 50
-    PITCH_RANGE_RAW = 30
+    # Raw servo position range per axis for 90° from forward, measured via
+    # the 5-pose HITL calibration (stackchan-ble-control calibrate, 2026-05-25).
+    # YAW_RANGE_RAW=300 → 90° = 300 raw units (≈0.3°/unit at head output):
+    #   forward=482, LEFT MAX(90°)=182 (-300), RIGHT MAX(90°)=783 (+301).
+    # PITCH_RANGE_RAW=296 → 90° up = 296 raw units; pitch-down not supported:
+    #   forward=633, UP MAX(90°)=929 (+296).
+    YAW_RANGE_RAW   = 300
+    PITCH_RANGE_RAW = 296
 
-    # Factory-firmware zero positions (hal_servo.cpp:173,182).
-    # zero_pos_1 (yaw, ID=1) = 460, zero_pos_2 (pitch, ID=2) = 620.
-    SERVO_YAW_ZERO   = 460
-    SERVO_PITCH_ZERO = 620
+    # Forward (zero) positions measured by HITL calibration 2026-05-25.
+    # Supersede the old factory-firmware guess (460/620): operator aligned
+    # the head to forward by hand, then read raw servo position.
+    SERVO_YAW_ZERO   = 482
+    SERVO_PITCH_ZERO = 633
 
     def initialize(yaw_servo, pitch_servo)
       @yaw   = yaw_servo
