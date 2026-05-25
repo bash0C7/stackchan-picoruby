@@ -74,6 +74,42 @@ Exit codes:
 | 7 | calibration incomplete (verify pose Δ exceeded fail tolerance, or operator aborted) |
 | 9 | uncategorized |
 
+## Interactive TUI
+
+`stackchan-ble-tui` is a remote control for the head. It holds **one** BLE
+connection and sends a frame per typed command, so it is far snappier than
+re-running `stackchan-ble-control` per move. If the link drops while idle (Mac
+CoreBluetooth idle-disconnects after ~15-20s) the next command transparently
+reconnects — the device advertises continuously.
+
+```bash
+bundle exec stackchan-ble-tui --name-prefix StackChan
+```
+
+```
+stackchan> ton          # engage torque (cold-boot starts torque OFF)
+stackchan> yl 100        # yaw 90° toward StackChan's LEFT
+stackchan> fwd           # recentre (yaw 0 + pitch 0)
+stackchan> yr 50         # yaw 45° toward StackChan's RIGHT
+stackchan> pu 100        # pitch 90° up (LCD toward ceiling)
+stackchan> q             # disconnect and exit
+```
+
+| command | action |
+|---|---|
+| `yl N` / `yr N` | yaw toward StackChan's left / right, magnitude 0..100 |
+| `pu N` | pitch up, magnitude 0..100 (down is not protocol-reachable) |
+| `fwd` | recentre: yaw 0 + pitch 0 (forward / level) |
+| `ton` / `toff` | torque on / off |
+| `face NAME` | set face (e.g. `neutral`, `joy`, `closed`) |
+| `t MS` | move duration in ms for subsequent moves (default 800) |
+| `h` / `help` | show command help |
+| `q` / `quit` | disconnect and exit |
+
+After each `yl`/`yr`/`pu`/`fwd` the device's read-back detail frame is printed
+(`detail: "<YL_actual:N,PU_actual:M>"`). The actual lags one move when read
+mid-travel; `unknown` means manual calibration is needed.
+
 ## License
 
 MIT
