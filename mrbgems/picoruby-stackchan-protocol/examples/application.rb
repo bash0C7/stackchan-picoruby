@@ -729,6 +729,11 @@ class StackChanApp < BLE
       puts "[application] disconnected"
       @notify_enabled = false
       @notify_queue = []
+      # Re-enable advertising so a central can reconnect. With the infinite
+      # run loop (no 60s HCI power-cycle), nothing else re-advertises after a
+      # disconnect — the old loop+start(60_000) relied on the boundary
+      # power-cycle's BTSTACK_EVENT_STATE → advertise side effect for this.
+      advertise(@adv_data)
     when ATT_EVENT_CAN_SEND_NOW
       flush_one_frame
     end
@@ -786,13 +791,18 @@ end
 # 60s 経過後に start() は return する仕様 (引数は ms)。Phase 3 production として
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
-puts "[application] BLE peripheral starting (loop, 60s windows)"
+puts "[application] BLE peripheral starting (infinite advertise)"
 peri = StackChanApp.new(display: display, led: led, head: @head)
 peri.debug = true
-# Loop indefinitely. peri.start(60_000) blocks for 60s then returns; we restart
-# immediately so the device stays advertise-able for HITL / smoke timing windows.
-# 恒久対応 (peri.start の API 改善 / 無限 advertise) は別 task。
-loop do
-  peri.start(60_000)
-  puts "[application] start returned (60s window expired, restarting)"
-end
+# Run the BTstack run loop indefinitely (start with no timeout). An active
+# central connection is therefore never force-dropped.
+#
+# Previously this was `loop { peri.start(60_000) }`. ble.rb#start runs a
+# polling loop until timeout_ms elapses, then its `ensure` block calls
+# hci_power_control(HCI_POWER_OFF) — powering off the BT controller every
+# 60s and tearing down any live connection at the window boundary. An
+# operator connecting at a random point in the 60s window got 0–60s of link
+# time, which made operator-paced HITL calibration impossible ("timing too
+# tight"). start(nil) never hits the timeout break and only powers off on
+# exception, so the controller stays up and connections persist.
+peri.start
