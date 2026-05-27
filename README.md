@@ -28,7 +28,7 @@ Massive thanks to:
 
 - **CoreS3 side**: I/O endpoint. Renders faces, drives the 12× WS2812 RGB ring (per-side, animated), advertises NUS, listens for control frames.
 - **macOS side**: orchestrator. Sends control frames (face × LED color × animation mode × side selector), receives ACK (`.`) or ERR (`?`) replies.
-- **Frame protocol**: K=V semicolon-delimited frames with single-byte ACK or ERR replies. See `mrbgems/picoruby-stackchan-protocol/` and `pc/stackchan-ble-client/` for implementation.
+- **Frame protocol**: K=V semicolon-delimited frames with single-byte ACK or ERR replies. See the sibling repo `picoruby-stackchan-protocol` (FrameParser) and `pc/stackchan-ble-client/` for implementation.
 
 ## Project structure
 
