@@ -227,6 +227,7 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣
 | `rake r2p2:build_flash` | **基本フロー**。`picoruby:build → flash` を 1 screen 内で連結。build 失敗時は rake が flash を自動 skip。build と flash を別 kick する流れは禁止 |
 | `rake r2p2:setup` | 初回・target 切り替え後。`setup_esp32s3` = deep_clean + mruby host rebuild + `idf.py set-target esp32s3`。`idf.py fullclean` のみだと target が default `esp32` に戻り IRAM overflow でリンク失敗する |
 | `rake r2p2:reset` | RTS pulse で CoreS3 再起動。serial キャプチャ前に呼ぶ |
+| `rake r2p2:build_flash_appmrb SRC=app/application.rb` | **picomodem 不要 deploy**。SRC を `R2P2-ESP32/storage/home/app.mrb` に picorbc compile → build → flash で firmware と storage を 1 pass 焼き。USB 抜き差し不要なので人間離席中の自律 flash に使う。詳細は下記「Storage 区画」節 |
 | `rake r2p2:flash` / `rake r2p2:build` | 個別 fallback。普段使わない |
 
 ### CoreS3 固有の sdkconfig
@@ -272,6 +273,16 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 ### Storage 区画は `idf.py flash` で wipe される
 
 `idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
+
+#### app.mrb を storage に焼き込む (picomodem 不要 deploy)
+
+storage partition は littlefs (`R2P2-ESP32/main/CMakeLists.txt` の `littlefs_create_partition_image(storage ../storage FLASH_IN_PROJECT)`)。`R2P2-ESP32/storage/` 配下がデバイス FS root になり、`storage/home/` → `/home/` にマップされる。littlefs image は `idf.py build` 毎にディスクから再生成され、`idf.py flash` が `storage.bin` を 0x210000 に焼く。
+
+→ `app.rb` を picorbc compile して `R2P2-ESP32/storage/home/app.mrb` に置けば、`/home/app.mrb` autostart payload として firmware と一緒に焼ける。**picomodem (runtime USB upload) 不要 = USB 抜き差し不要**。人間離席中で picomodem の抜き差しができない時はこの経路を使う。`rake r2p2:build_flash_appmrb SRC=...` がこれを実行 (reset はしない — esptool が自前で hard-reset するので boot capture が monitor guard と競合しない)。
+
+**注意 (Phase C)**: `storage/home/app.mrb` は R2P2-ESP32 fork tree に untracked で残る。app 固有の build 成果物なので R2P2-ESP32 PR には含めない (`.gitignore` に `storage/home/*.mrb` を検討)。
+
+**boot capture の落とし穴**: `bin/capture-with-pty ... rake r2p2:monitor` の teardown (timeout で idf_monitor が port close) は chip を `boot:0x20 DOWNLOAD(USB/UART0)` モードに残す (log 末尾 `waiting for download`)。これは crash ではなく、app は teardown 前に cold-boot 完走している。clean な RTS-only reset (`dtr=False; rts=True→False`, `exclusive=False`) で app が正常 boot する。
 
 ### Recovery
 
