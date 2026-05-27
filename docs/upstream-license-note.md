@@ -7,7 +7,7 @@ License found: `SPDX-License-Identifier: MIT` (per-file SPDX header, `SPDX-FileC
 Reuse decision: **Yes** — pin numbers, register addresses, and ILI9342 initialization byte sequences may be transcribed verbatim from the upstream C++ source into our Pure-Ruby mrbgem `picoruby-ili9342`. Rationale:
 
 - MIT is a permissive license that explicitly permits use, copy, modify, merge, publish, distribute, sublicense, and sale of copies of the Software.
-- We will preserve attribution to "M5Stack Technology CO LTD" by reproducing the full MIT license text in `mrbgems/picoruby-ili9342/LICENSE` (the file created in Task 5 of the plan), and that file will include a `Copyright (c) 2026 M5Stack Technology CO LTD` line **alongside** the `Copyright (c) 2026 bash0C7` line, because portions of the mrbgem are derived from the upstream MIT-licensed source.
+- We will preserve attribution to "M5Stack Technology CO LTD" by reproducing the full MIT license text in `picoruby-ili9342/LICENSE` (sibling repo; the file created in Task 5 of the plan), and that file will include a `Copyright (c) 2026 M5Stack Technology CO LTD` line **alongside** the `Copyright (c) 2026 bash0C7` line, because portions of the mrbgem are derived from the upstream MIT-licensed source.
 - Pin numbers and datasheet-derived init sequences are largely facts about the hardware (uncopyrightable in many jurisdictions), but treating them as MIT-licensed expression and complying with the notice clause is the safe, conservative path.
 
 This file documents the legal basis for transcribing pin numbers and ILI9342

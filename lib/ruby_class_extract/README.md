@@ -35,7 +35,7 @@ hardware bootstrap with pure-Ruby class definitions.
 require 'ruby_class_extract'
 
 RubyClassExtract.load_classes_from(
-  'mrbgems/picoruby-stackchan-protocol/examples/application.rb',
+  'app/application.rb',
   exclude_superclasses: %w[BLE],
 )
 display = FakeDisplay.new
