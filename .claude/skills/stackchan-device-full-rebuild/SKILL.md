@@ -26,7 +26,7 @@ Dispatch a general-purpose haiku subagent with this prompt:
 
 ## Required env
 
-- `SRC` — path to application Ruby file (e.g. `mrbgems/picoruby-stackchan-protocol/examples/application.rb`).
+- `SRC` — path to application Ruby file (e.g. `app/application.rb`).
 
 ## Pass / fail signal
 

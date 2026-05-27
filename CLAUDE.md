@@ -53,7 +53,7 @@ PC連携アバターパターン：
 
 - Firmware (mrbgems, requires `build_flash`): hardware drivers + stable
   protocol framework (`StackchanProtocol::FrameParser` only).
-- Application (`mrbgems/picoruby-stackchan-protocol/examples/application.rb`,
+- Application (`app/application.rb`,
   deploy via `upload_appmrb`): all StackChan business logic — `Face` DSL,
   `Dispatcher`, BLE peripheral, cold-boot init.
 - Host tests load application class definitions via prism AST through
@@ -74,7 +74,7 @@ PC連携アバターパターン：
 4. **ILI9342 driver の `rst_pin` / `bl_pin`** — AW9523 / AXP2101 経由なのでダミー GPIO (例 GPIO 1 等の未配線) を渡す
 5. **BLE を続けるなら cold-boot 完了後に `sleep_ms 3000` で必ず yield する**。cold-boot 全体 (特に Face::Neutral.draw の 150KB pixel push) は同期 SPI/I2C で CPU を占有し、BTstack の FreeRTOS task が初期化を完走できない。yield せず `BLE.new` → `start` に入ると `gap_advertisements_enable(1)` は呼ばれても **RF emit が silent fail** する (device-side log には `HCI WORKING — advertising` が出る、Mac scan / iPhone nRF Connect では一切見えない)。3000ms は安全策
 
-実装は `mrbgems/picoruby-stackchan-protocol/examples/application.rb` (cold-boot 後 sleep_ms 3000 入り) を参照。`examples/app.rb` は upload race-free 用の 10 秒 heartbeat → exit パターン。
+実装は `app/application.rb` (cold-boot 後 sleep_ms 3000 入り) を参照。`app/app.rb` は upload race-free 用の 10 秒 heartbeat → exit パターン。
 
 **PY32 init region の `puts` は削除禁止**: `application.rb` の PY32IOExpander / StackchanLed init 区間 (L412 周辺) の 5 個の `puts` は debug 出力に見えるが必須。削るたび crash 位置が前へズレ、最終的に PY32IOExpander init で LoadProhibited する PicoRuby bytecode-layout-dependent な memory bug。`# REQUIRED FOR PY32 COLD-BOOT` マーカーコメントを付けて keep。
 
@@ -149,7 +149,7 @@ Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-pro
 ### bring-up app の書き方 (upload race-free)
 
 - **bring-up app.rb は `loop` を持たず、固定時間 sleep + exit にする**。dispatcher loop が STDIN を独占すると uploader の STX が face byte として消費され、PicoModem session が立たず upload 詰まる
-- `examples/app.rb` は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
+- `app/app.rb` は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
 - production 用の dispatcher loop を入れる場合は **「特定 frame (例 `E\n`) で exit」または「STX 検出で shell に hand-off」の exit hatch を frame protocol に組み込む** ことを前提にする
 
 ### rake は subagent foreground で、可能なら chain task 1 個

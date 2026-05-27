@@ -1,4 +1,4 @@
-# examples/application.rb — Phase 3 production dispatcher.
+# app/application.rb — Phase 3 production dispatcher.
 #
 # Flow:
 #   [1] 5s escape hatch (sleep_ms 5000) — crash-loop recovery window
@@ -6,7 +6,7 @@
 #   [3] BLE NUS service + Dispatcher + FrameParser + AckSink
 #   [4] peri.start(60_000) — 60s advertise window (Phase 2 で実証された引数; 経過後 return)
 #
-# Upload: rake r2p2:upload_mrb SRC=mrbgems/picoruby-stackchan-protocol/examples/application.rb
+# Upload: rake r2p2:upload_mrb SRC=app/application.rb
 # Smoke:  rake r2p2:ble_control_smoke COLOR=red MODE=blink FACE=joy SIDE=both
 
 require 'spi'

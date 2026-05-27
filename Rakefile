@@ -276,7 +276,7 @@ namespace :r2p2 do
       yl = '50'  # default: half-left sweep
     end
 
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
@@ -312,7 +312,7 @@ namespace :r2p2 do
   desc 'BLE torque on/off E2E smoke (cold-boot → torque on → torque off cycle)'
   task :ble_torque_smoke do
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
@@ -342,7 +342,7 @@ namespace :r2p2 do
   desc 'HITL servo calibration check — sweeps 5 positions, prompts human Y/N for each'
   task :ble_calibration_check do
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
@@ -407,7 +407,7 @@ namespace :r2p2 do
     # and active scan only provide temporary relief, not root fix.)
     # → Retired epoch suffix infrastructure. Device discovery now uses fixed base name.
     # Single board per session, so "StackChan-PicoRuby" prefix is unique.
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
