@@ -38,7 +38,7 @@ reboots into the R2P2 banner.
    port `/dev/cu.usbmodem1101`, connect.
 2. In the terminal's `path-input` field, type `/home/app.rb`.
 3. `Open local file` →
-   `mrbgems/picoruby-stackchan-protocol/examples/app.rb` → mode `Plain` →
+   `app/app.rb` → mode `Plain` →
    `Upload`. Wait for `done` log.
 4. Physical reset of CoreS3 (RST button or `rake r2p2:reset`).
 

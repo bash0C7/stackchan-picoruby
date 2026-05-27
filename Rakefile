@@ -246,6 +246,36 @@ namespace :r2p2 do
     upload_mrb_via_picomodem(src: src_path, dst: '/home/app.mrb', port: espport)
   end
 
+  # Bake SRC (compiled to app.mrb) into the littlefs storage image, then flash
+  # firmware + storage in a single esptool pass. R2P2-ESP32's littlefs image is
+  # rebuilt from `storage/home/` on every `idf.py build` (FLASH_IN_PROJECT), and
+  # `idf.py flash` writes storage.bin at 0x210000 alongside the app binary. So
+  # placing app.mrb at R2P2_ROOT/storage/home/app.mrb before build makes it land
+  # at /home/app.mrb on device with NO runtime picomodem USB upload — and thus no
+  # physical USB replug. Use this when the operator is away and the normal
+  # picomodem path (which needs a replug) is unavailable. Does NOT reset; the
+  # esptool flash performs its own hard-reset, and boot capture is done
+  # separately so the monitor guard does not race the flasher.
+  desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass (no picomodem / no USB replug; SRC=path required)'
+  task :build_flash_appmrb => :clear_libmruby_cache do
+    ensure_no_concurrent_monitor
+    ensure_sdkconfig_fresh
+    src = ENV.fetch('SRC') { abort 'SRC=path/to/app.rb required for r2p2:build_flash_appmrb' }
+    src_path = File.expand_path(src, __dir__)
+    abort "SRC not found: #{src_path}" unless File.exist?(src_path)
+    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
+    abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
+    mrb_dest = "#{R2P2_ROOT}/storage/home/app.mrb"
+    mkdir_p File.dirname(mrb_dest)
+    rm_f mrb_dest
+    sh picorbc, '-o', mrb_dest, src_path
+    abort "picorbc produced no output at #{mrb_dest}" unless File.exist?(mrb_dest)
+    puts "[build_flash_appmrb] baked #{src_path} -> #{mrb_dest} (#{File.size(mrb_dest)} bytes)"
+    port = espport
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
+    puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src_path)} (baked into littlefs /home/app.mrb) flashed. esptool hard-reset will autostart it."
+  end
+
   desc 'full device rebuild chain: build_flash → wipe_storage → upload_appmrb → reset (SRC=app.rb required, ~7 min total)'
   task :full_rebuild do
     src = ENV.fetch('SRC') { abort 'SRC=path/to/app.rb required for r2p2:full_rebuild' }
@@ -276,7 +306,7 @@ namespace :r2p2 do
       yl = '50'  # default: half-left sweep
     end
 
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
@@ -312,7 +342,7 @@ namespace :r2p2 do
   desc 'BLE torque on/off E2E smoke (cold-boot → torque on → torque off cycle)'
   task :ble_torque_smoke do
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
@@ -342,7 +372,7 @@ namespace :r2p2 do
   desc 'HITL servo calibration check — sweeps 5 positions, prompts human Y/N for each'
   task :ble_calibration_check do
     autostart_wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 
@@ -407,7 +437,7 @@ namespace :r2p2 do
     # and active scan only provide temporary relief, not root fix.)
     # → Retired epoch suffix infrastructure. Device discovery now uses fixed base name.
     # Single board per session, so "StackChan-PicoRuby" prefix is unique.
-    ENV['SRC'] = 'mrbgems/picoruby-stackchan-protocol/examples/application.rb'
+    ENV['SRC'] = 'app/application.rb'
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke
 

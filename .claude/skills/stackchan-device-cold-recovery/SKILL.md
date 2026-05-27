@@ -13,7 +13,7 @@ Chain.
 
 1. Invoke `stackchan-device-wipe` (clears /home/app.mrb).
 2. Invoke `stackchan-device-upload-app` with `SRC=$SRC` (default
-   `mrbgems/picoruby-stackchan-protocol/examples/application.rb`).
+   `app/application.rb`).
 3. Invoke `stackchan-device-reset`.
 4. Report final status.
 

@@ -28,15 +28,15 @@ Massive thanks to:
 
 - **CoreS3 side**: I/O endpoint. Renders faces, drives the 12× WS2812 RGB ring (per-side, animated), advertises NUS, listens for control frames.
 - **macOS side**: orchestrator. Sends control frames (face × LED color × animation mode × side selector), receives ACK (`.`) or ERR (`?`) replies.
-- **Frame protocol**: K=V semicolon-delimited frames with single-byte ACK or ERR replies. See `mrbgems/picoruby-stackchan-protocol/` and `pc/stackchan-ble-client/` for implementation.
+- **Frame protocol**: K=V semicolon-delimited frames with single-byte ACK or ERR replies. See the sibling repo `picoruby-stackchan-protocol` (FrameParser) and `pc/stackchan-ble-client/` for implementation.
 
 ## Project structure
 
 | Layer | Location | Build cycle |
 |---|---|---|
-| Drivers | `mrbgems/picoruby-*` + R2P2-ESP32 ports | `stackchan-device-build-flash` (~5-10 min) |
-| Protocol framework (FrameParser) | `mrbgems/picoruby-stackchan-protocol` | `stackchan-device-build-flash` |
-| Application (Face DSL, Dispatcher, BLE peripheral) | `mrbgems/picoruby-stackchan-protocol/examples/application.rb` | `stackchan-device-deploy-app` (~20 s) |
+| Drivers | sibling repos `picoruby-{py32-io-expander,ili9342,scservo,stackchan-led,stackchan-protocol}` + R2P2-ESP32 ports | `stackchan-device-build-flash` (~5-10 min) |
+| Protocol framework (FrameParser) | sibling repo `picoruby-stackchan-protocol` | `stackchan-device-build-flash` |
+| Application (Face DSL, Dispatcher, BLE peripheral) | `app/application.rb` | `stackchan-device-deploy-app` (~20 s) |
 | Host tests | `test/`, `lib/ruby_class_extract.rb` | `bundle exec rake test` |
 
 The single `application.rb` is the autostart payload; on-device requires
@@ -212,7 +212,7 @@ The tables below collect the behaviors you are most likely to encounter while wo
 
 | Topic | Behavior | Recommended response |
 |---|---|---|
-| CoreS3 cold-boot | The LCD and the WS2812 ring come up only after the I2C bus programs the devices in this order: AXP2101 → AW9523 → ILI9342 → PY32 → WS2812 (SDA=GPIO 12, SCL=GPIO 11). | Follow the cold-boot block at the top of `mrbgems/picoruby-stackchan-protocol/examples/application.rb`. |
+| CoreS3 cold-boot | The LCD and the WS2812 ring come up only after the I2C bus programs the devices in this order: AXP2101 → AW9523 → ILI9342 → PY32 → WS2812 (SDA=GPIO 12, SCL=GPIO 11). | Follow the cold-boot block at the top of `app/application.rb`. |
 | Starting BLE after cold-boot | The synchronous I2C/SPI work during cold-boot — in particular the LCD pixel push — keeps BTstack's FreeRTOS task from starting. As a result, the first `gap_advertisements_enable(1)` runs without emitting any radio packets. | Insert `sleep_ms 3000` between the cold-boot block and `BLE.new`. |
 
 ### Communication

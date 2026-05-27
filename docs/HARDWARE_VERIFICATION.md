@@ -2,7 +2,7 @@
 
 This file lists every verification step from the stackchan-display bring-up plan
 that requires physical M5Stack CoreS3 hardware. The ILI9342 driver and all
-example scripts are host-tested (`mrbgems/picoruby-ili9342/` — 21 tests pass)
+example scripts are host-tested (sibling repo `picoruby-ili9342` — 21 tests pass)
 but not yet flashed.
 
 Run these in a session with:
@@ -113,14 +113,14 @@ Pass criterion: screen turns solid black.
 
 If screen stays white / shows garbage:
 1. Confirm SPI host is `ESP32_SPI3_HOST` (not SPI2)
-2. Confirm SPI mode is `2` (CPOL=1, CPHA=0) — see `mrbgems/picoruby-ili9342/docs/cores3-pinout-and-init.md`
+2. Confirm SPI mode is `2` (CPOL=1, CPHA=0) — see `picoruby-ili9342/docs/cores3-pinout-and-init.md` (sibling repo)
 3. Confirm BGR + invert ON in `INIT_COMMANDS` (entries `0x36 [0x08]` and `0x21 []`)
 4. Try the alternate MADCTL value `0x00` (clear BGR bit) — some panel revisions are RGB
 5. Compare actual SPI byte stream against `INIT_COMMANDS` using a logic analyzer
 
 ### Phase 4 — Example scripts (Plan Tasks 17, 18, 19, 20, 21)
 
-All under `mrbgems/picoruby-ili9342/examples/`. Transfer to `/home/` on the
+All under `picoruby-ili9342/examples/` (sibling repo). Transfer to `/home/` on the
 device (via picomodem or your terminal's drag-and-drop), then in REPL:
 
 ```ruby
@@ -155,7 +155,7 @@ fill() x5 avg: <X.Y> ms
 ```
 
 Capture the printed average and replace the `_TBD_` placeholder in
-`mrbgems/picoruby-ili9342/README.md` "Performance baseline" section.
+`picoruby-ili9342/README.md` (sibling repo) "Performance baseline" section.
 
 `Machine.uptime_us` is documented in picoruby-machine; if it errors here,
 swap for whatever microsecond-precision time source is exposed
@@ -182,7 +182,7 @@ driver but missing scope:
 
 ## After successful verification
 
-1. Replace `_TBD_` in `mrbgems/picoruby-ili9342/README.md` with the measured
+1. Replace `_TBD_` in `picoruby-ili9342/README.md` (sibling repo) with the measured
    `fill()` ms.
 2. Update root `README.md` status table: change `LCD (ILI9342) | host-tested,
    hardware-untested` to `working on CoreS3` (and similar for face row).

@@ -53,7 +53,7 @@ PC連携アバターパターン：
 
 - Firmware (mrbgems, requires `build_flash`): hardware drivers + stable
   protocol framework (`StackchanProtocol::FrameParser` only).
-- Application (`mrbgems/picoruby-stackchan-protocol/examples/application.rb`,
+- Application (`app/application.rb`,
   deploy via `upload_appmrb`): all StackChan business logic — `Face` DSL,
   `Dispatcher`, BLE peripheral, cold-boot init.
 - Host tests load application class definitions via prism AST through
@@ -74,7 +74,7 @@ PC連携アバターパターン：
 4. **ILI9342 driver の `rst_pin` / `bl_pin`** — AW9523 / AXP2101 経由なのでダミー GPIO (例 GPIO 1 等の未配線) を渡す
 5. **BLE を続けるなら cold-boot 完了後に `sleep_ms 3000` で必ず yield する**。cold-boot 全体 (特に Face::Neutral.draw の 150KB pixel push) は同期 SPI/I2C で CPU を占有し、BTstack の FreeRTOS task が初期化を完走できない。yield せず `BLE.new` → `start` に入ると `gap_advertisements_enable(1)` は呼ばれても **RF emit が silent fail** する (device-side log には `HCI WORKING — advertising` が出る、Mac scan / iPhone nRF Connect では一切見えない)。3000ms は安全策
 
-実装は `mrbgems/picoruby-stackchan-protocol/examples/application.rb` (cold-boot 後 sleep_ms 3000 入り) を参照。`examples/app.rb` は upload race-free 用の 10 秒 heartbeat → exit パターン。
+実装は `app/application.rb` (cold-boot 後 sleep_ms 3000 入り) を参照。`app/app.rb` は upload race-free 用の 10 秒 heartbeat → exit パターン。
 
 **PY32 init region の `puts` は削除禁止**: `application.rb` の PY32IOExpander / StackchanLed init 区間 (L412 周辺) の 5 個の `puts` は debug 出力に見えるが必須。削るたび crash 位置が前へズレ、最終的に PY32IOExpander init で LoadProhibited する PicoRuby bytecode-layout-dependent な memory bug。`# REQUIRED FOR PY32 COLD-BOOT` マーカーコメントを付けて keep。
 
@@ -149,7 +149,7 @@ Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-pro
 ### bring-up app の書き方 (upload race-free)
 
 - **bring-up app.rb は `loop` を持たず、固定時間 sleep + exit にする**。dispatcher loop が STDIN を独占すると uploader の STX が face byte として消費され、PicoModem session が立たず upload 詰まる
-- `examples/app.rb` は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
+- `app/app.rb` は 10 秒 heartbeat 後に exit して shell に戻る形で、上書き upload がスムーズに通る
 - production 用の dispatcher loop を入れる場合は **「特定 frame (例 `E\n`) で exit」または「STX 検出で shell に hand-off」の exit hatch を frame protocol に組み込む** ことを前提にする
 
 ### rake は subagent foreground で、可能なら chain task 1 個
@@ -227,6 +227,7 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣
 | `rake r2p2:build_flash` | **基本フロー**。`picoruby:build → flash` を 1 screen 内で連結。build 失敗時は rake が flash を自動 skip。build と flash を別 kick する流れは禁止 |
 | `rake r2p2:setup` | 初回・target 切り替え後。`setup_esp32s3` = deep_clean + mruby host rebuild + `idf.py set-target esp32s3`。`idf.py fullclean` のみだと target が default `esp32` に戻り IRAM overflow でリンク失敗する |
 | `rake r2p2:reset` | RTS pulse で CoreS3 再起動。serial キャプチャ前に呼ぶ |
+| `rake r2p2:build_flash_appmrb SRC=app/application.rb` | **picomodem 不要 deploy**。SRC を `R2P2-ESP32/storage/home/app.mrb` に picorbc compile → build → flash で firmware と storage を 1 pass 焼き。USB 抜き差し不要なので人間離席中の自律 flash に使う。詳細は下記「Storage 区画」節 |
 | `rake r2p2:flash` / `rake r2p2:build` | 個別 fallback。普段使わない |
 
 ### CoreS3 固有の sdkconfig
@@ -272,6 +273,18 @@ picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertis
 ### Storage 区画は `idf.py flash` で wipe される
 
 `idf.py flash` は build/storage.bin も含めて 4 partition 全部書き込む → **`/home/app.rb` は build_flash 毎に消える**。flash 後は必ず `rake r2p2:upload SRC=...` で再 upload してから `rake r2p2:reset`。
+
+#### app.mrb を storage に焼き込む (picomodem 不要 deploy)
+
+storage partition は littlefs (`R2P2-ESP32/main/CMakeLists.txt` の `littlefs_create_partition_image(storage ../storage FLASH_IN_PROJECT)`)。`R2P2-ESP32/storage/` 配下がデバイス FS root になり、`storage/home/` → `/home/` にマップされる。littlefs image は `idf.py build` 毎にディスクから再生成され、`idf.py flash` が `storage.bin` を 0x210000 に焼く。
+
+→ `app.rb` を picorbc compile して `R2P2-ESP32/storage/home/app.mrb` に置けば、`/home/app.mrb` autostart payload として firmware と一緒に焼ける。**picomodem (runtime USB upload) 不要 = USB 抜き差し不要**。`rake r2p2:build_flash_appmrb SRC=...` がこれを実行 (reset はしない — esptool が自前で hard-reset するので boot capture が monitor guard と競合しない)。
+
+**常用しない (flash 寿命)**: build_flash_appmrb は毎回 firmware (約 2MB) + storage (1MB) を全書き込みするので flash 消耗が大きい。app だけ変えた iteration では picomodem upload (storage に app.mrb のみ ~16KB 書込) の方が flash に優しい。build_flash_appmrb を default にせず、**(a) mrbgem / firmware 自体を頻繁に変える開発 (どのみち full flash が要る)**、**(b) 人間が離席を宣言して picomodem の USB 抜き差しができない時**、に限定する。日常の app-only iteration は従来の picomodem 経路 (`/stackchan-device-iterate` 等) を default にする。
+
+**注意 (Phase C)**: `storage/home/app.mrb` は R2P2-ESP32 fork tree に untracked で残る。app 固有の build 成果物なので R2P2-ESP32 PR には含めない (`.gitignore` に `storage/home/*.mrb` を検討)。
+
+**boot capture の落とし穴**: `bin/capture-with-pty ... rake r2p2:monitor` の teardown (timeout で idf_monitor が port close) は chip を `boot:0x20 DOWNLOAD(USB/UART0)` モードに残す (log 末尾 `waiting for download`)。これは crash ではなく、app は teardown 前に cold-boot 完走している。clean な RTS-only reset (`dtr=False; rts=True→False`, `exclusive=False`) で app が正常 boot する。
 
 ### Recovery
 

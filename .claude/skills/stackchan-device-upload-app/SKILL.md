@@ -17,7 +17,7 @@ Dispatch:
 
 ## Required env
 
-- `SRC` — path to application .rb file (e.g. `mrbgems/picoruby-stackchan-protocol/examples/application.rb`).
+- `SRC` — path to application .rb file (e.g. `app/application.rb`).
 
 ## Pass / fail signal
 

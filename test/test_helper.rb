@@ -7,7 +7,7 @@ require 'fake_display'
 require 'fake_led'
 
 APPLICATION_RB = File.expand_path(
-  '../mrbgems/picoruby-stackchan-protocol/examples/application.rb', __dir__
+  '../app/application.rb', __dir__
 )
 
 # Stub on-device Machine module so SCServo#read_bytes deadline logic works on host.
@@ -48,6 +48,6 @@ require 'fake_uart'
 
 # Load the picoruby-scservo gem's pure Ruby class from the mrbgems tree
 SCSERVO_PATH = File.expand_path(
-  '../mrbgems/picoruby-scservo/mrblib/scservo.rb', __dir__
+  '../../picoruby-scservo/mrblib/scservo.rb', __dir__
 )
 load SCSERVO_PATH
