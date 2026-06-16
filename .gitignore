@@ -5,3 +5,5 @@
 /build/
 pc/*/tmp/
 .claude/settings.local.json
+/HANDOFF.md
+/docs/superpowers/
