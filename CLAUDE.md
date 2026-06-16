@@ -113,6 +113,8 @@ Anchor recal: `bundle exec exe/stackchan-ble-control calibrate [--samples N] [--
 - **picoruby-ble の `heartbeat_callback` tick は ~1 秒** (NOT 100ms)。NOTIFY 周期や idle-detection timeout を heartbeat 数で計算する時は「tick=1s」前提に
 - **Mac CoreBluetooth idle-disconnect window は経験値 15-20 秒**。無 PDU 状態が続くと link 切断、保持には 10 秒以下の notify or write を流す
 - **Mac BLE scan/connect/write は `rb-corebluetooth-mac` 経由で Bash から claude 自身が叩ける**。advertise 検出や smoke を「人間に iPhone nRF Connect 開いて」と頼まず、`stackchan-ble-control` CLI で autonomous に実行する
+- **BLE 検証中は serial monitor を並走させない**。`bin/capture-with-pty ... rake r2p2:monitor` (idf_monitor) は port open 時に DTR/RTS で CoreS3 を reset するため、BLE connect/write/ACK の最中に走らせると device が cold-boot をやり直し advertising が消え、`no device with name prefix` や ACK timeout の偽陽性が出る。BLE smoke / servo / face は **monitor 無しで `stackchan-ble-control` CLI 単独**で実行する。device 側ログがどうしても要るなら reset を覚悟して 1 回キャプチャ→その boot で完結する検証だけにする
+- **`rb-corebluetooth-mac` の native 拡張は使用前にビルド必須**。`cd ../rb-corebluetooth-mac && bundle install && bundle exec rake compile` で Swift dylib + Ruby `.bundle` を生成。未ビルドだと CLI が `Library not loaded: @rpath/libCoreBluetoothMac.dylib` で落ちる。Ruby ABI 切替時は再 compile 必要
 
 Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`
 

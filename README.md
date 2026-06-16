@@ -237,7 +237,18 @@ wire).
 cd stackchan-picoruby
 bundle install                                              # root: Rakefile + picomodem uploader
 ( cd pc/stackchan-ble-client && bundle install )            # BLE client side
+
+# Build the rb-corebluetooth-mac native extension (Swift dylib + Ruby .bundle).
+# Without this the BLE client fails to load with
+# "Library not loaded: @rpath/libCoreBluetoothMac.dylib".
+( cd ../rb-corebluetooth-mac && bundle install && bundle exec rake compile )
 ```
+
+> The `rb-corebluetooth-mac` extension is compiled per Ruby ABI. If you
+> switch Ruby versions (e.g. via `rbenv`), re-run `bundle install &&
+> bundle exec rake compile` in `rb-corebluetooth-mac` (and `bundle
+> install` in this repo + `pc/stackchan-ble-client`) so the native
+> `.bundle` matches the new ABI.
 
 #### 4. Host picoruby setup + first device flash
 
