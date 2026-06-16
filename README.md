@@ -6,7 +6,12 @@
 
 This repository is a personal port of Stack-chan to [PicoRuby](https://github.com/picoruby/picoruby), running on [R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32) on the [M5Stack StackChan AI Desktop Robot (CoreS3)](https://www.switch-science.com/products/11129).
 
-The hardware layer (LCD, RGB LEDs, IO expanders, BLE peripheral) is reimplemented as out-of-tree PicoRuby `mrbgems`. A macOS-side Ruby client orchestrates higher-level avatar logic over Nordic UART Service (BLE NUS).
+The hardware layer is split between standalone PicoRuby driver `mrbgems`
+(LCD, IO expander, servo, frame protocol — each in its own sibling repo) and
+application code in `app/application.rb` (Face rendering, the `StackchanLed`
+WS2812 ring driver, the BLE peripheral, and the command dispatcher). A
+macOS-side Ruby client orchestrates higher-level avatar logic over Nordic
+UART Service (BLE NUS).
 
 ## Acknowledgement
 
@@ -34,14 +39,18 @@ Massive thanks to:
 
 | Layer | Location | Build cycle |
 |---|---|---|
-| Drivers | sibling repos `picoruby-{py32-io-expander,ili9342,scservo,stackchan-led,stackchan-protocol}` + R2P2-ESP32 ports | `stackchan-device-build-flash` (~5-10 min) |
+| Drivers | standalone sibling repos `picoruby-{ili9342,py32-io-expander,scservo,stackchan-protocol}` + R2P2-ESP32 ports | `stackchan-device-build-flash` (~5-10 min) |
 | Protocol framework (FrameParser) | sibling repo `picoruby-stackchan-protocol` | `stackchan-device-build-flash` |
-| Application (Face DSL, Dispatcher, BLE peripheral) | `app/application.rb` | `stackchan-device-deploy-app` (~20 s) |
+| Application (Face DSL, Dispatcher, BLE peripheral, **`StackchanLed` LED driver**) | `app/application.rb` | `stackchan-device-deploy-app` (~20 s) |
 | Host tests | `test/`, `lib/ruby_class_extract.rb` | `bundle exec rake test` |
 
-The single `application.rb` is the autostart payload; on-device requires
-only resolve under PicoRuby. Host tests load the file via prism AST
-extraction (`lib/ruby_class_extract.rb`).
+The driver gems live in their own repositories, not under an in-tree
+`mrbgems/` directory. The 12× WS2812 LED ring driver (`StackchanLed`) used
+to be its own `picoruby-stackchan-led` mrbgem, but it is now inlined into
+`app/application.rb` as a plain `class StackchanLed` (the mrbgem is
+archived). The single `application.rb` is the autostart payload; on-device
+requires only resolve under PicoRuby. Host tests load the file via prism
+AST extraction (`lib/ruby_class_extract.rb`).
 
 ## Dev iteration
 
@@ -52,22 +61,42 @@ edit application.rb -> rake test            # host tests (~3 s)
 
 ## Deploy skills
 
-| Skill | Slash alias | Purpose |
-|---|---|---|
-| stackchan-device-build-flash | yes | rebuild firmware + flash |
-| stackchan-device-setup | yes | host picoruby + target setup |
-| stackchan-device-reset | yes | RTS pulse + 15 s settle |
-| stackchan-device-wipe | yes | erase /home storage partition |
-| stackchan-device-capture-boot | yes | log device serial to /tmp/boot.log |
-| stackchan-device-face-verify | yes | host golden SHA + device ACK |
-| stackchan-device-deploy-app | yes | upload .mrb + reset |
-| stackchan-device-cold-recovery | yes | wipe + redeploy + reset |
-| stackchan-device-full-rebuild | yes | build_flash + cold-recovery |
-| stackchan-device-boot-verify | yes | reset + capture + auto-analyze |
-| stackchan-device-iterate | yes | upload + reset + capture + analyze |
+All device interaction goes through `stackchan-device-*` skills rather than
+direct `rake r2p2:*` calls — the skill keeps verbose build/flash output out
+of the main context and makes the chain composition auditable. The table
+maps each skill to the underlying `r2p2:*` task(s) in this repo's `Rakefile`.
 
-Internal (no slash alias): upload-app, upload-lib, crash-analyze, ble-smoke
-— driven by claude during chain flows.
+| Skill | Slash alias | Underlying rake task(s) | Purpose |
+|---|---|---|---|
+| stackchan-device-build-flash | yes | `r2p2:build_flash` | rebuild firmware + flash |
+| stackchan-device-setup | yes | `r2p2:setup` | host picoruby + target setup |
+| stackchan-device-reset | yes | `r2p2:reset` | RTS pulse + 15 s settle |
+| stackchan-device-wipe | yes | `r2p2:wipe_storage` | erase /home storage partition |
+| stackchan-device-capture-boot | yes | `r2p2:monitor` (via `bin/capture-with-pty`) | log device serial to /tmp/boot.log |
+| stackchan-device-face-verify | yes | `r2p2:face_verify` | host golden SHA + device ACK |
+| stackchan-device-deploy-app | yes | `r2p2:upload_appmrb` + `r2p2:reset` | upload .mrb + reset |
+| stackchan-device-cold-recovery | yes | `r2p2:wipe_storage` + `r2p2:upload_appmrb` + `r2p2:reset` | wipe + redeploy + reset |
+| stackchan-device-full-rebuild | yes | `r2p2:full_rebuild` (build_flash → wipe → upload_appmrb → reset) | full firmware + app rebuild |
+| stackchan-device-boot-verify | yes | `r2p2:reset` + capture + analyze | reset + capture + auto-analyze |
+| stackchan-device-iterate | yes | `r2p2:upload_appmrb` + `r2p2:reset` + capture + analyze | upload + reset + capture + analyze |
+
+Internal (no slash alias): upload-app (`r2p2:upload_appmrb`), upload-lib
+(`r2p2:upload_mrb`), crash-analyze, ble-smoke — driven by claude during
+chain flows.
+
+### BLE smoke / calibration rake tasks (host-driven, not skills)
+
+The `Rakefile` also carries composite BLE E2E tasks that drive the
+`pc/stackchan-ble-client` CLI against a live device (each uploads the app,
+resets, waits for autostart, then sends frames):
+
+| Task | What it does |
+|---|---|
+| `r2p2:ble_control_smoke` | combo frame (face × LED × mode × side); asserts CLI ACK |
+| `r2p2:ble_servo_smoke` | torque on → send a normalized `YL/YR/PU` position frame |
+| `r2p2:ble_torque_smoke` | cold-boot → torque on → torque off cycle (face Closed→Neutral→Closed) |
+| `r2p2:ble_calibration_check` | HITL 5-pose sweep, prompts Y/N per position |
+| `r2p2:build_flash_appmrb` | bake app.mrb into the littlefs storage image + flash firmware in one pass (no picomodem / no USB replug) |
 
 ## Recovery hierarchy
 
@@ -96,7 +125,8 @@ behavior — that is verified via `/stackchan-device-iterate` and
 | Subsystem | Original (official) | This repo (PicoRuby) | Notes |
 |---|---|---|---|
 | Core 4 faces (Neutral / Smile / Joy / Surprised) | ✓ | ✓ | Custom geometry, photo-derived ratios |
-| Extended emotions (Angry / Sad / Closed) | ✓ | ✓ | `Face::Sad` / `Face::Angry` / `Face::Closed` (idle indicator) |
+| Extended emotions (Angry / Sad) | ✓ | ✓ | `Face::Sad` / `Face::Angry` |
+| Torque-off idle indicator (`Face::Closed`) | n/a | ✓ | Not an emotion — eyes-closed, mouthless face shown at cold-boot while torque is OFF; operator aligns the head by hand, then `<torque:on>` switches to `Face::Neutral` |
 | Eye-blink liveness animation | partial | ✓ | Eye-only redraw, no full-screen flicker |
 | RGB LED ring (12 px) | ✓ | ✓ | `solid` / `blink` / `breathing` / `off`, per-side (`L`/`R`/`both`) |
 | BLE control (Nordic UART Service) | (community) | ✓ | NUS RX/TX + ACK queue + heartbeat tick |
@@ -133,21 +163,40 @@ behavior — that is verified via `/stackchan-device-iterate` and
 - Ruby 4.0+ (rbenv recommended)
 - Bundler
 
-### Repository layout — 4 sibling clones required
+> **BLE depends on in-flight PicoRuby work.** The peripheral path builds
+> against the `bash0C7/picoruby` fork's BLE port (upstreaming as
+> [picoruby#427](https://github.com/picoruby/picoruby/pull/427)) and the
+> matching R2P2-ESP32 changes
+> ([R2P2-ESP32#135](https://github.com/picoruby/R2P2-ESP32/pull/135)). Until
+> those land upstream, BLE only works with the pinned fork branches
+> described in [Related repositories](#related-repositories) below.
 
-Building and controlling the device requires **four** independent sibling clones under the same parent directory. There are no git submodules at this repo's level; R2P2-ESP32 manages its internal `components/picoruby-esp32/picoruby` submodule, fetched in step 1 below via `git clone --recursive`.
+### Repository layout — sibling clones required
+
+Building and controlling the device requires several independent sibling
+clones under the same parent directory: the build/control infrastructure
+(`R2P2-ESP32`, `rb-corebluetooth-mac`, `swift_gem`) plus the standalone
+PicoRuby driver gems (`picoruby-ili9342`, `picoruby-py32-io-expander`,
+`picoruby-scservo`, `picoruby-stackchan-protocol`) that the firmware build
+wires in via `gemdir`. There are no git submodules at this repo's level;
+R2P2-ESP32 manages its internal `components/picoruby-esp32/picoruby`
+submodule, fetched in step 1 below via `git clone --recursive`.
 
 ```
 your/parent/dir/
-├── stackchan-picoruby/       (this repo)
-├── R2P2-ESP32/               (fork; contains picoruby fork as an internal submodule)
-├── rb-corebluetooth-mac/     (path-loaded by pc/stackchan-ble-client)
-└── swift_gem/                (path-loaded by pc/stackchan-ble-client; also a runtime dep of rb-corebluetooth-mac)
+├── stackchan-picoruby/            (this repo)
+├── R2P2-ESP32/                    (fork; contains picoruby fork as an internal submodule)
+├── rb-corebluetooth-mac/          (path-loaded by pc/stackchan-ble-client)
+├── swift_gem/                     (path-loaded by pc/stackchan-ble-client; also a runtime dep of rb-corebluetooth-mac)
+├── picoruby-ili9342/              (LCD driver gem, wired into the firmware build)
+├── picoruby-py32-io-expander/     (PY32 I/O expander gem)
+├── picoruby-scservo/              (feedback servo gem)
+└── picoruby-stackchan-protocol/   (frame protocol gem)
 ```
 
 ### First-time setup
 
-#### 1. Clone all four repos
+#### 1. Clone the repos
 
 ```bash
 cd your/parent/dir
@@ -155,6 +204,11 @@ git clone https://github.com/bash0C7/stackchan-picoruby
 git clone --recursive https://github.com/bash0C7/R2P2-ESP32     # --recursive pulls the pinned bash0C7/picoruby submodule
 git clone https://github.com/bash0C7/rb-corebluetooth-mac
 git clone https://github.com/bash0C7/swift_gem
+# Driver gems (wired into the firmware build via gemdir):
+git clone https://github.com/bash0C7/picoruby-ili9342
+git clone https://github.com/bash0C7/picoruby-py32-io-expander
+git clone https://github.com/bash0C7/picoruby-scservo
+git clone https://github.com/bash0C7/picoruby-stackchan-protocol
 ```
 
 If you forgot `--recursive` on R2P2-ESP32: `cd R2P2-ESP32 && git submodule update --init --recursive`.
@@ -163,7 +217,7 @@ If you forgot `--recursive` on R2P2-ESP32: `cd R2P2-ESP32 && git submodule updat
 
 Two files assume the original author's `~/dev/src/github.com/bash0C7/` layout. Edit them to point at **your** clone locations before the first build:
 
-- `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Update 4 `conf.gem gemdir:` lines to point at this repo's `mrbgems/{picoruby-ili9342, picoruby-py32-io-expander, picoruby-stackchan-led, picoruby-stackchan-protocol}`
+- `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Add `conf.gem gemdir:` lines pointing at your clones of the driver gems `picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-scservo`, and `picoruby-stackchan-protocol` (the WS2812 LED driver is inlined into `app/application.rb`, so there is no LED gem to wire)
 - `stackchan-picoruby/pc/stackchan-ble-client/Gemfile` — Update 2 `gem ... path:` lines for `rb-corebluetooth-mac` and `swift_gem`
 
 #### 3. Bundle install (2 locations)
@@ -239,27 +293,39 @@ This repo's `Rakefile` wraps R2P2-ESP32's `rake` tasks (via `in_r2p2` helper) to
 | `espport` auto-detection | Scans `/dev/cu.usbmodem*` and picks one. Override with `ESPPORT=...`. |
 | `ensure_sdkconfig_fresh` | If any `SDKCONFIG_DEFAULTS` fragment is newer than the current `sdkconfig`, removes `sdkconfig` so the next `idf.py build` regenerates it from the fragments. |
 | `r2p2:clear_libmruby_cache` (prerequisite of `r2p2:build_flash`) | Removes `libmruby.a` so the next build recompiles all gems from scratch. Adds about 1–2 minutes per build and guarantees that `mrblib/**/*.rb` changes reach the device. |
-| `r2p2:upload_mrb` (fast-path compilation) | Compiles a `.rb` file to `.mrb` on the host with `picorbc`, then uploads it over USB-CDC to `/home/app.mrb` via `Deploy::Picomodem.upload` (`lib/deploy/picomodem.rb`). Autostart loads the bytecode on the next reset. Use this for app-script changes only; reserve `build_flash` for gem changes under `mrbgems/`. |
+| `r2p2:upload_mrb` (fast-path compilation) | Compiles a `.rb` file to `.mrb` on the host with `picorbc`, then uploads it over USB-CDC to `/home/app.mrb` via `Deploy::Picomodem.upload` (`lib/deploy/picomodem.rb`). Autostart loads the bytecode on the next reset. Use this for app-script changes (`app/application.rb`) only; reserve `build_flash` for changes to the driver gems or other firmware-side code. |
 | `r2p2:wipe_storage` | Runs `esptool erase_region 0x210000 0x100000` to zero the storage partition (where `/home/*` lives). Use this to clear an autostart app from the device. |
 | `r2p2:ble_control_smoke` | Composite E2E task that uploads the app, resets the device, waits for autostart, then runs `pc/stackchan-ble-client`'s CLI inside a `Bundler.with_unbundled_env` subshell. Returns the CLI's exit code so test failures appear as rake failures. |
 
 ## Repository layout
 
+PicoRuby driver gems live in their own standalone repositories (sibling
+clones), not under an in-tree `mrbgems/` directory:
+
 ```
-mrbgems/                                  out-of-tree PicoRuby gems
-├── picoruby-ili9342/                     LCD driver
-├── picoruby-py32-io-expander/            PY32 I/O expander (LEDs, VM_EN)
-├── picoruby-stackchan-led/               WS2812 12-px ring animator
-└── picoruby-stackchan-protocol/          face render + frame protocol + BLE app
+../picoruby-ili9342/                      LCD driver
+../picoruby-py32-io-expander/             PY32 I/O expander (LEDs, VM_EN)
+../picoruby-scservo/                      feedback servo (yaw + pitch)
+../picoruby-stackchan-protocol/           frame protocol FrameParser
+```
+
+This repo itself:
+
+```
+app/
+├── application.rb                        autostart payload: Face DSL, Dispatcher,
+│                                         StackchanLed (inlined), BLE peripheral
+└── app.rb                                bring-up smoke (cold-boot LED + face, no dispatcher)
 
 pc/                                       macOS-side Ruby clients
-├── stackchan-protocol/                   frame codec / CLI for serial control
-├── stackchan-ble-client/                 BLE NUS client + control CLI
+├── stackchan-ble-client/                 BLE NUS client + control CLI (stackchan-ble-control)
 └── stackchan-notifier/                   Claude Code hooks → BLE bridge (daemon + CLI)
 
+test/                                     host tests (Test::Unit), fakes, golden SHAs
+lib/ruby_class_extract.rb                 prism-AST loader for application.rb class bodies
 lib/deploy/                               host-side picomodem uploader (serialport gem)
 docs/                                     specs, plans, handoffs
-Rakefile                                  workflow wrappers (r2p2:*, build_flash, ble_control_smoke, etc.)
+Rakefile                                  workflow wrappers (r2p2:*, build_flash, ble_*_smoke, etc.)
 ```
 
 ## Related repositories
@@ -270,7 +336,7 @@ Adds the following on top of upstream:
 
 - `sdkconfigs/cores3` — CoreS3 SoC overlay: **Quad** PSRAM 8MB, 16MB Flash, USB-Serial-JTAG console
 - `sdkconfigs/bt_btstack` — BLE enablement: BTstack vendored, ROM coex hook disabled (`CONFIG_SW_COEXIST_ENABLE=n`) to avoid `LoadProhibited` panics in `coex_schm_lock` on BLE-only builds with IDF v5.4 + ESP32-S3
-- `components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Wires this repo's mrbgems (`picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-stackchan-led`, `picoruby-stackchan-protocol`) and the vendored `picoruby-ble` / `picoruby-ble-uart` via absolute `gemdir`
+- `components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Wires the standalone driver gems (`picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-scservo`, `picoruby-stackchan-protocol`) and the vendored `picoruby-ble` / `picoruby-ble-uart` via absolute `gemdir`. (The WS2812 LED driver is inlined into `app/application.rb`, not a gem.)
 - Submodule `components/picoruby-esp32/picoruby` points to `https://github.com/bash0C7/picoruby.git` (the fork documented below) pinned to the `feature/ble-bringup` branch to integrate BLE port fixes
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby) (of `picoruby/picoruby`)
