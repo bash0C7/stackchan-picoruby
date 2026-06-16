@@ -177,8 +177,12 @@ Building and controlling the device requires several independent sibling
 clones under the same parent directory: the build/control infrastructure
 (`R2P2-ESP32`, `rb-corebluetooth-mac`, `swift_gem`) plus the standalone
 PicoRuby driver gems (`picoruby-ili9342`, `picoruby-py32-io-expander`,
-`picoruby-scservo`, `picoruby-stackchan-protocol`) that the firmware build
-wires in via `gemdir`. There are no git submodules at this repo's level;
+`picoruby-scservo`, `picoruby-stackchan-protocol`). The **firmware build**
+does not need local driver clones — the `stackchan-integration` branch of
+R2P2-ESP32 fetches them from GitHub at tag `v0.1.0` via
+`conf.gem github: '...', branch: 'v0.1.0'`. The local driver clones are
+needed for the **host test suite** (`test/test_helper.rb` loads each
+driver's `mrblib` from `../picoruby-<name>/`). There are no git submodules at this repo's level;
 R2P2-ESP32 manages its internal `components/picoruby-esp32/picoruby`
 submodule, fetched in step 1 below via `git clone --recursive`.
 
@@ -204,7 +208,7 @@ git clone https://github.com/bash0C7/stackchan-picoruby
 git clone --recursive https://github.com/bash0C7/R2P2-ESP32     # --recursive pulls the pinned bash0C7/picoruby submodule
 git clone https://github.com/bash0C7/rb-corebluetooth-mac
 git clone https://github.com/bash0C7/swift_gem
-# Driver gems (wired into the firmware build via gemdir):
+# Driver gems (needed for host tests; the firmware build fetches them from GitHub at tag v0.1.0):
 git clone https://github.com/bash0C7/picoruby-ili9342
 git clone https://github.com/bash0C7/picoruby-py32-io-expander
 git clone https://github.com/bash0C7/picoruby-scservo
@@ -217,8 +221,15 @@ If you forgot `--recursive` on R2P2-ESP32: `cd R2P2-ESP32 && git submodule updat
 
 Two files assume the original author's `~/dev/src/github.com/bash0C7/` layout. Edit them to point at **your** clone locations before the first build:
 
-- `R2P2-ESP32/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Add `conf.gem gemdir:` lines pointing at your clones of the driver gems `picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-scservo`, and `picoruby-stackchan-protocol` (the WS2812 LED driver is inlined into `app/application.rb`, so there is no LED gem to wire)
 - `stackchan-picoruby/pc/stackchan-ble-client/Gemfile` — Update 2 `gem ... path:` lines for `rb-corebluetooth-mac` and `swift_gem`
+
+The firmware-side driver wiring needs no editing: check out the
+`stackchan-integration` branch of R2P2-ESP32 (`git -C R2P2-ESP32 checkout
+stackchan-integration`), whose `build_config/xtensa-esp-picoruby.rb`
+already wires the driver gems via `conf.gem github: '...', branch:
+'v0.1.0'` and `picoruby-ble` / `picoruby-ble-uart` via `core:` (the WS2812
+LED driver is inlined into `app/application.rb`, so there is no LED gem to
+wire).
 
 #### 3. Bundle install (2 locations)
 
@@ -336,7 +347,7 @@ Adds the following on top of upstream:
 
 - `sdkconfigs/cores3` — CoreS3 SoC overlay: **Quad** PSRAM 8MB, 16MB Flash, USB-Serial-JTAG console
 - `sdkconfigs/bt_btstack` — BLE enablement: BTstack vendored, ROM coex hook disabled (`CONFIG_SW_COEXIST_ENABLE=n`) to avoid `LoadProhibited` panics in `coex_schm_lock` on BLE-only builds with IDF v5.4 + ESP32-S3
-- `components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` — Wires the standalone driver gems (`picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-scservo`, `picoruby-stackchan-protocol`) and the vendored `picoruby-ble` / `picoruby-ble-uart` via absolute `gemdir`. (The WS2812 LED driver is inlined into `app/application.rb`, not a gem.)
+- `components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb` (on the `stackchan-integration` branch) — Wires the standalone driver gems (`picoruby-ili9342`, `picoruby-py32-io-expander`, `picoruby-scservo`, `picoruby-stackchan-protocol`) via `conf.gem github: '...', branch: 'v0.1.0'`, and `picoruby-ble` / `picoruby-ble-uart` via `core:` (from the picoruby submodule). (The WS2812 LED driver is inlined into `app/application.rb`, not a gem.)
 - Submodule `components/picoruby-esp32/picoruby` points to `https://github.com/bash0C7/picoruby.git` (the fork documented below) pinned to the `feature/ble-bringup` branch to integrate BLE port fixes
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby) (of `picoruby/picoruby`)
