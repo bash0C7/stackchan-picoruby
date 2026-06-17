@@ -14,12 +14,15 @@ module StackchanNotifier
         "感情タグは [neutral] [smile] [joy] [surprised] [sad] [angry] のいずれか。" \
         "例: [joy]うれしいな"
 
-      # Zone -> themed prompt fragment. Exact zone<->physical mapping is
-      # confirmed by HITL (Phase D) and these strings refined then.
+      # Zone -> themed prompt fragment. The 3 capacitive pads form a
+      # front-to-back STROKE STRIP on the TOP of the head (M5 docs: head-pet
+      # sensor), NOT cheek/back-of-head. HITL 2026-06-17 confirmed all 3 zones
+      # (0/1/2) fire when the top of the head is touched; the exact pad<->front/
+      # back orientation was not pinned, so these are top-of-head variants.
       ZONE_THEME = {
         0 => "頭のてっぺんをやさしく撫でられました。",
-        1 => "ほっぺのあたりを触られました。",
-        2 => "後頭部を不意に触られました。",
+        1 => "頭のてっぺんの真ん中をくすぐられました。",
+        2 => "頭のてっぺんを軽くたたかれました。",
       }.freeze
       DEFAULT_THEME = "頭を触られました。"
 
