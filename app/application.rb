@@ -824,6 +824,15 @@ led.brightness = 100
 puts "[boot] step:led-show-ok"
 StackchanApp::Face::Closed.new.draw(display)
 puts "[application] LCD cold-boot done (torque-OFF idle)"
+# Si12T head-touch — reuse the already-open system I2C instance (no 2nd bus).
+# Low-risk per spec; failure must not block face/LED/BLE, so keep @touch=nil.
+@touch = nil
+begin
+  @touch = Si12T.new(i2c)
+  puts "[boot] step:si12t-init-ok"
+rescue => e
+  puts "[boot] si12t init failed: #{e.class}: #{e.message}"
+end
 
 # Servo bring-up — torque is intentionally left OFF so the operator can
 # physically align the head before sending <torque:on>. Failure must NOT
@@ -924,10 +933,11 @@ class StackChanApp < BLE
   NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
   NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
-  def initialize(display:, led:, head: nil)
+  def initialize(display:, led:, head: nil, touch: nil)
     @display = display
     @led     = led
     @head    = head
+    @touch   = touch
     @adv_data = build_adv_data
     db = build_gatt_database
     @db = db
@@ -1016,6 +1026,16 @@ class StackChanApp < BLE
     end
     # Tick LED animator
     @led.tick(Machine.uptime_us / 1000)
+    # Head-touch poll (rising-edge -> one <touch:N> per onset). Reuses the
+    # existing notify queue; only meaningful while a central is subscribed.
+    if @touch
+      begin
+        zone = @touch.poll
+        write("<touch:#{zone}>\n") if zone
+      rescue => e
+        puts "[application] touch poll error: #{e.class}: #{e.message}"
+      end
+    end
     # Request can_send_now if we have frames queued and the central is subscribed
     if @notify_enabled && !@notify_queue.empty?
       request_can_send_now_event
@@ -1051,7 +1071,7 @@ end
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
 puts "[application] BLE peripheral starting (infinite advertise)"
-peri = StackChanApp.new(display: display, led: led, head: @head)
+peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch)
 peri.debug = true
 # Run the BTstack run loop indefinitely (start with no timeout). An active
 # central connection is therefore never force-dropped.
