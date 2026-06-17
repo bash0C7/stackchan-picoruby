@@ -1,13 +1,7 @@
 PATH
-  remote: ../../../rb-corebluetooth-mac
+  remote: ../stackchan-ai-companion
   specs:
-    rb-corebluetooth-mac (0.2.1)
-      swift_gem (~> 0.1)
-
-PATH
-  remote: ../../../swift_gem
-  specs:
-    swift_gem (0.1.0)
+    stackchan_ai_companion (0.1.0)
 
 PATH
   remote: ../stackchan-ble-client
@@ -20,6 +14,21 @@ PATH
     stackchan_notifier (2.0.0)
       logger
       rinda
+
+PATH
+  remote: /Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac
+  specs:
+    rb-corebluetooth-mac (0.2.1)
+
+PATH
+  remote: /Users/bash/dev/src/github.com/bash0C7/rb-foundation-model-mac
+  specs:
+    rb-foundation-model-mac (0.2.0)
+
+PATH
+  remote: /Users/bash/dev/src/github.com/bash0C7/swift_gem
+  specs:
+    swift_gem (0.1.0)
 
 GEM
   remote: https://rubygems.org/
@@ -44,6 +53,8 @@ PLATFORMS
 DEPENDENCIES
   rake
   rb-corebluetooth-mac!
+  rb-foundation-model-mac!
+  stackchan_ai_companion!
   stackchan_ble_client!
   stackchan_notifier!
   swift_gem!
@@ -57,7 +68,9 @@ CHECKSUMS
   power_assert (3.0.1) sha256=8ce9876716cc74e863fcd4cdcdc52d792bd983598d1af3447083a3a9a4d34103
   rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
   rb-corebluetooth-mac (0.2.1)
+  rb-foundation-model-mac (0.2.0)
   rinda (0.2.0) sha256=bb4566af73c9b78e80bc41202140860e33150ee2a0eacdf6dfe583e1aa0b03fa
+  stackchan_ai_companion (0.1.0)
   stackchan_ble_client (0.1.0)
   stackchan_notifier (2.0.0)
   swift_gem (0.1.0)
