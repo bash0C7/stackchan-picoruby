@@ -1,7 +1,4 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
-
-class DispatcherServoTest < Test::Unit::TestCase
+class DispatcherServoTest < Picotest::Test
   class FakeServo
     attr_reader :writes
     attr_accessor :next_read

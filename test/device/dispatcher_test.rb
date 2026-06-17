@@ -1,7 +1,4 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
-
-class DispatcherFaceTest < Test::Unit::TestCase
+class DispatcherFaceTest < Picotest::Test
   def setup
     @display = FakeDisplay.new
     @led     = FakeLed.new
@@ -34,11 +31,11 @@ class DispatcherFaceTest < Test::Unit::TestCase
 
   def test_F_known_writes_ack_dot
     @disp.handle({ "F" => "0" })
-    assert_includes @stdout.writes, ".\n"
+    assert(@stdout.writes.include?(".\n"))
   end
 
   def test_F_unknown_writes_question_mark
     @disp.handle({ "F" => "99" })
-    assert_includes @stdout.writes, "?\n"
+    assert(@stdout.writes.include?("?\n"))
   end
 end
