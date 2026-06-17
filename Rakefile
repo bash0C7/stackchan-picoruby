@@ -502,9 +502,9 @@ namespace :r2p2 do
 
     # Leg 1: host golden SHA — fast (<2s), no device touch.
     Bundler.with_unbundled_env do
-      Dir.chdir(__dir__) do  # project root, where test/face_golden_test.rb lives
-        ok = system('bundle', 'exec', 'rake', 'test',
-                    "TESTOPTS=--name=FaceGoldenTest#test_#{face}_matches_golden")
+      Dir.chdir(__dir__) do  # project root, where test/device/face_golden_test.rb lives
+        # picotest filters by filename substring (no per-method filter); face_golden runs all 7 face goldens on the host VM
+        ok = system('bundle', 'exec', 'rake', 'test', 'FILTER=face_golden')
         abort "[face_verify] host golden SHA FAIL for face=#{face}" unless ok
       end
     end

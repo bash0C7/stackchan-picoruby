@@ -7,17 +7,4 @@ Rake::TestTask.new do |t|
   t.warning = false
 end
 
-desc "Run tests with Ruby::Box per-file isolation (RUBY_BOX=1)"
-task :test_isolated do
-  repo_root = File.expand_path("../..", __dir__)
-  test_files = Dir["test/**/*_test.rb"]
-  abort "No test files found under test/" if test_files.empty?
-  runner = File.join(repo_root, "lib/test_isolator/runner_main.rb")
-  sh({"RUBY_BOX" => "1"}, "bundle", "exec", "ruby",
-     "-I#{File.join(repo_root, 'lib')}",
-     "-I.",
-     "-Itest",
-     runner, *test_files)
-end
-
 task default: :test
