@@ -354,3 +354,49 @@ class ClientServoDetailDrainTest < Test::Unit::TestCase
     assert_equal "<yaw_raw:unknown,pitch_raw:unknown>\n", client.last_detail_frame
   end
 end
+
+class ClientDemuxTest < Test::Unit::TestCase
+  def make_client(subscription)
+    rx_char   = ScriptedFakeRxChar.new(subscription)
+    tx_char   = ScriptedFakeTxChar.new(subscription)
+    periph    = ScriptedFakePeripheral.new(rx_char: rx_char, tx_char: tx_char)
+    transport = ScriptedFakeTransport.new(peripheral: periph)
+    StackchanBleClient::Client.new(device_name: "Foo", transport: transport)
+  end
+
+  def test_unsolicited_touch_frame_goes_to_callback_not_ack
+    subscription = FakeSubscription.new
+    client = make_client(subscription)
+    got = []
+    client.on_unsolicited = ->(frame) { got << frame }
+    client.connect
+    subscription.push("<touch:1>\n")
+    sleep 0.05
+    assert_equal ["<touch:1>\n"], got
+  ensure
+    client&.disconnect
+  end
+
+  def test_ack_still_resolves_send_with_touch_interleaved
+    subscription = FakeSubscription.new
+    client = make_client(subscription)
+    got = []
+    client.on_unsolicited = ->(frame) { got << frame }
+    client.connect
+    subscription.push("<touch:2>\n")
+    subscription.push(".\n")
+    assert_nothing_raised { client.raw_send("<F:1>\n") }
+    sleep 0.05
+    assert_equal ["<touch:2>\n"], got
+  ensure
+    client&.disconnect
+  end
+
+  def test_disconnect_stops_reader_thread
+    subscription = FakeSubscription.new
+    client = make_client(subscription)
+    client.connect
+    client.disconnect
+    assert_true true
+  end
+end

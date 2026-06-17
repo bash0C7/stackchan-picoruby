@@ -9,6 +9,7 @@ module StackchanBleClient
     NUS_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
     attr_reader :last_detail_frame
+    attr_accessor :on_unsolicited
 
     def initialize(device_name:, name_prefix: nil, scan_timeout: 10.0, connect_timeout: 5.0, ack_timeout: 3.0, transport: nil)
       @device_name       = device_name
@@ -22,6 +23,10 @@ module StackchanBleClient
       @tx_char           = nil
       @subscription      = nil
       @last_detail_frame = nil
+      @on_unsolicited    = nil
+      @inbox             = nil
+      @reader_thread     = nil
+      @reader_running    = false
     end
 
     def connect
@@ -42,6 +47,7 @@ module StackchanBleClient
       @rx_char = @peripheral.find_characteristic(NUS_RX_CHAR) or raise ConnectionError, "NUS RX not found"
       @tx_char = @peripheral.find_characteristic(NUS_TX_CHAR) or raise ConnectionError, "NUS TX not found"
       @subscription = @tx_char.subscribe
+      start_reader
       self
     rescue CoreBluetoothMac::Error => e
       raise ConnectionError, "#{e.class}: #{e.message}"
@@ -62,6 +68,7 @@ module StackchanBleClient
     end
 
     def disconnect
+      stop_reader
       @tx_char&.unsubscribe
       @transport.disconnect(@peripheral) if @peripheral
       @transport.close
@@ -72,19 +79,51 @@ module StackchanBleClient
       # other transport faults and decide to reconnect.
       raise ConnectionError, "#{e.class}: #{e.message}"
     ensure
-      @peripheral = @rx_char = @tx_char = @subscription = nil
+      @peripheral = @rx_char = @tx_char = @subscription = @inbox = nil
     end
 
     private
 
+    def start_reader
+      @inbox          = Thread::Queue.new
+      @reader_running = true
+      @reader_thread  = Thread.new { reader_loop }
+    end
+
+    def reader_loop
+      while @reader_running
+        sub = @subscription
+        break unless sub
+        begin
+          frame = sub.next_value(timeout: 0.2)
+        rescue StandardError
+          break
+        end
+        next if frame.nil?
+        if FrameCodec.touch_event?(frame)
+          cb = @on_unsolicited
+          cb.call(frame) if cb
+        else
+          @inbox.push(frame)
+        end
+      end
+    end
+
+    def stop_reader
+      @reader_running = false
+      t = @reader_thread
+      t.join(1) if t
+      @reader_thread = nil
+    end
+
     def send_frame(frame)
       @last_detail_frame = nil
       @rx_char.write_without_response(frame)
-      ack = @subscription.next_value(timeout: @ack_timeout)
+      ack = @inbox.pop(timeout: @ack_timeout)
       raise TimeoutError, "ACK timeout for frame #{frame.inspect}" if ack.nil?
       status = FrameCodec.parse_ack(ack)
       if servo_frame?(frame)
-        @last_detail_frame = @subscription.next_value(timeout: @ack_timeout)
+        @last_detail_frame = @inbox.pop(timeout: @ack_timeout)
       end
       case status
       when :ok    then nil
