@@ -1,0 +1,26 @@
+# Lock the call-sequence canonical dump of each Face class against a golden
+# file in spec/golden/face_<name>.dump. Deviation from spec's "RGB565 buffer
+# SHA" wording: pure-Ruby Face classes are deterministic in their draw call
+# sequence, so a canonical dump catches any geometry drift (constants,
+# formulas, method overrides). LCD readback is not available on device.
+# HITL calibration validates visual correctness once, then the dump locks
+# the geometry for all future regression runs.
+class FaceGoldenTest < Picotest::Test
+  GOLDEN_DIR = File.expand_path("../../spec/golden", File.dirname(__FILE__))
+
+  FACE_CASES = FaceGoldenHash::FACE_CASES
+
+  def self.compute_dump(face_class) = FaceGoldenHash.compute_dump(face_class)
+
+  FACE_CASES.each do |name, klass|
+    define_method("test_#{name}_matches_golden") do
+      golden_path = File.join(GOLDEN_DIR, "face_#{name}.dump")
+      actual = self.class.compute_dump(klass)
+      unless File.exist?(golden_path)
+        skip "no golden registered for face_#{name}; run `rake face:register_golden FACE=#{name}`"
+      end
+      expected = File.read(golden_path)
+      assert_equal expected, actual
+    end
+  end
+end

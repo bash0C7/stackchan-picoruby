@@ -1,0 +1,7 @@
+fill|0
+draw_ellipse|110,100,4,4,65535,{fill:true}
+draw_ellipse|210,100,4,4,65535,{fill:true}
+draw_line|135,140,160,140,65535
+draw_line|160,140,185,140,65535
+draw_line|94,82,126,90,65535
+draw_line|194,90,226,82,65535

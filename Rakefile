@@ -22,26 +22,41 @@ task :test_isolated do
   sh({"RUBY_BOX" => "1"}, "bundle", "exec", "ruby", "-I#{File.expand_path('lib', __dir__)}", "-Itest", runner, *test_files)
 end
 
+# Load the application's Face classes + FakeDisplay into THIS CRuby process,
+# without test_helper (so the golden tasks survive the picotest migration).
+def load_face_context
+  $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
+  $LOAD_PATH.unshift(File.expand_path('test', __dir__))
+  load File.expand_path('test/picotest/stubs.rb', __dir__)
+  require 'ruby_class_extract'
+  RubyClassExtract.load_classes_from(File.expand_path('app/application.rb', __dir__), exclude_superclasses: %w[BLE])
+  require 'fake_display'
+  require 'face_golden_hash'
+end
+
 namespace :face do
-  desc "Compute SHA256 of StackchanApp::Face::<NAME>.new.draw call sequence and " \
-       "write spec/golden/face_<NAME>.sha256. " \
+  desc "Compute canonical draw-call dump of StackchanApp::Face::<NAME> and write " \
+       "spec/golden/face_<NAME>.dump. " \
        "Usage: bundle exec rake face:register_golden FACE=neutral|smile|joy|surprised|sad|angry|closed"
   task :register_golden do
     name = ENV.fetch('FACE') { abort 'FACE=<name> required' }
-    $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
-    $LOAD_PATH.unshift(File.expand_path('test', __dir__))
-
-    require 'test_helper'         # loads StackchanApp::Face::* via RubyClassExtract
-    require 'face_golden_hash'    # plain module, no Test::Unit autorun risk
-
+    load_face_context
     klass = FaceGoldenHash::FACE_CASES.fetch(name.to_sym) do
       abort "unknown FACE=#{name}; one of: #{FaceGoldenHash::FACE_CASES.keys.join(' / ')}"
     end
+    out = File.expand_path("spec/golden/face_#{name}.dump", __dir__)
+    File.write(out, FaceGoldenHash.compute_dump(klass))
+    puts "[face:register_golden] wrote #{out}"
+  end
 
-    sha = FaceGoldenHash.compute_sha(klass)
-    out = File.expand_path("spec/golden/face_#{name}.sha256", __dir__)
-    File.write(out, sha + "\n")
-    puts "[face:register_golden] wrote #{out} sha=#{sha}"
+  desc "Register goldens for ALL faces (.dump). Usage: bundle exec rake face:register_all_goldens"
+  task :register_all_goldens do
+    load_face_context
+    FaceGoldenHash::FACE_CASES.each do |name, klass|
+      out = File.expand_path("spec/golden/face_#{name}.dump", __dir__)
+      File.write(out, FaceGoldenHash.compute_dump(klass))
+      puts "[register_all] #{out}"
+    end
   end
 end
 
