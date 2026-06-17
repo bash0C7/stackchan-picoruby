@@ -41,7 +41,25 @@ namespace :face do
   end
 end
 
-R2P2_ROOT = File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
+# Resolve the sibling R2P2-ESP32 build tree. Walk up from this Rakefile's dir to
+# the nearest ancestor that has R2P2-ESP32 as a child, so r2p2:* tasks work from
+# both the main checkout (repo root) and any linked worktree (several levels
+# deeper). Falls back to the historical relative path if none is found.
+R2P2_ROOT = begin
+  dir = __dir__
+  found = nil
+  loop do
+    cand = File.join(dir, 'R2P2-ESP32')
+    if File.directory?(cand)
+      found = cand
+      break
+    end
+    parent = File.dirname(dir)
+    break if parent == dir
+    dir = parent
+  end
+  found || File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
+end
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
 
