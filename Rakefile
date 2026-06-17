@@ -234,14 +234,19 @@ namespace :r2p2 do
   # Generic R2P2-ESP32 (CoreS3) storage partition erase: nukes /home/* so the
   # next boot starts with no autostart payload. Useful for any picoruby app
   # whose /home/app.mrb panic-loops, jams PicoModem handshake, or otherwise
-  # locks out the shell. Storage partition layout is 0x210000-0x310000 (1MB);
-  # adjust if your sdkconfig partition table differs. ~7s end-to-end.
-  desc 'erase storage partition (0x210000-0x310000, ~1MB) — fast app.mrb recovery without full flash'
+  # locks out the shell. Storage partition layout is 0x410000-0x510000 (1MB).
+  # CRITICAL: this offset MUST match the partition table. The factory partition
+  # was expanded 2M->4M for the shinonome font firmware (2026-06-17), so storage
+  # moved 0x210000 -> 0x410000. The OLD hardcoded 0x210000 erased the MIDDLE of
+  # the 4M factory partition and bricked the firmware ("No bootable app
+  # partitions"). If you change partitions.csv, update this offset in lockstep.
+  # ~7s end-to-end.
+  desc 'erase storage partition (0x410000-0x510000, ~1MB) — fast app.mrb recovery without full flash'
   task :wipe_storage do
     ensure_no_concurrent_monitor
     port = espport
     Dir.chdir(R2P2_ROOT) do
-      sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} erase_region 0x210000 0x100000'"
+      sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} erase_region 0x410000 0x100000'"
     end
   end
 
