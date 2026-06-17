@@ -1,0 +1,11 @@
+source "https://rubygems.org"
+
+gem "stackchan_ble_client",     path: "/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/pc/stackchan-ble-client"
+gem "rb-foundation-model-mac",  path: "/Users/bash/dev/src/github.com/bash0C7/rb-foundation-model-mac"
+gem "rb-corebluetooth-mac",     path: "/Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac"
+gem "swift_gem",                path: "/Users/bash/dev/src/github.com/bash0C7/swift_gem"
+
+group :test do
+  gem "test-unit"
+  gem "rake"
+end
