@@ -25,6 +25,8 @@ module StackchanBleClient
     ACK_OK    = "."
     ACK_ERROR = "?"
 
+    TOUCH_RE = /\A<touch:(\d+)>/
+
     module_function
 
     def encode_face(face_name:)
@@ -74,6 +76,17 @@ module StackchanBleClient
       else
         raise ArgumentError, "unknown ack frame: #{frame.inspect}"
       end
+    end
+
+    # A device-initiated head-touch event (unsolicited; not a response to a send).
+    def touch_event?(frame)
+      !!(frame =~ TOUCH_RE)
+    end
+
+    # Zone index from "<touch:N>", or nil if not a touch frame.
+    def parse_touch(frame)
+      m = frame.match(TOUCH_RE)
+      m && m[1].to_i
     end
 
     def encode_pairs(pairs)

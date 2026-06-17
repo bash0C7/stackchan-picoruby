@@ -140,3 +140,16 @@ class FrameCodecAckTest < Test::Unit::TestCase
     assert_raise(ArgumentError) { StackchanBleClient::FrameCodec.parse_ack("<YL_actual:0,PU_actual:50>\n") }
   end
 end
+
+class FrameCodecTest < Test::Unit::TestCase
+  def test_touch_event_true_only_for_touch_frames
+    assert_true  StackchanBleClient::FrameCodec.touch_event?("<touch:1>\n")
+    assert_false StackchanBleClient::FrameCodec.touch_event?(".\n")
+    assert_false StackchanBleClient::FrameCodec.touch_event?("<YL_actual:0,PU_actual:50>\n")
+  end
+
+  def test_parse_touch_returns_zone_integer_or_nil
+    assert_equal 2,   StackchanBleClient::FrameCodec.parse_touch("<touch:2>\n")
+    assert_nil        StackchanBleClient::FrameCodec.parse_touch(".\n")
+  end
+end
