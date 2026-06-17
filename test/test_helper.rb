@@ -46,8 +46,23 @@ RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE]
 
 require 'fake_uart'
 
-# Load the picoruby-scservo gem's pure Ruby class from the mrbgems tree
-SCSERVO_PATH = File.expand_path(
-  '../../picoruby-scservo/mrblib/scservo.rb', __dir__
-)
+# Load the picoruby-scservo gem's pure Ruby class from the sibling repo.
+# Walk up from this dir to the ancestor that contains picoruby-scservo as a
+# child, so it resolves from both the main checkout (test/ sits at repo root)
+# and any linked worktree (test/ is several levels below the repo root).
+SCSERVO_PATH = begin
+  dir = __dir__
+  found = nil
+  loop do
+    cand = File.join(dir, 'picoruby-scservo', 'mrblib', 'scservo.rb')
+    if File.exist?(cand)
+      found = cand
+      break
+    end
+    parent = File.dirname(dir)
+    break if parent == dir
+    dir = parent
+  end
+  found or raise "picoruby-scservo gem not found in any ancestor of #{__dir__}"
+end
 load SCSERVO_PATH
