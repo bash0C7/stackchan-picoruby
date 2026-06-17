@@ -94,23 +94,27 @@ end
 
 class FakeSubscription
   def initialize
-    @queue = []
+    @q = Thread::Queue.new
   end
 
   def push(value)
-    @queue << value
+    @q.push(value)
   end
 
+  # Blocks up to `timeout` seconds; returns nil on timeout (mirrors the real
+  # corebluetooth subscription). Ruby 3.2+ Queue#pop(timeout:).
   def next_value(timeout:)
-    @queue.shift  # ignore timeout — fake delivers synchronously
+    @q.pop(timeout: timeout)
+  rescue ThreadError
+    nil
   end
 
   def script_returns(*values)
-    values.each { |v| @queue << v }
+    values.each { |v| @q.push(v) }
   end
 
   def remaining_count
-    @queue.size
+    @q.size
   end
 end
 
