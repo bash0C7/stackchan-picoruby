@@ -5,18 +5,27 @@ require_relative 'ruby_class_extract/version'
 module RubyClassExtract
   module_function
 
-  def load_classes_from(path, exclude_superclasses: [])
+  def extract_source_from(path, exclude_superclasses: [])
     source = File.read(path)
     result = Prism.parse(source)
     raise "parse error: #{result.errors}" unless result.success?
 
     extracted = []
     walk(result.value, exclude_superclasses, extracted)
+    extracted.join("\n")
+  end
+
+  def load_classes_from(path, exclude_superclasses: [])
     tmpfile = Tempfile.new(['ruby_class_extract', '.rb'])
-    tmpfile.write(extracted.join("\n"))
+    tmpfile.write(extract_source_from(path, exclude_superclasses: exclude_superclasses))
     tmpfile.close
     load tmpfile.path
     nil
+  end
+
+  def extract_to_file(path, out_path, exclude_superclasses: [])
+    File.write(out_path, extract_source_from(path, exclude_superclasses: exclude_superclasses) + "\n") # trailing newline so the emitted file ends cleanly
+    out_path
   end
 
   def walk(node, exclude_superclasses, out)

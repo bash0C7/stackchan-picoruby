@@ -1,11 +1,8 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
-
-class SCServoTest < Test::Unit::TestCase
+class SCServoTest < Picotest::Test
   def test_initializes_with_uart_and_id
     uart = FakeUART.new
     servo = SCServo.new(uart, id: 1)
-    assert_kind_of SCServo, servo
+    assert(servo.is_a?(SCServo))
   end
 
   def test_write_pos_emits_correct_packet
@@ -112,7 +109,7 @@ class SCServoTest < Test::Unit::TestCase
     servo.write_pos(500, time_ms: 0, speed: 0)
     # After write_pos, drain must have emptied pending_rx so subsequent read_pos
     # sees only the response we stage next.
-    assert_empty uart.pending_rx
+    assert(uart.pending_rx.empty?)
   end
 
   def test_read_pos_after_write_pos_isolates_response
@@ -135,9 +132,9 @@ class SCServoTest < Test::Unit::TestCase
     uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
     servo = SCServo.new(uart, id: 1)
     raw = servo.read_pos_raw_debug
-    assert_kind_of String, raw
+    assert(raw.is_a?(String))
     # Hex string of all bytes received on RX (echo + response)
-    assert_match(/FF FF 01 04 00 01 F4 05/, raw)
+    assert(raw =~ /FF FF 01 04 00 01 F4 05/)
   end
 
   def test_read_pos_raw_debug_returns_empty_marker_when_no_response
@@ -155,9 +152,9 @@ class SCServoTest < Test::Unit::TestCase
     uart = FakeUART.new(echo: true)
     servo = SCServo.new(uart, id: 1)
     raw = servo.read_pos_raw_debug
-    assert_kind_of String, raw
+    assert(raw.is_a?(String))
     # Just the TX echo: ID=1, LEN=4, INSTR=2, REG=0x38, BYTES=2, cksum=0xBE
-    assert_match(/FF FF 01 04 02 38 02 BE/, raw)
+    assert(raw =~ /FF FF 01 04 02 38 02 BE/)
   end
 
   def test_read_pos_retries_up_to_three_times_before_returning_nil
@@ -196,14 +193,11 @@ class SCServoTest < Test::Unit::TestCase
     # Round trip across the unsigned u16 domain.
     [0, 1, 255, 256, 500, 1023, 1024, 2048, 4095, 32768, 65535].each do |v|
       enc = servo.send(:encode_word, v)
-      assert_equal 2, enc.length, "encode_word(#{v}) length"
-      assert_equal v, servo.send(:decode_word, enc[0], enc[1]),
-                   "round-trip mismatch for #{v}"
+      assert_equal 2, enc.length
+      assert_equal v, servo.send(:decode_word, enc[0], enc[1])
     end
     # SCSCL End=1: high byte goes on the wire first.
-    assert_equal [0x01, 0xF4], servo.send(:encode_word, 500),
-                 "encode_word(500) must be big-endian [hi, lo]"
-    assert_equal 500, servo.send(:decode_word, 0x01, 0xF4),
-                 "decode_word must treat first arg as high byte"
+    assert_equal [0x01, 0xF4], servo.send(:encode_word, 500)
+    assert_equal 500, servo.send(:decode_word, 0x01, 0xF4)
   end
 end

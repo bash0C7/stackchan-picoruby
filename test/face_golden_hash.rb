@@ -1,5 +1,3 @@
-require "digest"
-
 # Plain module (no Test::Unit dependency) — safe to require from Rake tasks
 # without triggering the test runner's at-exit hook.
 #
@@ -24,7 +22,8 @@ module FaceGoldenHash
     parts = args.map do |a|
       case a
       when Hash
-        "{" + a.sort_by { |k, _| k.to_s }.map { |k, v| "#{k}:#{v}" }.join(",") + "}"
+        # sort_by is unavailable on PicoRuby — use sort with an explicit comparator
+        "{" + a.to_a.sort { |x, y| x[0].to_s <=> y[0].to_s }.map { |k, v| "#{k}:#{v}" }.join(",") + "}"
       else
         a.to_s
       end
@@ -36,9 +35,9 @@ module FaceGoldenHash
     calls.map { |c| serialize_call(c) }.join("\n")
   end
 
-  def self.compute_sha(face_class)
+  def self.compute_dump(face_class)
     display = FakeDisplay.new
     face_class.new.draw(display)
-    Digest::SHA256.hexdigest(canonical_dump(display.calls))
+    canonical_dump(display.calls)
   end
 end

@@ -1,43 +1,70 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
 require_relative "lib/deploy/picomodem"
 require_relative "lib/deploy/shell_recovery"
-require 'rake/testtask'
 
-Rake::TestTask.new(:test) do |t|
-  t.libs << 'lib'
-  t.libs << 'test'
-  t.test_files = FileList['test/**/*_test.rb'].exclude('test/test_isolator/fixtures/**/*')
-  t.warning = false
+PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
+
+desc "Run the PicoRuby-native device test suite (alias of picotest:run)"
+task :test => "picotest:run"
+
+namespace :test do
+  desc "Run CRuby-only host tests (RubyClassExtract extractor)"
+  task :host do
+    sh "bundle exec ruby -Ilib -Itest-host test-host/ruby_class_extract_test.rb"
+  end
 end
 
-desc "Run tests with Ruby::Box per-file isolation (RUBY_BOX=1)"
-task :test_isolated do
-  test_files = Dir["test/**/*_test.rb"].reject { |f| f.start_with?("test/test_isolator/fixtures/") }
-  abort "No test files found under test/" if test_files.empty?
-  runner = File.expand_path("lib/test_isolator/runner_main.rb", __dir__)
-  sh({"RUBY_BOX" => "1"}, "bundle", "exec", "ruby", "-I#{File.expand_path('lib', __dir__)}", "-Itest", runner, *test_files)
+# Load the application's Face classes + FakeDisplay into THIS CRuby process,
+# without test_helper (so the golden tasks survive the picotest migration).
+def load_face_context
+  $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
+  $LOAD_PATH.unshift(File.expand_path('test', __dir__))
+  load File.expand_path('test/picotest/stubs.rb', __dir__)
+  require 'ruby_class_extract'
+  RubyClassExtract.load_classes_from(File.expand_path('app/application.rb', __dir__), exclude_superclasses: %w[BLE])
+  require 'fake_display'
+  require 'face_golden_hash'
 end
 
 namespace :face do
-  desc "Compute SHA256 of StackchanApp::Face::<NAME>.new.draw call sequence and " \
-       "write spec/golden/face_<NAME>.sha256. " \
+  desc "Compute canonical draw-call dump of StackchanApp::Face::<NAME> and write " \
+       "spec/golden/face_<NAME>.dump. " \
        "Usage: bundle exec rake face:register_golden FACE=neutral|smile|joy|surprised|sad|angry|closed"
   task :register_golden do
     name = ENV.fetch('FACE') { abort 'FACE=<name> required' }
-    $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
-    $LOAD_PATH.unshift(File.expand_path('test', __dir__))
-
-    require 'test_helper'         # loads StackchanApp::Face::* via RubyClassExtract
-    require 'face_golden_hash'    # plain module, no Test::Unit autorun risk
-
+    load_face_context
     klass = FaceGoldenHash::FACE_CASES.fetch(name.to_sym) do
       abort "unknown FACE=#{name}; one of: #{FaceGoldenHash::FACE_CASES.keys.join(' / ')}"
     end
+    out = File.expand_path("spec/golden/face_#{name}.dump", __dir__)
+    File.write(out, FaceGoldenHash.compute_dump(klass))
+    puts "[face:register_golden] wrote #{out}"
+  end
 
-    sha = FaceGoldenHash.compute_sha(klass)
-    out = File.expand_path("spec/golden/face_#{name}.sha256", __dir__)
-    File.write(out, sha + "\n")
-    puts "[face:register_golden] wrote #{out} sha=#{sha}"
+  desc "Register goldens for ALL faces (.dump). Usage: bundle exec rake face:register_all_goldens"
+  task :register_all_goldens do
+    load_face_context
+    FaceGoldenHash::FACE_CASES.each do |name, klass|
+      out = File.expand_path("spec/golden/face_#{name}.dump", __dir__)
+      File.write(out, FaceGoldenHash.compute_dump(klass))
+      puts "[register_all] #{out}"
+    end
+  end
+end
+
+namespace :picotest do
+  desc "Build the host picoruby test VM (MRUBY_CONFIG=picoruby-test). One-time / after picoruby update."
+  task :build do
+    Dir.chdir(PICORUBY_ROOT) { sh "MRUBY_CONFIG=picoruby-test rake all" }
+  end
+
+  desc "Run the PicoRuby-native device suite (test/device/*_test.rb) on the host picoruby VM. FILTER=<substr> to scope."
+  task :run do
+    binary = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
+    abort "host picoruby not built: #{binary}\n  run: bundle exec rake picotest:build" unless File.executable?(binary)
+    $LOAD_PATH.unshift File.expand_path("test", __dir__)
+    require "picotest/harness"
+    exit PicotestHarness.run(filter: ENV["FILTER"])
   end
 end
 
@@ -498,9 +525,9 @@ namespace :r2p2 do
 
     # Leg 1: host golden SHA — fast (<2s), no device touch.
     Bundler.with_unbundled_env do
-      Dir.chdir(__dir__) do  # project root, where test/face_golden_test.rb lives
-        ok = system('bundle', 'exec', 'rake', 'test',
-                    "TESTOPTS=--name=FaceGoldenTest#test_#{face}_matches_golden")
+      Dir.chdir(__dir__) do  # project root, where test/device/face_golden_test.rb lives
+        # picotest filters by filename substring (no per-method filter); face_golden runs all 7 face goldens on the host VM
+        ok = system('bundle', 'exec', 'rake', 'test', 'FILTER=face_golden')
         abort "[face_verify] host golden SHA FAIL for face=#{face}" unless ok
       end
     end

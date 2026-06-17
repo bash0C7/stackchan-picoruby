@@ -56,10 +56,10 @@ PC連携アバターパターン：
 - Application (`app/application.rb`,
   deploy via `upload_appmrb`): all StackChan business logic — `Face` DSL,
   `Dispatcher`, BLE peripheral, cold-boot init.
-- Host tests load application class definitions via prism AST through
-  `lib/ruby_class_extract.rb`. Application code must keep class
-  definitions free of `< BLE` patterns at the class-body top level so the
-  exclusion filter can skip them cleanly.
+- The CRuby picotest orchestrator (`test/picotest/harness.rb`) loads/extracts
+  application class definitions via prism AST through `lib/ruby_class_extract.rb`.
+  Application code must keep class definitions free of `< BLE` patterns at the
+  class-body top level so the exclusion filter skips them cleanly.
 
 ## CoreS3 cold-boot 初期化シーケンス
 
@@ -126,18 +126,20 @@ Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-pro
 - 公式 `../StackChan` には書き込まない。ピン配置や初期化シーケンスは読み取って参考にするだけ
 - spec / plan は `docs/superpowers/specs/` `docs/superpowers/plans/` に置く
 
-### Box-isolated test runner
+### PicoRuby-native test suite (picotest)
 
-`bundle exec rake test_isolated` runs each test file in its own Ruby::Box for cross-file state isolation; per-suite via each suite's Rakefile. Legacy `rake test` continues to work (envvar absent → box disabled). Per-suite revert is supported: `git revert <commit>` removes only that suite's `:test_isolated` task; other suites and legacy `rake test` remain functional. Spec: `docs/superpowers/specs/2026-05-21-test-harness-ruby-box-isolation-design.md`.
+Device-side logic tests run on a host `picoruby` VM via **picotest** (`picoruby/picoruby` の `picoruby-picotest`), not CRuby test-unit. Two-process model: a CRuby orchestrator extracts `app/application.rb` のクラス本体を取り出し、picoruby VM 上で assertion を実行する。
 
-**設計意図**: 「file A 変更が file B に影響しない」を discipline でなく **構造で機械的に保証**する。AI editor が cross-file 推論をする cognitive load を減らすことが第一目的。runtime correctness より「次に編集する AI が他 file の影響を読まなくて済む構造」を優先する。
+- 初回 / picoruby 更新後に host VM を build: `bundle exec rake picotest:build` (`MRUBY_CONFIG=picoruby-test` で `<picoruby tree>/build/host/bin/picoruby` を生成)。
+- device suite を実行: `bundle exec rake test` (= `picotest:run`)。`FILTER=<ファイル名部分文字列>` で絞れる (例 `FILTER=scservo`)。binary 未 build なら `picotest:run` が build 案内付きで abort。
+- device test は `test/device/*_test.rb` に `Picotest::Test` サブクラスとして置く。fakes (`test/fake_*.rb`)、stub prelude (`test/picotest/stubs.rb`: `Machine` カウンタ + `ILI9342::Color`)、抽出した application クラス、scservo gem source を harness (`test/picotest/harness.rb`) の `load_files` でこの順に VM へ注入してから各 test を load する。
+- `app/application.rb` は **monolithic のまま read-only 入力**。`RubyClassExtract.extract_to_file` (prism) が class/module 本体だけを切り出す (`class ... < BLE` と top-level cold-boot コードは除外)。split しない・コードを動かさない。
+- extractor 自体は CRuby-only tool で host 側でテスト: `bundle exec rake test:host` (`test-host/ruby_class_extract_test.rb`)。
+- picotest は test クラスごとに OS subprocess を spawn するので cross-file 隔離を構造的に保証する (撤去した Ruby::Box `test_isolated` harness の上位互換)。
+- Face geometry golden は canonical draw-call dump 文字列 (`spec/golden/face_<name>.dump`、SHA なし — PicoRuby に digest gem が無いため)。登録は `bundle exec rake face:register_golden FACE=<name>` または `face:register_all_goldens`。
+- `pc/` ツールは CRuby test-unit のまま (各々の `rake test`)。
 
-**Ruby::Box (Ruby 4.0) test 実装上の制約** (test_isolator/box_runner.rb で吸収済み):
-
-- `Test::Unit::TestCase.subclasses` は box-local — parent からは空、test 収集は **box 内で実行**必要
-- box 内 require 前に `$LOAD_PATH` を code-string API で注入 (gem 解決に必要)
-- 結果は box 内で収集して JSON-serialize で parent に戻す
-- `Test::Unit::UI::Console::TestRunner` の進行ドット出力は `$stdout = StringIO.new` + `ensure` で suppress
+Spec/plan: `docs/superpowers/specs/2026-06-17-picotest-native-test-migration-design.md`, `docs/superpowers/plans/2026-06-17-picotest-native-test-migration.md`。
 
 ### mrbgem pitfall (実機で詰まりがち)
 
@@ -210,7 +212,7 @@ Iteration cycle:
 
 | Step | Skill |
 |---|---|
-| edit + host test | `bundle exec rake test` |
+| edit + host test | `bundle exec rake test` (picotest, host VM) |
 | device iterate | `/stackchan-device-iterate` |
 | HITL face check | `/stackchan-device-face-verify FACE=...` |
 

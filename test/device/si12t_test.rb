@@ -1,9 +1,7 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
-require 'fake_i2c'
-
-# Si12T is inlined in app/application.rb; test_helper extracts it via prism AST.
-class Si12TTest < Test::Unit::TestCase
+# Si12T is inlined in app/application.rb; the picotest harness extracts it via
+# prism AST and loads it (plus FakeI2C from test/fake_i2c.rb) onto the host
+# picoruby VM. I2C hardware access is stubbed with FakeI2C.
+class Si12TTest < Picotest::Test
   def setup
     @i2c = FakeI2C.new
     @si  = Si12T.new(@i2c)
@@ -11,11 +9,12 @@ class Si12TTest < Test::Unit::TestCase
 
   def test_init_writes_enable_ctrl_and_sensitivity_registers
     w = @i2c.writes
-    (0x0A..0x0F).each { |reg| assert_includes w, [Si12T::ADDR, [reg, 0x00]] }
-    ctrl2 = w.select { |a, d| a == Si12T::ADDR && d[0] == 0x09 }.map { |_a, d| d[1] }
-    assert_equal [0x0F, 0x07], ctrl2, "Ctrl2 (0x09) must be written 0x0F then 0x07 in order"
-    assert_includes w, [Si12T::ADDR, [0x08, 0x22]]
-    (0x02..0x06).each { |reg| assert_includes w, [Si12T::ADDR, [reg, 0x33]] }
+    (0x0A..0x0F).each { |reg| assert(w.include?([Si12T::ADDR, [reg, 0x00]])) }
+    # Ctrl2 (0x09) must be written 0x0F then 0x07 in order.
+    ctrl2 = w.select { |e| e[0] == Si12T::ADDR && e[1][0] == 0x09 }.map { |e| e[1][1] }
+    assert_equal [0x0F, 0x07], ctrl2
+    assert(w.include?([Si12T::ADDR, [0x08, 0x22]]))
+    (0x02..0x06).each { |reg| assert(w.include?([Si12T::ADDR, [reg, 0x33]])) }
   end
 
   def test_read_zones_unpacks_two_bits_per_zone

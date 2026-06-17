@@ -1,0 +1,4 @@
+draw_rect|0,0,320,200,0,{fill:true}
+draw_ellipse|110,100,4,4,65535,{fill:true}
+draw_ellipse|210,100,4,4,65535,{fill:true}
+draw_rect|154,128,12,24,65535,{fill:true}

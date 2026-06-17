@@ -1,7 +1,4 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
-
-class FaceNeutralTest < Test::Unit::TestCase
+class FaceNeutralTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_neutral_draw_sequence
@@ -11,7 +8,7 @@ class FaceNeutralTest < Test::Unit::TestCase
   end
 end
 
-class FaceSadTest < Test::Unit::TestCase
+class FaceSadTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_sad_delta_y_is_negative_eight
@@ -25,7 +22,7 @@ class FaceSadTest < Test::Unit::TestCase
   end
 end
 
-class FaceAngryTest < Test::Unit::TestCase
+class FaceAngryTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_brow_constants
@@ -41,7 +38,7 @@ class FaceAngryTest < Test::Unit::TestCase
   end
 end
 
-class FaceClosedTest < Test::Unit::TestCase
+class FaceClosedTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_closed_face_draws_background_fill_and_horizontal_eyes_no_mouth
@@ -49,23 +46,21 @@ class FaceClosedTest < Test::Unit::TestCase
     # First call: face-region clear (top-anchored rect)
     assert_equal :draw_rect, @display.calls.first[0]
     # No draw_ellipse (open eyes) calls
-    refute(@display.calls.any? { |c| c[0] == :draw_ellipse },
-           "Closed face must not draw open ellipses")
+    assert_false(@display.calls.any? { |c| c[0] == :draw_ellipse })
     # Two draw_line calls for the horizontal closed eyes
     line_calls = @display.calls.select { |c| c[0] == :draw_line }
-    assert_equal 2, line_calls.length, "Closed face must draw exactly 2 lines (eyes only, no mouth)"
+    assert_equal 2, line_calls.length
   end
 end
 
-class BaseRedrawEyesClosedTest < Test::Unit::TestCase
+class BaseRedrawEyesClosedTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_base_redraw_eyes_closed_does_eye_only_update
     base = StackchanApp::Face::Base.new
     base.redraw_eyes_closed(@display)
     # No full-screen fill
-    refute(@display.calls.any? { |c| c[0] == :fill },
-           "redraw_eyes_closed must NOT do full-screen fill")
+    assert_false(@display.calls.any? { |c| c[0] == :fill })
     # clear_eye_region's draw_rect calls (2: one per eye region) + 2 draw_line eyes
     rect_calls = @display.calls.select { |c| c[0] == :draw_rect }
     line_calls = @display.calls.select { |c| c[0] == :draw_line }
