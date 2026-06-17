@@ -3,10 +3,14 @@ require_relative "lib/deploy/picomodem"
 require_relative "lib/deploy/shell_recovery"
 require 'rake/testtask'
 
+PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
+
 Rake::TestTask.new(:test) do |t|
   t.libs << 'lib'
   t.libs << 'test'
-  t.test_files = FileList['test/**/*_test.rb'].exclude('test/test_isolator/fixtures/**/*')
+  t.test_files = FileList['test/**/*_test.rb']
+    .exclude('test/test_isolator/fixtures/**/*')
+    .exclude('test/device/**/*')
   t.warning = false
 end
 
@@ -38,6 +42,22 @@ namespace :face do
     out = File.expand_path("spec/golden/face_#{name}.sha256", __dir__)
     File.write(out, sha + "\n")
     puts "[face:register_golden] wrote #{out} sha=#{sha}"
+  end
+end
+
+namespace :picotest do
+  desc "Build the host picoruby test VM (MRUBY_CONFIG=picoruby-test). One-time / after picoruby update."
+  task :build do
+    Dir.chdir(PICORUBY_ROOT) { sh "MRUBY_CONFIG=picoruby-test rake all" }
+  end
+
+  desc "Run the PicoRuby-native device suite (test/device/*_test.rb) on the host picoruby VM. FILTER=<substr> to scope."
+  task :run do
+    binary = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
+    abort "host picoruby not built: #{binary}\n  run: bundle exec rake picotest:build" unless File.executable?(binary)
+    $LOAD_PATH.unshift File.expand_path("test", __dir__)
+    require "picotest/harness"
+    exit(PicotestHarness.run(filter: ENV["FILTER"]) == 0 ? 0 : 1)
   end
 end
 
