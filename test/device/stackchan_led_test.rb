@@ -1,12 +1,10 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
 require 'fake_py32'
 
 # StackchanLed and StackchanLed::Animator are inlined into app/application.rb
 # (extracted from the now-archived picoruby-stackchan-led mrbgem). test_helper
 # loads their class bodies via RubyClassExtract, so they are available here as
 # plain host classes. PY32 hardware access is stubbed with FakePy32.
-class StackchanLedTest < Test::Unit::TestCase
+class StackchanLedTest < Picotest::Test
   def setup
     @py32 = FakePy32.new
     @led  = StackchanLed.new(@py32)
@@ -14,9 +12,9 @@ class StackchanLedTest < Test::Unit::TestCase
 
   def test_initialize_configures_data_pin_and_count
     names = @py32.calls.map(&:first)
-    assert_includes names, :set_direction
-    assert_includes names, :set_pull_mode
-    assert_includes names, :set_drive_mode
+    assert(names.include?(:set_direction))
+    assert(names.include?(:set_pull_mode))
+    assert(names.include?(:set_drive_mode))
     # set_led_count is called with the 12-pixel ring size.
     count_call = @py32.calls.find { |c| c.first == :set_led_count }
     assert_equal [StackchanLed::PIXEL_COUNT], count_call.last
@@ -75,8 +73,8 @@ class StackchanLedTest < Test::Unit::TestCase
   def test_show_refreshes_via_py32
     @led.show
     names = @py32.calls.map(&:first)
-    assert_includes names, :write_led_ram
-    assert_includes names, :refresh_leds
+    assert(names.include?(:write_led_ram))
+    assert(names.include?(:refresh_leds))
   end
 
   def test_clear_zeroes_buffer
@@ -113,7 +111,7 @@ class StackchanLedTest < Test::Unit::TestCase
   end
 end
 
-class StackchanLedAnimatorTest < Test::Unit::TestCase
+class StackchanLedAnimatorTest < Picotest::Test
   def setup
     @py32 = FakePy32.new
     @led  = StackchanLed.new(@py32)
@@ -179,6 +177,6 @@ class StackchanLedAnimatorTest < Test::Unit::TestCase
     @py32.calls.clear
     a.tick(1000)
     # Static modes don't re-push on tick.
-    assert_empty @py32.calls
+    assert(@py32.calls.empty?)
   end
 end
