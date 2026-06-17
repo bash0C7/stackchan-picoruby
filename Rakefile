@@ -1,25 +1,17 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
 require_relative "lib/deploy/picomodem"
 require_relative "lib/deploy/shell_recovery"
-require 'rake/testtask'
 
 PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
 
-Rake::TestTask.new(:test) do |t|
-  t.libs << 'lib'
-  t.libs << 'test'
-  t.test_files = FileList['test/**/*_test.rb']
-    .exclude('test/test_isolator/fixtures/**/*')
-    .exclude('test/device/**/*')
-  t.warning = false
-end
+desc "Run the PicoRuby-native device test suite (alias of picotest:run)"
+task :test => "picotest:run"
 
-desc "Run tests with Ruby::Box per-file isolation (RUBY_BOX=1)"
-task :test_isolated do
-  test_files = Dir["test/**/*_test.rb"].reject { |f| f.start_with?("test/test_isolator/fixtures/") }
-  abort "No test files found under test/" if test_files.empty?
-  runner = File.expand_path("lib/test_isolator/runner_main.rb", __dir__)
-  sh({"RUBY_BOX" => "1"}, "bundle", "exec", "ruby", "-I#{File.expand_path('lib', __dir__)}", "-Itest", runner, *test_files)
+namespace :test do
+  desc "Run CRuby-only host tests (RubyClassExtract extractor)"
+  task :host do
+    sh "bundle exec ruby -Ilib -Itest-host test-host/ruby_class_extract_test.rb"
+  end
 end
 
 # Load the application's Face classes + FakeDisplay into THIS CRuby process,
