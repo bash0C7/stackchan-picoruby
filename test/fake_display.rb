@@ -31,4 +31,9 @@ class FakeDisplay
     @calls << [:draw_rect, [x, y, w, h, color, { fill: fill }]]
     nil
   end
+
+  def draw_text(x, y, text, font: "go16", scale: 1, fg: 0xFFFF, bg: 0x0000)
+    @calls << [:draw_text, [x, y, text, { font: font, scale: scale, fg: fg, bg: bg }]]
+    nil
+  end
 end
