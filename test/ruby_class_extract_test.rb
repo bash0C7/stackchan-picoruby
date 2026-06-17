@@ -65,4 +65,29 @@ class RubyClassExtractTest < Test::Unit::TestCase
     assert defined?(Beacon), "class loaded from tempfile-extracted source"
     fix.unlink
   end
+
+  def test_extract_to_file_writes_class_bodies_without_executing_toplevel
+    src = Tempfile.new(["src", ".rb"])
+    src.write(<<~RUBY)
+      require 'nonexistent_gem'
+      puts "top-level side effect"
+      class Widget
+        def ping = :pong
+      end
+      class Secret < BLE
+      end
+    RUBY
+    src.close
+    out = Tempfile.new(["out", ".rb"])
+    out.close
+
+    returned = RubyClassExtract.extract_to_file(src.path, out.path, exclude_superclasses: %w[BLE])
+
+    assert_equal out.path, returned
+    written = File.read(out.path)
+    assert written.include?("class Widget")
+    refute written.include?("Secret"), "BLE-derived class should be excluded"
+    refute written.include?("nonexistent_gem"), "top-level require should be stripped"
+    refute written.include?("side effect"), "top-level code should be stripped"
+  end
 end
