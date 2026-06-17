@@ -208,6 +208,8 @@ module StackchanApp
     MOUTH_COLOR      = ILI9342::Color::WHITE
     BACKGROUND_COLOR = ILI9342::Color::BLACK
 
+    FACE_REGION_HEIGHT = 200   # rows 0..199; rows 200..239 are the subtitle band
+
     MOUTH_CX         = 160
     MOUTH_CY         = 140
     MOUTH_HALF_WIDTH = 25
@@ -241,7 +243,7 @@ module StackchanApp
       end
 
       def draw(display)
-        display.fill(BACKGROUND_COLOR)
+        display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
         draw_eyes(display)
         draw_mouth(display)
       end
@@ -362,7 +364,7 @@ module StackchanApp
       # Used as the "torque off" idle indicator. For blink animation use
       # Base#redraw_eyes_closed instead (eye-only, no flicker).
       def draw(display)
-        display.fill(BACKGROUND_COLOR)
+        display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
         draw_eyes(display)
         # No mouth — torque-off idle face is intentionally mouthless.
       end
@@ -455,6 +457,16 @@ module StackchanApp
       "B" => :both,
     }.freeze
 
+    # Bottom subtitle band: rows SUBTITLE_BAND_Y..239 of the 320x240 panel.
+    SUBTITLE_BAND_Y      = 200
+    SUBTITLE_BAND_HEIGHT = 40
+    SUBTITLE_FONT        = "go16"   # JIS X 0208 16px gothic
+    SUBTITLE_TEXT_Y      = 212      # vertical centering of the 16px glyph in the band
+    SUBTITLE_MARGIN_X    = 4
+    SUBTITLE_MAX_CHARS   = 19       # (320 - 2*4) / 16px per JIS glyph
+    SUBTITLE_FG          = ILI9342::Color::WHITE
+    SUBTITLE_BG          = ILI9342::Color::BLACK
+
     attr_reader :current_face_class
 
     def initialize(display:, led:, stdout: $stdout, head: nil)
@@ -480,6 +492,7 @@ module StackchanApp
       attempts = []
       attempts << handle_face(frame) if frame.key?("F")
       attempts << handle_led(frame)  if frame.key?("L")
+      attempts << handle_text(frame) if frame.key?("text")
       servo_present = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
       if servo_present
         success = handle_head(frame)
@@ -501,6 +514,18 @@ module StackchanApp
       return false unless face_class
       @current_face_class = face_class
       face_class.new.draw(@display)
+      true
+    end
+
+    def handle_text(frame)
+      text = frame["text"]
+      return false unless text
+      text = text[0, SUBTITLE_MAX_CHARS]
+      # Clear the band, then draw. draw_rect args: (x, y, w, h, color, fill:)
+      @display.draw_rect(0, SUBTITLE_BAND_Y, 320, SUBTITLE_BAND_HEIGHT,
+                         SUBTITLE_BG, fill: true)
+      @display.draw_text(SUBTITLE_MARGIN_X, SUBTITLE_TEXT_Y, text,
+                         font: SUBTITLE_FONT, fg: SUBTITLE_FG, bg: SUBTITLE_BG)
       true
     end
 

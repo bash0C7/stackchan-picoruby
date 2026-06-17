@@ -7,7 +7,7 @@ class FaceNeutralTest < Test::Unit::TestCase
   def test_neutral_draw_sequence
     StackchanApp::Face::Neutral.new.draw(@display)
     methods = @display.calls.map(&:first)
-    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
+    assert_equal [:draw_rect, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
   end
 end
 
@@ -37,7 +37,7 @@ class FaceAngryTest < Test::Unit::TestCase
   def test_angry_draw_sequence
     StackchanApp::Face::Angry.new.draw(@display)
     methods = @display.calls.map(&:first)
-    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
+    assert_equal [:draw_rect, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
   end
 end
 
@@ -46,8 +46,8 @@ class FaceClosedTest < Test::Unit::TestCase
 
   def test_closed_face_draws_background_fill_and_horizontal_eyes_no_mouth
     StackchanApp::Face::Closed.new.draw(@display)
-    # First call: full background fill
-    assert_equal :fill, @display.calls.first[0]
+    # First call: face-region clear (top-anchored rect)
+    assert_equal :draw_rect, @display.calls.first[0]
     # No draw_ellipse (open eyes) calls
     refute(@display.calls.any? { |c| c[0] == :draw_ellipse },
            "Closed face must not draw open ellipses")

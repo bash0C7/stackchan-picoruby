@@ -29,7 +29,7 @@ class DispatcherFaceTest < Test::Unit::TestCase
   def test_F_5_draws_angry_with_brows
     @disp.handle({ "F" => "5" })
     methods = @display.calls.map(&:first)
-    assert_equal [:fill, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
+    assert_equal [:draw_rect, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
   end
 
   def test_F_known_writes_ack_dot
