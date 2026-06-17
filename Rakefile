@@ -57,7 +57,7 @@ namespace :picotest do
     abort "host picoruby not built: #{binary}\n  run: bundle exec rake picotest:build" unless File.executable?(binary)
     $LOAD_PATH.unshift File.expand_path("test", __dir__)
     require "picotest/harness"
-    exit(PicotestHarness.run(filter: ENV["FILTER"]) == 0 ? 0 : 1)
+    exit PicotestHarness.run(filter: ENV["FILTER"])
   end
 end
 

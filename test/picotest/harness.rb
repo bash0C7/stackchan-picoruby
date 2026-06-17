@@ -7,7 +7,7 @@ module PicotestHarness
   REPO_ROOT     = File.expand_path("../..", __dir__) # test/picotest -> repo root
   PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
   APPLICATION_RB = File.join(REPO_ROOT, "app", "application.rb")
-  SCSERVO_RB     = "/Users/bash/dev/src/github.com/bash0C7/picoruby-scservo/mrblib/scservo.rb"
+  SCSERVO_RB     = ENV["SCSERVO_RB"] || "/Users/bash/dev/src/github.com/bash0C7/picoruby-scservo/mrblib/scservo.rb"
   TEST_DIR       = File.join(REPO_ROOT, "test", "device")
   STUBS_RB       = File.join(REPO_ROOT, "test", "picotest", "stubs.rb")
   FACE_GOLDEN_HASH_RB = File.join(REPO_ROOT, "test", "face_golden_hash.rb")
