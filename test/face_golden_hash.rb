@@ -22,6 +22,7 @@ module FaceGoldenHash
     parts = args.map do |a|
       case a
       when Hash
+        # sort_by is unavailable on PicoRuby — use sort with an explicit comparator
         "{" + a.to_a.sort { |x, y| x[0].to_s <=> y[0].to_s }.map { |k, v| "#{k}:#{v}" }.join(",") + "}"
       else
         a.to_s

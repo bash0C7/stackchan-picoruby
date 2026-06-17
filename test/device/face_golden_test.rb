@@ -6,7 +6,7 @@
 # HITL calibration validates visual correctness once, then the dump locks
 # the geometry for all future regression runs.
 class FaceGoldenTest < Picotest::Test
-  GOLDEN_DIR = File.expand_path("../../spec/golden", File.dirname(__FILE__))
+  GOLDEN_DIR = File.expand_path("../../spec/golden", File.dirname(__FILE__)) # __dir__ is unavailable on PicoRuby — use File.dirname(__FILE__)
 
   FACE_CASES = FaceGoldenHash::FACE_CASES
 
