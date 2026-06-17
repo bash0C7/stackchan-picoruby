@@ -1,7 +1,4 @@
-$LOAD_PATH.unshift(File.expand_path('.', __dir__))
-require 'test_helper'
-
-class HeadTest < Test::Unit::TestCase
+class HeadTest < Picotest::Test
   class FakeServo
     attr_reader :writes
     attr_accessor :next_read
@@ -19,17 +16,17 @@ class HeadTest < Test::Unit::TestCase
   def test_apply_with_Y_only_writes_yaw_holds_pitch
     @head.apply(yaw_raw: 500)
     assert_equal [[500, 0, 0]], @yaw.writes
-    assert_empty @pitch.writes
+    assert(@pitch.writes.empty?)
   end
 
   def test_apply_with_P_only_writes_pitch_holds_yaw
     @head.apply(pitch_raw: 500)
-    assert_empty @yaw.writes
+    assert(@yaw.writes.empty?)
     assert_equal [[500, 0, 0]], @pitch.writes
   end
 
   def test_apply_with_T_overrides_V
-    omit "obsolete: T/V protocol logic moved to Dispatcher frame parsing in Task 10"
+    skip "obsolete: T/V protocol logic moved to Dispatcher frame parsing in Task 10"
   end
 
   def test_apply_with_V_only_uses_velocity
@@ -43,19 +40,19 @@ class HeadTest < Test::Unit::TestCase
   end
 
   def test_apply_clamps_yaw_above_max
-    omit "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
+    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
   end
 
   def test_apply_clamps_yaw_below_min
-    omit "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
+    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
   end
 
   def test_apply_clamps_pitch_above_max
-    omit "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
+    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
   end
 
   def test_apply_clamps_pitch_below_min
-    omit "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
+    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
   end
 
   def test_read_actual_returns_both_axes
