@@ -26,7 +26,9 @@ module StackchanNotifier
 
     def initialize(ts:, client_factory:, logger: nil, handlers: nil,
                    backoff: DEFAULT_BACKOFF, sleep_fn: ->(s) { sleep(s) },
-                   restore_sleep_fn: ->(s) { sleep(s) })
+                   restore_sleep_fn: ->(s) { sleep(s) },
+                   on_unsolicited: nil, keepalive_interval: nil,
+                   keepalive_frame: "<ping:1>\n")
       @ts               = ts
       @client_factory   = client_factory
       @logger           = logger
@@ -41,11 +43,17 @@ module StackchanNotifier
       @gatt_cache_trap_count  = 0
       @gatt_cache_trap_logged = false
       @shutdown_during_drain  = false
+      @on_unsolicited     = on_unsolicited
+      @keepalive_interval = keepalive_interval
+      @keepalive_frame    = keepalive_frame
+      @keepalive_thread   = nil
+      @keepalive_running  = false
     end
 
     def start
       raise Error, "worker already started" if @thread
       @thread = Thread.new { run_loop }
+      start_keepalive
       self
     end
 
@@ -56,6 +64,7 @@ module StackchanNotifier
       joined = @thread.join(timeout)
       log(:warn, "worker thread did not exit within #{timeout}s") unless joined
       @thread = nil
+      stop_keepalive
       self
     end
 
@@ -110,6 +119,7 @@ module StackchanNotifier
           fresh = @client_factory.call
           fresh.connect
           @client = fresh
+          fresh.on_unsolicited = @on_unsolicited if @on_unsolicited && fresh.respond_to?(:on_unsolicited=)
           @connect_attempt        = 0
           @gatt_cache_trap_count  = 0
           @gatt_cache_trap_logged = false
@@ -246,6 +256,25 @@ module StackchanNotifier
       log(:debug, "disconnect (best-effort) raised: #{e.class}: #{e.message}")
     ensure
       @client = nil
+    end
+
+    def start_keepalive
+      return unless @keepalive_interval
+      @keepalive_running = true
+      @keepalive_thread = Thread.new do
+        while @keepalive_running
+          sleep @keepalive_interval
+          break unless @keepalive_running
+          @ts.write([:cmd, :raw, { frame: @keepalive_frame }])
+        end
+      end
+    end
+
+    def stop_keepalive
+      @keepalive_running = false
+      t = @keepalive_thread
+      t.join(1) if t
+      @keepalive_thread = nil
     end
 
     def log(level, msg)

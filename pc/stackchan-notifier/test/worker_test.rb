@@ -181,6 +181,46 @@ class WorkerPendingRetryTest < Test::Unit::TestCase
   end
 end
 
+class WorkerOnUnsolicitedAndKeepaliveTest < Test::Unit::TestCase
+  class FakeClient
+    attr_accessor :on_unsolicited
+    def connect; self; end
+    def disconnect; self; end
+  end
+
+  class RecordingTS
+    attr_reader :written
+    def initialize; @written = []; end
+    def write(tuple); @written << tuple; tuple; end
+    def take(_p); sleep 0.05; raise "unused"; end
+    def take_nonblocking(_p); raise Rinda::RequestExpiredError; end
+  end
+
+  def test_fresh_client_gets_on_unsolicited_applied
+    fake = FakeClient.new
+    cb = ->(frame) {}
+    w = StackchanNotifier::Worker.new(
+      ts: RecordingTS.new, client_factory: -> { fake }, logger: nil,
+      on_unsolicited: cb,
+    )
+    w.send(:ensure_connected)
+    assert_equal cb, fake.on_unsolicited
+  end
+
+  def test_keepalive_thread_writes_ping_tuple
+    ts = RecordingTS.new
+    w = StackchanNotifier::Worker.new(
+      ts: ts, client_factory: -> { FakeClient.new }, logger: nil,
+      keepalive_interval: 0.02, keepalive_frame: "<ping:1>\n",
+    )
+    w.send(:start_keepalive)
+    sleep 0.1
+    w.send(:stop_keepalive)
+    assert(ts.written.any? { |t| t == [:cmd, :raw, { frame: "<ping:1>\n" }] },
+           "keep-alive must write a [:cmd, :raw, {frame:'<ping:1>\\n'}] tuple")
+  end
+end
+
 class WorkerDrainSentinelPriorityTest < Test::Unit::TestCase
   def setup
     @ts = StackchanNotifier::TupleSpace4Ractor.new
