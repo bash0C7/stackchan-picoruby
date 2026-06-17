@@ -24,7 +24,7 @@ module RubyClassExtract
   end
 
   def extract_to_file(path, out_path, exclude_superclasses: [])
-    File.write(out_path, extract_source_from(path, exclude_superclasses: exclude_superclasses) + "\n")
+    File.write(out_path, extract_source_from(path, exclude_superclasses: exclude_superclasses) + "\n") # trailing newline so the emitted file ends cleanly
     out_path
   end
 

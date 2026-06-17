@@ -89,5 +89,7 @@ class RubyClassExtractTest < Test::Unit::TestCase
     refute written.include?("Secret"), "BLE-derived class should be excluded"
     refute written.include?("nonexistent_gem"), "top-level require should be stripped"
     refute written.include?("side effect"), "top-level code should be stripped"
+    src.unlink
+    out.unlink
   end
 end
