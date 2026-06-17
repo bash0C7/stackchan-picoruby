@@ -171,3 +171,33 @@ class DaemonTest < Test::Unit::TestCase
     end
   end
 end
+
+class DaemonAiTouchWiringTest < Test::Unit::TestCase
+  def test_ai_touch_disabled_by_default_has_no_react_handler
+    d = StackchanNotifier::Daemon.new(
+      opts:           { socket: "/tmp/test-ai-touch-#{Process.pid}.sock", device_name: "Test", name_prefix: nil, log_level: "error" },
+      client_factory: -> { nil },
+      logger:         Logger.new(File.open(File::NULL, "w")),
+      ai_touch:       false,
+    )
+    handlers = d.send(:build_handlers)
+    refute handlers.key?(:react_touch)
+  end
+
+  def test_build_touch_unsolicited_writes_react_tuple_for_touch_frame
+    d = StackchanNotifier::Daemon.new(
+      opts:           { socket: "/tmp/test-ai-touch-#{Process.pid}.sock", device_name: "Test", name_prefix: nil, log_level: "error" },
+      client_factory: -> { nil },
+      logger:         Logger.new(File.open(File::NULL, "w")),
+      ai_touch:       false,
+    )
+    written = []
+    ts = Object.new
+    ts.define_singleton_method(:write) { |t| written << t }
+    cb = d.send(:build_touch_unsolicited, ts)
+    cb.call("<touch:2>\n")
+    assert_equal [[:cmd, :react_touch, { zone: 2 }]], written
+    cb.call(".\n")
+    assert_equal [[:cmd, :react_touch, { zone: 2 }]], written
+  end
+end

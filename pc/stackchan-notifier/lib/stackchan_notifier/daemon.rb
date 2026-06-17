@@ -4,6 +4,7 @@ require "fileutils"
 require "drb/drb"
 require "drb/unix"
 require "stackchan_ble_client"
+require "stackchan_ble_client/frame_codec"
 
 require_relative "../stackchan_notifier"
 require_relative "tuple_space4ractor"
@@ -56,7 +57,7 @@ module StackchanNotifier
 
     attr_reader :opts, :ts, :worker
 
-    def initialize(opts:, client_factory: nil, logger: nil, ts: nil)
+    def initialize(opts:, client_factory: nil, logger: nil, ts: nil, ai_touch: nil)
       @opts            = opts
       @logger          = logger || build_logger(opts[:log_level])
       @client_factory  = client_factory || default_client_factory(opts)
@@ -65,6 +66,7 @@ module StackchanNotifier
       @stopped         = false
       @stop_mutex      = Mutex.new
       @stop_cv         = ConditionVariable.new
+      @ai_touch        = ai_touch.nil? ? (ENV["STACKCHAN_AI_TOUCH"] == "1") : ai_touch
     end
 
     def start
@@ -74,9 +76,12 @@ module StackchanNotifier
       DRb.start_service(drb_uri, @ts)
       File.chmod(0o600, socket_path) if File.exist?(socket_path)
       @worker = Worker.new(
-        ts:             @ts,
-        client_factory: @client_factory,
-        logger:         @logger,
+        ts:                 @ts,
+        client_factory:     @client_factory,
+        logger:             @logger,
+        handlers:           build_handlers,
+        on_unsolicited:     (@ai_touch ? build_touch_unsolicited(@ts) : nil),
+        keepalive_interval: (@ai_touch ? 10.0 : nil),
       ).start
       @started = true
       @logger.info("stackchan-notifier-daemon: listening on #{drb_uri}")
@@ -131,6 +136,25 @@ module StackchanNotifier
     end
 
     private
+
+    def build_handlers
+      return Worker::DEFAULT_HANDLERS unless @ai_touch
+      require "foundation_model_mac"
+      require "stackchan_notifier/handlers/touch_reaction_handler"
+      session = AppleFoundationModel::Session.new(
+        instructions: Handlers::TouchReactionHandler::PERSONA
+      )
+      Worker::DEFAULT_HANDLERS.merge(
+        react_touch: Handlers::TouchReactionHandler.new(session: session)
+      )
+    end
+
+    def build_touch_unsolicited(ts)
+      lambda do |frame|
+        zone = StackchanBleClient::FrameCodec.parse_touch(frame)
+        ts.write([:cmd, :react_touch, { zone: zone }]) if zone
+      end
+    end
 
     def cleanup_stale_socket
       return unless File.exist?(socket_path)
