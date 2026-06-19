@@ -799,6 +799,89 @@ module StackchanApp
   end
 end
 
+# ==========================================
+# === StackchanApp::AudioReceiver class ====
+# ==========================================
+module StackchanApp
+  # Mac->device lo-fi audio receiver. Decouples the length-prefixed mu-law
+  # stream from the BLE peripheral so the routing/accumulation logic is
+  # host-testable under picotest (the BLE class itself is excluded from
+  # extraction). Pure orchestration: the parser and Speaker are injected.
+  #
+  # Protocol: a `<A:N>` control frame announces an N-byte mu-law clip; the
+  # subsequent raw RX bytes (NOT frame-parsed) are accumulated until N is
+  # reached, then the clip is decoded + played (blocking) via the Speaker and
+  # the I2S DOUT is parked at silence. The Mac sends `<A:N>` as its own write,
+  # so audio bytes never share a chunk with it; any post-count remainder in a
+  # chunk is routed back through the parser defensively.
+  class AudioReceiver
+    # 0.05s of silence (400 LE-16 zero samples @ 8kHz) appended after each clip
+    # to park the I2S DOUT at zero, avoiding a DMA-underrun buzz on the idle amp.
+    SILENCE_TAIL = ("\x00" * 800)
+
+    def initialize(speaker:, parser:)
+      @speaker   = speaker
+      @parser    = parser
+      @remaining = 0
+      @buf       = ""
+    end
+
+    def receiving?
+      @remaining > 0
+    end
+
+    # Consume one RX chunk. Yields each non-audio frame to the block. Returns
+    # the number of clips that finished playing during this chunk (0 or more).
+    def consume(rx_data, &on_frame)
+      if @remaining > 0
+        take = @remaining < rx_data.bytesize ? @remaining : rx_data.bytesize
+        @buf << rx_data.byteslice(0, take)
+        @remaining -= take
+        done = 0
+        if @remaining == 0
+          play_current
+          done = 1
+        end
+        if take < rx_data.bytesize
+          route(rx_data.byteslice(take, rx_data.bytesize - take), &on_frame)
+        end
+        done
+      else
+        route(rx_data, &on_frame)
+        0
+      end
+    end
+
+    private
+
+    # Parse `data` as frames: `<A:N>` enters audio mode, everything else is
+    # yielded to the caller.
+    def route(data, &on_frame)
+      @parser.feed(data).each do |frame|
+        if frame.key?("A")
+          begin_audio(frame["A"].to_i)
+        else
+          on_frame.call(frame)
+        end
+      end
+    end
+
+    def begin_audio(nbytes)
+      return if @speaker.nil? || nbytes <= 0
+      @remaining = nbytes
+      @buf = ""
+    end
+
+    def play_current
+      ulaw = @buf
+      @buf = ""
+      return if @speaker.nil?
+      @speaker.play_ulaw(ulaw)
+      @speaker.i2s.write(SILENCE_TAIL) if @speaker.i2s
+    end
+  end
+end
+
 # [2] cold-boot init — pinch-perfect copy of app.rb's init block (Phase 2
 # bring-up smoke v13-aw9523-p0). Order is critical; see CLAUDE.md
 # "CoreS3 cold-boot 初期化シーケンス" section for the why behind each I2C write.
@@ -1015,18 +1098,12 @@ class StackChanApp < BLE
   NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
   NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
-  # 0.05s of silence (400 LE-16 zero samples @ 8kHz) written after each clip to
-  # park the I2S DOUT at zero, avoiding a DMA-underrun buzz on the idle amp.
-  SILENCE_TAIL = ("\x00" * 800).freeze
-
   def initialize(display:, led:, head: nil, touch: nil, speaker: nil)
     @display = display
     @led     = led
     @head    = head
     @touch   = touch
     @speaker = speaker
-    @audio_remaining = 0
-    @audio_buf = ""
     @adv_data = build_adv_data
     db = build_gatt_database
     @db = db
@@ -1035,6 +1112,7 @@ class StackChanApp < BLE
     @tx_cccd_handle = nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION)
     @notify_enabled = false
     @parser = StackchanProtocol::FrameParser.new
+    @audio = StackchanApp::AudioReceiver.new(speaker: speaker, parser: @parser)
     @notify_queue = []
     @dispatcher = StackchanApp::Dispatcher.new(
       display: @display, led: @led, head: @head, stdout: self
@@ -1140,59 +1218,14 @@ class StackChanApp < BLE
     end
   end
 
-  # Route one RX chunk. In audio mode, accumulate raw mu-law until the announced
-  # byte count is reached, then play. Otherwise parse frames. The Mac sends the
-  # <A:N> control frame as its own write, so audio bytes never share a chunk with
-  # it; any post-count remainder is fed back to the parser defensively.
+  # Route one RX chunk through the audio receiver: it accumulates raw mu-law
+  # after a <A:N> control frame and plays (blocking) on completion, and yields
+  # every non-audio frame back here for the dispatcher. Blocking playback during
+  # the BLE poll is fine — the Mac is idle by then and a sentence plays in
+  # ~1-3s (< the ~15-20s idle-disconnect window). One <A:done> ACK per clip.
   def consume_rx(rx_data)
-    if @audio_remaining > 0
-      take = @audio_remaining < rx_data.bytesize ? @audio_remaining : rx_data.bytesize
-      @audio_buf << rx_data.byteslice(0, take)
-      @audio_remaining -= take
-      finish_audio if @audio_remaining == 0
-      if take < rx_data.bytesize
-        feed_frames(rx_data.byteslice(take, rx_data.bytesize - take))
-      end
-    else
-      feed_frames(rx_data)
-    end
-  end
-
-  def feed_frames(data)
-    @parser.feed(data).each do |frame|
-      if frame.key?("A")
-        begin_audio(frame["A"].to_i)
-      else
-        @dispatcher.handle(frame)
-      end
-    end
-  end
-
-  # Enter audio receive mode for an `nbytes` mu-law clip. No speaker -> drop.
-  def begin_audio(nbytes)
-    if @speaker.nil? || nbytes <= 0
-      puts "[application] audio frame ignored (speaker=#{!@speaker.nil?}, n=#{nbytes})"
-      return
-    end
-    puts "[application] audio rx begin: #{nbytes} bytes"
-    @audio_remaining = nbytes
-    @audio_buf = ""
-  end
-
-  # Whole clip received: blocking decode+play, park DOUT at silence, ACK done.
-  # Playback blocks the BLE poll loop for the clip duration; that is fine — the
-  # Mac is idle by then and a sentence plays in ~1-3s (< the ~15-20s idle drop).
-  def finish_audio
-    ulaw = @audio_buf
-    @audio_buf = ""
-    puts "[application] audio rx complete: #{ulaw.bytesize} bytes — playing"
-    begin
-      @speaker.play_ulaw(ulaw)
-      @speaker.i2s.write(SILENCE_TAIL)
-    rescue => e
-      puts "[application] audio play error: #{e.class}: #{e.message}"
-    end
-    write("<A:done>\n")
+    done = @audio.consume(rx_data) { |frame| @dispatcher.handle(frame) }
+    done.times { write("<A:done>\n") }
   end
 
   def flush_one_frame
