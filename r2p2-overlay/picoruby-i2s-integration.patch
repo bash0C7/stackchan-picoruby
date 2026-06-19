@@ -1,8 +1,16 @@
 diff --git a/components/picoruby-esp32/CMakeLists.txt b/components/picoruby-esp32/CMakeLists.txt
-index 30be17f..77d881f 100644
+index 30be17f..f21bdba 100644
 --- a/components/picoruby-esp32/CMakeLists.txt
 +++ b/components/picoruby-esp32/CMakeLists.txt
-@@ -105,6 +105,7 @@ idf_component_register(
+@@ -85,6 +85,7 @@ idf_component_register(
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-require/ports/esp32/platform.c
++    /Users/bash/dev/src/github.com/bash0C7/picoruby-i2s/ports/esp32/i2s.c
+   INCLUDE_DIRS
+     ${COMPONENT_DIR}
+     ${COMPONENT_DIR}/picoruby/include
+@@ -105,6 +106,7 @@ idf_component_register(
      esp_driver_ledc
      esp_driver_rmt
      esp_driver_i2c
