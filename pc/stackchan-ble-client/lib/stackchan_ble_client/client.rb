@@ -79,6 +79,17 @@ module StackchanBleClient
       raise ConnectionError, "#{e.class}: #{e.message}"
     end
 
+    # Negotiated maximum write-without-response payload (CoreBluetooth
+    # maximumWriteValueLength). Lets callers size payloads to the real MTU
+    # instead of the 20-byte ATT-23 floor. macOS as central typically
+    # negotiates a larger MTU, so this can be ~180+ bytes.
+    def max_write_chunk
+      raise ConnectionError, "not connected" unless @peripheral
+      @peripheral.max_write_length(response: false)
+    rescue CoreBluetoothMac::Error => e
+      raise ConnectionError, "#{e.class}: #{e.message}"
+    end
+
     # Pop the next non-touch frame the device notified (e.g. a `<rx:...>`
     # throughput summary), or nil on timeout. The reader thread routes
     # non-touch frames into the inbox.

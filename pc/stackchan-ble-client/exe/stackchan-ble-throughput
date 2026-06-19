@@ -27,8 +27,8 @@ GO_THRESHOLD_KB_S = 8.0   # spec §3 / §6.4: 8 kHz/8-bit mu-law real-time rate.
 device_name  = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
 name_prefix  = "StackChan"
 window_secs  = 10.0
-payload_size = 20         # CoreBluetooth default ATT MTU 23 -> 20-byte payload.
-pace_ms      = 0          # inter-write sleep; 0 = as fast as possible.
+payload_size = nil        # nil = use negotiated maximumWriteValueLength (MTU).
+pace_ms      = 0          # inter-write sleep; 0 = as fast as the link allows.
 
 OptionParser.new do |o|
   o.banner = "Usage: stackchan-ble-throughput [options]"
@@ -66,7 +66,9 @@ client = StackchanBleClient::Client.new(device_name: device_name, name_prefix: n
 begin
   puts "[throughput] connecting to #{name_prefix.inspect} ..."
   client.connect
-  puts "[throughput] connected. MTU: unknown via CoreBluetooth (assuming default ATT 23 -> #{payload_size}B payload)"
+  negotiated = client.max_write_chunk
+  payload_size ||= negotiated
+  puts "[throughput] connected. negotiated maximumWriteValueLength=#{negotiated}B -> #{payload_size}B payload"
 
   # Wait for notify to come up and capture a baseline (device counters are
   # cumulative since boot; the device emits a summary ~1/s once subscribed).
@@ -129,9 +131,10 @@ begin
   if goodput >= GO_THRESHOLD_KB_S
     puts "  VERDICT: GO — BLE carries lo-fi audio at >= #{GO_THRESHOLD_KB_S} KB/s (spec §6.4)."
   else
-    puts "  VERDICT: BELOW THRESHOLD — likely cap-4 array + ~1s poll bottleneck."
-    puts "           -> Rework (ble-lofi-audio-channel: FIFO + de-gated drain) then re-measure,"
-    puts "              unless the bottleneck is radio/MTU (then Pivot transport). See spec §6.4."
+    puts "  VERDICT: BELOW THRESHOLD — with Mac flow-control + negotiated MTU and a"
+    puts "           per-poll device drain, a remaining shortfall points at the"
+    puts "           picoruby-ble fork (BTstack ACL buffer depth / poll cadence) or"
+    puts "           radio/MTU. See spec §6.4 before any §0-weight fork change."
   end
 
   exit EXIT_OK
