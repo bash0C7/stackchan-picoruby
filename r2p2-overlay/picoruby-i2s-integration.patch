@@ -1,0 +1,25 @@
+diff --git a/components/picoruby-esp32/CMakeLists.txt b/components/picoruby-esp32/CMakeLists.txt
+index 30be17f..77d881f 100644
+--- a/components/picoruby-esp32/CMakeLists.txt
++++ b/components/picoruby-esp32/CMakeLists.txt
+@@ -105,6 +105,7 @@ idf_component_register(
+     esp_driver_ledc
+     esp_driver_rmt
+     esp_driver_i2c
++    esp_driver_i2s
+     esp_adc
+     esp_timer
+     esp_hw_support
+diff --git a/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb b/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb
+index eb39a21..0bfac68 100644
+--- a/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb
++++ b/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb
+@@ -76,6 +76,8 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
+   conf.gem github: 'bash0C7/picoruby-py32-io-expander',   branch: 'v0.1.0'
+   conf.gem github: 'bash0C7/picoruby-stackchan-protocol', branch: 'v0.1.0'
+   conf.gem github: 'bash0C7/picoruby-scservo',            branch: 'v0.1.0'
++  # Phase 4 Spike A: generic I2S TX binding (esp_driver_i2s). Local path until pushed.
++  conf.gem gemdir: '/Users/bash/dev/src/github.com/bash0C7/picoruby-i2s'
+ 
+   # others
+   conf.gem core: 'picoruby-rmt'

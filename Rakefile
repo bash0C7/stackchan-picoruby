@@ -177,10 +177,55 @@ def ensure_no_concurrent_monitor
         "then retry. If stale: kill #{pids.join(' ')}"
 end
 
+# R2P2-ESP32 integration overlay. The stackchan-picoruby project needs two
+# deltas in the shared R2P2-ESP32 fork to build picoruby-i2s: a build_config gem
+# registration and an esp_driver_i2s PRIV_REQUIRES line in picoruby-esp32's
+# CMakeLists. Rather than committing those into the shared fork (which would bury
+# the intent and risk drifting from upstream — memory
+# shared-commons-no-casual-picoruby-r2p2-edits), we keep them as a patch under
+# r2p2-overlay/ and apply it ONLY around a build, reverting afterward so the fork
+# working tree stays clean. Idempotent: re-apply detects an already-applied
+# patch (reverse-check) and a build interrupted before the ensure-revert is
+# normalized on the next apply.
+R2P2_OVERLAY_PATCH = File.expand_path('r2p2-overlay/picoruby-i2s-integration.patch', __dir__)
+
+def r2p2_overlay_applied?
+  return false unless File.exist?(R2P2_OVERLAY_PATCH)
+  system("git -C #{R2P2_ROOT} apply --reverse --check #{R2P2_OVERLAY_PATCH} >/dev/null 2>&1")
+end
+
+def apply_r2p2_overlay
+  unless File.exist?(R2P2_OVERLAY_PATCH)
+    abort "[overlay] patch missing: #{R2P2_OVERLAY_PATCH}"
+  end
+  if r2p2_overlay_applied?
+    puts "[overlay] already applied — skipping"
+    return
+  end
+  sh "git -C #{R2P2_ROOT} apply #{R2P2_OVERLAY_PATCH}"
+  puts "[overlay] applied picoruby-i2s integration patch to R2P2-ESP32"
+end
+
+def revert_r2p2_overlay
+  return unless r2p2_overlay_applied?
+  sh "git -C #{R2P2_ROOT} apply --reverse #{R2P2_OVERLAY_PATCH}"
+  puts "[overlay] reverted — R2P2-ESP32 working tree clean"
+end
+
+# Apply the integration overlay for the duration of a build, then always revert.
+def with_r2p2_overlay
+  apply_r2p2_overlay
+  yield
+ensure
+  revert_r2p2_overlay
+end
+
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup do
-    in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
+    with_r2p2_overlay do
+      in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
+    end
   end
 
   desc 'rm libmruby.a so the next build forces picoruby rake to recompile all gems (catches mrblib/*.rb changes that idf.py build silently ignores)'
@@ -196,7 +241,9 @@ namespace :r2p2 do
   desc "build with CoreS3 sdkconfig (QUAD PSRAM + 16MB flash, VM=mruby)"
   task :build do
     ensure_sdkconfig_fresh
-    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
+    with_r2p2_overlay do
+      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
+    end
   end
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
@@ -211,7 +258,9 @@ namespace :r2p2 do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     port = espport
-    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
+    with_r2p2_overlay do
+      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
+    end
   end
 
   desc 'idf.py monitor (HUMAN USE ONLY — claude code Bash has no TTY)'
@@ -329,7 +378,9 @@ namespace :r2p2 do
     abort "picorbc produced no output at #{mrb_dest}" unless File.exist?(mrb_dest)
     puts "[build_flash_appmrb] baked #{src_path} -> #{mrb_dest} (#{File.size(mrb_dest)} bytes)"
     port = espport
-    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
+    with_r2p2_overlay do
+      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
+    end
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src_path)} (baked into littlefs /home/app.mrb) flashed. esptool hard-reset will autostart it."
   end
 
