@@ -246,6 +246,73 @@ class Si12T
   end
 end
 
+# StackChan speaker: AW88298 amp (over the system I2C bus) + I2S sample out
+# (via the standalone picoruby-i2s gem's I2S class). Pure-Ruby orchestration here;
+# only the generic I2S TX is C. mu-law decode + amp-register builder are host-tested.
+class Speaker
+  ULAW_BIAS    = 0x84
+  AW88298_ADDR = 0x36
+  # M5Unified rate table for AW88298 reg 0x06 (M5Unified.cpp:_speaker_enabled_cb_cores3).
+  AW_RATE_TBL  = [4, 5, 6, 8, 10, 11, 15, 20, 22, 44]
+
+  # ITU G.711: one 8-bit mu-law code -> signed 16-bit linear sample.
+  def self.ulaw_byte_to_linear(byte)
+    u = (~byte) & 0xFF
+    t = ((u & 0x0F) << 3) + ULAW_BIAS
+    t = t << ((u & 0x70) >> 4)
+    (u & 0x80) != 0 ? (ULAW_BIAS - t) : (t - ULAW_BIAS)
+  end
+
+  # Decode a mu-law byte string to a little-endian signed-16 PCM byte string.
+  def self.ulaw_decode(ulaw)
+    out = ""
+    ulaw.each_byte do |b|
+      v = ulaw_byte_to_linear(b) & 0xFFFF
+      out << (v & 0xFF).chr
+      out << ((v >> 8) & 0xFF).chr
+    end
+    out
+  end
+
+  # AW88298 reg 0x06 value for a sample rate (M5Unified formula).
+  def self.aw88298_reg06(sample_rate)
+    rate = (sample_rate + 1102) / 2205
+    idx = 0
+    while rate > AW_RATE_TBL[idx]
+      idx += 1
+      break if idx >= AW_RATE_TBL.length
+    end
+    idx = AW_RATE_TBL.length - 1 if idx >= AW_RATE_TBL.length
+    idx | 0x14C0
+  end
+
+  # Ordered AW88298 init writes as [reg, hi, lo] (16-bit big-endian) triples.
+  def self.aw88298_init_writes(sample_rate)
+    [[0x61, 0x0673], [0x04, 0x4040], [0x05, 0x0008],
+     [0x06, aw88298_reg06(sample_rate)], [0x0C, 0x0064]].map do |reg, val|
+      [reg, (val >> 8) & 0xFF, val & 0xFF]
+    end
+  end
+
+  def initialize(i2c:, i2s:)
+    @i2c = i2c
+    @i2s = i2s
+  end
+  attr_reader :i2c, :i2s
+
+  # Power/enable the amp over I2C (AW9523 ResetAw88298 hardware reset is done at cold-boot).
+  def init_amp(sample_rate)
+    self.class.aw88298_init_writes(sample_rate).each do |reg, hi, lo|
+      @i2c.write(AW88298_ADDR, reg, hi, lo)
+    end
+  end
+
+  # Decode a mu-law clip and push it to the I2S TX.
+  def play_ulaw(ulaw)
+    @i2s.write(self.class.ulaw_decode(ulaw))
+  end
+end
+
 # [1] 5-second escape hatch. If a previous app.mrb crash-loops the device,
 # this window lets a human reach the R2P2 shell and `rm /home/app.mrb` to
 # recover. Phase 2 used 2s which was borderline — Phase 3 raises it to 5s.

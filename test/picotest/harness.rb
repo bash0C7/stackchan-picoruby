@@ -46,6 +46,7 @@ module PicotestHarness
         File.join(REPO_ROOT, "test", "fake_py32.rb"),
         File.join(REPO_ROOT, "test", "fake_uart.rb"),
         File.join(REPO_ROOT, "test", "fake_i2c.rb"),
+        File.join(REPO_ROOT, "test", "fake_i2s.rb"),
         SCSERVO_RB,
       ],
     ).run
