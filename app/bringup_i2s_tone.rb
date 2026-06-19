@@ -157,8 +157,11 @@ def square_pcm(freq_hz, ms, amp, rate)
   out
 end
 
-# Square wave as a mu-law byte string: 0x00 = max-negative, 0x80 = max-positive.
-# Decoding this through Speaker.ulaw_decode exercises the full mu-law path.
+# Square wave as a mu-law byte string. Uses low-amplitude codes
+# (0xE7 -> +260, 0x67 -> -260 via G.711 decode) rather than full-scale
+# 0x00/0x80 (+/-32124), so the clip is ~42 dB quieter while still exercising the
+# full mu-law decode path. (HITL 2026-06-19: full-scale, then +/-1980, both too
+# loud — dropped to +/-260.)
 def square_ulaw(freq_hz, ms, rate)
   total = rate * ms / 1000
   half  = rate / (freq_hz * 2)
@@ -166,7 +169,7 @@ def square_ulaw(freq_hz, ms, rate)
   out = ""
   i = 0
   while i < total
-    out << ((((i / half) % 2) == 0) ? "\x00" : "\x80")
+    out << ((((i / half) % 2) == 0) ? "\xE7" : "\x67")
     i += 1
   end
   out
@@ -282,8 +285,9 @@ spk.init_amp(SAMPLE_RATE)
 puts "[bringup-i2s] amp init done; playing tone sweep @ #{SAMPLE_RATE} Hz"
 
 # Descending beep sweep — three distinct tones, ~300 ms each.
+# amp 300/32767 (~ -41 dBFS) — HITL 2026-06-19: 8000 then 2000 still too loud.
 [880, 660, 440].each do |f|
-  i2s.write(square_pcm(f, 300, 8000, SAMPLE_RATE))
+  i2s.write(square_pcm(f, 300, 300, SAMPLE_RATE))
   Machine.delay_ms(60)
 end
 puts "[bringup-i2s] tone sweep done; playing mu-law clip"
