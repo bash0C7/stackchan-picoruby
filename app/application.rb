@@ -19,6 +19,7 @@ require 'py32-io-expander'
 require 'stackchan-protocol'
 require 'scservo'
 require 'ble'
+require 'i2s'
 
 # === StackchanLed (inlined from picoruby-stackchan-led sibling mrbgem) ===
 # 12-pixel WS2812 ring driven via PY32IOExpander. Left/right halves
@@ -968,6 +969,20 @@ if @head
   end
 end
 
+# Speaker — AW88298 amp (system I2C bus) + I2S TX @ 8 kHz (picoruby-i2s, SoC
+# GPIO13 DOUT; Spike A proved no WS2812 contention). Audio is decoration, so a
+# failure must NOT block face/LED/BLE — keep @speaker=nil and the app stays live.
+SPEAKER_SAMPLE_RATE = 8000
+@speaker = nil
+begin
+  speaker_i2s = I2S.new(sample_rate: SPEAKER_SAMPLE_RATE)
+  @speaker = Speaker.new(i2c: i2c, i2s: speaker_i2s)
+  @speaker.init_amp(SPEAKER_SAMPLE_RATE)
+  puts "[boot] speaker init OK (AW88298 @ 0x36 + I2S @ #{SPEAKER_SAMPLE_RATE}Hz)"
+rescue => e
+  puts "[boot] speaker init failed: #{e.class}: #{e.message}"
+end
+
 # Cold-boot self-test removed 2026-05-21 — protocol now exposes
 # <selftest:run> for on-demand UART round-trip check, and the cold-boot
 # face/servo state (Face::Closed + torque OFF) is itself the idle indicator
@@ -1000,11 +1015,18 @@ class StackChanApp < BLE
   NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
   NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
-  def initialize(display:, led:, head: nil, touch: nil)
+  # 0.05s of silence (400 LE-16 zero samples @ 8kHz) written after each clip to
+  # park the I2S DOUT at zero, avoiding a DMA-underrun buzz on the idle amp.
+  SILENCE_TAIL = ("\x00" * 800).freeze
+
+  def initialize(display:, led:, head: nil, touch: nil, speaker: nil)
     @display = display
     @led     = led
     @head    = head
     @touch   = touch
+    @speaker = speaker
+    @audio_remaining = 0
+    @audio_buf = ""
     @adv_data = build_adv_data
     db = build_gatt_database
     @db = db
@@ -1077,12 +1099,11 @@ class StackChanApp < BLE
 
   def heartbeat_callback
     puts "[application] heartbeat"
-    # NUS RX drain
+    # NUS RX drain — routes raw audio (after a <A:N> control frame) to the
+    # speaker, everything else through the frame parser to the dispatcher.
     rx_data = pop_write_value(@rx_handle)
     while rx_data
-      @parser.feed(rx_data).each do |frame|
-        @dispatcher.handle(frame)
-      end
+      consume_rx(rx_data)
       rx_data = pop_write_value(@rx_handle)
     end
     # CCCD subscribe state
@@ -1119,6 +1140,61 @@ class StackChanApp < BLE
     end
   end
 
+  # Route one RX chunk. In audio mode, accumulate raw mu-law until the announced
+  # byte count is reached, then play. Otherwise parse frames. The Mac sends the
+  # <A:N> control frame as its own write, so audio bytes never share a chunk with
+  # it; any post-count remainder is fed back to the parser defensively.
+  def consume_rx(rx_data)
+    if @audio_remaining > 0
+      take = @audio_remaining < rx_data.bytesize ? @audio_remaining : rx_data.bytesize
+      @audio_buf << rx_data.byteslice(0, take)
+      @audio_remaining -= take
+      finish_audio if @audio_remaining == 0
+      if take < rx_data.bytesize
+        feed_frames(rx_data.byteslice(take, rx_data.bytesize - take))
+      end
+    else
+      feed_frames(rx_data)
+    end
+  end
+
+  def feed_frames(data)
+    @parser.feed(data).each do |frame|
+      if frame.key?("A")
+        begin_audio(frame["A"].to_i)
+      else
+        @dispatcher.handle(frame)
+      end
+    end
+  end
+
+  # Enter audio receive mode for an `nbytes` mu-law clip. No speaker -> drop.
+  def begin_audio(nbytes)
+    if @speaker.nil? || nbytes <= 0
+      puts "[application] audio frame ignored (speaker=#{!@speaker.nil?}, n=#{nbytes})"
+      return
+    end
+    puts "[application] audio rx begin: #{nbytes} bytes"
+    @audio_remaining = nbytes
+    @audio_buf = ""
+  end
+
+  # Whole clip received: blocking decode+play, park DOUT at silence, ACK done.
+  # Playback blocks the BLE poll loop for the clip duration; that is fine — the
+  # Mac is idle by then and a sentence plays in ~1-3s (< the ~15-20s idle drop).
+  def finish_audio
+    ulaw = @audio_buf
+    @audio_buf = ""
+    puts "[application] audio rx complete: #{ulaw.bytesize} bytes — playing"
+    begin
+      @speaker.play_ulaw(ulaw)
+      @speaker.i2s.write(SILENCE_TAIL)
+    rescue => e
+      puts "[application] audio play error: #{e.class}: #{e.message}"
+    end
+    write("<A:done>\n")
+  end
+
   def flush_one_frame
     return if @notify_queue.empty?
     frame = @notify_queue.shift
@@ -1138,7 +1214,7 @@ end
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
 puts "[application] BLE peripheral starting (infinite advertise)"
-peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch)
+peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch, speaker: @speaker)
 peri.debug = true
 # Run the BTstack run loop indefinitely (start with no timeout). An active
 # central connection is therefore never force-dropped.

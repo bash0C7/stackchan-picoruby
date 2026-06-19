@@ -1,0 +1,12 @@
+source "https://rubygems.org"
+
+# Worktree paths: this tool depends on the worktree copy of stackchan-ble-client
+# (which carries Client#max_write_chunk + the flow-controlled write path) and the
+# rb-corebluetooth-mac build with write-without-response flow control.
+gem "stackchan_ble_client", path: "/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/.claude/worktrees/phase0-lcd-response-text/pc/stackchan-ble-client"
+gem "rb-corebluetooth-mac", path: "/Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac"
+
+group :test do
+  gem "test-unit"
+  gem "rake"
+end

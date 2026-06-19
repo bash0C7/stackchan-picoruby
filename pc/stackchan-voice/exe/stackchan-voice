@@ -1,0 +1,77 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Phase 4 production: make the device speak with its own voice.
+#   text -> macOS say -> 8 kHz mono mu-law -> BLE stream -> device I2S/AW88298.
+#
+# Usage:
+#   bundle exec ruby exe/stackchan-voice [--voice NAME] [--gain G] \
+#       [--device NAME] [--name-prefix PRE] [--pcm-out FILE] "しゃべる文章"
+#
+# --gain (0.0..1.0, default 0.3) scales PCM before mu-law encode = loudness.
+# --pcm-out writes the intermediate 8 kHz PCM to a file for offline inspection
+#   and does NOT connect/stream (dry run of the encode path).
+
+require "bundler/setup"
+require "optparse"
+require "stackchan_ble_client"
+
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+require "stackchan_voice"
+
+voice       = nil
+gain        = StackchanVoice::Tts::DEFAULT_GAIN
+device_name = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
+name_prefix = "StackChan"
+pcm_out     = nil
+
+OptionParser.new do |o|
+  o.banner = "Usage: stackchan-voice [options] TEXT"
+  o.on("--voice NAME")      { |v| voice       = v }
+  o.on("--gain G")          { |v| gain        = Float(v) }
+  o.on("--device NAME")     { |v| device_name = v }
+  o.on("--name-prefix PRE") { |v| name_prefix = v }
+  o.on("--pcm-out FILE")    { |v| pcm_out     = v }
+end.parse!(ARGV)
+
+text = ARGV.join(" ").strip
+if text.empty?
+  warn "error: no text to speak"
+  exit 2
+end
+
+tts = StackchanVoice::Tts.new(voice: voice, gain: gain)
+
+# Dry run: just synthesize and dump the PCM, no BLE.
+if pcm_out
+  pcm = tts.synthesize_pcm(text)
+  File.binwrite(pcm_out, pcm)
+  ulaw_bytes = StackchanVoice::Ulaw.encode_pcm(pcm, gain: gain).bytesize
+  secs = (pcm.bytesize / 2) / 8000.0
+  puts "[voice] dry run: #{pcm.bytesize} PCM bytes (#{secs.round(2)}s @ 8kHz), " \
+       "#{ulaw_bytes} mu-law bytes -> #{pcm_out}"
+  exit 0
+end
+
+client = StackchanBleClient::Client.new(device_name: device_name, name_prefix: name_prefix)
+begin
+  puts "[voice] connecting to #{name_prefix.inspect} ..."
+  client.connect
+  puts "[voice] connected (MTU chunk=#{client.max_write_chunk}B). synthesizing ..."
+  ulaw = tts.synthesize(text)
+  secs = ulaw.bytesize / 8000.0
+  puts "[voice] streaming #{ulaw.bytesize} mu-law bytes (#{secs.round(2)}s) at gain=#{gain} ..."
+  StackchanVoice::Streamer.new(client).stream(ulaw)
+  puts "[voice] streamed. waiting for device <A:done> ..."
+  done = client.read_frame(timeout: secs + 5.0)
+  puts(done ? "[voice] device reported: #{done.strip}" : "[voice] (no <A:done> within timeout)")
+rescue StackchanBleClient::ConnectionError => e
+  warn "[voice] connection error: #{e.message}"
+  exit 4
+ensure
+  begin
+    client.disconnect
+  rescue StandardError
+    # best-effort
+  end
+end
