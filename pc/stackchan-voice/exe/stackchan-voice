@@ -63,7 +63,11 @@ begin
   puts "[voice] streaming #{ulaw.bytesize} mu-law bytes (#{secs.round(2)}s) at gain=#{gain} ..."
   StackchanVoice::Streamer.new(client).stream(ulaw)
   puts "[voice] streamed. waiting for device <A:done> ..."
-  done = client.read_frame(timeout: secs + 5.0)
+  # The device blocks ~secs in the synchronous I2S write during play_ulaw, and
+  # only emits <A:done> after playback completes. The wall-clock to ACK is
+  # therefore stream(~secs) + drain latency + playback(~secs), so the wait must
+  # cover roughly 2*secs plus heartbeat-drain slack, not secs+5.
+  done = client.read_frame(timeout: secs * 2 + 8.0)
   puts(done ? "[voice] device reported: #{done.strip}" : "[voice] (no <A:done> within timeout)")
 rescue StackchanBleClient::ConnectionError => e
   warn "[voice] connection error: #{e.message}"

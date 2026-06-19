@@ -15,7 +15,7 @@ module StackchanVoice
   class Tts
     class SynthError < StandardError; end
 
-    DEFAULT_GAIN = 0.3   # Spike A HITL: full-scale is too loud on the 1W speaker.
+    DEFAULT_GAIN = 0.1   # HITL 2026-06-19: 0.3 was far too loud on the 1W speaker (the bring-up tone was ~0.37 full-scale and painful); tune up per-run with --gain.
 
     def initialize(voice: nil, gain: DEFAULT_GAIN)
       @voice = voice
