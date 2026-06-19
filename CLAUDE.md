@@ -130,8 +130,8 @@ Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-pro
 
 Device-side logic tests run on a host `picoruby` VM via **picotest** (`picoruby/picoruby` の `picoruby-picotest`), not CRuby test-unit. Two-process model: a CRuby orchestrator extracts `app/application.rb` のクラス本体を取り出し、picoruby VM 上で assertion を実行する。
 
-- 初回 / picoruby 更新後に host VM を build: `bundle exec rake picotest:build` (`MRUBY_CONFIG=picoruby-test` で `<picoruby tree>/build/host/bin/picoruby` を生成)。
-- device suite を実行: `bundle exec rake test` (= `picotest:run`)。`FILTER=<ファイル名部分文字列>` で絞れる (例 `FILTER=scservo`)。binary 未 build なら `picotest:run` が build 案内付きで abort。
+- device suite を実行: `bundle exec rake test` (= `picotest:run`)。`FILTER=<ファイル名部分文字列>` で絞れる (例 `FILTER=scservo`)。host VM の binary が無ければ `picotest:run` の prerequisite (`picotest:ensure_vm`) が初回だけ自動 build する (`MRUBY_CONFIG=picoruby-test` で `<picoruby tree>/build/host/bin/picoruby` を生成)。
+- picoruby 更新後に host VM を強制再 build: `bundle exec rake picotest:build`。picoruby tree (`PICORUBY_ROOT`) が無ければ案内付きで abort する (自動 clone はしない)。
 - device test は `test/device/*_test.rb` に `Picotest::Test` サブクラスとして置く。fakes (`test/fake_*.rb`)、stub prelude (`test/picotest/stubs.rb`: `Machine` カウンタ + `ILI9342::Color`)、抽出した application クラス、scservo gem source を harness (`test/picotest/harness.rb`) の `load_files` でこの順に VM へ注入してから各 test を load する。
 - `app/application.rb` は **monolithic のまま read-only 入力**。`RubyClassExtract.extract_to_file` (prism) が class/module 本体だけを切り出す (`class ... < BLE` と top-level cold-boot コードは除外)。split しない・コードを動かさない。
 - extractor 自体は CRuby-only tool で host 側でテスト: `bundle exec rake test:host` (`test-host/ruby_class_extract_test.rb`)。
