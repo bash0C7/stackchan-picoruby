@@ -3,6 +3,7 @@ require_relative "lib/deploy/picomodem"
 require_relative "lib/deploy/shell_recovery"
 
 PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
+PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
 
 desc "Run the PicoRuby-native device test suite (alias of picotest:run)"
 task :test => "picotest:run"
@@ -53,15 +54,21 @@ namespace :face do
 end
 
 namespace :picotest do
-  desc "Build the host picoruby test VM (MRUBY_CONFIG=picoruby-test). One-time / after picoruby update."
+  desc "Force-build the host picoruby test VM (MRUBY_CONFIG=picoruby-test). Run after a picoruby update."
   task :build do
+    abort "picoruby tree not found: #{PICORUBY_ROOT}\n  set PICORUBY_ROOT, or clone picoruby/picoruby there." unless File.directory?(PICORUBY_ROOT)
     Dir.chdir(PICORUBY_ROOT) { sh "MRUBY_CONFIG=picoruby-test rake all" }
   end
 
+  # Prerequisite for :run — builds the VM only when the binary is missing, so
+  # `rake test` is self-bootstrapping on a fresh checkout. `picotest:build`
+  # stays the explicit force-rebuild path after a picoruby update.
+  task :ensure_vm do
+    Rake::Task["picotest:build"].invoke unless File.executable?(PICORUBY_VM)
+  end
+
   desc "Run the PicoRuby-native device suite (test/device/*_test.rb) on the host picoruby VM. FILTER=<substr> to scope."
-  task :run do
-    binary = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
-    abort "host picoruby not built: #{binary}\n  run: bundle exec rake picotest:build" unless File.executable?(binary)
+  task :run => :ensure_vm do
     $LOAD_PATH.unshift File.expand_path("test", __dir__)
     require "picotest/harness"
     exit PicotestHarness.run(filter: ENV["FILTER"])
