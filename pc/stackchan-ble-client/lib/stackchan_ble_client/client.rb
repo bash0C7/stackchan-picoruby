@@ -67,6 +67,26 @@ module StackchanBleClient
       self
     end
 
+    # Raw write to the NUS RX characteristic WITHOUT waiting for an ACK frame.
+    # Used by the ble-throughput spike to push payloads as fast as the link
+    # allows; the device counts them and reports a periodic summary instead of
+    # ACKing each one. (send/raw_send block on an ACK and are unsuitable here.)
+    def write_without_ack(payload)
+      raise ConnectionError, "not connected" unless @subscription
+      @rx_char.write_without_response(payload)
+      self
+    rescue CoreBluetoothMac::Error => e
+      raise ConnectionError, "#{e.class}: #{e.message}"
+    end
+
+    # Pop the next non-touch frame the device notified (e.g. a `<rx:...>`
+    # throughput summary), or nil on timeout. The reader thread routes
+    # non-touch frames into the inbox.
+    def read_frame(timeout: 2.0)
+      raise ConnectionError, "not connected" unless @inbox
+      @inbox.pop(timeout: timeout)
+    end
+
     def disconnect
       stop_reader
       @tx_char&.unsubscribe

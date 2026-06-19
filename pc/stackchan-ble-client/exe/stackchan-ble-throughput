@@ -1,0 +1,150 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Phase 4 Spike B runner: measure sustained Mac->device BLE goodput + loss.
+#
+# Pairs with the device-side app/bringup_ble_rx_meter.rb. Connects, writes
+# sequenced fixed-size payloads (write-without-response, no ACK wait) as fast as
+# the link allows for a fixed window, then reads the device's `<rx:...>` summary
+# notifications to compute received goodput (KiB/s) and packet loss. Prints the
+# §6.4 decision-matrix verdict against the >=8 KB/s threshold.
+#
+# Usage:
+#   bundle exec exe/stackchan-ble-throughput [--window SECS] [--payload-size N] [--pace-ms MS]
+
+require "bundler/setup"
+require "optparse"
+require "stackchan_ble_client"
+require "stackchan_ble_client/throughput_meter"
+
+EXIT_OK         = 0
+EXIT_TIMEOUT    = 3
+EXIT_CONNECTION = 4
+EXIT_NO_SUMMARY = 8
+
+GO_THRESHOLD_KB_S = 8.0   # spec §3 / §6.4: 8 kHz/8-bit mu-law real-time rate.
+
+device_name  = ENV.fetch("BLE_DEVICE_NAME", "StackChan-PicoRuby")
+name_prefix  = "StackChan"
+window_secs  = 10.0
+payload_size = 20         # CoreBluetooth default ATT MTU 23 -> 20-byte payload.
+pace_ms      = 0          # inter-write sleep; 0 = as fast as possible.
+
+OptionParser.new do |o|
+  o.banner = "Usage: stackchan-ble-throughput [options]"
+  o.on("--device NAME")      { |v| device_name  = v }
+  o.on("--name-prefix PRE")  { |v| name_prefix  = v }
+  o.on("--window SECS")      { |v| window_secs  = Float(v) }
+  o.on("--payload-size N")   { |v| payload_size = Integer(v, 10) }
+  o.on("--pace-ms MS")       { |v| pace_ms      = Integer(v, 10) }
+end.parse!(ARGV)
+
+def now
+  Process.clock_gettime(Process::CLOCK_MONOTONIC)
+end
+
+# Parse a device summary frame: <rx:pkts=P,bytes=B,gaps=G,last=S>
+def parse_rx(frame)
+  return nil unless frame =~ /pkts=(\d+),bytes=(\d+),gaps=(\d+),last=(-?\d+)/
+  { pkts: $1.to_i, bytes: $2.to_i, gaps: $3.to_i, last: $4.to_i }
+end
+
+# Drain frames until one parses as an rx summary, or timeout elapses.
+def next_rx_summary(client, deadline)
+  loop do
+    remaining = deadline - now
+    return nil if remaining <= 0
+    frame = client.read_frame(timeout: [remaining, 1.0].min)
+    next if frame.nil?
+    s = parse_rx(frame)
+    return s if s
+  end
+end
+
+client = StackchanBleClient::Client.new(device_name: device_name, name_prefix: name_prefix)
+
+begin
+  puts "[throughput] connecting to #{name_prefix.inspect} ..."
+  client.connect
+  puts "[throughput] connected. MTU: unknown via CoreBluetooth (assuming default ATT 23 -> #{payload_size}B payload)"
+
+  # Wait for notify to come up and capture a baseline (device counters are
+  # cumulative since boot; the device emits a summary ~1/s once subscribed).
+  puts "[throughput] waiting for device baseline summary (notify enable ~1s) ..."
+  baseline = next_rx_summary(client, now + 6.0)
+  if baseline.nil?
+    warn "[throughput] no <rx:...> summary — notify not enabled / wrong app on device?"
+    exit EXIT_NO_SUMMARY
+  end
+  puts "[throughput] baseline: pkts=#{baseline[:pkts]} bytes=#{baseline[:bytes]}"
+
+  filler = "A" * (payload_size - 1)
+  meter  = StackchanBleClient::ThroughputMeter.new
+  sent_pkts = 0
+  pace_s = pace_ms / 1000.0
+
+  puts "[throughput] writing #{payload_size}B payloads for #{window_secs}s ..."
+  start = now
+  seq = 0
+  while now - start < window_secs
+    payload = (seq & 0xFF).chr + filler
+    begin
+      client.write_without_ack(payload)
+    rescue StackchanBleClient::ConnectionError => e
+      warn "[throughput] write failed mid-window: #{e.message}"
+      break
+    end
+    meter.record(payload)
+    sent_pkts += 1
+    seq += 1
+    sleep pace_s if pace_ms > 0
+  end
+  elapsed = now - start
+  puts "[throughput] write window done: sent #{sent_pkts} pkts / #{meter.bytes} bytes in #{elapsed.round(2)}s"
+
+  # Let the device drain the cap-4 array + emit fresh summaries, then take the
+  # latest one as the final cumulative count.
+  puts "[throughput] draining device summaries (3s) ..."
+  final = baseline
+  drain_deadline = now + 3.0
+  while (s = next_rx_summary(client, drain_deadline))
+    final = s
+  end
+
+  recv_pkts  = final[:pkts]  - baseline[:pkts]
+  recv_bytes = final[:bytes] - baseline[:bytes]
+  loss_pkts  = sent_pkts - recv_pkts
+  loss_pct   = sent_pkts.zero? ? 0.0 : (loss_pkts * 100.0 / sent_pkts)
+  offered    = meter.kib_per_s(elapsed)              # Mac send rate (KiB/s)
+  goodput    = (recv_bytes / 1024.0) / elapsed       # device receive rate (KiB/s)
+
+  puts ""
+  puts "==== Spike B result (Mac -> device) ===="
+  puts "  offered load (Mac send) : #{offered.round(2)} KiB/s (#{sent_pkts} pkts)"
+  puts "  device goodput (recv)   : #{goodput.round(2)} KiB/s (#{recv_pkts} pkts, #{recv_bytes} bytes)"
+  puts "  packet loss             : #{loss_pkts} pkts (#{loss_pct.round(1)}%)"
+  puts "  device-side seq gaps    : #{final[:gaps] - baseline[:gaps]}"
+  puts "  threshold (go)          : #{GO_THRESHOLD_KB_S} KB/s"
+  puts ""
+  if goodput >= GO_THRESHOLD_KB_S
+    puts "  VERDICT: GO — BLE carries lo-fi audio at >= #{GO_THRESHOLD_KB_S} KB/s (spec §6.4)."
+  else
+    puts "  VERDICT: BELOW THRESHOLD — likely cap-4 array + ~1s poll bottleneck."
+    puts "           -> Rework (ble-lofi-audio-channel: FIFO + de-gated drain) then re-measure,"
+    puts "              unless the bottleneck is radio/MTU (then Pivot transport). See spec §6.4."
+  end
+
+  exit EXIT_OK
+rescue StackchanBleClient::ConnectionError => e
+  warn "[throughput] connection error: #{e.message}"
+  exit EXIT_CONNECTION
+rescue StackchanBleClient::TimeoutError => e
+  warn "[throughput] timeout: #{e.message}"
+  exit EXIT_TIMEOUT
+ensure
+  begin
+    client.disconnect
+  rescue StandardError
+    # best-effort
+  end
+end
