@@ -6,6 +6,7 @@ require_relative "stackchan_ble_client/frame_codec"
 require_relative "stackchan_ble_client/send_builder"
 require_relative "stackchan_ble_client/client"
 require_relative "stackchan_ble_client/calibration"
+require_relative "stackchan_ble_client/throughput_meter"
 
 module StackchanBleClient
   class Error < StandardError; end
