@@ -22,6 +22,15 @@ module Stackchan
     # device-visible side effect) at half the idle window.
     KEEPALIVE_INTERVAL_S = 7.0
 
+    # Si12T 3-zone capacitive head-touch maps the raw zone index 0..2 to
+     # a human-readable label that the AI companion can ground its replies on.
+     # Mapping is provisional — verify against the physical sensor layout.
+    TOUCH_ZONE_LABELS = {
+      0 => "頭のうしろ",
+      1 => "右側",
+      2 => "左側",
+    }.freeze
+
     def initialize(device_name: DEFAULT_DEVICE_NAME, name_prefix: DEFAULT_NAME_PREFIX, socket_path: DEFAULT_SOCKET_PATH)
       @device_name      = device_name
       @name_prefix      = name_prefix
@@ -36,6 +45,8 @@ module Stackchan
       @stop_mutex       = Mutex.new
       @stop_cv          = ConditionVariable.new
       @stopped          = false
+      @robot_state      = { last_face: nil, last_say: nil, last_heard: nil, last_action: nil, last_action_at: nil }
+      @state_mutex      = Mutex.new
     end
 
     attr_reader :socket_path
@@ -107,20 +118,33 @@ module Stackchan
         @ble.raw_send(subtitle_frame)
         Stackchan::Voice::Streamer.new(@ble).stream(ulaw)
       end
+      record_action(:say, text, last_say: text)
     end
 
-    def chat(text, speak: true)
+    def chat(text, speak: true, touch_zone: nil)
       @ai_session ||= Stackchan::AI::Companion.new(@ble)
-      reply = with_ble { @ai_session.respond(text) }
+      ctx = robot_state_snapshot
+      ctx[:touch_zone] = touch_zone if touch_zone
+      ctx[:touch_zone_label] = TOUCH_ZONE_LABELS[touch_zone] if touch_zone
+      reply = with_ble { @ai_session.respond(text, context: ctx) }
+      record_action(:chat, text, last_heard: text)
       say(reply) if speak && reply
       reply
     end
 
-    def face(name); with_ble { @display.face(name) }; end
-    def led(side:, color:, mode:); with_ble { @display.led(side: side, color: color, mode: mode) }; end
-    def servo(**kwargs); with_ble { @display.servo(**kwargs) }; end
-    def torque(on); with_ble { @display.torque(on) }; end
-    def selftest; with_ble { @display.selftest }; end
+    def face(name); with_ble { @display.face(name) }; record_action(:face, name, last_face: name); end
+    def led(side:, color:, mode:); with_ble { @display.led(side: side, color: color, mode: mode) }; record_action(:led, "#{side} #{color} #{mode}"); end
+    def servo(**kwargs); with_ble { @display.servo(**kwargs) }; record_action(:servo, kwargs.inspect); end
+    def torque(on); with_ble { @display.torque(on) }; record_action(:torque, on ? "on" : "off"); end
+    def selftest; with_ble { @display.selftest }; record_action(:selftest, nil); end
+
+    def robot_state_snapshot
+      @state_mutex.synchronize { @robot_state.dup }
+    end
+
+    def touch_zone_label(zone)
+      TOUCH_ZONE_LABELS[zone]
+    end
 
     def raw_send(frame)
       payload = frame.end_with?("\n") ? frame : "#{frame}\n"
@@ -144,6 +168,14 @@ module Stackchan
     end
 
     private
+
+    def record_action(action, detail, extras = {})
+      @state_mutex.synchronize do
+        @robot_state[:last_action]    = action.to_s
+        @robot_state[:last_action_at] = Time.now
+        @robot_state.merge!(extras)
+      end
+    end
 
     # Wrap every BLE-touching call under a single mutex + activity timestamp,
     # so the keep-alive thread and user verbs don't race on send/recv state.

@@ -45,6 +45,7 @@ bundle exec exe/stackchan <verb> [args]
 | 「正面合わせ」「キャリブレーション」 | `stackchan calibrate --align-only` |
 | 「サーボ調整しなおし」 | `stackchan calibrate --samples 5 --format ruby` (5 ポーズ + 定数出力) |
 | 「ad-hoc に frame 投げたい」 | `stackchan raw "<frame>"` |
+| 「お披露目して」「いろんな動きを見せて」 | `stackchan demo` (10秒の発話+表情+サーボ+LED連続変化 → 「タッチしてみて」発話 → touch 待ち受け) |
 
 ## 翻訳の判断軸
 
@@ -59,6 +60,18 @@ bundle exec exe/stackchan <verb> [args]
 - **GATT cache trap**: macOS は CoreBluetooth で GATT structure を peripheral address ごとに**永続キャッシュ**。一度「0 services」が cache されると Bluetooth module reset でもクリアされず、device が正しい services を advertise しても Mac 側は 0 services のまま見続ける。Mac 側開発と並行して **iPhone nRF Connect 等の外部 scanner で device の GATT を必ず検証**して、Mac の cache 状態と device-side bug を切り分ける。
 - **GAP/GATT filter**: Apple (Mac/iOS) は `CBPeripheral.discoverServices(nil)` の結果から GAP (0x1800) と GATT (0x1801) を**自動 filter**して返す。0x2A00 (Device Name characteristic) を探す道は塞がれてるので、device 名は **scan response advertisement の name** から取る。application-level services のみが discovered list に出る前提で書く。
 - **Device name 切り詰め**: Mac CoreBluetooth は long device name の suffix を切り詰め/cache する。base name を短く固定し、`--name-prefix` で prefix match する設計が安全 (epoch suffix で個体識別する design は機能しない)。
+
+## AI コンテキスト
+
+`stackchan chat` は daemon の `@robot_state` を AI prompt に折り込んでいる。状態の中身:
+
+- `last_face`: 直前に出した表情
+- `last_say`: 自分が直前に話した内容
+- `last_heard`: 相手から直前に聞いた話 (chat の input)
+- `last_action` + `last_action_at`: 直前の行動と何秒前か
+- `touch_zone` / `touch_zone_label`: タッチされた場合の zone と物理位置ラベル
+
+`touch listen --react` は zone 番号でなく `Stackchan::Daemon::TOUCH_ZONE_LABELS` で人間可読な位置 (例: 「右側」) に変換してから chat に渡している。**zone → 物理位置の対応は暫定**、device の Si12T が実際にどの ic_pad を z0/z1/z2 に割り当てているか実機検証で確定する必要あり。
 
 ## Wire format quirks
 

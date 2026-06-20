@@ -107,6 +107,14 @@ bundle exec exe/stackchan chat "おはよう"          # Apple Foundation Model 
 bundle exec exe/stackchan stop                     # explicit: tear the link down
 ```
 
+### Demo
+
+```bash
+bundle exec exe/stackchan demo                     # 10s of speak + face + servo + LED → "tap me!" → touch listen with AI reactions
+bundle exec exe/stackchan demo --duration 5        # custom length
+bundle exec exe/stackchan demo --no-listen         # do not chain into touch listen
+```
+
 ### Interactive servo console
 
 `stackchan tui` — interactive servo TUI with short commands

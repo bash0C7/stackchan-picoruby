@@ -6,7 +6,7 @@ require_relative "daemon"
 
 module Stackchan
   class CLI
-    VERBS = %w[connect status stop say chat face led servo torque selftest calibrate touch tui raw].freeze
+    VERBS = %w[connect status stop say chat face led servo torque selftest calibrate touch tui raw demo].freeze
 
     # status is a passive observer — never auto-spawns the daemon.
     # Every other verb implicitly establishes the link if missing.
@@ -77,6 +77,7 @@ module Stackchan
       when "raw"     then @daemon.raw_send(args.join(" "))
       when "calibrate" then return verb_calibrate(args)
       when "tui"     then verb_tui
+      when "demo"    then verb_demo(args)
       else return self.class.usage
       end
       0
@@ -128,7 +129,12 @@ module Stackchan
       react = args.delete("--react")
       @daemon.subscribe_touch do |event|
         puts event.inspect
-        @daemon.chat("頭を触られた (zone=#{event[:zone]})") if react
+        if react
+          zone = event[:zone]
+          label = @daemon.touch_zone_label(zone)
+          prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
+          @daemon.chat(prompt, touch_zone: zone)
+        end
       end
     end
 
@@ -169,6 +175,23 @@ module Stackchan
     def verb_tui
       require_relative "tui"
       Stackchan::TUI::Runner.new(@daemon).run
+    end
+
+    def verb_demo(args)
+      require_relative "demo"
+      opts = parse_kw(args)
+      duration = opts["duration"]&.to_f || Stackchan::Demo::DEFAULT_DURATION_S
+      no_listen = args.include?("--no-listen")
+      Stackchan::Demo::Runner.new(@daemon).run(duration: duration)
+      return if no_listen
+      puts "[demo] listening for touch (Ctrl-C to exit)..."
+      @daemon.subscribe_touch do |event|
+        puts event.inspect
+        zone = event[:zone]
+        label = @daemon.touch_zone_label(zone)
+        prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
+        @daemon.chat(prompt, touch_zone: zone)
+      end
     end
 
     def parse_kw(args)
