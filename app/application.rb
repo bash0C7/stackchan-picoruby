@@ -815,9 +815,14 @@ module StackchanApp
   # so audio bytes never share a chunk with it; any post-count remainder in a
   # chunk is routed back through the parser defensively.
   class AudioReceiver
-    # 0.05s of silence (400 LE-16 zero samples @ 8kHz) appended after each clip
-    # to park the I2S DOUT at zero, avoiding a DMA-underrun buzz on the idle amp.
-    SILENCE_TAIL = ("\x00" * 800)
+    # 0.2s of silence (1600 LE-16 zero samples @ 8kHz) appended after each clip.
+    # ESP-IDF i2s_std TX DMA uses a circular descriptor ring (dma_desc_num=6 ×
+    # dma_frame_num=240 = 1440 frames ≈ 180ms at 8kHz) and with auto_clear_after_cb
+    # left at default false, EOF descriptors are NOT zeroed — the last data
+    # written keeps replaying. A silence tail shorter than the ring's total span
+    # cannot overwrite every descriptor, so the audio tail keeps looping. 200ms
+    # exceeds the 180ms ring span and fills all descriptors with zero.
+    SILENCE_TAIL = ("\x00" * 3200)
 
     def initialize(speaker:, parser:)
       @speaker   = speaker
