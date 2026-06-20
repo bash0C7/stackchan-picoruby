@@ -115,7 +115,11 @@ module Stackchan
       ulaw = tts.synthesize(text)
       subtitle_frame = Stackchan::AI::FrameText.build(face_index: nil, text: text)
       with_ble do
-        @ble.raw_send(subtitle_frame)
+        # write_without_ack: device's dispatcher emits no ACK for standalone
+        # <text:...> frames (only the chat-path <F:n,text:...> combo gets one),
+        # so blocking on raw_send would time out. The frame itself is best-effort
+        # subtitle decoration.
+        @ble.write_without_ack(subtitle_frame)
         Stackchan::Voice::Streamer.new(@ble).stream(ulaw)
       end
       record_action(:say, text, last_say: text)
@@ -179,10 +183,21 @@ module Stackchan
 
     # Wrap every BLE-touching call under a single mutex + activity timestamp,
     # so the keep-alive thread and user verbs don't race on send/recv state.
+    # Lazy reconnect: if the underlying CoreBluetooth link has dropped (the
+    # daemon does not get a callback when it does), the first send raises
+    # ConnectionError / TimeoutError — catch once, reconnect, retry the
+    # caller's block. Same pattern as the old notifier worker (CLAUDE.md
+    # "Keep-alive boundary").
     def with_ble
       @ble_mutex.synchronize do
         @last_activity = Time.now
-        yield
+        begin
+          yield
+        rescue Stackchan::BLE::ConnectionError, Stackchan::BLE::TimeoutError => e
+          $stderr.puts "[with_ble] #{e.class}: #{e.message} — reconnecting..."
+          reconnect_ble
+          yield
+        end
       end
     end
 
@@ -190,6 +205,17 @@ module Stackchan
       @ble = Stackchan::BLE::Client.new(device_name: @device_name, name_prefix: @name_prefix)
       @ble.connect
       @display = Stackchan::Display::Controller.new(@ble)
+    end
+
+    def reconnect_ble
+      begin
+        @ble&.disconnect
+      rescue StandardError
+        # already gone
+      end
+      connect_ble
+      Stackchan::Event::TouchReader.new(@ble, @event_channel).start
+      $stderr.puts "[with_ble] reconnected."
     end
 
     def start_touch_reader
