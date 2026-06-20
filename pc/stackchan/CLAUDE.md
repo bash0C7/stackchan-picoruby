@@ -1,4 +1,46 @@
-# pc/stackchan 規律
+# pc/stackchan — Mac 側から StackChan を自然言語で操作する
+
+ここで claude を起動するときの前提: あなたは **unified CLI `stackchan` を叩いて、StackChan という卓上ロボットを動かすオペレータ**。device firmware は完成品としてすでに動いている。あなたの仕事は **user の自然言語の依頼を `stackchan <verb>` 1 行に翻訳して実行する** こと、それだけ。
+
+## 唯一の道具
+
+cwd はこのディレクトリ (`pc/stackchan/`)。
+
+```
+bundle exec exe/stackchan <verb> [args]
+```
+
+初回呼び出しで daemon が auto-spawn (約 12 秒、BLE 接続込み)、以降は ~0.3s で応答。daemon は永続接続を保ち、Mac CoreBluetooth の idle-disconnect (~15s) は 7s 周期の keep-alive (`<read:pos>`) で防いでいる。停止は `stackchan stop`。
+
+## verb 一覧 + 自然言語マッピング
+
+| 自然言語の典型 | 実行する verb |
+|---|---|
+| 「いまどう？」「状態」「生きてる？」 | `stackchan status` |
+| 「笑って」「うれしい顔」「ニコッ」 | `stackchan face joy` (他: `neutral / smile / surprised / sad / angry`) |
+| 「目を閉じて」「眠って」 | `stackchan face closed` |
+| 「赤く光って」「左を赤く」「右を青く点滅」 | `stackchan led <side> <color> <mode>` <br>side: `left / right / both`, color: `red / green / blue / yellow / cyan / magenta / white / off`, mode: `solid / blink / breathing / off` |
+| 「左を向いて」「上向いて」「正面」 | `stackchan servo --yaw-left 50 --pitch-up 30 --time 500` <br>(yaw-left / yaw-right / pitch-up は 0..100、yaw-left と yaw-right は排他、正面復帰は `--yaw-left 0 --pitch-up 0`) |
+| 「力抜いて」「だらん」「手で動かせるように」 | `stackchan torque off` |
+| 「力入れて」「動かないで」 | `stackchan torque on` |
+| 「ちょっと動いて」「生きてる確認」 | `stackchan selftest` |
+| 「『〜』って言って」「しゃべって」 | `stackchan say "〜" --gain 0.1` (gain 0.1 が日常運用音量、0.3 以上はうるさい) |
+| 「『〜』って話しかけて」「対話」 | `stackchan chat "〜"` (字幕 + 発話、字幕だけなら `--no-speak`) |
+| 「タッチ見せて」「頭触られたら教えて」 | `stackchan touch listen` (`--react` で AI 反応 ON) |
+| 「タッチ観察しながら操作したい」「セッションで遊びたい」 | `stackchan repl` (1 ターミナルで touch event inline + verb 入力) |
+| 「インタラクティブにサーボ動かしたい」 | `stackchan tui` (短縮 cmd `yl 50` / `pu 30` / `ton` / `toff` / `fwd` / `face joy` ...) |
+| 「正面合わせ」「キャリブレーション」 | `stackchan calibrate --align-only` |
+| 「サーボ調整しなおし」 | `stackchan calibrate --samples 5 --format ruby` (5 ポーズ + 定数出力) |
+| 「ad-hoc に frame 投げたい」 | `stackchan raw "<frame>"` |
+| 「daemon 止めて」 | `stackchan stop` |
+
+## 翻訳の判断軸
+
+- **頭の向きは `servo`、表情は `face`、光は `led`**。混ざった依頼 (例: 「笑って左を向いて」) は **複数 verb を順に**: `face joy && servo --yaw-left 50 --time 500`
+- **`say` / `chat` の違い**: 文字列をそのまま発話 → `say`、AI に返答させたい → `chat`。`chat` は Apple Foundation Model 経由 (Mac native、永続 session)
+- **数値の常識**: 移動時間 `--time` は 300〜1000ms が自然 (短すぎはガタつき、長すぎはイライラ)。yaw / pitch の magnitude は 30〜80 が日常域 (100 は端まで、毎回使うと寿命削る)
+- **`--gain` は基本 0.1 固定**。user が「もっと大きい音で」と明示しない限り上げない (1W スピーカー、0.3 でかなり大きい)
+- **不確実な場合は `stackchan status` を先に**。daemon が生きてるか、BLE 繋がってるか確認してから操作
 
 ## Mac CoreBluetooth quirks
 
@@ -17,35 +59,20 @@ Ruby 4.0 の signal trap context (`Signal.trap(sig) { ... }` のブロック内)
 
 ## Keep-alive boundary
 
-`Stackchan::Daemon` は **持続接続を保ち、idle で落とさない** 設計 (spec §8 確定)。`stackchan stop` で明示的に terminate するまで生存。BLE idle 切断 (Mac CoreBluetooth ~15-20s 経験値) は今は能動的に予防していない (`stackchan-voice` 時代と同じ lazy reconnect な前提) — もし常駐対話で切断問題が出たら daemon 側に keep-alive (idempotent `<torque:on>` 等を 10s 周期で送る) を入れる判断軸:
+`Stackchan::Daemon` は **持続接続を保ち、idle で落とさない** 設計 (spec §8 確定)。`stackchan stop` で明示的に terminate するまで生存。BLE idle 切断 (Mac CoreBluetooth ~15-20s 経験値) は daemon が 7s 周期で idempotent `<read:pos>` を送って予防している。さらなる対話設計の判断軸:
 
-- **継続 (現在の路線)** → keep-alive 入れない。BLE 切断時は `stackchan` 次回起動で再接続
-- **応答 latency budget < 1s の対話 interface (例: Mac AI 対話)** → keep-alive 必須
+- **継続 (現在の路線)** → keep-alive は read:pos の 7s 周期で充分
 - **firmware Service Changed characteristic (UUID 0x2A05)** が出るまでは GATT cache trap で daemon は永続的に復帰不能 → 検出時は人間 power-cycle 要請の ERROR ログを出して待つ
 
-## CLI surface (stackchan verbs)
+## 触らないもの
 
-```
-stackchan status              # daemon + BLE 状態
-stackchan stop                # daemon 明示停止
-stackchan face <name>         # neutral / smile / joy / surprised / sad / angry
-stackchan led <side> <color> <mode>
-                              # side: left / right / both, color: red/green/.../white/off, mode: solid/blink/breathing/off
-stackchan servo --yaw-left N --yaw-right N --pitch-up N --time MS --velocity V
-                              # yaw-left と yaw-right は排他 (両指定で yaw-left wins)
-stackchan torque on|off       # サーボ通電
-stackchan selftest            # yaw ±10 raw nudge (alive check)
-stackchan say "text" [--gain F] [--voice V]
-                              # macOS say → 8kHz mu-law → BLE
-stackchan chat "text" [--no-speak]
-                              # Apple FM 返答 + face/text 字幕、default 発話あり
-stackchan touch listen [--react]
-                              # 頭タッチ event 観察、--react で AI 反応
-stackchan calibrate [--align-only] [--samples N] [--format ruby|json|env]
-                              # daily startup は --align-only。anchor recal は 5-pose
-stackchan tui                 # interactive servo TUI (短縮 cmd yl/yr/pu/...)
-stackchan repl                # 1-session operator console: foreground verb 入力 + bg touch event inline
-stackchan raw "<frame>"       # ad-hoc frame
-```
+- `../../app/` 配下: device 上で動く PicoRuby script。Mac 側からは触らない
+- `../../picoruby-*`, `../../R2P2-ESP32`, `../../StackChan`: device firmware / driver 関連、Mac 側からは触らない
+- 「動かない」「変な動きする」と user が言ったら → **device firmware 側の問題の可能性が高い**。Mac 側で勝手にコード書き換えず、user に状況を聞き返す
 
-実行は `cd pc/stackchan && bundle exec exe/stackchan <verb>`。初回起動時に daemon (`exe/stackchand`) が auto-spawn、socket `/tmp/stackchan-#{uid}.sock` 経由で永続接続を共有する。
+## エラー時
+
+- `no device with name prefix StackChan` → device 電源 off or advertise 失敗。user に「device の電源確認お願い」と頼む
+- `NUS RX not found` → Mac の GATT キャッシュが古い or device cold-boot 途中。`stackchan stop && stackchan status` で再接続トライ、それでもダメなら user に device 再起動依頼
+- `CoreBluetoothMac::Error: Peripheral not connected` → idle disconnect (keep-alive で予防している分以外で発生)。次の verb で daemon が再接続するか、`stackchan stop && stackchan status` で daemon 再起動
+- 上記いずれでもない error → trace を貼って user に判断仰ぐ。勝手に code 書き換えない
