@@ -80,32 +80,37 @@ interaction (build, flash, deploy, capture) goes through the
 
 ## Quickstart (macOS side)
 
-A single CLI `stackchan` drives the robot. The first call auto-spawns a
-persistent daemon (`stackchand`) that holds the BLE link and the
-Foundation Model session; subsequent calls reuse it.
+A single CLI `stackchan` drives the robot. The link is held by a
+persistent daemon (`stackchand`) that owns the BLE connection and the
+Foundation Model session. Connection management and operation are
+separate verbs:
+
+- `stackchan connect` — establish the link (starts the daemon, takes ~12s)
+- `stackchan status`  — passively observe the link (does **not** auto-start)
+- `stackchan stop`    — explicitly terminate the link
+- Operation verbs (`face`, `led`, `servo`, …) auto-establish the link if
+  it is not yet up, then reuse it (~0.3s per call once connected). The
+  daemon keeps the link alive itself and is never torn down implicitly.
 
 ```bash
 cd pc/stackchan
 bundle install   # first time only
 
-bundle exec exe/stackchan status                   # auto-spawn daemon + show link state
+bundle exec exe/stackchan connect                  # explicit: bring the link up
+bundle exec exe/stackchan status                   # observe only (no auto-spawn)
 bundle exec exe/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
 bundle exec exe/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 bundle exec exe/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 bundle exec exe/stackchan torque on                # off lets you move the head by hand
 bundle exec exe/stackchan say "ぼくスタックチャンだよ" --gain 0.1
 bundle exec exe/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
-bundle exec exe/stackchan stop                     # shut the daemon down
+bundle exec exe/stackchan stop                     # explicit: tear the link down
 ```
 
-### Interactive consoles
+### Interactive servo console
 
-- `stackchan repl` — single-terminal operator console: type any verb at
-  the prompt, and touch events stream inline as `[touch] zone=N`. Use
-  this when you want to observe head-touch and drive face / say / chat
-  in the same session.
-- `stackchan tui`  — interactive servo TUI with short commands
-  (`yl 50`, `pu 30`, `fwd`, `ton` / `toff`, `face joy`, ...).
+`stackchan tui` — interactive servo TUI with short commands
+(`yl 50`, `pu 30`, `fwd`, `ton` / `toff`, `face joy`, …).
 
 ### Calibration
 

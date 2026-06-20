@@ -3,9 +3,19 @@ require "stackchan/cli"
 
 class TestCLIVerbList < Test::Unit::TestCase
   def test_verbs_include_core_set
-    %w[say chat face led servo torque selftest touch raw status stop calibrate tui].each do |v|
+    %w[connect status stop say chat face led servo torque selftest touch raw calibrate tui].each do |v|
       assert_include Stackchan::CLI::VERBS, v
     end
+  end
+
+  def test_repl_verb_was_removed
+    assert_false Stackchan::CLI::VERBS.include?("repl")
+  end
+
+  def test_status_is_observe_only
+    assert_include Stackchan::CLI::OBSERVE_ONLY_VERBS, "status"
+    assert_false Stackchan::CLI::OBSERVE_ONLY_VERBS.include?("connect")
+    assert_false Stackchan::CLI::OBSERVE_ONLY_VERBS.include?("face")
   end
 end
 

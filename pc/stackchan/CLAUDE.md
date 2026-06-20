@@ -10,13 +10,27 @@ cwd はこのディレクトリ (`pc/stackchan/`)。
 bundle exec exe/stackchan <verb> [args]
 ```
 
-初回呼び出しで daemon が auto-spawn (約 12 秒、BLE 接続込み)、以降は ~0.3s で応答。daemon は永続接続を保ち、Mac CoreBluetooth の idle-disconnect (~15s) は 7s 周期の keep-alive (`<read:pos>`) で防いでいる。停止は `stackchan stop`。
+## 接続と操作は別 verb
+
+| verb | 役割 | auto-spawn |
+|---|---|---|
+| `stackchan connect` | **明示的に接続を確立**。daemon を起動して BLE link を張る (約 12 秒) | する |
+| `stackchan status`  | 現在の接続状態を**観察するだけ**。daemon が無ければ `not connected` を出して終わる | しない |
+| `stackchan stop`    | **明示的に接続を終了**。daemon を停止して socket も消す | しない |
+| 操作系 (face / led / servo / torque / selftest / say / chat / touch / calibrate / tui / raw) | 状態を変える / 動かす。接続が無ければ **その場で確立してから実行** (約 12 秒)、既存なら ~0.3s | する |
+
+判断軸:
+- **暗黙の接続終了は無い**: idle で勝手に落ちないので、明示的に `stop` しない限り daemon は生き続ける (BLE link は daemon が 7s 周期で idempotent `<read:pos>` を送って維持)
+- **観察したいだけなら `stackchan status`**: 副作用なし。`not connected` が出たら `stackchan connect` で確立
+- `Peripheral not connected` エラー時 → `stackchan stop && stackchan connect` で daemon 再起動
 
 ## verb 一覧 + 自然言語マッピング
 
 | 自然言語の典型 | 実行する verb |
 |---|---|
-| 「いまどう？」「状態」「生きてる？」 | `stackchan status` |
+| 「接続して」「起動して」 | `stackchan connect` |
+| 「いまどう？」「状態」「生きてる？」 | `stackchan status` (観察のみ) |
+| 「切って」「終わり」「daemon 止めて」 | `stackchan stop` |
 | 「笑って」「うれしい顔」「ニコッ」 | `stackchan face joy` (他: `neutral / smile / surprised / sad / angry`) |
 | 「目を閉じて」「眠って」 | `stackchan face closed` |
 | 「赤く光って」「左を赤く」「右を青く点滅」 | `stackchan led <side> <color> <mode>` <br>side: `left / right / both`, color: `red / green / blue / yellow / cyan / magenta / white / off`, mode: `solid / blink / breathing / off` |
@@ -27,12 +41,10 @@ bundle exec exe/stackchan <verb> [args]
 | 「『〜』って言って」「しゃべって」 | `stackchan say "〜" --gain 0.1` (gain 0.1 が日常運用音量、0.3 以上はうるさい) |
 | 「『〜』って話しかけて」「対話」 | `stackchan chat "〜"` (字幕 + 発話、字幕だけなら `--no-speak`) |
 | 「タッチ見せて」「頭触られたら教えて」 | `stackchan touch listen` (`--react` で AI 反応 ON) |
-| 「タッチ観察しながら操作したい」「セッションで遊びたい」 | `stackchan repl` (1 ターミナルで touch event inline + verb 入力) |
 | 「インタラクティブにサーボ動かしたい」 | `stackchan tui` (短縮 cmd `yl 50` / `pu 30` / `ton` / `toff` / `fwd` / `face joy` ...) |
 | 「正面合わせ」「キャリブレーション」 | `stackchan calibrate --align-only` |
 | 「サーボ調整しなおし」 | `stackchan calibrate --samples 5 --format ruby` (5 ポーズ + 定数出力) |
 | 「ad-hoc に frame 投げたい」 | `stackchan raw "<frame>"` |
-| 「daemon 止めて」 | `stackchan stop` |
 
 ## 翻訳の判断軸
 
@@ -40,7 +52,7 @@ bundle exec exe/stackchan <verb> [args]
 - **`say` / `chat` の違い**: 文字列をそのまま発話 → `say`、AI に返答させたい → `chat`。`chat` は Apple Foundation Model 経由 (Mac native、永続 session)
 - **数値の常識**: 移動時間 `--time` は 300〜1000ms が自然 (短すぎはガタつき、長すぎはイライラ)。yaw / pitch の magnitude は 30〜80 が日常域 (100 は端まで、毎回使うと寿命削る)
 - **`--gain` は基本 0.1 固定**。user が「もっと大きい音で」と明示しない限り上げない (1W スピーカー、0.3 でかなり大きい)
-- **不確実な場合は `stackchan status` を先に**。daemon が生きてるか、BLE 繋がってるか確認してから操作
+- **不確実な場合は `stackchan status` を先に**観察。`not connected` なら `stackchan connect` で確立してから操作
 
 ## Mac CoreBluetooth quirks
 
@@ -72,7 +84,9 @@ Ruby 4.0 の signal trap context (`Signal.trap(sig) { ... }` のブロック内)
 
 ## エラー時
 
-- `no device with name prefix StackChan` → device 電源 off or advertise 失敗。user に「device の電源確認お願い」と頼む
-- `NUS RX not found` → Mac の GATT キャッシュが古い or device cold-boot 途中。`stackchan stop && stackchan status` で再接続トライ、それでもダメなら user に device 再起動依頼
-- `CoreBluetoothMac::Error: Peripheral not connected` → idle disconnect (keep-alive で予防している分以外で発生)。次の verb で daemon が再接続するか、`stackchan stop && stackchan status` で daemon 再起動
-- 上記いずれでもない error → trace を貼って user に判断仰ぐ。勝手に code 書き換えない
+| エラーメッセージ | 原因 | 対応 |
+|---|---|---|
+| `no device with name prefix StackChan` | device 電源 off / advertise 失敗 | user に device 電源確認・再起動を依頼 |
+| `NUS RX not found` | Mac の GATT キャッシュが古い / device cold-boot 途中 | `stackchan stop && stackchan connect` で再接続、それでもダメなら device 再起動依頼 |
+| `Peripheral not connected` | idle disconnect / BLE link 喪失 | `stackchan stop && stackchan connect` で daemon 再起動、または同じ verb リトライ |
+| その他の error | 不明な状態 | trace を貼って user に判断仰ぐ。勝手に code 書き換えない |

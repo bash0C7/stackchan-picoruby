@@ -6,12 +6,20 @@ require_relative "daemon"
 
 module Stackchan
   class CLI
-    VERBS = %w[say chat face led servo torque selftest calibrate touch tui repl raw status stop].freeze
+    VERBS = %w[connect status stop say chat face led servo torque selftest calibrate touch tui raw].freeze
+
+    # status is a passive observer — never auto-spawns the daemon.
+    # Every other verb implicitly establishes the link if missing.
+    OBSERVE_ONLY_VERBS = %w[status].freeze
 
     def self.run(argv)
       verb, *args = argv
       return usage if verb.nil? || !VERBS.include?(verb)
-      daemon = attach_or_spawn
+      daemon = attach_or_spawn(spawn_if_missing: !OBSERVE_ONLY_VERBS.include?(verb))
+      if daemon.nil?
+        puts "stackchan: not connected. use 'stackchan connect' to establish the link."
+        return 0
+      end
       new(daemon).dispatch(verb, args)
     end
 
@@ -21,7 +29,7 @@ module Stackchan
       1
     end
 
-    def self.attach_or_spawn(uri: "drbunix:#{Daemon::DEFAULT_SOCKET_PATH}", timeout_s: 15.0)
+    def self.attach_or_spawn(uri: "drbunix:#{Daemon::DEFAULT_SOCKET_PATH}", spawn_if_missing: true, timeout_s: 15.0)
       DRb.start_service unless DRb.primary_server
       deadline = Time.now + timeout_s
       spawned = false
@@ -31,6 +39,7 @@ module Stackchan
           daemon.status  # force a real round-trip so DRbConnError surfaces here
           return daemon
         rescue DRb::DRbConnError
+          return nil unless spawn_if_missing
           unless spawned
             spawn_daemon
             spawned = true
@@ -54,20 +63,20 @@ module Stackchan
 
     def dispatch(verb, args)
       case verb
-      when "say"      then verb_say(args)
-      when "chat"     then verb_chat(args)
-      when "face"     then @daemon.face(args[0])
-      when "led"      then verb_led(args)
-      when "servo"    then verb_servo(args)
-      when "torque"   then verb_torque(args)
+      when "connect" then verb_connect
+      when "status"  then verb_status
+      when "stop"    then verb_stop
+      when "say"     then verb_say(args)
+      when "chat"    then verb_chat(args)
+      when "face"    then @daemon.face(args[0])
+      when "led"     then verb_led(args)
+      when "servo"   then verb_servo(args)
+      when "torque"  then verb_torque(args)
       when "selftest" then @daemon.selftest
-      when "touch"    then verb_touch(args)
-      when "raw"      then @daemon.raw_send(args.join(" "))
+      when "touch"   then verb_touch(args)
+      when "raw"     then @daemon.raw_send(args.join(" "))
       when "calibrate" then return verb_calibrate(args)
-      when "tui"      then verb_tui
-      when "repl"     then verb_repl
-      when "status"   then verb_status
-      when "stop"     then verb_stop
+      when "tui"     then verb_tui
       else return self.class.usage
       end
       0
@@ -123,9 +132,13 @@ module Stackchan
       end
     end
 
+    def verb_connect
+      puts "connected."
+      puts @daemon.status.inspect
+    end
+
     def verb_status
-      s = @daemon.status
-      puts s.inspect
+      puts @daemon.status.inspect
     end
 
     def verb_stop
@@ -156,11 +169,6 @@ module Stackchan
     def verb_tui
       require_relative "tui"
       Stackchan::TUI::Runner.new(@daemon).run
-    end
-
-    def verb_repl
-      require_relative "repl"
-      Stackchan::REPL::Runner.new(self, @daemon).run
     end
 
     def parse_kw(args)
