@@ -578,6 +578,15 @@ module StackchanApp
       "5" => Face::Angry,
     }.freeze
 
+    # Touch zone → face for immediate on-device feedback (no PC round-trip).
+    # Used by StackChanApp's heartbeat touch-poll; this Dispatcher draws the
+    # face directly on the LCD the instant Si12T fires a rising edge.
+    TOUCH_FACE_TABLE = {
+      0 => Face::Surprised,
+      1 => Face::Joy,
+      2 => Face::Smile,
+    }.freeze
+
     MODE_TABLE = {
       "s" => :solid,
       "b" => :blink,
@@ -639,6 +648,16 @@ module StackchanApp
     rescue => e
       log_error(e)
       @stdout.write(ERROR_FRAME)
+    end
+
+    # Called from StackChanApp's heartbeat right after the touch sensor
+    # fires a rising edge. Picks a face by zone, draws it immediately, and
+    # updates current_face_class so the next blink redraw uses it. The
+    # whole path is local SPI to the LCD — no BLE round-trip, no PC.
+    def react_to_touch(zone)
+      face_class = TOUCH_FACE_TABLE[zone] || Face::Surprised
+      @current_face_class = face_class
+      face_class.new.draw(@display)
     end
 
     private
@@ -1203,7 +1222,14 @@ class StackChanApp < BLE
     if @touch
       begin
         zone = @touch.poll
-        write("<touch:#{zone}>\n") if zone
+        if zone
+          # On-device immediate feedback: change the face the moment the
+          # rising edge fires, BEFORE notifying the PC. The PC may then
+          # decide to fire an AI reaction with extra context, but the
+          # human-visible face change has zero round-trip latency.
+          @dispatcher.react_to_touch(zone)
+          write("<touch:#{zone}>\n")
+        end
       rescue => e
         puts "[application] touch poll error: #{e.class}: #{e.message}"
       end

@@ -127,14 +127,13 @@ module Stackchan
       sub = args.shift
       return usage_error("touch <listen>") unless sub == "listen"
       react = args.delete("--react")
+      # The face change for touch is now the daemon's baseline behaviour
+      # (TouchReader on_touch callback), so this loop only needs to surface
+      # the event to stdout and optionally fire the AI chat reaction.
       @daemon.subscribe_touch do |event|
         puts event.inspect
-        zone = event[:zone]
-        # Immediate visible feedback BEFORE any AI / chat work, so the human
-        # sees the robot acknowledge the touch within a frame round-trip
-        # (~50ms) instead of waiting ~2-5s for the FM reply to come back.
-        @daemon.face(@daemon.touch_zone_face(zone))
         next unless react
+        zone = event[:zone]
         label = @daemon.touch_zone_label(zone)
         prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
         @daemon.chat(prompt, touch_zone: zone)
@@ -188,10 +187,11 @@ module Stackchan
       Stackchan::Demo::Runner.new(@daemon).run(duration: duration)
       return if no_listen
       puts "[demo] listening for touch (Ctrl-C to exit)..."
+      # Face feedback on touch is now baked into the daemon (TouchReader
+      # on_touch). Here we only handle the AI reaction.
       @daemon.subscribe_touch do |event|
         puts event.inspect
         zone = event[:zone]
-        @daemon.face(@daemon.touch_zone_face(zone))
         label = @daemon.touch_zone_label(zone)
         prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
         @daemon.chat(prompt, touch_zone: zone)

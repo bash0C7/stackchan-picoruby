@@ -41,8 +41,10 @@ class AudioReceiverTest < Picotest::Test
     d2 = rx.consume("\x04\x05\x06") { |_f| } # 6/6 -> play
     assert_equal 1, d2
     assert_false rx.receiving?
-    # 6 mu-law bytes -> 12 PCM bytes, plus the 800-byte silence tail.
-    assert_equal 812, spk.i2s.written.bytesize
+    # 6 mu-law bytes -> 12 PCM bytes, plus the 3200-byte silence tail
+    # (200ms @ 16kHz mono — see SILENCE_TAIL in app/application.rb; widened
+    # from 800 bytes in the Phase 4 fix for I2S DMA circular-replay tail).
+    assert_equal 3212, spk.i2s.written.bytesize
   end
 
   def test_played_clip_matches_decoded_ulaw

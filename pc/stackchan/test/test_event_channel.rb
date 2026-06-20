@@ -44,4 +44,30 @@ class TestEventTouchReader < Test::Unit::TestCase
     client.on_unsolicited.call(".\n")
     assert_nil channel.pop(timeout: 0.05)
   end
+
+  def test_on_touch_callback_fires_before_channel_push
+    client = FakeBLEClient.new
+    channel = Stackchan::Event::Channel.new
+    callback_events = []
+    Stackchan::Event::TouchReader.new(client, channel, on_touch: ->(e) { callback_events << e }).start
+    client.on_unsolicited.call("<touch:1>\n")
+    assert_equal [{type: :touch, zone: 1}], callback_events
+    assert_equal({type: :touch, zone: 1}, channel.pop)
+  end
+
+  def test_on_touch_exception_does_not_block_channel_push
+    client = FakeBLEClient.new
+    channel = Stackchan::Event::Channel.new
+    reader = Stackchan::Event::TouchReader.new(client, channel, on_touch: ->(_e) { raise "boom" })
+    reader.start
+    # Swallow the stderr message from the rescue block so the test output stays clean.
+    original_stderr = $stderr
+    $stderr = StringIO.new
+    begin
+      client.on_unsolicited.call("<touch:0>\n")
+    ensure
+      $stderr = original_stderr
+    end
+    assert_equal({type: :touch, zone: 0}, channel.pop)
+  end
 end

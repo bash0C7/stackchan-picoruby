@@ -30,15 +30,10 @@ module Stackchan
       1 => "右側",
       2 => "左側",
     }.freeze
-
-    # Immediate face feedback so the human sees a reaction before the AI
-    # reply has finished generating (~2-5s). Picked per zone so the
-    # operator can also see which zone fired.
-    TOUCH_ZONE_FACES = {
-      0 => "surprised",
-      1 => "joy",
-      2 => "smile",
-    }.freeze
+    # Note: the immediate face change on touch is intentionally on-device
+    # (app/application.rb Dispatcher#react_to_touch). Putting it on the PC
+    # side would mean a touch → BLE notify → DRb → BLE write round-trip
+    # the human can perceive as lag. The PC only handles AI follow-up here.
 
     def initialize(device_name: DEFAULT_DEVICE_NAME, name_prefix: DEFAULT_NAME_PREFIX, socket_path: DEFAULT_SOCKET_PATH)
       @device_name      = device_name
@@ -159,10 +154,6 @@ module Stackchan
       TOUCH_ZONE_LABELS[zone]
     end
 
-    def touch_zone_face(zone)
-      TOUCH_ZONE_FACES[zone] || "surprised"
-    end
-
     def raw_send(frame)
       payload = frame.end_with?("\n") ? frame : "#{frame}\n"
       with_ble { @ble.raw_send(payload) }
@@ -227,7 +218,7 @@ module Stackchan
         # already gone
       end
       connect_ble
-      Stackchan::Event::TouchReader.new(@ble, @event_channel).start
+      start_touch_reader
       $stderr.puts "[with_ble] reconnected."
     end
 
