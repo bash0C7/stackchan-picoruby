@@ -31,6 +31,15 @@ module Stackchan
       2 => "左側",
     }.freeze
 
+    # Immediate face feedback so the human sees a reaction before the AI
+    # reply has finished generating (~2-5s). Picked per zone so the
+    # operator can also see which zone fired.
+    TOUCH_ZONE_FACES = {
+      0 => "surprised",
+      1 => "joy",
+      2 => "smile",
+    }.freeze
+
     def initialize(device_name: DEFAULT_DEVICE_NAME, name_prefix: DEFAULT_NAME_PREFIX, socket_path: DEFAULT_SOCKET_PATH)
       @device_name      = device_name
       @name_prefix      = name_prefix
@@ -148,6 +157,10 @@ module Stackchan
 
     def touch_zone_label(zone)
       TOUCH_ZONE_LABELS[zone]
+    end
+
+    def touch_zone_face(zone)
+      TOUCH_ZONE_FACES[zone] || "surprised"
     end
 
     def raw_send(frame)

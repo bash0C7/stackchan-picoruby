@@ -129,12 +129,15 @@ module Stackchan
       react = args.delete("--react")
       @daemon.subscribe_touch do |event|
         puts event.inspect
-        if react
-          zone = event[:zone]
-          label = @daemon.touch_zone_label(zone)
-          prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
-          @daemon.chat(prompt, touch_zone: zone)
-        end
+        zone = event[:zone]
+        # Immediate visible feedback BEFORE any AI / chat work, so the human
+        # sees the robot acknowledge the touch within a frame round-trip
+        # (~50ms) instead of waiting ~2-5s for the FM reply to come back.
+        @daemon.face(@daemon.touch_zone_face(zone))
+        next unless react
+        label = @daemon.touch_zone_label(zone)
+        prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
+        @daemon.chat(prompt, touch_zone: zone)
       end
     end
 
@@ -188,6 +191,7 @@ module Stackchan
       @daemon.subscribe_touch do |event|
         puts event.inspect
         zone = event[:zone]
+        @daemon.face(@daemon.touch_zone_face(zone))
         label = @daemon.touch_zone_label(zone)
         prompt = label ? "#{label}を触られた" : "頭の zone=#{zone} を触られた"
         @daemon.chat(prompt, touch_zone: zone)

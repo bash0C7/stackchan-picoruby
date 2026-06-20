@@ -12,15 +12,21 @@ class TestDemoRunner < Test::Unit::TestCase
     def servo(**kw); @calls << [:servo, kw]; end
   end
 
-  def test_run_short_duration_emits_intro_and_outro
+  def test_run_starts_with_lr_distinct_led_animation
     daemon = FakeDaemon.new
-    stdout = StringIO.new
-    Stackchan::Demo::Runner.new(daemon, stdout: stdout).run(duration: 0.1)
+    Stackchan::Demo::Runner.new(daemon, stdout: StringIO.new).run(duration: 0.1)
+    # Opening: left red blink + right blue breathing (visible asymmetry).
+    assert_equal [:led, :left,  :red,  :blink],     daemon.calls[0]
+    assert_equal [:led, :right, :blue, :breathing], daemon.calls[1]
+    first_say = daemon.calls.find { |c| c.first == :say }
+    assert_equal Stackchan::Demo::INTRO_LINE, first_say[1]
+  end
+
+  def test_run_short_duration_ends_with_outro_and_visits_all_axes
+    daemon = FakeDaemon.new
+    Stackchan::Demo::Runner.new(daemon, stdout: StringIO.new).run(duration: 0.1)
     types = daemon.calls.map(&:first)
-    assert_equal :say,  daemon.calls.first.first
-    assert_equal Stackchan::Demo::INTRO_LINE, daemon.calls.first[1]
-    assert_equal :say,  daemon.calls.last.first
-    assert_equal Stackchan::Demo::OUTRO_LINE, daemon.calls.last[1]
+    assert_equal [:say, Stackchan::Demo::OUTRO_LINE], daemon.calls.last
     assert types.include?(:face)
     assert types.include?(:led)
     assert types.include?(:servo)
