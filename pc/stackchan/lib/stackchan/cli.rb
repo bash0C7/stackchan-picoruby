@@ -63,9 +63,11 @@ module Stackchan
       when "selftest" then @daemon.selftest
       when "touch"    then verb_touch(args)
       when "raw"      then @daemon.raw_send(args.join(" "))
+      when "calibrate" then return verb_calibrate(args)
+      when "tui"      then verb_tui
       when "status"   then verb_status
       when "stop"     then verb_stop
-      else self.class.usage
+      else return self.class.usage
       end
       0
     end
@@ -131,6 +133,28 @@ module Stackchan
     rescue DRb::DRbConnError
       # daemon already tearing down its DRb service — that's fine, expected.
       puts "daemon stopped"
+    end
+
+    def verb_calibrate(args)
+      require_relative "calibrate"
+      align_only = !!args.delete("--align-only")
+      engage_torque = !!args.delete("--engage-torque")
+      no_torque_toggle = !!args.delete("--no-torque-toggle")
+      opts = parse_kw(args)
+      samples = opts["samples"]&.to_i || 3
+      format = (opts["format"] || "ruby").to_sym
+      Stackchan::Calibrate::Runner.new(@daemon).run(
+        align_only: align_only,
+        samples: samples,
+        format: format,
+        engage_torque: engage_torque,
+        no_torque_toggle: no_torque_toggle,
+      )
+    end
+
+    def verb_tui
+      require_relative "tui"
+      Stackchan::TUI::Runner.new(@daemon).run
     end
 
     def parse_kw(args)

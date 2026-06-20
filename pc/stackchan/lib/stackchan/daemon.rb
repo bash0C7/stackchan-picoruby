@@ -113,6 +113,16 @@ module Stackchan
       @ble.raw_send(payload)
     end
 
+    # === Calibration helpers (called by CLI; pose prompts stay on the CLI). ===
+
+    def sample_pose(samples:)
+      Stackchan::BLE::Calibration.sample_pose(@ble, samples: samples)
+    end
+
+    def last_detail_frame
+      @ble.last_detail_frame
+    end
+
     # CLI calls this through DRb with a block; DRb relays each yielded event
     # back to the remote block. Loops forever until the CLI disconnects.
     def subscribe_touch
