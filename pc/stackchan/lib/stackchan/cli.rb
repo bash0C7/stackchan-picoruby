@@ -1,0 +1,156 @@
+# frozen_string_literal: true
+
+require "drb/drb"
+require "drb/unix"
+require_relative "daemon"
+
+module Stackchan
+  class CLI
+    VERBS = %w[say chat face led servo torque selftest calibrate touch tui raw status stop].freeze
+
+    def self.run(argv)
+      verb, *args = argv
+      return usage if verb.nil? || !VERBS.include?(verb)
+      daemon = attach_or_spawn
+      new(daemon).dispatch(verb, args)
+    end
+
+    def self.usage
+      warn "Usage: stackchan <verb> [args]"
+      warn "Verbs: #{VERBS.join(', ')}"
+      1
+    end
+
+    def self.attach_or_spawn(uri: "drbunix:#{Daemon::DEFAULT_SOCKET_PATH}", timeout_s: 15.0)
+      DRb.start_service unless DRb.primary_server
+      deadline = Time.now + timeout_s
+      spawned = false
+      loop do
+        begin
+          daemon = DRbObject.new_with_uri(uri)
+          daemon.status  # force a real round-trip so DRbConnError surfaces here
+          return daemon
+        rescue DRb::DRbConnError
+          unless spawned
+            spawn_daemon
+            spawned = true
+          end
+          raise "daemon failed to come up within #{timeout_s}s" if Time.now > deadline
+          sleep 0.3
+        end
+      end
+    end
+
+    def self.spawn_daemon
+      daemon_exe = File.expand_path("../../exe/stackchand", __FILE__)
+      log_path = "/tmp/stackchand-#{Process.uid}.log"
+      pid = Process.spawn(daemon_exe, [:out, :err] => log_path)
+      Process.detach(pid)
+    end
+
+    def initialize(daemon)
+      @daemon = daemon
+    end
+
+    def dispatch(verb, args)
+      case verb
+      when "say"      then verb_say(args)
+      when "chat"     then verb_chat(args)
+      when "face"     then @daemon.face(args[0])
+      when "led"      then verb_led(args)
+      when "servo"    then verb_servo(args)
+      when "torque"   then verb_torque(args)
+      when "selftest" then @daemon.selftest
+      when "touch"    then verb_touch(args)
+      when "raw"      then @daemon.raw_send(args.join(" "))
+      when "status"   then verb_status
+      when "stop"     then verb_stop
+      else self.class.usage
+      end
+      0
+    end
+
+    private
+
+    def verb_say(args)
+      text = args.shift
+      opts = parse_kw(args)
+      gain = opts["gain"]&.to_f
+      @daemon.say(text, voice: opts["voice"], gain: gain)
+    end
+
+    def verb_chat(args)
+      no_speak_idx = args.index("--no-speak")
+      args.delete_at(no_speak_idx) if no_speak_idx
+      speak = no_speak_idx.nil?
+      text = args.shift
+      reply = @daemon.chat(text, speak: speak)
+      puts reply if reply
+    end
+
+    def verb_led(args)
+      side, color, mode = args[0], args[1], args[2]
+      raise ArgumentError, "led: side / color / mode required" unless side && color && mode
+      @daemon.led(side: side.to_sym, color: color.to_sym, mode: mode.to_sym)
+    end
+
+    def verb_servo(args)
+      opts = parse_kw(args)
+      @daemon.servo(
+        yaw_left:  opts["yaw-left"]&.to_i,
+        yaw_right: opts["yaw-right"]&.to_i,
+        pitch_up:  opts["pitch-up"]&.to_i,
+        time_ms:   opts["time"]&.to_i,
+        velocity:  opts["velocity"]&.to_i,
+      )
+    end
+
+    def verb_torque(args)
+      on = args[0] == "on"
+      @daemon.torque(on)
+    end
+
+    def verb_touch(args)
+      sub = args.shift
+      return usage_error("touch <listen>") unless sub == "listen"
+      react = args.delete("--react")
+      @daemon.subscribe_touch do |event|
+        puts event.inspect
+        @daemon.chat("頭を触られた (zone=#{event[:zone]})") if react
+      end
+    end
+
+    def verb_status
+      s = @daemon.status
+      puts s.inspect
+    end
+
+    def verb_stop
+      @daemon.stop
+      puts "daemon stopped"
+    rescue DRb::DRbConnError
+      # daemon already tearing down its DRb service — that's fine, expected.
+      puts "daemon stopped"
+    end
+
+    def parse_kw(args)
+      out = {}
+      i = 0
+      while i < args.length
+        a = args[i]
+        if a&.start_with?("--")
+          out[a[2..]] = args[i + 1]
+          i += 2
+        else
+          i += 1
+        end
+      end
+      out
+    end
+
+    def usage_error(msg)
+      warn "stackchan: #{msg}"
+      1
+    end
+  end
+end
