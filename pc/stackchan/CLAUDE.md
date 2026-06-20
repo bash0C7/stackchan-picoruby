@@ -43,7 +43,8 @@ stackchan touch listen [--react]
                               # 頭タッチ event 観察、--react で AI 反応
 stackchan calibrate [--align-only] [--samples N] [--format ruby|json|env]
                               # daily startup は --align-only。anchor recal は 5-pose
-stackchan tui                 # interactive remote control
+stackchan tui                 # interactive servo TUI (短縮 cmd yl/yr/pu/...)
+stackchan repl                # 1-session operator console: foreground verb 入力 + bg touch event inline
 stackchan raw "<frame>"       # ad-hoc frame
 ```
 

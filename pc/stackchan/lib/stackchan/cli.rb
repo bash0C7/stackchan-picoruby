@@ -6,7 +6,7 @@ require_relative "daemon"
 
 module Stackchan
   class CLI
-    VERBS = %w[say chat face led servo torque selftest calibrate touch tui raw status stop].freeze
+    VERBS = %w[say chat face led servo torque selftest calibrate touch tui repl raw status stop].freeze
 
     def self.run(argv)
       verb, *args = argv
@@ -65,6 +65,7 @@ module Stackchan
       when "raw"      then @daemon.raw_send(args.join(" "))
       when "calibrate" then return verb_calibrate(args)
       when "tui"      then verb_tui
+      when "repl"     then verb_repl
       when "status"   then verb_status
       when "stop"     then verb_stop
       else return self.class.usage
@@ -155,6 +156,11 @@ module Stackchan
     def verb_tui
       require_relative "tui"
       Stackchan::TUI::Runner.new(@daemon).run
+    end
+
+    def verb_repl
+      require_relative "repl"
+      Stackchan::REPL::Runner.new(self, @daemon).run
     end
 
     def parse_kw(args)

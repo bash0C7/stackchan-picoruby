@@ -29,6 +29,7 @@ bundle exec exe/stackchan <verb> [args]
 | 「正面合わせ」「キャリブレーション」 | `stackchan calibrate --align-only` |
 | 「サーボ調整しなおし」 | `stackchan calibrate --samples 5 --format ruby` (5 ポーズ + 定数出力) |
 | 「インタラクティブに動かしたい」 | `stackchan tui` |
+| 「タッチ観察しながら操作したい」「セッションで遊びたい」 | `stackchan repl` (1 ターミナルで touch event inline + verb 入力) |
 | 「daemon 止めて」 | `stackchan stop` |
 
 ## 翻訳の判断軸
