@@ -78,6 +78,42 @@ AST so the device classes can be exercised without the device. Device
 interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
+## Quickstart (macOS side)
+
+A single CLI `stackchan` drives the robot. The first call auto-spawns a
+persistent daemon (`stackchand`) that holds the BLE link and the
+Foundation Model session; subsequent calls reuse it.
+
+```bash
+cd pc/stackchan
+bundle install   # first time only
+
+bundle exec exe/stackchan status                   # auto-spawn daemon + show link state
+bundle exec exe/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
+bundle exec exe/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
+bundle exec exe/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
+bundle exec exe/stackchan torque on                # off lets you move the head by hand
+bundle exec exe/stackchan say "ぼくスタックチャンだよ" --gain 0.1
+bundle exec exe/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
+bundle exec exe/stackchan stop                     # shut the daemon down
+```
+
+### Interactive consoles
+
+- `stackchan repl` — single-terminal operator console: type any verb at
+  the prompt, and touch events stream inline as `[touch] zone=N`. Use
+  this when you want to observe head-touch and drive face / say / chat
+  in the same session.
+- `stackchan tui`  — interactive servo TUI with short commands
+  (`yl 50`, `pu 30`, `fwd`, `ton` / `toff`, `face joy`, ...).
+
+### Calibration
+
+```bash
+bundle exec exe/stackchan calibrate --align-only   # daily startup: torque off → align forward → torque on
+bundle exec exe/stackchan calibrate --samples 5 --format ruby   # full 5-pose anchor recal, prints constants
+```
+
 ## Capabilities
 
 | Subsystem | State | Notes |
