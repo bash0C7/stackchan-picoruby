@@ -1,12 +1,12 @@
 PATH
+  remote: ../stackchan-ble-client
+  specs:
+    stackchan_ble_client (0.1.0)
+
+PATH
   remote: /Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac
   specs:
     rb-corebluetooth-mac (0.2.1)
-
-PATH
-  remote: /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/.claude/worktrees/phase0-lcd-response-text/pc/stackchan-ble-client
-  specs:
-    stackchan_ble_client (0.1.0)
 
 GEM
   remote: https://rubygems.org/
