@@ -422,18 +422,14 @@ namespace :r2p2 do
     sleep autostart_wait
 
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                    '--name-prefix', 'StackChan-PicoRuby',
-                    'torque', 'on')
+      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan', 'torque', 'on')
         abort "[servo_smoke] torque on FAIL" unless ok
         sleep 1
-        args = ['bundle', 'exec', 'exe/stackchan-ble-control',
-                '--name-prefix', 'StackChan-PicoRuby',
+        args = ['bundle', 'exec', 'exe/stackchan', 'servo',
                 '--time', time_ms, '--pitch-up', pu]
         args += ['--yaw-left',  yl] if yl
         args += ['--yaw-right', yr] if yr
-        args << 'servo'
         ok = system(*args)
         unless ok
           exit $?.exitstatus
@@ -458,11 +454,9 @@ namespace :r2p2 do
     sleep autostart_wait
 
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
+      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
         %w[on off].each do |state|
-          ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                      '--name-prefix', 'StackChan-PicoRuby',
-                      'torque', state)
+          ok = system('bundle', 'exec', 'exe/stackchan', 'torque', state)
           abort "[torque_smoke] torque #{state} FAIL" unless ok
           sleep 2
         end
@@ -499,19 +493,15 @@ namespace :r2p2 do
     ]
 
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                    '--name-prefix', 'StackChan-PicoRuby',
-                    'torque', 'on')
+      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan', 'torque', 'on')
         abort '[cal] torque on FAIL' unless ok
         sleep 1
 
         positions.each_with_index do |pos, i|
           puts "\n[cal #{i + 1}/5] sending #{pos[:label]} → expect: #{pos[:expect]}"
-          ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                      '--name-prefix', 'StackChan-PicoRuby',
-                      '--time', '800',
-                      *pos[:args], 'servo')
+          ok = system('bundle', 'exec', 'exe/stackchan', 'servo',
+                      '--time', '800', *pos[:args])
           abort "[cal] frame send FAIL at #{pos[:label]}" unless ok
           sleep 1.5
           print '   Did StackChan move as expected? [y/N]: '
@@ -519,9 +509,7 @@ namespace :r2p2 do
           abort "[cal] FAIL at #{pos[:label]} (operator marked N)" unless ans == 'y'
         end
 
-        system('bundle', 'exec', 'exe/stackchan-ble-control',
-               '--name-prefix', 'StackChan-PicoRuby',
-               'torque', 'off')
+        system('bundle', 'exec', 'exe/stackchan', 'torque', 'off')
       end
     end
 
@@ -553,20 +541,18 @@ namespace :r2p2 do
     sleep autostart_wait
 
     # The project-root Bundler env (loaded at the top of this Rakefile) leaks
-    # into any child `bundle exec`, which makes pc/stackchan-ble-client's
-    # `require "stackchan_ble_client"` fail with LoadError because resolution
+    # into any child `bundle exec`, which makes pc/stackchan's
+    # `require "stackchan"` fail with LoadError because resolution
     # uses the outer Gemfile instead of the inner one. Drop the outer env so
     # the child `bundle exec` reads its own Gemfile.
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan-ble-client', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan-ble-control',
-                    '--name-prefix', 'StackChan-PicoRuby',
-                    '--side', side,
-                    'combo',
-                    '--face', face,
-                    '--led',  "#{color} #{mode}")
+      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
+        ok = system('bundle', 'exec', 'exe/stackchan', 'face', face)
         unless ok
-          # Propagate the CLI's exit code so the rake call surfaces structured failure.
+          exit $?.exitstatus
+        end
+        ok = system('bundle', 'exec', 'exe/stackchan', 'led', side, color, mode)
+        unless ok
           exit $?.exitstatus
         end
       end
@@ -604,7 +590,7 @@ namespace :r2p2 do
   desc "smoke test the calibrate CLI in --align-only mode (interactive, requires connected device)"
   task :ble_calibration_smoke do
     ensure_no_concurrent_monitor
-    sh "cd pc/stackchan-ble-client && bundle exec exe/stackchan-ble-control calibrate --align-only --name-prefix StackChan"
+    sh "cd pc/stackchan && bundle exec exe/stackchan calibrate --align-only"
   end
 
 end

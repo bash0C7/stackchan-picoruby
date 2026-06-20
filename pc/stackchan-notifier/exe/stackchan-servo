@@ -1,4 +1,0 @@
-#!/usr/bin/env ruby
-require "bundler/setup"
-require "stackchan_notifier/servo_cli"
-exit StackchanNotifier::ServoCLI.run(ARGV.dup)

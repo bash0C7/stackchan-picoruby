@@ -62,9 +62,9 @@ app/application.rb   Face rendering, the WS2812 LED ring driver, the command
                      dispatcher, the BLE peripheral, audio receive, and the
                      cold-boot init sequence.
 
-pc/stackchan-ble-client/   BLE NUS client and the stackchan-ble-control CLI.
-pc/stackchan-voice/        macOS text-to-speech to mu-law over BLE.
-pc/stackchan-notifier/     Claude Code hooks to BLE bridge.
+pc/stackchan/              Unified macOS-side CLI (`stackchan <verb>`) backed
+                           by an auto-spawn daemon. Internal modules:
+                           Stackchan::{BLE, Voice, AI, Event, Display}.
 
 test/                      Host tests (picotest on a host PicoRuby VM).
 lib/ruby_class_extract.rb  prism-AST loader for application.rb class bodies.
@@ -155,7 +155,7 @@ synchronization.
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 
-A macOS CoreBluetooth binding for Ruby, used by `pc/stackchan-ble-client` as the
+A macOS CoreBluetooth binding for Ruby, used by `pc/stackchan` as the
 BLE transport.
 
 ## License

@@ -14,7 +14,9 @@
 # expected signal that points the decision matrix (§6.4) at "Rework", not a bug.
 #
 # Deploy: rake r2p2:build_flash_appmrb SRC=app/bringup_ble_rx_meter.rb
-# Pair with: pc/stackchan-ble-client/exe/stackchan-ble-throughput
+# Pair: the Mac-side pusher was pc/stackchan-ble-client/exe/stackchan-ble-throughput,
+# retired with the unified `stackchan` CLI consolidation. Re-add a `throughput`
+# verb to pc/stackchan/ if this spike is revived.
 
 # [1] 5s escape hatch — crash-loop recovery window.
 sleep_ms 5000

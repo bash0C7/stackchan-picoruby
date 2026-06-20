@@ -1,9 +1,0 @@
-source "https://rubygems.org"
-
-gem "stackchan_ble_client", path: "../stackchan-ble-client"
-gem "rb-corebluetooth-mac", path: "/Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac"
-
-group :test do
-  gem "test-unit"
-  gem "rake"
-end

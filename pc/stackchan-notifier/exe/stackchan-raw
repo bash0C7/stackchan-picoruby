@@ -1,4 +1,0 @@
-#!/usr/bin/env ruby
-require "bundler/setup"
-require "stackchan_notifier/raw_cli"
-exit StackchanNotifier::RawCLI.run(ARGV.dup)

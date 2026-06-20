@@ -16,7 +16,8 @@
 # if it reaches >=8 KB/s with bounded loss, no fork rework is needed.
 #
 # Deploy: rake r2p2:build_flash_appmrb SRC=app/bringup_ble_rx_meter_fast.rb
-# Pair with: pc/stackchan-ble-client/exe/stackchan-ble-throughput
+# Pair: the Mac-side pusher was pc/stackchan-ble-client/exe/stackchan-ble-throughput,
+# retired with the unified `stackchan` CLI consolidation.
 
 # [1] 5s escape hatch — crash-loop recovery window.
 sleep_ms 5000
