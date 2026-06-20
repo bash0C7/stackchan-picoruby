@@ -102,7 +102,7 @@ bundle exec exe/stackchan face joy                 # neutral / smile / joy / sur
 bundle exec exe/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 bundle exec exe/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 bundle exec exe/stackchan torque on                # off lets you move the head by hand
-bundle exec exe/stackchan say "ぼくスタックチャンだよ" --gain 0.1
+bundle exec exe/stackchan say "ぼくスタックチャンだよ" --gain 0.1  # speaks + shows subtitle on LCD (first 19 chars)
 bundle exec exe/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
 bundle exec exe/stackchan stop                     # explicit: tear the link down
 ```

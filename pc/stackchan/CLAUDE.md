@@ -38,7 +38,7 @@ bundle exec exe/stackchan <verb> [args]
 | 「力抜いて」「だらん」「手で動かせるように」 | `stackchan torque off` |
 | 「力入れて」「動かないで」 | `stackchan torque on` |
 | 「ちょっと動いて」「生きてる確認」 | `stackchan selftest` |
-| 「『〜』って言って」「しゃべって」 | `stackchan say "〜" --gain 0.1` (gain 0.1 が日常運用音量、0.3 以上はうるさい) |
+| 「『〜』って言って」「しゃべって」 | `stackchan say "〜" --gain 0.1` (発話 + LCD 字幕表示、字幕は先頭 19 文字。gain 0.1 が日常運用音量、0.3 以上はうるさい) |
 | 「『〜』って話しかけて」「対話」 | `stackchan chat "〜"` (字幕 + 発話、字幕だけなら `--no-speak`) |
 | 「タッチ見せて」「頭触られたら教えて」 | `stackchan touch listen` (`--react` で AI 反応 ON) |
 | 「インタラクティブにサーボ動かしたい」 | `stackchan tui` (短縮 cmd `yl 50` / `pu 30` / `ton` / `toff` / `fwd` / `face joy` ...) |

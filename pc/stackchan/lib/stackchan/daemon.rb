@@ -102,7 +102,11 @@ module Stackchan
       tts_opts = { voice: voice, gain: gain }.compact
       tts = Stackchan::Voice::Tts.new(**tts_opts)
       ulaw = tts.synthesize(text)
-      with_ble { Stackchan::Voice::Streamer.new(@ble).stream(ulaw) }
+      subtitle_frame = Stackchan::AI::FrameText.build(face_index: nil, text: text)
+      with_ble do
+        @ble.raw_send(subtitle_frame)
+        Stackchan::Voice::Streamer.new(@ble).stream(ulaw)
+      end
     end
 
     def chat(text, speak: true)
