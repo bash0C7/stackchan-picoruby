@@ -1,0 +1,12 @@
+source "https://rubygems.org"
+
+gem "rb-corebluetooth-mac", path: "/Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac"
+gem "rb-foundation-model-mac", path: "/Users/bash/dev/src/github.com/bash0C7/rb-foundation-model-mac"
+gem "drb"
+gem "rinda"
+gem "logger"
+
+group :test do
+  gem "test-unit"
+  gem "rake"
+end

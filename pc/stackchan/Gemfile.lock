@@ -1,0 +1,53 @@
+PATH
+  remote: /Users/bash/dev/src/github.com/bash0C7/rb-corebluetooth-mac
+  specs:
+    rb-corebluetooth-mac (0.2.1)
+
+PATH
+  remote: /Users/bash/dev/src/github.com/bash0C7/rb-foundation-model-mac
+  specs:
+    rb-foundation-model-mac (0.2.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    drb (2.2.3)
+    forwardable (1.4.0)
+    ipaddr (1.2.9)
+    logger (1.7.0)
+    power_assert (3.0.1)
+    rake (13.4.2)
+    rinda (0.2.0)
+      drb
+      forwardable
+      ipaddr
+    test-unit (3.7.8)
+      power_assert
+
+PLATFORMS
+  arm64-darwin-25
+  ruby
+
+DEPENDENCIES
+  drb
+  logger
+  rake
+  rb-corebluetooth-mac!
+  rb-foundation-model-mac!
+  rinda
+  test-unit
+
+CHECKSUMS
+  drb (2.2.3) sha256=0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373
+  forwardable (1.4.0) sha256=f1cd40cc9812937980e1c76f1aa053660990a7c9b6a98fc37d945468afcce838
+  ipaddr (1.2.9) sha256=0f858a7b2e45def81ad2acf7997af77f2837709fa3b3acbbc05f33cfcc03deb7
+  logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
+  power_assert (3.0.1) sha256=8ce9876716cc74e863fcd4cdcdc52d792bd983598d1af3447083a3a9a4d34103
+  rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
+  rb-corebluetooth-mac (0.2.1)
+  rb-foundation-model-mac (0.2.0)
+  rinda (0.2.0) sha256=bb4566af73c9b78e80bc41202140860e33150ee2a0eacdf6dfe583e1aa0b03fa
+  test-unit (3.7.8) sha256=689d1ca53f4d46f678b4e5d68d8e4294f87fc5e8b9238cc4de7c5727e8d65943
+
+BUNDLED WITH
+  4.0.10
