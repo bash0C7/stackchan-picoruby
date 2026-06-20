@@ -150,11 +150,18 @@ module Stackchan::BLE
     def send_frame(frame)
       @last_detail_frame = nil
       @rx_char.write_without_response(frame)
-      ack = @inbox.pop(timeout: @ack_timeout)
-      raise TimeoutError, "ACK timeout for frame #{frame.inspect}" if ack.nil?
-      status = FrameCodec.parse_ack(ack)
-      if servo_frame?(frame)
-        @last_detail_frame = @inbox.pop(timeout: @ack_timeout)
+      first = @inbox.pop(timeout: @ack_timeout)
+      raise TimeoutError, "ACK timeout for frame #{frame.inspect}" if first.nil?
+      if first.start_with?(FrameCodec::ACK_OK) || first.start_with?(FrameCodec::ACK_ERROR)
+        status = FrameCodec.parse_ack(first)
+        if servo_frame?(frame)
+          @last_detail_frame = @inbox.pop(timeout: @ack_timeout)
+        end
+      else
+        # Some servo / read frames return only the detail frame (no separate
+        # ACK byte) — treat the detail as both confirmation and payload.
+        @last_detail_frame = first
+        status = :ok
       end
       case status
       when :ok    then nil

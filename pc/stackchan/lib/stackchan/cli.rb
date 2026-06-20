@@ -42,7 +42,7 @@ module Stackchan
     end
 
     def self.spawn_daemon
-      daemon_exe = File.expand_path("../../exe/stackchand", __FILE__)
+      daemon_exe = File.expand_path("../../exe/stackchand", __dir__)
       log_path = "/tmp/stackchand-#{Process.uid}.log"
       pid = Process.spawn(daemon_exe, [:out, :err] => log_path)
       Process.detach(pid)

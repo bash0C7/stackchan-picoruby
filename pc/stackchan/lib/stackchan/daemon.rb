@@ -17,17 +17,25 @@ module Stackchan
     DEFAULT_NAME_PREFIX = ENV["BLE_NAME_PREFIX"] || "StackChan"
     DEFAULT_SOCKET_PATH = ENV["STACKCHAN_SOCKET"] || "/tmp/stackchan-#{Process.uid}.sock"
 
+    # Mac CoreBluetooth idle-disconnects after ~15-20s of no traffic. The
+    # daemon keeps the link alive with a periodic <read:pos> (idempotent, no
+    # device-visible side effect) at half the idle window.
+    KEEPALIVE_INTERVAL_S = 7.0
+
     def initialize(device_name: DEFAULT_DEVICE_NAME, name_prefix: DEFAULT_NAME_PREFIX, socket_path: DEFAULT_SOCKET_PATH)
-      @device_name   = device_name
-      @name_prefix   = name_prefix
-      @socket_path   = socket_path
-      @ble           = nil
-      @display       = nil
-      @ai_session    = nil
-      @event_channel = Stackchan::Event::Channel.new
-      @stop_mutex    = Mutex.new
-      @stop_cv       = ConditionVariable.new
-      @stopped       = false
+      @device_name      = device_name
+      @name_prefix      = name_prefix
+      @socket_path      = socket_path
+      @ble              = nil
+      @display          = nil
+      @ai_session       = nil
+      @event_channel    = Stackchan::Event::Channel.new
+      @ble_mutex        = Mutex.new
+      @last_activity    = Time.now
+      @keepalive_thread = nil
+      @stop_mutex       = Mutex.new
+      @stop_cv          = ConditionVariable.new
+      @stopped          = false
     end
 
     attr_reader :socket_path
@@ -35,6 +43,7 @@ module Stackchan
     def start
       connect_ble
       start_touch_reader
+      start_keepalive
       cleanup_stale_socket
       DRb.start_service("drbunix:#{@socket_path}", self)
       File.chmod(0o600, @socket_path) if File.exist?(@socket_path)
@@ -61,6 +70,7 @@ module Stackchan
     end
 
     def shutdown
+      @keepalive_thread&.kill
       DRb.stop_service rescue nil
       @ai_session&.close
       begin
@@ -92,31 +102,31 @@ module Stackchan
       tts_opts = { voice: voice, gain: gain }.compact
       tts = Stackchan::Voice::Tts.new(**tts_opts)
       ulaw = tts.synthesize(text)
-      Stackchan::Voice::Streamer.new(@ble).stream(ulaw)
+      with_ble { Stackchan::Voice::Streamer.new(@ble).stream(ulaw) }
     end
 
     def chat(text, speak: true)
       @ai_session ||= Stackchan::AI::Companion.new(@ble)
-      reply = @ai_session.respond(text)
+      reply = with_ble { @ai_session.respond(text) }
       say(reply) if speak && reply
       reply
     end
 
-    def face(name); @display.face(name); end
-    def led(side:, color:, mode:); @display.led(side: side, color: color, mode: mode); end
-    def servo(**kwargs); @display.servo(**kwargs); end
-    def torque(on); @display.torque(on); end
-    def selftest; @display.selftest; end
+    def face(name); with_ble { @display.face(name) }; end
+    def led(side:, color:, mode:); with_ble { @display.led(side: side, color: color, mode: mode) }; end
+    def servo(**kwargs); with_ble { @display.servo(**kwargs) }; end
+    def torque(on); with_ble { @display.torque(on) }; end
+    def selftest; with_ble { @display.selftest }; end
 
     def raw_send(frame)
       payload = frame.end_with?("\n") ? frame : "#{frame}\n"
-      @ble.raw_send(payload)
+      with_ble { @ble.raw_send(payload) }
     end
 
     # === Calibration helpers (called by CLI; pose prompts stay on the CLI). ===
 
     def sample_pose(samples:)
-      Stackchan::BLE::Calibration.sample_pose(@ble, samples: samples)
+      with_ble { Stackchan::BLE::Calibration.sample_pose(@ble, samples: samples) }
     end
 
     def last_detail_frame
@@ -131,6 +141,15 @@ module Stackchan
 
     private
 
+    # Wrap every BLE-touching call under a single mutex + activity timestamp,
+    # so the keep-alive thread and user verbs don't race on send/recv state.
+    def with_ble
+      @ble_mutex.synchronize do
+        @last_activity = Time.now
+        yield
+      end
+    end
+
     def connect_ble
       @ble = Stackchan::BLE::Client.new(device_name: @device_name, name_prefix: @name_prefix)
       @ble.connect
@@ -139,6 +158,26 @@ module Stackchan
 
     def start_touch_reader
       Stackchan::Event::TouchReader.new(@ble, @event_channel).start
+    end
+
+    # Send an idempotent <read:pos> every KEEPALIVE_INTERVAL_S of inactivity
+    # to defeat Mac CoreBluetooth's ~15s idle-disconnect. read_pos returns an
+    # ACK + detail frame that the existing reader_loop drains; no state change.
+    def start_keepalive
+      @keepalive_thread = Thread.new do
+        loop do
+          sleep 1.0
+          next if (Time.now - @last_activity) < KEEPALIVE_INTERVAL_S
+          begin
+            @ble_mutex.synchronize do
+              @last_activity = Time.now
+              @ble.send { |s| s.read_pos }
+            end
+          rescue StandardError => e
+            $stderr.puts "[keepalive] #{e.class}: #{e.message}"
+          end
+        end
+      end
     end
 
     def cleanup_stale_socket
