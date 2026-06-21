@@ -67,25 +67,36 @@ module Stackchan::BLE
       self
     end
 
-    # Raw write to the NUS RX characteristic WITHOUT waiting for an ACK frame.
-    # Used by the ble-throughput spike to push payloads as fast as the link
-    # allows; the device counts them and reports a periodic summary instead of
-    # ACKing each one. (send/raw_send block on an ACK and are unsuitable here.)
-    def write_without_ack(payload)
+    # Raw write to the NUS RX characteristic WITHOUT a device app-level ACK frame.
+    # `response:` selects the ATT-layer write type:
+    #   - false (default): Write Without Response — flow-controlled by CoreBluetooth
+    #     (canSendWriteWithoutResponse). macOS caps the payload at ~182 B regardless
+    #     of the negotiated MTU.
+    #   - true: Write With Response — each write waits for the ATT Write Response the
+    #     device's btstack att_server returns automatically. Allows full-MTU payloads
+    #     (≈509 B) and paces the device's BLE task one write at a time. NOTE: this ATT
+    #     Write Response is NOT the device's app-level ACK frame (the `<.>`/`<?>`
+    #     consumed by #send_frame); audio chunks carry no app ACK.
+    def write_without_ack(payload, response: false)
       raise ConnectionError, "not connected" unless @subscription
-      @rx_char.write_without_response(payload)
+      if response
+        @rx_char.write(payload, response: true)
+      else
+        @rx_char.write_without_response(payload)
+      end
       self
     rescue CoreBluetoothMac::Error => e
       raise ConnectionError, "#{e.class}: #{e.message}"
     end
 
-    # Negotiated maximum write-without-response payload (CoreBluetooth
-    # maximumWriteValueLength). Lets callers size payloads to the real MTU
-    # instead of the 20-byte ATT-23 floor. macOS as central typically
-    # negotiates a larger MTU, so this can be ~180+ bytes.
-    def max_write_chunk
+    # Negotiated maximum write payload (CoreBluetooth maximumWriteValueLength).
+    # `response: false` → Write Without Response cap (~182 B on macOS).
+    # `response: true`  → Write With Response cap (ATT_MTU-3, ≈509 B) — used by the
+    # audio streamer to coalesce chunks and cut the device's per-write cross-thread
+    # mruby allocation count.
+    def max_write_chunk(response: false)
       raise ConnectionError, "not connected" unless @peripheral
-      @peripheral.max_write_length(response: false)
+      @peripheral.max_write_length(response: response)
     rescue CoreBluetoothMac::Error => e
       raise ConnectionError, "#{e.class}: #{e.message}"
     end
