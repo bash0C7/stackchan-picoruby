@@ -4,7 +4,7 @@ module Stackchan
   module Demo
     DEFAULT_DURATION_S = 10.0
     SPEECH_RATE        = 250   # wpm — faster speech => fewer bytes => less BLE timing exposure
-    INTRO_LINE         = "こんにちは、ぼくスタックチャンだよ"
+    INTRO_LINE         = "ぼくスタックチャン！"
     OUTRO_LINE         = "タッチしてみて"
     FACES              = %w[joy smile surprised joy smile].freeze
     # Left/right colour + mode pairs cycled through during the demo.
