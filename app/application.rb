@@ -1292,15 +1292,6 @@ class StackChanApp < BLE
       Machine.delay_ms 150
       @dispatcher.current_face_class.new.redraw_eyes_open(@display)
     end
-  rescue => e
-    puts "[HB-CRASH] #{e.class}: #{e.message}"
-    bt = e.backtrace
-    if bt
-      bt.each { |l| puts "[HB-BT] #{l}" }
-    else
-      puts "[HB-BT] (nil backtrace)"
-    end
-    raise
   end
 
   # Route one RX chunk through the audio receiver: it accumulates raw mu-law
@@ -1309,7 +1300,6 @@ class StackChanApp < BLE
   # the BLE poll is fine — the Mac is idle by then and a sentence plays in
   # ~1-3s (< the ~15-20s idle-disconnect window). One <A:done> ACK per clip.
   def consume_rx(rx_data)
-    puts "[rx-nonstr] cls=#{rx_data.class} insp=#{rx_data.inspect[0, 60]}" unless rx_data.is_a?(String)
     done = @audio.consume(rx_data) { |frame| @dispatcher.handle(frame) }
     done.times { write("<A:done>\n") }
   end
