@@ -1,0 +1,44 @@
+diff --git a/components/picoruby-esp32/CMakeLists.txt b/components/picoruby-esp32/CMakeLists.txt
+index 30be17f..5587a21 100644
+--- a/components/picoruby-esp32/CMakeLists.txt
++++ b/components/picoruby-esp32/CMakeLists.txt
+@@ -70,6 +70,12 @@ idf_component_register(
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-ble/ports/esp32/ble_peripheral.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-ble/ports/esp32/ble_central.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-ble/ports/esp32/btstack_owner.c
++    # StackChan BLE reboot workaround: __wrap_BLE_write_data + FreeRTOS lock.
++    # Source-of-truth in stackchan-picoruby; injected here by the build-time
++    # overlay (r2p2-overlay/ble-bridge-wrap.patch) so the picoruby-ble fork
++    # stays byte-clean. Pairs with the --wrap link flag below and the
++    # picoruby-ble-bridge gem in build_config.
++    /Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/mrbgems/picoruby-ble-bridge/ports/esp32/ble_bridge_port.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
+     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cmac.c
+@@ -158,6 +164,12 @@ add_prebuilt_library(
+   REQUIRES ${COMPONENT_NAME}
+ )
+ target_link_libraries(${COMPONENT_LIB} PRIVATE libmruby)
++# StackChan BLE reboot workaround (build-time overlay): redirect the fork's
++# BLE_write_data (called from the BTstack task, the heap-corruption driver) to
++# __wrap_BLE_write_data in ble_bridge_port.c. INTERFACE so the flag reaches the
++# final firmware link via main's dependency on this component. -u force-keeps
++# the wrapper object even if archive scan order would otherwise drop it.
++target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=BLE_write_data" "-Wl,-u,__wrap_BLE_write_data")
+ if(CONFIG_ESP_WIFI_ENABLED AND DEFINED ENV{USE_WIFI})
+   target_link_libraries(${COMPONENT_LIB} PRIVATE idf::esp_wifi)
+ endif()
+diff --git a/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb b/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb
+index eb39a21..87ef52c 100644
+--- a/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb
++++ b/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb
+@@ -67,6 +67,9 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
+   # BLE
+   conf.gem core: 'picoruby-ble'
+   conf.gem core: 'picoruby-ble-uart'
++  # StackChan BLE reboot workaround: thread-safe inbound bridge (BLEBridge).
++  # Local path; injected by the build-time overlay so the fork stays clean.
++  conf.gem gemdir: '/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby/mrbgems/picoruby-ble-bridge'
+ 
+   # StackChan device drivers (standalone repos extracted from monorepo; tag-pinned).
+   # NOTE: picoruby LoadGems has no `tag:` keyword — pin a tag via `branch:`, which is

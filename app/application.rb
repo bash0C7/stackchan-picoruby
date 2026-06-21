@@ -1190,6 +1190,8 @@ class StackChanApp < BLE
       puts "[application] disconnected"
       @notify_enabled = false
       @notify_queue = []
+      # Free any inbound bytes still queued in the bridge from the dead link.
+      BLEBridge.reset
       # Re-enable advertising so a central can reconnect. With the infinite
       # run loop (no 60s HCI power-cycle), nothing else re-advertises after a
       # disconnect — the old loop+start(60_000) relied on the boundary
@@ -1204,13 +1206,17 @@ class StackChanApp < BLE
     puts "[application] heartbeat"
     # NUS RX drain — routes raw audio (after a <A:N> control frame) to the
     # speaker, everything else through the frame parser to the dispatcher.
-    rx_data = pop_write_value(@rx_handle)
+    # Drains the StackChan thread-safe bridge (BLEBridge), NOT BLE#pop_write_value:
+    # inbound writes are diverted off the BTstack task by __wrap_BLE_write_data
+    # into a C FIFO, and the mruby String is built here on the main task. This is
+    # the reboot workaround — see mrbgems/picoruby-ble-bridge.
+    rx_data = BLEBridge.pop_write(@rx_handle)
     while rx_data
       consume_rx(rx_data)
-      rx_data = pop_write_value(@rx_handle)
+      rx_data = BLEBridge.pop_write(@rx_handle)
     end
     # CCCD subscribe state
-    cccd = pop_write_value(@tx_cccd_handle)
+    cccd = BLEBridge.pop_write(@tx_cccd_handle)
     if cccd
       @notify_enabled = (cccd == "\x01\x00")
       puts "[application] notify #{@notify_enabled ? 'enabled' : 'disabled'}"
@@ -1279,6 +1285,11 @@ end
 # 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
 # このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
 puts "[application] BLE peripheral starting (infinite advertise)"
+# Create the bridge lock (FreeRTOS mutex) on the main task BEFORE the BTstack
+# task exists, so __wrap_BLE_write_data never pushes under a NULL lock. Inbound
+# writes can only arrive after a central connects (after advertise), but this is
+# the safe, deterministic ordering. See mrbgems/picoruby-ble-bridge.
+BLEBridge.init
 peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch, speaker: @speaker)
 peri.debug = true
 # Run the BTstack run loop indefinitely (start with no timeout). An active

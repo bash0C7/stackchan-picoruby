@@ -177,42 +177,49 @@ def ensure_no_concurrent_monitor
         "then retry. If stale: kill #{pids.join(' ')}"
 end
 
-# R2P2-ESP32 integration overlay. The stackchan-picoruby project needs two
-# deltas in the shared R2P2-ESP32 fork to build picoruby-i2s: a build_config gem
-# registration and an esp_driver_i2s PRIV_REQUIRES line in picoruby-esp32's
-# CMakeLists. Rather than committing those into the shared fork (which would bury
-# the intent and risk drifting from upstream — memory
-# shared-commons-no-casual-picoruby-r2p2-edits), we keep them as a patch under
-# r2p2-overlay/ and apply it ONLY around a build, reverting afterward so the fork
-# working tree stays clean. Idempotent: re-apply detects an already-applied
-# patch (reverse-check) and a build interrupted before the ensure-revert is
-# normalized on the next apply.
-R2P2_OVERLAY_PATCH = File.expand_path('r2p2-overlay/picoruby-i2s-integration.patch', __dir__)
+# R2P2-ESP32 integration overlays. stackchan-picoruby needs a few deltas in the
+# shared R2P2-ESP32 fork at build time — build_config gem registrations and
+# extra picoruby-esp32 SRCS / PRIV_REQUIRES / link flags (picoruby-i2s; and the
+# BLE reboot workaround: ble_bridge_port.c + -Wl,--wrap=BLE_write_data + the
+# picoruby-ble-bridge gem). Committing those into the shared fork would bury the
+# intent and risk drifting from upstream (memory
+# shared-commons-no-casual-picoruby-r2p2-edits), so each concern lives as its own
+# patch under r2p2-overlay/ and is applied ONLY around a build, reverted
+# afterward so the fork working tree stays clean. Patches apply in sorted
+# filename order and revert in reverse order (their hunks touch disjoint
+# regions, so order is not significant). Idempotent per patch: an already-applied
+# patch (reverse-check passes) is skipped, so a build interrupted before the
+# ensure-revert self-heals on the next apply.
+R2P2_OVERLAY_PATCHES = Dir[File.expand_path('r2p2-overlay/*.patch', __dir__)].sort
 
-def r2p2_overlay_applied?
-  return false unless File.exist?(R2P2_OVERLAY_PATCH)
-  system("git -C #{R2P2_ROOT} apply --reverse --check #{R2P2_OVERLAY_PATCH} >/dev/null 2>&1")
+def r2p2_overlay_applied?(patch)
+  system("git -C #{R2P2_ROOT} apply --reverse --check #{patch} >/dev/null 2>&1")
 end
 
 def apply_r2p2_overlay
-  unless File.exist?(R2P2_OVERLAY_PATCH)
-    abort "[overlay] patch missing: #{R2P2_OVERLAY_PATCH}"
+  if R2P2_OVERLAY_PATCHES.empty?
+    abort "[overlay] no patches found under r2p2-overlay/"
   end
-  if r2p2_overlay_applied?
-    puts "[overlay] already applied — skipping"
-    return
+  R2P2_OVERLAY_PATCHES.each do |patch|
+    if r2p2_overlay_applied?(patch)
+      puts "[overlay] already applied — skipping #{File.basename(patch)}"
+      next
+    end
+    sh "git -C #{R2P2_ROOT} apply #{patch}"
+    puts "[overlay] applied #{File.basename(patch)} to R2P2-ESP32"
   end
-  sh "git -C #{R2P2_ROOT} apply #{R2P2_OVERLAY_PATCH}"
-  puts "[overlay] applied picoruby-i2s integration patch to R2P2-ESP32"
 end
 
 def revert_r2p2_overlay
-  return unless r2p2_overlay_applied?
-  sh "git -C #{R2P2_ROOT} apply --reverse #{R2P2_OVERLAY_PATCH}"
-  puts "[overlay] reverted — R2P2-ESP32 working tree clean"
+  R2P2_OVERLAY_PATCHES.reverse_each do |patch|
+    next unless r2p2_overlay_applied?(patch)
+    sh "git -C #{R2P2_ROOT} apply --reverse #{patch}"
+    puts "[overlay] reverted #{File.basename(patch)}"
+  end
+  puts "[overlay] R2P2-ESP32 working tree clean"
 end
 
-# Apply the integration overlay for the duration of a build, then always revert.
+# Apply the integration overlays for the duration of a build, then always revert.
 def with_r2p2_overlay
   apply_r2p2_overlay
   yield
