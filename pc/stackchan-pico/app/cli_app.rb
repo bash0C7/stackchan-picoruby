@@ -8,7 +8,7 @@
 # a verb against an unreachable daemon reports "not connected".
 module Stackchan
   class CLI
-    VERBS = %w[status stop say chat face led servo torque selftest raw touch].freeze
+    VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui].freeze
     OBSERVE_ONLY = %w[status].freeze
 
     def self.run(argv, host: "127.0.0.1", port: 8787)
@@ -49,8 +49,11 @@ module Stackchan
 
     def dispatch(verb, args)
       case verb
+      when "connect"  then out "connected."; out @daemon.status.inspect
       when "status"   then out @daemon.status.inspect
       when "stop"     then @daemon.stop; out "daemon stopped"
+      when "demo"     then verb_demo(args)
+      when "tui"      then verb_tui
       when "say"      then verb_say(args)
       when "chat"     then verb_chat(args)
       when "face"     then out @daemon.face(args[0])
@@ -131,6 +134,84 @@ module Stackchan
           sleep 0.2
         end
       end
+    end
+
+    # Demo: scripted intro performance (LED/face/servo cycling + say). Port of
+    # Stackchan::Demo. Uses a step count, not a Time deadline (no Time on
+    # PicoRuby), and passes servo poses as positional Hashes (drb has no kwargs).
+    DEMO_FACES = %w[joy smile surprised joy smile]
+    DEMO_LR_COLORS = [[:red,:blue],[:yellow,:magenta],[:green,:cyan],[:cyan,:red],[:magenta,:yellow],[:white,:green]]
+    DEMO_LR_MODES  = [[:blink,:breathing],[:breathing,:solid],[:solid,:blink]]
+    DEMO_POSES = [
+      { yaw_left: 60, pitch_up: 30, time_ms: 800 },
+      { yaw_right: 60, pitch_up: 30, time_ms: 800 },
+      { yaw_left: 0, pitch_up: 60, time_ms: 800 },
+      { yaw_right: 60, pitch_up: 0, time_ms: 800 },
+      { yaw_left: 60, pitch_up: 0, time_ms: 800 },
+    ]
+    DEMO_STEP_S = 1.2
+
+    def verb_demo(args)
+      opts = parse_kw(args)
+      duration = (opts["duration"] && opts["duration"].to_f) || 10.0
+      steps = (duration / DEMO_STEP_S).to_i
+      out "[demo] start"
+      @daemon.led({ side: :left,  color: :red,  mode: :blink })
+      @daemon.led({ side: :right, color: :blue, mode: :breathing })
+      sleep 1.5
+      @daemon.say("こんにちは、ぼくスタックチャンだよ")
+      sleep 0.5
+      i = 0
+      while i < steps
+        @daemon.face(DEMO_FACES[i % DEMO_FACES.size])
+        lc, rc = DEMO_LR_COLORS[i % DEMO_LR_COLORS.size]
+        lm, rm = DEMO_LR_MODES[i % DEMO_LR_MODES.size]
+        @daemon.led({ side: :left,  color: lc, mode: lm })
+        @daemon.led({ side: :right, color: rc, mode: rm })
+        @daemon.servo(DEMO_POSES[i % DEMO_POSES.size])
+        sleep DEMO_STEP_S
+        i += 1
+      end
+      @daemon.face("neutral")
+      @daemon.led({ side: :both, color: :off, mode: :off })
+      @daemon.servo({ yaw_left: 0, pitch_up: 0, time_ms: 800 })
+      sleep 0.7
+      @daemon.say("タッチしてみて")
+      out "[demo] done"
+    end
+
+    TUI_HELP = "commands: yl N / yr N / pu N / fwd / ton / toff / face NAME / t MS / h / q"
+
+    def verb_tui
+      out TUI_HELP
+      move_ms = 800
+      loop do
+        $stdout.write("\nstackchan> "); $stdout.flush
+        line = $stdin.gets
+        break if line.nil?
+        parts = line.strip.split(" ")
+        cmd = parts[0]
+        arg = parts[1]
+        next if cmd.nil? || cmd == ""
+        case cmd
+        when "yl"   then tui_move({ yaw_left: arg.to_i, time_ms: move_ms })
+        when "yr"   then tui_move({ yaw_right: arg.to_i, time_ms: move_ms })
+        when "pu"   then tui_move({ pitch_up: arg.to_i, time_ms: move_ms })
+        when "fwd"  then tui_move({ yaw_left: 0, pitch_up: 0, time_ms: move_ms })
+        when "ton"  then out @daemon.torque(true)
+        when "toff" then out @daemon.torque(false)
+        when "face" then (arg ? out(@daemon.face(arg)) : out("  face requires a name"))
+        when "t"    then move_ms = arg.to_i; out "  move duration = #{move_ms} ms"
+        when "h", "help" then out TUI_HELP
+        when "q", "quit", "exit" then break
+        else out "  unknown: #{cmd} (h for help)"
+        end
+      end
+    end
+
+    def tui_move(pose)
+      detail = @daemon.servo(pose)
+      out "  detail: #{detail.inspect}" if detail
     end
 
     def parse_kw(args)
