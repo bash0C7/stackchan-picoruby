@@ -185,6 +185,28 @@ module Stackchan
       "OK raw"
     end
 
+    # Sample the servo raw position N times (median) for calibration. Each
+    # <read:pos> returns a <yaw_raw:N,pitch_raw:M> detail frame. Raises if the
+    # device reports "unknown" (operator manual calibration needed).
+    def sample_pose(samples = 3)
+      n = samples || 3
+      readings = []
+      i = 0
+      while i < n
+        with_ble { @ble.send { |s| s.read_pos } }
+        parsed = CalibrationMath.parse_raw_detail(@ble.last_detail_frame.to_s)
+        if parsed[:yaw_raw].nil? || parsed[:pitch_raw].nil?
+          raise Stackchan::BLE::DeviceError, "device returned unknown raw position"
+        end
+        readings << parsed
+        i += 1
+      end
+      {
+        yaw_raw:   CalibrationMath.median(readings.map { |r| r[:yaw_raw] }),
+        pitch_raw: CalibrationMath.median(readings.map { |r| r[:pitch_raw] }),
+      }
+    end
+
     def touch_zone_label(zone)
       TOUCH_ZONE_LABELS[zone]
     end

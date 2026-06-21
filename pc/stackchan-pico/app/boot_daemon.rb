@@ -15,6 +15,7 @@ port = (ARGV[1] || "8787").to_i
 ].each { |f| load "#{root}/mrbgems/picoruby-stackchan-shared/mrblib/#{f}" }
 require "drb"
 load "#{root}/pc/stackchan-pico/app/drb_eintr_retry.rb"
+load "#{root}/pc/stackchan-pico/app/calib.rb"
 load "#{root}/pc/stackchan-pico/app/daemon_app.rb"
 load "#{root}/pc/stackchan-pico/app/fake_ble.rb"
 

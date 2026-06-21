@@ -69,8 +69,10 @@ class FakeBleClient
     # Display#servo returns something non-nil. String includes, NOT an
     # alternation regex — PicoRuby's regexp engine does not support `|`.
     @last_detail_frame =
-      if frame.include?("YL:") || frame.include?("YR:") || frame.include?("PU:") || frame.start_with?("<read:")
-        "<YL_actual:0,PU_actual:0>\n"
+      if frame.start_with?("<read:")
+        "<yaw_raw:0,pitch_raw:0>\n"   # calibration raw read
+      elsif frame.include?("YL:") || frame.include?("YR:") || frame.include?("PU:")
+        "<YL_actual:0,PU_actual:0>\n" # servo move detail
       else
         nil
       end

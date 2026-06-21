@@ -8,7 +8,7 @@
 # a verb against an unreachable daemon reports "not connected".
 module Stackchan
   class CLI
-    VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui].freeze
+    VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui calibrate].freeze
     OBSERVE_ONLY = %w[status].freeze
 
     def self.run(argv, host: "127.0.0.1", port: 8787)
@@ -54,6 +54,7 @@ module Stackchan
       when "stop"     then @daemon.stop; out "daemon stopped"
       when "demo"     then verb_demo(args)
       when "tui"      then verb_tui
+      when "calibrate" then return verb_calibrate(args)
       when "say"      then verb_say(args)
       when "chat"     then verb_chat(args)
       when "face"     then out @daemon.face(args[0])
@@ -212,6 +213,77 @@ module Stackchan
     def tui_move(pose)
       detail = @daemon.servo(pose)
       out "  detail: #{detail.inspect}" if detail
+    end
+
+    # Calibration: operator-paced 5-pose flow (or --align-only). Port of
+    # Stackchan::Calibrate::Runner. Exit codes: 0 ok, 6 device-unknown, 7 verify-fail.
+    def verb_calibrate(args)
+      align_only = delete_flag(args, "--align-only")
+      engage     = delete_flag(args, "--engage-torque")
+      no_toggle  = delete_flag(args, "--no-torque-toggle")
+      opts = parse_kw(args)
+      samples = (opts["samples"] && opts["samples"].to_i) || 3
+      fmt = (opts["format"] || "ruby").to_sym
+      if align_only
+        calibrate_align(no_toggle)
+      else
+        calibrate_full(samples, fmt, engage, no_toggle)
+      end
+    end
+
+    def calibrate_align(skip_torque)
+      unless skip_torque
+        out "[1/3] <torque:off>..."; @daemon.torque(false); out "  ACK"
+      end
+      prompt_enter("[2/3] Align FORWARD (LCD facing operator), press Enter (Ctrl-C aborts)...")
+      unless skip_torque
+        out "[3/3] <torque:on>..."; @daemon.torque(true); out "  ACK"
+      end
+      out "[done] Ready for operation."
+      0
+    end
+
+    def calibrate_full(samples, fmt, engage, skip_torque)
+      unless skip_torque
+        out "[1/6] <torque:off>..."; @daemon.torque(false); out "  ACK"
+      end
+      poses = {}
+      begin
+        CalibrationMath::POSE_PROMPTS.each do |pair|
+          prompt_enter(pair[1])
+          p = @daemon.sample_pose(samples)
+          poses[pair[0]] = p
+          out "  reading yaw_raw=#{p[:yaw_raw]} pitch_raw=#{p[:pitch_raw]}"
+        end
+      rescue => e
+        out "[FAIL] #{e.message} (device returned unknown — manual calibration needed)"
+        return 6
+      end
+      anchors = CalibrationMath.compute_anchors(poses)
+      outcome = CalibrationMath.classify_verify(anchors[:forward_verify])
+      if engage && !skip_torque
+        @daemon.torque(true); out "[engage] <torque:on> sent."
+      end
+      out ""
+      out CalibrationMath.format(anchors, fmt)
+      case outcome
+      when :pass then 0
+      when :warn then out "[WARN] verify delta exceeded #{CalibrationMath::PASS_TOLERANCE}; review before paste."; 0
+      when :fail then out "[FAIL] verify delta exceeded #{CalibrationMath::FAIL_TOLERANCE}; incomplete."; 7
+      end
+    end
+
+    def prompt_enter(msg)
+      $stdout.write(msg + " ")
+      $stdout.flush
+      $stdin.gets
+    end
+
+    def delete_flag(args, flag)
+      idx = args.index(flag)
+      return false unless idx
+      args.delete_at(idx)
+      true
     end
 
     def parse_kw(args)
