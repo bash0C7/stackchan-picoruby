@@ -3,25 +3,18 @@ require "stackchan/ble"
 
 # Fake transport that imitates corebluetooth_mac's surface enough for Client tests.
 class FakeTransport
-  attr_reader :writes, :raw_writes, :state, :closed, :scan_calls, :connect_calls
+  attr_reader :writes, :state, :closed, :scan_calls, :connect_calls
   attr_accessor :scan_result, :ack_replies
 
   def initialize
     @state         = :idle
     @writes        = []
-    @raw_writes    = []
     @scan_calls    = []
     @connect_calls = []
     @ack_replies   = [".", ".", ".", "."]  # default: 4 OKs for max-4-frame send
     @closed        = false
     @rx_char = FakeChar.new(:rx, self)
     @tx_char = FakeChar.new(:tx, self)
-  end
-
-  # Called by Client when it does a Write With Response (response: true) on RX.
-  # Records the payload + response flag; no ACK is delivered (audio carries none).
-  def record_raw_write(payload, response)
-    @raw_writes << [payload, response]
   end
 
   def scan(name:, timeout:)
@@ -67,9 +60,6 @@ class FakePeripheral
 
   def discover_services(timeout:); end
   def services; []; end
-  def max_write_length(response: true)
-    response ? 509 : 182
-  end
   def find_characteristic(uuid)
     case uuid.downcase
     when "6e400002-b5a3-f393-e0a9-e50e24dcca9e" then @rx
@@ -88,10 +78,6 @@ class FakeChar
 
   def write_without_response(payload)
     @transport.record_write(payload)
-  end
-
-  def write(payload, response: true)
-    @transport.record_raw_write(payload, response)
   end
 
   def subscribe
@@ -413,36 +399,5 @@ class ClientDemuxTest < Test::Unit::TestCase
     client.connect
     client.disconnect
     assert_true true
-  end
-end
-
-class ClientRawWriteTest < Test::Unit::TestCase
-  def setup
-    @transport = FakeTransport.new
-    @client = Stackchan::BLE::Client.new(
-      device_name: "StackChan-PicoRuby",
-      transport:   @transport,
-    )
-    @client.connect
-  end
-
-  def test_write_without_ack_default_uses_write_without_response
-    @client.write_without_ack("hello")
-    assert_equal ["hello"], @transport.writes
-    assert_equal [], @transport.raw_writes
-  end
-
-  def test_write_without_ack_response_true_uses_write_with_response
-    @client.write_without_ack("audio", response: true)
-    assert_equal [["audio", true]], @transport.raw_writes
-    assert_equal [], @transport.writes
-  end
-
-  def test_max_write_chunk_response_true_returns_with_response_cap
-    assert_equal 509, @client.max_write_chunk(response: true)
-  end
-
-  def test_max_write_chunk_default_returns_without_response_cap
-    assert_equal 182, @client.max_write_chunk(response: false)
   end
 end
