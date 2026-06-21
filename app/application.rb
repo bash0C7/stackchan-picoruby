@@ -157,9 +157,38 @@ class StackchanLed
     self
   end
 
+  # One-shot bright pulse: solid color now, auto-decay to off after duration_ms.
+  # Used by Dispatcher#react_to_touch so each tap visibly flashes the zone's
+  # LED side regardless of whether the zone changed (same-zone retap still
+  # shows an off→on transition because flash_until is overwritten each call).
+  def flash_side(side, r, g, b, duration_ms = 300)
+    animate_side(side, r, g, b, :solid)
+    @flash_until ||= { left: nil, right: nil }
+    end_ms = (Machine.uptime_us / 1000) + duration_ms
+    case side
+    when :both
+      @flash_until[:left]  = end_ms
+      @flash_until[:right] = end_ms
+    when :left
+      @flash_until[:left] = end_ms
+    when :right
+      @flash_until[:right] = end_ms
+    end
+    self
+  end
+
   def tick(now_ms)
     left_animator.tick(now_ms)
     right_animator.tick(now_ms)
+    return unless @flash_until
+    if @flash_until[:left] && now_ms >= @flash_until[:left]
+      @flash_until[:left] = nil
+      animate_side(:left, 0, 0, 0, :off)
+    end
+    if @flash_until[:right] && now_ms >= @flash_until[:right]
+      @flash_until[:right] = nil
+      animate_side(:right, 0, 0, 0, :off)
+    end
   end
 
   private
@@ -583,8 +612,18 @@ module StackchanApp
     # face directly on the LCD the instant Si12T fires a rising edge.
     TOUCH_FACE_TABLE = {
       0 => Face::Surprised,
-      1 => Face::Joy,
-      2 => Face::Smile,
+      1 => Face::Angry,
+      2 => Face::Sad,
+    }.freeze
+
+    # Touch zone → LED [side, r, g, b]. Each tap flashes the zone-coded side
+    # in a zone-coded color so the human can identify which zone fired by
+    # color/position. Side is :both/:left/:right matching StackchanLed; color
+    # values are 0..255 raw (no brightness scaling beyond @brightness).
+    TOUCH_LED_TABLE = {
+      0 => [:both,  0, 60, 0],
+      1 => [:right, 60, 0, 0],
+      2 => [:left,  0, 0, 60],
     }.freeze
 
     MODE_TABLE = {
@@ -658,6 +697,11 @@ module StackchanApp
       face_class = TOUCH_FACE_TABLE[zone] || Face::Surprised
       @current_face_class = face_class
       face_class.new.draw(@display)
+      led_entry = TOUCH_LED_TABLE[zone]
+      if @led && led_entry
+        side, r, g, b = led_entry
+        @led.flash_side(side, r, g, b)
+      end
     end
 
     private

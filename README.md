@@ -58,9 +58,10 @@ The firmware build wires these into R2P2-ESP32. All StackChan business logic
 lives in a single autostart payload:
 
 ```
-app/application.rb   Face rendering, the WS2812 LED ring driver, the command
-                     dispatcher, the BLE peripheral, audio receive, and the
-                     cold-boot init sequence.
+app/application.rb   Face rendering, the WS2812 LED ring driver, the Si12T
+                     head-touch poll with on-device face + LED feedback, the
+                     command dispatcher, the BLE peripheral, audio receive,
+                     and the cold-boot init sequence.
 
 pc/stackchan/              Unified macOS-side CLI (`stackchan <verb>`) backed
                            by an auto-spawn daemon. Internal modules:
@@ -104,8 +105,28 @@ bundle exec exe/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 bundle exec exe/stackchan torque on                # off lets you move the head by hand
 bundle exec exe/stackchan say "ぼくスタックチャンだよ" --gain 0.1  # speaks + shows subtitle on LCD (first 19 chars)
 bundle exec exe/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
+bundle exec exe/stackchan touch listen             # stream `<touch:N>` events as the head sensor fires
+bundle exec exe/stackchan touch listen --react     # same, but also ask the AI to react per tap
 bundle exec exe/stackchan stop                     # explicit: tear the link down
 ```
+
+### Touch reactions
+
+Head-touch reactions are on-device — the dispatcher polls the Si12T sensor
+from its heartbeat loop and updates the face + LED locally the moment a
+rising edge fires (no PC round-trip, no perceptible lag even when the BLE
+link is idle). Per zone:
+
+| Zone | Face | LED |
+|---|---|---|
+| 0 | Surprised | both halves, green (300ms pulse) |
+| 1 | Angry | right half, red (300ms pulse) |
+| 2 | Sad | left half, blue (300ms pulse) |
+
+The PC side only sees the `<touch:N>` BLE notify, so `touch listen` /
+`touch listen --react` is the right verb when you want a CLI side-effect
+(printing events, or piping a tap into an AI reply) on top of the on-device
+visual feedback.
 
 ### Demo
 
@@ -140,7 +161,7 @@ bundle exec exe/stackchan calibrate --samples 5 --format ruby   # full 5-pose an
 | Speaker (AW88298 over I2S) | yes | mu-law audio streamed from macOS over BLE |
 | Microphone | no | planned |
 | IMU (BMI270 + BMM150) | no | planned |
-| 3-zone head touch (Si12T) | no | planned |
+| 3-zone head touch (Si12T) | yes | on-device face + LED pulse per tap, BLE `<touch:N>` notify to PC |
 | WiFi, HTTP, MQTT, WebSocket | no | gems available, wiring pending |
 | Camera (GC0308) | no | deferred |
 | NFC | no | deferred |
