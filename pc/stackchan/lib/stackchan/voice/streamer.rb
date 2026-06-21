@@ -3,25 +3,24 @@
 module Stackchan::Voice
   # Streams a mu-law clip to the device over the existing NUS RX characteristic.
   #
-  # Wire contract (device side: app/application.rb StackChanApp audio receive):
-  #   1. a standalone control frame  <A:nbytes>\n  announces the clip length;
-  #   2. then `nbytes` of raw mu-law in writes of up to the negotiated MTU.
-  # The device switches to "audio receive" mode on the control frame, counts raw
-  # bytes (bypassing the frame parser) until nbytes, decodes, and plays. The
-  # control frame MUST be its own write so no audio bytes straddle the boundary.
+  # Two modes:
+  #   stream             - legacy immediate blast (no handshake, for non-Phase1 use)
+  #   stream_halfduplex  - Phase1 half-duplex protocol with timing-based sync
   #
-  # All writes go through StackchanBleClient::Client#write_without_ack, whose
-  # underlying CoreBluetooth path is now flow-controlled (waits on
-  # canSendWriteWithoutResponse) — so this loop applies natural backpressure and
-  # does not silently drop packets even though it never waits for an ACK.
+  # Half-duplex wire contract (device: AudioReceiver in app/application.rb):
+  #   1. <A:N>\n          PC -> device: announce N-byte clip
+  #   2. sleep READY_WAIT_S  PC: wait for device heartbeat to fire (~1s tick)
+  #   3. blast N bytes    PC -> device: raw mu-law (btstack accumulates, main_task sleeps)
+  #   4. sleep T+margin   PC: wait for device to drain+play+notify <A:done>
   class Streamer
-    DEFAULT_CHUNK = 180   # fallback if the negotiated MTU is unavailable.
+    DEFAULT_CHUNK = 180
+    READY_WAIT_S  = 1.5   # Time for device heartbeat to pick up <A:N> and enter receive mode.
 
     def initialize(client)
       @client = client
     end
 
-    # Send one mu-law clip. Returns the number of audio bytes streamed.
+    # Legacy: send <A:N> then immediately blast. Used by existing callers until replaced.
     def stream(ulaw_bytes)
       @client.write_without_ack("<A:#{ulaw_bytes.bytesize}>\n")
       chunk_size = negotiated_chunk
@@ -31,7 +30,22 @@ module Stackchan::Voice
       ulaw_bytes.bytesize
     end
 
-    # Pure helper: split a byte string into <= size byteslices (testable).
+    # Phase1 half-duplex: announce -> wait for device receive mode -> blast -> wait for playback.
+    # sleep_fn injectable for testing (defaults to Kernel#sleep).
+    def stream_halfduplex(ulaw_bytes, sleep_fn: nil)
+      sleep_fn ||= method(:sleep)
+      n = ulaw_bytes.bytesize
+      @client.write_without_ack("<A:#{n}>\n")
+      sleep_fn.call(READY_WAIT_S)
+      chunk_size = negotiated_chunk
+      self.class.chunks(ulaw_bytes, chunk_size).each do |c|
+        @client.write_without_ack(c)
+      end
+      # Device T = n*1000/8000 + 500ms; add play time (n/8000s) and notify margin.
+      sleep_fn.call(n / 8000.0 + 0.5 + 1.5)
+      n
+    end
+
     def self.chunks(bytes, size)
       size = DEFAULT_CHUNK if size.nil? || size <= 0
       out = []
