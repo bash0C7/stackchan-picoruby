@@ -168,13 +168,21 @@ bundle exec exe/stackchan calibrate --samples 5 --format ruby   # full 5-pose an
 
 ## Audio path
 
-macOS synthesizes speech with `say`, converts it to 8 kHz mono PCM, encodes it
-to G.711 mu-law, and streams it over BLE. The device decodes mu-law to 16-bit
-PCM and writes it to the AW88298 amplifier over I2S. The amplifier needs both
-its boost rail (SY7088, enabled through the AW9523 expander) and its 1.8V
-digital rail (AXP2101 ALDO1) powered during cold-boot; the I2S link uses BCLK
-on GPIO34, word select on GPIO33, and data out on GPIO13 with no master clock.
-Output volume is set by the macOS-side gain.
+macOS synthesizes speech with `say`, converts 8 kHz mono PCM to G.711 mu-law,
+and streams it over BLE using a half-duplex receive-then-play protocol.
+
+The PC side sends `<A:N>` (N = mu-law byte count), waits 1.5 s for the device
+heartbeat to pick it up, blasts the bytes in MTU-sized writes, then waits
+`N/8000 + 2 s` for playback to finish. The device, on receiving `<A:N>`,
+replies `<A:ready>`, sleeps `T = (N × 1000 / 8000) + 3000 ms` (main task fully
+static during this window), drains the receive queue, and plays the buffer. The
+phase separation prevents the btstack FreeRTOS thread and the PicoRuby main
+task from racing on the mruby heap.
+
+The AW88298 Class-D amplifier requires its boost rail (SY7088, via AW9523) and
+its 1.8 V digital rail (AXP2101 ALDO1) powered at cold-boot. The I2S link uses
+BCLK on GPIO34, WS on GPIO33, and data-out on GPIO13 with no MCLK. Volume is
+controlled by the macOS-side `--gain` parameter (default 0.1).
 
 ## Hardware
 

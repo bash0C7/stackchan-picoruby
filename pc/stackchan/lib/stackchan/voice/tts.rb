@@ -17,9 +17,10 @@ module Stackchan::Voice
 
     DEFAULT_GAIN = 0.1   # HITL 2026-06-19: 0.3 was far too loud on the 1W speaker (the bring-up tone was ~0.37 full-scale and painful); tune up per-run with --gain.
 
-    def initialize(voice: nil, gain: DEFAULT_GAIN)
+    def initialize(voice: nil, gain: DEFAULT_GAIN, rate: nil)
       @voice = voice
       @gain  = gain
+      @rate  = rate
     end
 
     # text (String) -> mu-law byte string (8 kHz mono).
@@ -49,6 +50,7 @@ module Stackchan::Voice
     def run_say(text, out_path)
       cmd = ["say", "-o", out_path]
       cmd += ["-v", @voice] if @voice
+      cmd += ["-r", @rate.to_s] if @rate
       cmd << text
       _out, err, st = Open3.capture3(*cmd)
       raise SynthError, "say failed: #{err.strip}" unless st.success?

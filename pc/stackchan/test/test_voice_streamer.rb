@@ -54,4 +54,30 @@ class StreamerTest < Test::Unit::TestCase
     assert_equal ulaw, audio
     assert_equal 1000, audio.bytesize
   end
+
+  def test_stream_halfduplex_sends_control_then_blast_with_two_sleeps
+    ulaw = "\x10\x20\x30\x40\x50"  # 5 bytes
+    client = FakeClient.new(chunk: 2)
+    sleeps = []
+    n = S.new(client).stream_halfduplex(ulaw, sleep_fn: ->(t) { sleeps << t })
+
+    assert_equal 5, n
+    assert_equal "<A:5>\n", client.writes[0]
+    assert_equal ["\x10\x20", "\x30\x40", "\x50"], client.writes[1..]
+    assert_equal 2, sleeps.length
+    assert_equal S::READY_WAIT_S, sleeps[0]
+    # post-blast sleep: 5/8000.0 + 0.5 + 1.5 = ~2.000625
+    assert_true sleeps[1] >= 2.0
+    assert_true sleeps[1] < 3.0
+  end
+
+  def test_stream_halfduplex_post_blast_sleep_scales_with_bytes
+    ulaw = "x" * 8000
+    client = FakeClient.new(chunk: 180)
+    sleeps = []
+    S.new(client).stream_halfduplex(ulaw, sleep_fn: ->(t) { sleeps << t })
+
+    # post-blast: 8000/8000.0 + 0.5 + 1.5 = 3.0
+    assert_equal 3.0, sleeps[1]
+  end
 end

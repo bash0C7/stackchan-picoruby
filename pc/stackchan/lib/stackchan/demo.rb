@@ -3,7 +3,8 @@
 module Stackchan
   module Demo
     DEFAULT_DURATION_S = 10.0
-    INTRO_LINE         = "こんにちは、ぼくスタックチャンだよ"
+    SPEECH_RATE        = 250   # wpm — faster speech => fewer bytes => less BLE timing exposure
+    INTRO_LINE         = "ぼくスタックチャン！"
     OUTRO_LINE         = "タッチしてみて"
     FACES              = %w[joy smile surprised joy smile].freeze
     # Left/right colour + mode pairs cycled through during the demo.
@@ -49,7 +50,7 @@ module Stackchan
         @daemon.led(side: :left,  color: :red,  mode: :blink)
         @daemon.led(side: :right, color: :blue, mode: :breathing)
         sleep 1.5
-        @daemon.say(intro)
+        @daemon.say(intro, rate: SPEECH_RATE)
         sleep 0.5
         deadline = Time.now + duration
         i = 0
@@ -68,7 +69,7 @@ module Stackchan
         @daemon.led(side: :both, color: :off, mode: :off)
         @daemon.servo(yaw_left: 0, pitch_up: 0, time_ms: 800)
         sleep 0.7
-        @daemon.say(outro)
+        @daemon.say(outro, rate: SPEECH_RATE)
         @stdout.puts "[demo] done — caller can `touch listen --react` to wait for a touch."
       end
     end

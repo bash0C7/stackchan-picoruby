@@ -29,7 +29,7 @@ class TestCLIDispatch < Test::Unit::TestCase
     def servo(**kw); @calls << [:servo, kw]; end
     def torque(on); @calls << [:torque, on]; end
     def selftest; @calls << [:selftest]; end
-    def say(text, voice: nil, gain: nil); @calls << [:say, text, voice, gain]; end
+    def say(text, voice: nil, gain: nil, rate: nil); @calls << [:say, text, voice, gain, rate]; end
     def chat(text, speak: true); @calls << [:chat, text, speak]; "ok" end
     def raw_send(frame); @calls << [:raw, frame]; end
     def status; { ble_connected: true }; end
@@ -67,7 +67,7 @@ class TestCLIDispatch < Test::Unit::TestCase
 
   def test_say_parses_text_and_gain
     @cli.dispatch("say", ["こんにちは", "--gain", "0.2"])
-    assert_equal [:say, "こんにちは", nil, 0.2], @daemon.calls.last
+    assert_equal [:say, "こんにちは", nil, 0.2, nil], @daemon.calls.last
   end
 
   def test_chat_default_speaks

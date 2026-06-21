@@ -89,7 +89,8 @@ module Stackchan
       text = args.shift
       opts = parse_kw(args)
       gain = opts["gain"]&.to_f
-      @daemon.say(text, voice: opts["voice"], gain: gain)
+      rate = opts["rate"]&.to_i
+      @daemon.say(text, voice: opts["voice"], gain: gain, rate: rate)
     end
 
     def verb_chat(args)

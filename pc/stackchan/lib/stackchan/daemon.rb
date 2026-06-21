@@ -113,28 +113,14 @@ module Stackchan
 
     # === Verb-facing API (called by CLI via DRb proxy) ===
 
-    def say(text, voice: nil, gain: nil)
-      tts_opts = { voice: voice, gain: gain }.compact
+    def say(text, voice: nil, gain: nil, rate: nil)
+      tts_opts = { voice: voice, gain: gain, rate: rate }.compact
       tts = Stackchan::Voice::Tts.new(**tts_opts)
       ulaw = tts.synthesize(text)
       subtitle_frame = Stackchan::AI::FrameText.build(face_index: nil, text: text)
       with_ble do
-        # write_without_ack: device's dispatcher emits no ACK for standalone
-        # <text:...> frames (only the chat-path <F:n,text:...> combo gets one),
-        # so blocking on raw_send would time out. The frame itself is best-effort
-        # subtitle decoration.
         @ble.write_without_ack(subtitle_frame)
-        t0 = Time.now
-        Stackchan::Voice::Streamer.new(@ble).stream(ulaw)
-        # Block until the device finishes playback (8kHz mu-law = 8000 B/s
-        # play rate; streaming was BLE-flow-controlled so the time already
-        # spent largely overlaps playback). Without this wait, a follow-up
-        # verb (e.g. face/led during demo) arrives while heartbeat is still
-        # blocked on the I2S write and hits the 5s ACK timeout. <A:done>
-        # round-trip would be more precise but isn't wired yet (Issue #4).
-        playback_s = ulaw.bytesize / 8000.0
-        remaining  = playback_s - (Time.now - t0)
-        sleep remaining + 0.3 if remaining + 0.3 > 0
+        Stackchan::Voice::Streamer.new(@ble).stream_halfduplex(ulaw)
       end
       record_action(:say, text, last_say: text)
     end
