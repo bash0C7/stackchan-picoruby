@@ -1282,7 +1282,11 @@ class StackChanApp < BLE
   # the BLE poll is fine — the Mac is idle by then and a sentence plays in
   # ~1-3s (< the ~15-20s idle-disconnect window). One <A:done> ACK per clip.
   def consume_rx(rx_data)
-    done = @audio.consume(rx_data) { |frame| @dispatcher.handle(frame) }
+    done = @audio.consume(
+      rx_data,
+      notify_fn: ->(msg) { write(msg) },
+      drain_fn:  -> { pop_write_value(@rx_handle) }
+    ) { |frame| @dispatcher.handle(frame) }
     done.times { write("<A:done>\n") }
   end
 
