@@ -866,84 +866,66 @@ end
 # === StackchanApp::AudioReceiver class ====
 # ==========================================
 module StackchanApp
-  # Mac->device lo-fi audio receiver. Decouples the length-prefixed mu-law
-  # stream from the BLE peripheral so the routing/accumulation logic is
-  # host-testable under picotest (the BLE class itself is excluded from
-  # extraction). Pure orchestration: the parser and Speaker are injected.
+  # Mac->device lo-fi audio receiver — half-duplex phase-separated design.
   #
-  # Protocol: a `<A:N>` control frame announces an N-byte mu-law clip; the
-  # subsequent raw RX bytes (NOT frame-parsed) are accumulated until N is
-  # reached, then the clip is decoded + played (blocking) via the Speaker and
-  # the I2S DOUT is parked at silence. The Mac sends `<A:N>` as its own write,
-  # so audio bytes never share a chunk with it; any post-count remainder in a
-  # chunk is routed back through the parser defensively.
+  # On <A:N>: sends <A:ready> via notify_fn, blocks main_task for T ms via
+  # delay_fn (defaults to Machine.delay_ms), then drains all accumulated BLE
+  # bytes from drain_fn and plays them. Non-audio frames are yielded to the block.
+  #
+  # T = n*1000/8000 + 500ms  (BLE throughput ~8KB/s + margin).
+  # delay_fn/notify_fn/drain_fn are injectable for picotest.
   class AudioReceiver
-    # 0.2s of silence (1600 LE-16 zero samples @ 8kHz) appended after each clip.
-    # ESP-IDF i2s_std TX DMA uses a circular descriptor ring (dma_desc_num=6 ×
-    # dma_frame_num=240 = 1440 frames ≈ 180ms at 8kHz) and with auto_clear_after_cb
-    # left at default false, EOF descriptors are NOT zeroed — the last data
-    # written keeps replaying. A silence tail shorter than the ring's total span
-    # cannot overwrite every descriptor, so the audio tail keeps looping. 200ms
-    # exceeds the 180ms ring span and fills all descriptors with zero.
+    # 200ms of silence overwrites all I2S DMA circular descriptors so the last
+    # audio frame does not replay at EOF.
     SILENCE_TAIL = ("\x00" * 3200)
 
-    def initialize(speaker:, parser:)
-      @speaker   = speaker
-      @parser    = parser
-      @remaining = 0
-      @buf       = ""
+    def initialize(speaker:, parser:, delay_fn: nil)
+      @speaker  = speaker
+      @parser   = parser
+      @delay_fn = delay_fn
     end
 
-    def receiving?
-      @remaining > 0
-    end
-
-    # Consume one RX chunk. Yields each non-audio frame to the block. Returns
-    # the number of clips that finished playing during this chunk (0 or more).
-    def consume(rx_data, &on_frame)
-      if @remaining > 0
-        take = @remaining < rx_data.bytesize ? @remaining : rx_data.bytesize
-        @buf << rx_data.byteslice(0, take)
-        @remaining -= take
-        done = 0
-        if @remaining == 0
-          play_current
-          done = 1
+    # Consume one RX chunk. Returns 1 if a clip was played, 0 otherwise.
+    # Non-audio frames are yielded to the block.
+    def consume(rx_data, notify_fn: nil, drain_fn: nil)
+      @parser.feed(rx_data).each do |frame|
+        if frame.key?("A")
+          n = frame["A"].to_i
+          next if @speaker.nil? || n <= 0
+          notify_fn.call("<A:ready>\n") if notify_fn
+          t = receive_t_ms(n)
+          if @delay_fn
+            @delay_fn.call(t)
+          else
+            Machine.delay_ms(t)
+          end
+          ulaw = drain_all(drain_fn)
+          play(ulaw)
+          return 1
+        else
+          yield frame if block_given?
         end
-        if take < rx_data.bytesize
-          route(rx_data.byteslice(take, rx_data.bytesize - take), &on_frame)
-        end
-        done
-      else
-        route(rx_data, &on_frame)
-        0
       end
+      0
     end
 
     private
 
-    # Parse `data` as frames: `<A:N>` enters audio mode, everything else is
-    # yielded to the caller.
-    def route(data, &on_frame)
-      @parser.feed(data).each do |frame|
-        if frame.key?("A")
-          begin_audio(frame["A"].to_i)
-        else
-          on_frame.call(frame)
-        end
+    def receive_t_ms(n)
+      (n * 1000 / 8000) + 500
+    end
+
+    def drain_all(drain_fn)
+      buf = ""
+      return buf unless drain_fn
+      while (chunk = drain_fn.call)
+        buf << chunk
       end
+      buf
     end
 
-    def begin_audio(nbytes)
-      return if @speaker.nil? || nbytes <= 0
-      @remaining = nbytes
-      @buf = ""
-    end
-
-    def play_current
-      ulaw = @buf
-      @buf = ""
-      return if @speaker.nil?
+    def play(ulaw)
+      return if ulaw.bytesize == 0
       @speaker.play_ulaw(ulaw)
       @speaker.i2s.write(SILENCE_TAIL) if @speaker.i2s
     end
