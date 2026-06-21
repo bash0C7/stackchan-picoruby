@@ -20,11 +20,11 @@ index 30be17f..5587a21 100644
  )
  target_link_libraries(${COMPONENT_LIB} PRIVATE libmruby)
 +# StackChan BLE reboot workaround (build-time overlay): redirect the fork's
-+# BLE_write_data (called from the BTstack task, the heap-corruption driver) to
-+# __wrap_BLE_write_data in ble_bridge_port.c. INTERFACE so the flag reaches the
-+# final firmware link via main's dependency on this component. -u force-keeps
-+# the wrapper object even if archive scan order would otherwise drop it.
-+target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=BLE_write_data" "-Wl,-u,__wrap_BLE_write_data")
++# BLE_write_data AND BLE_push_event (both touch mruby on the BTstack task, the
++# heap-corruption drivers) to __wrap_* in ble_bridge_port.c. INTERFACE so the
++# flags reach the final firmware link via main's dependency on this component.
++# -u force-keeps the wrapper objects even if archive scan order would drop them.
++target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=BLE_write_data" "-Wl,-u,__wrap_BLE_write_data" "-Wl,--wrap=BLE_push_event" "-Wl,-u,__wrap_BLE_push_event")
  if(CONFIG_ESP_WIFI_ENABLED AND DEFINED ENV{USE_WIFI})
    target_link_libraries(${COMPONENT_LIB} PRIVATE idf::esp_wifi)
  endif()

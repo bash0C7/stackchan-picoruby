@@ -1179,6 +1179,28 @@ class StackChanApp < BLE
     db.handle_table[NUS_SERVICE_UUID][char_uuid][key]
   end
 
+  # Override BLE#start. The StackChan bridge diverts inbound HCI/ATT event
+  # packets off the BTstack run-loop task (via __wrap_BLE_push_event into a C
+  # FIFO) so that task never touches the mruby VM — without this, the fork's
+  # BLE_push_event mrb_malloc's on the BTstack task and races the main task as
+  # it unwinds _init, corrupting the heap (the device exits during BLE init).
+  # Because events no longer flow through the fork's pop_packet, drain the
+  # bridge's event FIFO here and build each mruby String on this main task, at
+  # the same 100ms unit as the upstream loop. Infinite (no timeout) so a live
+  # connection is never force-dropped.
+  def start
+    hci_power_control(BLE::HCI_POWER_ON)
+    loop do
+      while (event = BLEBridge.pop_event)
+        packet_callback(event)
+      end
+      heartbeat_callback if pop_heartbeat
+      sleep_ms BLE::POLLING_UNIT_MS
+    end
+  ensure
+    hci_power_control(BLE::HCI_POWER_OFF)
+  end
+
   def packet_callback(event_packet)
     puts "[application] pkt evt=#{event_packet[0] ? event_packet[0].ord : 'nil'}"
     case event_packet[0]&.ord

@@ -56,3 +56,16 @@ __wrap_BLE_write_data(uint16_t att_handle, const uint8_t *data, uint16_t size)
 {
   return ble_bridge_write_push(att_handle, data, size);
 }
+
+/* Interposed for BLE_push_event via -Wl,--wrap=BLE_push_event. Same hazard as
+ * the write path: the BTstack packet_handler delivers HCI/ATT event packets on
+ * the run-loop task, and the fork's BLE_push_event mrb_malloc's there, racing
+ * the main-task VM (this corrupts the heap during init, right after the btstack
+ * setup semaphore is given, while the main task is still unwinding _init). Copy
+ * into the FIFO instead; the main task drains it via BLEBridge.pop_event and
+ * builds the String there. */
+void
+__wrap_BLE_push_event(uint8_t *data, uint16_t size)
+{
+  ble_bridge_event_push(data, size);
+}

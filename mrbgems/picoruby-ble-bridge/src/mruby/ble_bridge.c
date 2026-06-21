@@ -35,6 +35,20 @@ mrb_ble_bridge_pop_write(mrb_state *mrb, mrb_value self)
 }
 
 static mrb_value
+mrb_ble_bridge_pop_event(mrb_state *mrb, mrb_value self)
+{
+  (void)self;
+  uint8_t *data;
+  uint16_t size;
+  if (ble_bridge_event_pop(&data, &size) != 1) {
+    return mrb_nil_value();
+  }
+  mrb_value str = mrb_str_new(mrb, (const char *)data, size);
+  ble_bridge_free(data);
+  return str;
+}
+
+static mrb_value
 mrb_ble_bridge_reset(mrb_state *mrb, mrb_value self)
 {
   (void)mrb; (void)self;
@@ -55,6 +69,7 @@ mrb_picoruby_ble_bridge_gem_init(mrb_state *mrb)
   struct RClass *mod = mrb_define_module(mrb, "BLEBridge");
   mrb_define_module_function(mrb, mod, "init",          mrb_ble_bridge_init,          MRB_ARGS_NONE());
   mrb_define_module_function(mrb, mod, "pop_write",     mrb_ble_bridge_pop_write,     MRB_ARGS_REQ(1));
+  mrb_define_module_function(mrb, mod, "pop_event",     mrb_ble_bridge_pop_event,     MRB_ARGS_NONE());
   mrb_define_module_function(mrb, mod, "reset",         mrb_ble_bridge_reset,         MRB_ARGS_NONE());
   mrb_define_module_function(mrb, mod, "write_dropped", mrb_ble_bridge_write_dropped, MRB_ARGS_NONE());
 }
