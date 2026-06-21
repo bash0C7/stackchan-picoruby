@@ -10,12 +10,10 @@ module Stackchan::Voice
   # bytes (bypassing the frame parser) until nbytes, decodes, and plays. The
   # control frame MUST be its own write so no audio bytes straddle the boundary.
   #
-  # Audio writes go through StackchanBleClient::Client#write_without_ack with
-  # response: true (ATT Write With Response). Each chunk waits for the device's
-  # auto-sent ATT Write Response, which (a) lets us use the full negotiated MTU
-  # (≈509 B vs macOS's ~182 B Write-Without-Response cap) so the device receives
-  # ~3x fewer GATT writes, and (b) paces the device's BLE task one write at a
-  # time. No device-app ACK frame is exchanged for audio.
+  # All writes go through StackchanBleClient::Client#write_without_ack, whose
+  # underlying CoreBluetooth path is now flow-controlled (waits on
+  # canSendWriteWithoutResponse) — so this loop applies natural backpressure and
+  # does not silently drop packets even though it never waits for an ACK.
   class Streamer
     DEFAULT_CHUNK = 180   # fallback if the negotiated MTU is unavailable.
 
@@ -25,10 +23,10 @@ module Stackchan::Voice
 
     # Send one mu-law clip. Returns the number of audio bytes streamed.
     def stream(ulaw_bytes)
-      @client.write_without_ack("<A:#{ulaw_bytes.bytesize}>\n", response: true)
+      @client.write_without_ack("<A:#{ulaw_bytes.bytesize}>\n")
       chunk_size = negotiated_chunk
       self.class.chunks(ulaw_bytes, chunk_size).each do |c|
-        @client.write_without_ack(c, response: true)
+        @client.write_without_ack(c)
       end
       ulaw_bytes.bytesize
     end
@@ -49,7 +47,7 @@ module Stackchan::Voice
     private
 
     def negotiated_chunk
-      n = @client.max_write_chunk(response: true)
+      n = @client.max_write_chunk
       n && n > 0 ? n : DEFAULT_CHUNK
     rescue StandardError
       DEFAULT_CHUNK

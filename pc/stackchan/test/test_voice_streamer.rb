@@ -6,24 +6,20 @@ require "stackchan/voice"
 class StreamerTest < Test::Unit::TestCase
   S = Stackchan::Voice::Streamer
 
-  # Fake client recording the exact write sequence and per-call response flags.
+  # Fake client recording the exact write sequence.
   class FakeClient
-    attr_reader :writes, :chunk_response_flags, :write_response_flags
+    attr_reader :writes
     def initialize(chunk:)
       @chunk = chunk
       @writes = []
-      @chunk_response_flags = []
-      @write_response_flags = []
     end
 
-    def max_write_chunk(response: false)
-      @chunk_response_flags << response
+    def max_write_chunk
       @chunk
     end
 
-    def write_without_ack(payload, response: false)
+    def write_without_ack(payload)
       @writes << payload
-      @write_response_flags << response
     end
   end
 
@@ -57,17 +53,5 @@ class StreamerTest < Test::Unit::TestCase
     audio = client.writes[1..].join
     assert_equal ulaw, audio
     assert_equal 1000, audio.bytesize
-  end
-
-  def test_stream_requests_with_response_mtu_for_chunk_size
-    client = FakeClient.new(chunk: 180)
-    S.new(client).stream("z" * 10)
-    assert_equal [true], client.chunk_response_flags
-  end
-
-  def test_stream_writes_control_and_all_chunks_with_response_true
-    client = FakeClient.new(chunk: 2)
-    S.new(client).stream("\x10\x20\x30")  # control + 2 chunks = 3 writes
-    assert_equal [true, true, true], client.write_response_flags
   end
 end
