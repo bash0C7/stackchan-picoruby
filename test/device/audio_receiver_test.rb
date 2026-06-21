@@ -32,7 +32,7 @@ class AudioReceiverTest < Picotest::Test
 
     assert_equal 1, done
     assert_equal ["<A:ready>\n"], notifies
-    assert_equal [500], delays
+    assert_equal [2000], delays
     assert_equal 3212, spk.i2s.written.bytesize
   end
 
@@ -51,7 +51,7 @@ class AudioReceiverTest < Picotest::Test
       drain_fn:  -> { drain_queue.shift }
     )
 
-    assert_equal [1500], delays
+    assert_equal [3000], delays
   end
 
   def test_played_clip_decodes_ulaw_correctly

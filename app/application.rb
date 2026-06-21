@@ -912,7 +912,9 @@ module StackchanApp
     private
 
     def receive_t_ms(n)
-      (n * 1000 / 8000) + 500
+      # T must cover: PC READY_WAIT_S (1500ms) + blast time (n/8000s) + margin (500ms).
+      # Using 2000ms base so device wakes after blast completes regardless of heartbeat jitter.
+      (n * 1000 / 8000) + 2000
     end
 
     def drain_all(drain_fn)
