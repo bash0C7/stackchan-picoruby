@@ -117,6 +117,26 @@ Anchor recal: `stackchan calibrate [--samples N] [--format ruby|json|env]` (5-po
 - **BLE 検証中は serial monitor を並走させない**。`bin/capture-with-pty ... rake r2p2:monitor` (idf_monitor) は port open 時に DTR/RTS で CoreS3 を reset するため、BLE connect/write/ACK の最中に走らせると device が cold-boot をやり直し advertising が消え、`no device with name prefix` や ACK timeout の偽陽性が出る。BLE smoke / servo / face は **monitor 無しで `stackchan-ble-control` CLI 単独**で実行する。device 側ログがどうしても要るなら reset を覚悟して 1 回キャプチャ→その boot で完結する検証だけにする
 - **`rb-corebluetooth-mac` の native 拡張は使用前にビルド必須**。`cd ../rb-corebluetooth-mac && bundle install && bundle exec rake compile` で Swift dylib + Ruby `.bundle` を生成。未ビルドだと CLI が `Library not loaded: @rpath/libCoreBluetoothMac.dylib` で落ちる。Ruby ABI 切替時は再 compile 必要
 
+### BLE audio half-duplex protocol
+
+btstack FreeRTOS thread と PicoRuby main_task が同時に mruby heap に触れると crash するため、受信フェーズと再生フェーズを完全分離した半二重設計を採用する。
+
+**受信フェーズ（device 側 AudioReceiver#consume）**:
+1. `<A:N>\n` frame を受信 → PC に `<A:ready>\n` を notify
+2. `T = (N * 1000 / 8000) + 3000 ms` だけ `Machine.delay_ms` で静止（main_task が heap に触れない）
+3. T 経過後に BLE RX queue を全 drain してバッファを確保
+4. mu-law bytes を I2S に書き込んで再生
+
+**送信フェーズ（PC 側 Streamer#stream_halfduplex）**:
+1. `<A:N>\n` を write_without_ack で送信
+2. `READY_WAIT_S = 1.5s` sleep（device の heartbeat tick が `<A:N>` を拾うのを待つ）
+3. MTU 単位でバイト列を blast
+4. `N/8000.0 + 2.0s` sleep（device が再生を完走するのを待つ）
+
+**T の根拠**: 6KB/s BLE dip でも blast 完了後に 1500ms マージンが残る。標準音声 ≤3000 bytes なら T ≈ 3375ms、転送は 0.5s 以内。
+
+Non-audio frames（`<F:N>`、`<YL:N>` 等）は AudioReceiver をバイパスして Dispatcher へ直行する。
+
 Spec: `docs/superpowers/specs/2026-05-21-cold-boot-torque-off-and-normalized-protocol-design.md`
 
 ## 開発ルール
