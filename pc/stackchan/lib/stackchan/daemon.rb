@@ -113,8 +113,8 @@ module Stackchan
 
     # === Verb-facing API (called by CLI via DRb proxy) ===
 
-    def say(text, voice: nil, gain: nil)
-      tts_opts = { voice: voice, gain: gain }.compact
+    def say(text, voice: nil, gain: nil, rate: nil)
+      tts_opts = { voice: voice, gain: gain, rate: rate }.compact
       tts = Stackchan::Voice::Tts.new(**tts_opts)
       ulaw = tts.synthesize(text)
       subtitle_frame = Stackchan::AI::FrameText.build(face_index: nil, text: text)

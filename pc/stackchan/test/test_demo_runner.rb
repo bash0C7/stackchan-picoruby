@@ -6,7 +6,7 @@ class TestDemoRunner < Test::Unit::TestCase
   class FakeDaemon
     attr_reader :calls
     def initialize; @calls = []; end
-    def say(text); @calls << [:say, text]; end
+    def say(text, **_opts); @calls << [:say, text]; end
     def face(name); @calls << [:face, name]; end
     def led(side:, color:, mode:); @calls << [:led, side, color, mode]; end
     def servo(**kw); @calls << [:servo, kw]; end

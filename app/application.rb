@@ -912,9 +912,9 @@ module StackchanApp
     private
 
     def receive_t_ms(n)
-      # T must cover: PC READY_WAIT_S (1500ms) + blast time (n/8000s) + margin (500ms).
-      # Using 2000ms base so device wakes after blast completes regardless of heartbeat jitter.
-      (n * 1000 / 8000) + 2000
+      # T must cover: PC READY_WAIT_S (1500ms) + blast time (n/8000s) + margin (1500ms).
+      # 3000ms base gives 1500ms after blast even if BLE throughput dips to ~6KB/s.
+      (n * 1000 / 8000) + 3000
     end
 
     def drain_all(drain_fn)
