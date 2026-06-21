@@ -8,7 +8,7 @@
 # a verb against an unreachable daemon reports "not connected".
 module Stackchan
   class CLI
-    VERBS = %w[status stop say face led servo torque selftest raw touch].freeze
+    VERBS = %w[status stop say chat face led servo torque selftest raw touch].freeze
     OBSERVE_ONLY = %w[status].freeze
 
     def self.run(argv, host: "127.0.0.1", port: 8787)
@@ -51,7 +51,8 @@ module Stackchan
       case verb
       when "status"   then out @daemon.status.inspect
       when "stop"     then @daemon.stop; out "daemon stopped"
-      when "say"      then out @daemon.say(args[0])
+      when "say"      then verb_say(args)
+      when "chat"     then verb_chat(args)
       when "face"     then out @daemon.face(args[0])
       when "led"      then verb_led(args)
       when "servo"    then verb_servo(args)
@@ -70,6 +71,25 @@ module Stackchan
 
     def out(s)
       self.class.out(s)
+    end
+
+    def verb_say(args)
+      text = args[0]
+      opts = parse_kw(args)
+      gain = opts["gain"] && opts["gain"].to_f
+      out @daemon.say(text, gain)
+    end
+
+    def verb_chat(args)
+      no_speak = false
+      idx = args.index("--no-speak")
+      if idx
+        args.delete_at(idx)
+        no_speak = true
+      end
+      text = args[0]
+      reply = @daemon.chat(text, { speak: !no_speak })
+      out(reply ? "reply=#{reply}" : "reply=(none)")
     end
 
     def verb_led(args)

@@ -27,6 +27,12 @@ class FakeBleClient
     @connected
   end
 
+  # Negotiated max write-without-response chunk. Real client reads it from the
+  # CoreBluetooth peripheral; the fake returns a typical macOS-central value.
+  def max_write_chunk
+    180
+  end
+
   def send
     raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
     b = Stackchan::BLE::SendBuilder.new

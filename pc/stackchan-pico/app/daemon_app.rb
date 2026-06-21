@@ -59,10 +59,12 @@ module Stackchan
     KEEPALIVE_INTERVAL_S = 7
     TOUCH_ZONE_LABELS = { 0 => "頭のうしろ", 1 => "右側", 2 => "左側" }
 
-    def initialize(ble:, port: 8787, host: "127.0.0.1")
+    def initialize(ble:, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788")
       @ble           = ble
       @port          = port
       @host          = host
+      @sidecar_uri   = sidecar_uri
+      @sidecar       = nil
       @display       = Display.new(@ble)
       @robot_state   = { last_face: nil, last_say: nil, last_heard: nil, last_action: nil }
       @touch_events  = []
@@ -148,13 +150,33 @@ module Stackchan
       "OK selftest"
     end
 
-    # say: subtitle-only on the PC PicoRuby side. Voice synthesis lives in the
-    # CRuby sidecar (sub-project #4); here we push just the on-LCD subtitle.
-    def say(text)
-      frame = Stackchan::AI::FrameText.build(face_index: nil, text: text)
-      with_ble { @ble.write_without_ack(frame) }
+    # say: TTS runs in the CRuby sidecar (say/afconvert -> mu-law); the daemon
+    # gets the bytes over dRuby, pushes the on-LCD subtitle, then streams the
+    # audio over BLE. The sidecar call (network, no BLE) stays OUTSIDE with_ble.
+    def say(text, gain = nil)
+      ulaw = sidecar.synthesize(text, gain)
+      subtitle = Stackchan::AI::FrameText.build(face_index: nil, text: text)
+      with_ble do
+        @ble.write_without_ack(subtitle)
+        stream_audio(ulaw) if ulaw
+      end
       record(:say, last_say: text)
-      "OK say"
+      "OK say bytes=#{ulaw ? ulaw.bytesize : 0}"
+    end
+
+    # chat: AI reply text comes from the sidecar (FM); the daemon frames it to
+    # the LCD and optionally speaks it. opts Hash (drb cannot carry kwargs):
+    # { speak: true/false, touch_zone: N }.
+    def chat(text, opts = {})
+      opts ||= {}
+      speak = opts.key?(:speak) ? opts[:speak] : true
+      reply = sidecar.respond(text, chat_context(opts[:touch_zone]))
+      record(:chat, last_heard: text)
+      if reply
+        with_ble { @ble.raw_send(Stackchan::AI::FrameText.build(face_index: 1, text: reply)) }
+        say(reply) if speak
+      end
+      reply
     end
 
     def raw_send(frame)
@@ -178,6 +200,45 @@ module Stackchan
     end
 
     private
+
+    # Lazy dRuby client to the CRuby AI/voice sidecar. picoruby-drb opens a
+    # fresh socket per call, so a dropped sidecar just fails the next call.
+    def sidecar
+      @sidecar ||= DRb::DRbObject.new_with_uri(@sidecar_uri)
+    end
+
+    def chat_context(touch_zone)
+      ctx = {
+        last_face:   @robot_state[:last_face],
+        last_say:    @robot_state[:last_say],
+        last_heard:  @robot_state[:last_heard],
+        last_action: @robot_state[:last_action],
+      }
+      if touch_zone
+        ctx[:touch_zone]       = touch_zone
+        ctx[:touch_zone_label] = TOUCH_ZONE_LABELS[touch_zone]
+      end
+      ctx
+    end
+
+    # Stream a mu-law clip over BLE: a <A:nbytes> control frame announcing the
+    # length, then raw mu-law in MTU-sized writes (port of Voice::Streamer).
+    # Caller already holds the BLE link (invoked inside with_ble).
+    def stream_audio(ulaw)
+      @ble.write_without_ack("<A:#{ulaw.bytesize}>\n")
+      chunk = ble_chunk_size
+      i = 0
+      total = ulaw.bytesize
+      while i < total
+        @ble.write_without_ack(ulaw.byteslice(i, chunk))
+        i += chunk
+      end
+    end
+
+    def ble_chunk_size
+      n = (@ble.max_write_chunk rescue nil)
+      n && n > 0 ? n : 180
+    end
 
     def record(action, extras = {})
       @robot_state[:last_action] = action.to_s
