@@ -22,8 +22,13 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   is cooperative Tasks (no Mutex/Queue/Thread): drb accept loop + keepalive Task,
   a `Task.pass` spinlock for BLE exclusion, an Array touch queue drained by polling.
 - **BLE**: `app/ble_client.rb`. `NusResolver` (UUID→handle, frame classify) is
-  host-verified; `StackchanCentral` radio I/O is live-pending sub-project #5
-  (needs the physical device). `app/fake_ble.rb` stands in for host runs.
+  host-verified. `StackchanCentral` (verb-facing wrapper) + `StackchanRadio`
+  (the actual `BLE` subclass) implement the real picoruby-ble central —
+  scan/connect/GATT-discover/CCCD-subscribe/write/ACK — logic-verified on host
+  by simulating device round-trips (see the file's header comment for the
+  design, and the load-bearing gotcha around calling `start`/`scan` again
+  after the initial connect); live scan/connect against a **physical**
+  StackChan is still pending. `app/fake_ble.rb` stands in for host runs.
 - **sidecar**: `../sidecar/sidecar.rb` (CRuby). Returns data only (reply text /
   mu-law bytes); never touches BLE.
 
@@ -59,15 +64,29 @@ Verbs: connect, status, stop, say, chat, face, led, servo, torque, selftest,
 raw, touch, demo, tui, calibrate — same surface as CRuby `pc/stackchan`.
 
 `bin/stackchan` env: `STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`,
-`STACKCHAN_PORT` (8787), `STACKCHAN_SIDECAR_PORT` (8788), `STACKCHAN_SIDECAR_STUB`.
+`STACKCHAN_PORT` (8787), `STACKCHAN_SIDECAR_PORT` (8788), `STACKCHAN_SIDECAR_STUB`,
+`STACKCHAN_BLE_REAL=1` (drive a physical StackChan via `StackchanCentral`
+instead of the default `FakeBleClient`), `STACKCHAN_BLE_NAME_PREFIX` (real mode
+only, default `StackChan`).
+
+```sh
+STACKCHAN_BLE_REAL=1 pc/stackchan-pico/bin/stackchan connect   # physical device
+```
 
 ## Status
 
 - Verified on host (FakeBleClient): every verb, chat via REAL FM, say via REAL
   say/afconvert, demo/tui/calibrate flows, touch polling. Works on both a plain
   VM (mrblib `load`ed) and the deployment VM (gem baked in).
-- **Live BLE (real StackChan) is sub-project #5** — `StackchanCentral` radio I/O
-  is written but unverified; needs the physical device.
+- **Live BLE (real StackChan) is sub-project #5.** `StackchanCentral`/
+  `StackchanRadio` are implemented and logic-verified on host (simulated device
+  round-trips: ACK, servo detail frame, device-rejected ACK, ACK timeout, touch
+  notification, CCCD subscribe, and every `connect` error path). Confirmed
+  against no physical device: `STACKCHAN_BLE_REAL=1 ... connect` scans for the
+  full timeout and fails with a clear `ConnectionError` (not a hang or crash).
+  What's still unverified: scan/connect/discovery against an **actual**
+  advertising StackChan, and the CCCD-subscribe → real notification path this
+  depends on.
 
 ## PicoRuby constraints worked around
 
