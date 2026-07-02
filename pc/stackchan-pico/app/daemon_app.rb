@@ -59,6 +59,13 @@ module Stackchan
     KEEPALIVE_INTERVAL_S = 7
     TOUCH_ZONE_LABELS = { 0 => "頭のうしろ", 1 => "右側", 2 => "左側" }
 
+    # Phase1 half-duplex audio protocol (port of Stackchan::Voice::Streamer).
+    # Device sleeps T = n*1000/8000 + 3000ms starting right after <A:N>, so the
+    # PC must wait READY_WAIT_S before blasting (lets the device heartbeat pick
+    # up the announce) and then n/8000 + 2.0s after the blast (play + margin)
+    # before sending anything else over the link.
+    READY_WAIT_S = 1.5
+
     def initialize(ble:, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788")
       @ble           = ble
       @port          = port
@@ -153,8 +160,8 @@ module Stackchan
     # say: TTS runs in the CRuby sidecar (say/afconvert -> mu-law); the daemon
     # gets the bytes over dRuby, pushes the on-LCD subtitle, then streams the
     # audio over BLE. The sidecar call (network, no BLE) stays OUTSIDE with_ble.
-    def say(text, gain = nil)
-      ulaw = sidecar.synthesize(text, gain)
+    def say(text, gain = nil, rate = nil)
+      ulaw = sidecar.synthesize(text, gain, rate)
       subtitle = Stackchan::AI::FrameText.build(face_index: nil, text: text)
       with_ble do
         @ble.write_without_ack(subtitle)
@@ -243,18 +250,21 @@ module Stackchan
       ctx
     end
 
-    # Stream a mu-law clip over BLE: a <A:nbytes> control frame announcing the
-    # length, then raw mu-law in MTU-sized writes (port of Voice::Streamer).
+    # Stream a mu-law clip over BLE using the Phase1 half-duplex protocol
+    # (port of Stackchan::Voice::Streamer#stream_halfduplex): announce -> wait
+    # for the device to enter receive mode -> blast -> wait for drain+play.
     # Caller already holds the BLE link (invoked inside with_ble).
     def stream_audio(ulaw)
-      @ble.write_without_ack("<A:#{ulaw.bytesize}>\n")
+      n = ulaw.bytesize
+      @ble.write_without_ack("<A:#{n}>\n")
+      sleep READY_WAIT_S
       chunk = ble_chunk_size
       i = 0
-      total = ulaw.bytesize
-      while i < total
+      while i < n
         @ble.write_without_ack(ulaw.byteslice(i, chunk))
         i += chunk
       end
+      sleep(n / 8000.0 + 0.5 + 1.5)
     end
 
     def ble_chunk_size

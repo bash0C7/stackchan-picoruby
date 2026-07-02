@@ -11,9 +11,9 @@
 # link and does the device writes (chat reply frame, audio streaming).
 #
 # Verbs:
-#   respond(prompt, ctx)   -> reply String (FM)
-#   synthesize(text, gain) -> mu-law byte String (8 kHz mono)
-#   ping                   -> "pong"
+#   respond(prompt, ctx)         -> reply String (FM)
+#   synthesize(text, gain, rate) -> mu-law byte String (8 kHz mono)
+#   ping                         -> "pong"
 #
 # Run:  ruby pc/sidecar/sidecar.rb [port]        # real FM + say/afconvert
 #       STACKCHAN_SIDECAR_STUB=1 ruby ...        # deterministic stub (no FM/say)
@@ -70,8 +70,8 @@ module StackchanSidecar
       nil
     end
 
-    # text -> 8 kHz mono mu-law bytes. gain defaults to the Tts default.
-    def synthesize(text, gain = nil)
+    # text -> 8 kHz mono mu-law bytes. gain/rate default to the Tts defaults.
+    def synthesize(text, gain = nil, rate = nil)
       text = u8(text)
       if @stub
         # Deterministic silent clip sized from the text so the bridge/streamer
@@ -80,6 +80,7 @@ module StackchanSidecar
       end
       opts = {}
       opts[:gain] = gain if gain
+      opts[:rate] = rate if rate
       Stackchan::Voice::Tts.new(**opts).synthesize(text)
     rescue => e
       warn "[sidecar] synthesize error: #{e.class}: #{e.message}"

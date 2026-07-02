@@ -99,7 +99,8 @@ module Stackchan
       text = args[0]
       opts = parse_kw(args)
       gain = opts["gain"] && opts["gain"].to_f
-      out @daemon.say(text, gain)
+      rate = opts["rate"] && opts["rate"].to_i
+      out @daemon.say(text, gain, rate)
     end
 
     def verb_chat(args)
@@ -158,6 +159,9 @@ module Stackchan
     # Demo: scripted intro performance (LED/face/servo cycling + say). Port of
     # Stackchan::Demo. Uses a step count, not a Time deadline (no Time on
     # PicoRuby), and passes servo poses as positional Hashes (drb has no kwargs).
+    DEMO_SPEECH_RATE = 250   # wpm — faster speech => fewer bytes => less BLE timing exposure
+    DEMO_INTRO_LINE = "ぼくスタックチャン！"
+    DEMO_OUTRO_LINE = "タッチしてみて"
     DEMO_FACES = %w[joy smile surprised joy smile]
     DEMO_LR_COLORS = [[:red,:blue],[:yellow,:magenta],[:green,:cyan],[:cyan,:red],[:magenta,:yellow],[:white,:green]]
     DEMO_LR_MODES  = [[:blink,:breathing],[:breathing,:solid],[:solid,:blink]]
@@ -178,7 +182,7 @@ module Stackchan
       @daemon.led({ side: :left,  color: :red,  mode: :blink })
       @daemon.led({ side: :right, color: :blue, mode: :breathing })
       sleep 1.5
-      @daemon.say("こんにちは、ぼくスタックチャンだよ")
+      @daemon.say(DEMO_INTRO_LINE, nil, DEMO_SPEECH_RATE)
       sleep 0.5
       i = 0
       while i < steps
@@ -195,7 +199,7 @@ module Stackchan
       @daemon.led({ side: :both, color: :off, mode: :off })
       @daemon.servo({ yaw_left: 0, pitch_up: 0, time_ms: 800 })
       sleep 0.7
-      @daemon.say("タッチしてみて")
+      @daemon.say(DEMO_OUTRO_LINE, nil, DEMO_SPEECH_RATE)
       out "[demo] done"
     end
 
