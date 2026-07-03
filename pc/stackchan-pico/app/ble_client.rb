@@ -227,8 +227,16 @@ if Object.const_defined?(:BLE)
       unless @radio.target
         raise Stackchan::BLE::ConnectionError, "no #{@name_prefix} advertiser found"
       end
-      unless @radio.state == :TC_IDLE
-        raise Stackchan::BLE::ConnectionError, "GATT discovery did not complete (state=#{@radio.state})"
+      # NOT @radio.state == :TC_IDLE: ble_central.rb's `scan` unconditionally
+      # resets @state to :TC_OFF via its own trailing `reset_state` call
+      # ("In order to be able to scan again") once `start` returns, whether
+      # discovery succeeded or not — so checking @state here is always false,
+      # even after a fully successful connect+discover. @conn_handle is set
+      # once (HCI_SUBEVENT_LE_CONNECTION_COMPLETE) and untouched by
+      # `reset_state`, so it is the correct success signal (same check as
+      # R2P2-darwin's reference StackchanCentral#connected?).
+      unless @radio.conn_handle != BLE::HCI_CON_HANDLE_INVALID
+        raise Stackchan::BLE::ConnectionError, "GATT connect did not complete"
       end
       resolve_handles
       subscribe_tx
