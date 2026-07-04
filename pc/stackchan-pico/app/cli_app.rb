@@ -210,7 +210,7 @@ module Stackchan
       move_ms = 800
       loop do
         $stdout.write("\nstackchan> "); $stdout.flush
-        line = $stdin.gets
+        line = gets
         break if line.nil?
         parts = line.strip.split(" ")
         cmd = parts[0]
@@ -251,6 +251,10 @@ module Stackchan
       else
         calibrate_full(samples, fmt, engage, no_toggle)
       end
+    rescue Interrupt
+      $stderr.write("[INTERRUPT] operator aborted calibration; torque remains off.\n")
+      $stderr.flush
+      7
     end
 
     def calibrate_align(skip_torque)
@@ -298,7 +302,7 @@ module Stackchan
     def prompt_enter(msg)
       $stdout.write(msg + " ")
       $stdout.flush
-      $stdin.gets
+      gets
     end
 
     def delete_flag(args, flag)
