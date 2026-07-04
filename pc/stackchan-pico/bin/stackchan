@@ -23,7 +23,7 @@
 set -eu
 
 ROOT="${STACKCHAN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
-VM="${STACKCHAN_PICORUBY:-$ROOT/../picoruby-ble-darwin-port/build-stackchan-pc/host/bin/picoruby}"
+VM="${STACKCHAN_PICORUBY:-$ROOT/../picoruby-port-darwin/build-stackchan-pc/host/bin/picoruby}"
 PORT="${STACKCHAN_PORT:-8787}"
 SIDECAR_PORT="${STACKCHAN_SIDECAR_PORT:-8788}"
 APP="$ROOT/pc/stackchan-pico/app"
