@@ -43,7 +43,7 @@ StackChan を PicoRuby（[R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32)）
 PC連携アバターパターン：
 
 - **StackChan側**：R2P2-ESP32 + PicoRuby スクリプト。I/O 端末として動作。センサ値を読んでシリアルで送信、PCからのコマンドでサーボ/LED/表情を駆動
-- **PC側**：Ruby (rb-foundation-model-mac) でローカルAI判断。Mac との通信は BLE NUS (picoruby-ble の ESP32 port を fork で thread-safe 化、`pc/stackchan` unified CLI 経由)。`stackchan <verb>` を叩くと auto-spawn daemon が永続 BLE link + FM session + touch reader を保持。WiFi 経路 (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) は sdkconfig 有効 + mbedTLS 完成済み、wiring 未着手。USB-serial は uploader / debug 用途
+- **PC側**：PicoRuby (`pc/stackchan-pico`) の unified CLI `stackchan <verb>` 経由。Mac との通信は BLE NUS (picoruby-ble の darwin port、central 側)。`stackchan <verb>` を叩くと auto-spawn daemon が永続 BLE link + touch reader を保持。AI 判断 (rb-foundation-model-mac) と macOS TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。WiFi 経路 (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) は sdkconfig 有効 + mbedTLS 完成済み、wiring 未着手。USB-serial は uploader / debug 用途
 
 ### 設計の核心
 
@@ -102,7 +102,7 @@ head to forward, then sends `<torque:on>` to engage. Detail frame on position co
 reports `<YL_actual:N,PU_actual:N>` or `<YL_actual:unknown,PU_actual:unknown>` (where
 unknown is a protocol-level signal that operator manual calibration is needed).
 
-CLI (実行は `cd pc/stackchan && bundle exec exe/stackchan <verb>`):
+CLI (実行は `pc/stackchan-pico/bin/stackchan <verb>`):
 `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan selftest`。
 servo の Exit code 6 = `EXIT_CALIBRATION_NEEDED`。
 

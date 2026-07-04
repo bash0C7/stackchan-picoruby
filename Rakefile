@@ -428,19 +428,17 @@ namespace :r2p2 do
     puts "[servo_smoke] waiting #{autostart_wait}s for autostart + BLE advertise"
     sleep autostart_wait
 
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan', 'torque', 'on')
-        abort "[servo_smoke] torque on FAIL" unless ok
-        sleep 1
-        args = ['bundle', 'exec', 'exe/stackchan', 'servo',
-                '--time', time_ms, '--pitch-up', pu]
-        args += ['--yaw-left',  yl] if yl
-        args += ['--yaw-right', yr] if yr
-        ok = system(*args)
-        unless ok
-          exit $?.exitstatus
-        end
+      ok = system(stackchan, 'torque', 'on')
+      abort "[servo_smoke] torque on FAIL" unless ok
+      sleep 1
+      args = [stackchan, 'servo', '--time', time_ms, '--pitch-up', pu]
+      args += ['--yaw-left',  yl] if yl
+      args += ['--yaw-right', yr] if yr
+      ok = system(*args)
+      unless ok
+        exit $?.exitstatus
       end
     end
 
@@ -460,13 +458,12 @@ namespace :r2p2 do
     puts "[torque_smoke] waiting #{autostart_wait}s for autostart"
     sleep autostart_wait
 
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        %w[on off].each do |state|
-          ok = system('bundle', 'exec', 'exe/stackchan', 'torque', state)
-          abort "[torque_smoke] torque #{state} FAIL" unless ok
-          sleep 2
-        end
+      %w[on off].each do |state|
+        ok = system(stackchan, 'torque', state)
+        abort "[torque_smoke] torque #{state} FAIL" unless ok
+        sleep 2
       end
     end
 
@@ -499,25 +496,23 @@ namespace :r2p2 do
       { label: 'center (return)',  args: ['--yaw-left', '0', '--pitch-up', '0'],     expect: 'facing forward again' },
     ]
 
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan', 'torque', 'on')
-        abort '[cal] torque on FAIL' unless ok
-        sleep 1
+      ok = system(stackchan, 'torque', 'on')
+      abort '[cal] torque on FAIL' unless ok
+      sleep 1
 
-        positions.each_with_index do |pos, i|
-          puts "\n[cal #{i + 1}/5] sending #{pos[:label]} → expect: #{pos[:expect]}"
-          ok = system('bundle', 'exec', 'exe/stackchan', 'servo',
-                      '--time', '800', *pos[:args])
-          abort "[cal] frame send FAIL at #{pos[:label]}" unless ok
-          sleep 1.5
-          print '   Did StackChan move as expected? [y/N]: '
-          ans = STDIN.gets.to_s.strip.downcase
-          abort "[cal] FAIL at #{pos[:label]} (operator marked N)" unless ans == 'y'
-        end
-
-        system('bundle', 'exec', 'exe/stackchan', 'torque', 'off')
+      positions.each_with_index do |pos, i|
+        puts "\n[cal #{i + 1}/5] sending #{pos[:label]} → expect: #{pos[:expect]}"
+        ok = system(stackchan, 'servo', '--time', '800', *pos[:args])
+        abort "[cal] frame send FAIL at #{pos[:label]}" unless ok
+        sleep 1.5
+        print '   Did StackChan move as expected? [y/N]: '
+        ans = STDIN.gets.to_s.strip.downcase
+        abort "[cal] FAIL at #{pos[:label]} (operator marked N)" unless ans == 'y'
       end
+
+      system(stackchan, 'torque', 'off')
     end
 
     puts "\n[cal] PASS — all 5 positions visually confirmed"
@@ -548,20 +543,17 @@ namespace :r2p2 do
     sleep autostart_wait
 
     # The project-root Bundler env (loaded at the top of this Rakefile) leaks
-    # into any child `bundle exec`, which makes pc/stackchan's
-    # `require "stackchan"` fail with LoadError because resolution
-    # uses the outer Gemfile instead of the inner one. Drop the outer env so
-    # the child `bundle exec` reads its own Gemfile.
+    # into any child `bundle exec` the stackchan wrapper spawns (e.g. the
+    # sidecar). Drop the outer env so those children read their own Gemfile.
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan', 'face', face)
-        unless ok
-          exit $?.exitstatus
-        end
-        ok = system('bundle', 'exec', 'exe/stackchan', 'led', side, color, mode)
-        unless ok
-          exit $?.exitstatus
-        end
+      ok = system(stackchan, 'face', face)
+      unless ok
+        exit $?.exitstatus
+      end
+      ok = system(stackchan, 'led', side, color, mode)
+      unless ok
+        exit $?.exitstatus
       end
     end
 
@@ -597,7 +589,8 @@ namespace :r2p2 do
   desc "smoke test the calibrate CLI in --align-only mode (interactive, requires connected device)"
   task :ble_calibration_smoke do
     ensure_no_concurrent_monitor
-    sh "cd pc/stackchan && bundle exec exe/stackchan calibrate --align-only"
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
+    Bundler.with_unbundled_env { sh stackchan, 'calibrate', '--align-only' }
   end
 
 end

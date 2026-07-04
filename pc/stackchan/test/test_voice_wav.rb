@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
-require "stackchan/voice"
+require "stackchan/voice/wav"
 
 class WavTest < Test::Unit::TestCase
   W = Stackchan::Voice::Wav
