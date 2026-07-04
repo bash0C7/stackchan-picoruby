@@ -43,19 +43,27 @@ the `picoruby-stackchan-protocol` gem. Audio is sent as a length-prefixed
 
 ## Code layout
 
-The hardware drivers are standalone PicoRuby mrbgems, each in its own sibling
-repository rather than an in-tree `mrbgems/` directory:
+`bundle exec rake vendor:setup` fetches the two build trees this repo needs
+into `vendor/` (gitignored, never hand-placed):
 
 ```
-../picoruby-ili9342/              LCD driver
-../picoruby-py32-io-expander/     PY32 I/O expander (LEDs, VM_EN)
-../picoruby-scservo/              feedback servo (yaw + pitch)
-../picoruby-stackchan-protocol/   frame protocol FrameParser
-../picoruby-i2s/                  I2S TX for the speaker
+vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch stackchan-integration.
+                      Device firmware build tree; its own picoruby submodule
+                      (branch stackchan-integration, derived from the
+                      upstream-PR-track picoruby-ble-esp32-port) carries the
+                      StackChan-specific in-tree gems (picoruby-ble-bridge,
+                      picoruby-i2s) alongside picoruby-ble itself.
+vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Mac-side PicoRuby VM
+                      build harness (vendors picoruby's port-darwin branch
+                      internally). See pc/stackchan-pico/README.md.
 ```
 
-The firmware build wires these into R2P2-ESP32. All StackChan business logic
-lives in a single autostart payload:
+Four more hardware-driver mrbgems (LCD, PY32 I/O expander, servo, frame
+protocol) are separate `bash0C7/picoruby-*` repos fetched straight from
+GitHub by the firmware's own build_config (`conf.gem github:`) — no local
+clone or vendoring needed for those.
+
+All StackChan business logic lives in a single autostart payload:
 
 ```
 app/application.rb   Face rendering, the WS2812 LED ring driver, the Si12T
@@ -72,10 +80,12 @@ pc/stackchan/              CRuby support library for the AI/voice sidecar
 pc/sidecar/                The CRuby sidecar process, bridged to the
                            PicoRuby daemon over picoruby-drb.
 
-test/                      Host tests (picotest on a host PicoRuby VM).
+test/                      Host tests (picotest on a host PicoRuby VM, reusing
+                           vendor/R2P2-ESP32's own picoruby submodule).
 lib/ruby_class_extract.rb  prism-AST loader for application.rb class bodies.
 lib/deploy/                host-side picomodem uploader.
-Rakefile                   build, flash, deploy, and BLE smoke task wrappers.
+Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
+                           task wrappers.
 ```
 
 Host tests run the device-side logic on a host PicoRuby VM through picotest. A
@@ -183,17 +193,17 @@ controlled by the macOS-side `--gain` parameter (default 0.1).
 - PMIC: AXP2101
 - IO expanders: AW9523 and PY32
 - Audio: AW88298 Class-D amplifier, 1W speaker
-- BLE 5.0 LE (BTstack vendored ESP32 port)
+- BLE 5.0 LE (NimBLE ESP32 port)
 
 ## Development environment
 
 macOS only. The Rakefile assumes macOS paths and the macOS
 [`serialport`](https://github.com/larskanis/ruby-serialport) gem. It needs
-Xcode with the Swift toolchain (for the `rb-corebluetooth-mac` native
-extension), esp-idf v5.4 at `~/esp/esp-idf`, Ruby 4.0+, and Bundler. Building
-and controlling the device requires sibling clones of the driver gems,
-`R2P2-ESP32`, `rb-corebluetooth-mac`, and `swift_gem` under the same parent
-directory.
+Xcode with the Swift toolchain (for the `picoruby-ble` Darwin port used by
+`pc/stackchan-pico`'s BLE central), esp-idf v5.4 at `~/esp/esp-idf`, Ruby
+4.0+, and Bundler. Building and controlling the device fetches its build
+trees on demand via `bundle exec rake vendor:setup` (see "Code layout"
+above) rather than requiring hand-placed sibling clones.
 
 ## Related repositories
 
