@@ -1,9 +1,10 @@
 # pc/stackchan-pico — PC side in PicoRuby
 
-The Mac-side StackChan controller, rewritten in PicoRuby so both ends (device
-firmware and PC) run the same language/runtime. Functional parity with the
-CRuby `pc/stackchan` for every CLI verb; Apple Foundation Model + macOS TTS
-stay in a CRuby sidecar bridged over dRuby.
+The Mac-side StackChan controller, in PicoRuby so both ends (device firmware
+and PC) run the same language/runtime — this is the operational CLI (the
+earlier CRuby `pc/stackchan` CLI it replaced has been removed; `pc/stackchan`
+now holds only the AI/voice sidecar support code). Apple Foundation Model and
+macOS TTS stay in a CRuby sidecar bridged over dRuby.
 
 ## Architecture
 
@@ -38,7 +39,7 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
 Build the deployment VM once (shared gem baked in):
 
 ```sh
-cd ../picoruby-ble-darwin-port   # the bash0C7/picoruby darwin-ble worktree
+cd ../picoruby-port-darwin   # the bash0C7/picoruby darwin-ble worktree
 MRUBY_BUILD_DIR="$PWD/build-stackchan-pc" \
 MRUBY_CONFIG=../R2P2-macOS/build_config/r2p2-stackchan-pc.rb \
 LDFLAGS="-L/opt/homebrew/opt/openssl@3/lib" CFLAGS="-I/opt/homebrew/opt/openssl@3/include" \
@@ -63,7 +64,7 @@ pc/stackchan-pico/bin/stackchan stop
 ```
 
 Verbs: connect, status, stop, say, chat, face, led, servo, torque, selftest,
-raw, touch, demo, tui, calibrate — same surface as CRuby `pc/stackchan`.
+raw, touch, demo, tui, calibrate.
 
 `bin/stackchan` env: `STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`,
 `STACKCHAN_PORT` (8787), `STACKCHAN_SIDECAR_PORT` (8788), `STACKCHAN_SIDECAR_STUB`,

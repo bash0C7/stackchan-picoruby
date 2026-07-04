@@ -133,8 +133,8 @@ on-device visual feedback.
 ### Calibration
 
 ```bash
-bundle exec exe/stackchan calibrate --align-only   # daily startup: torque off → align forward → torque on
-bundle exec exe/stackchan calibrate --samples 5 --format ruby   # full 5-pose anchor recal, prints constants
+pc/stackchan-pico/bin/stackchan calibrate --align-only   # daily startup: torque off → align forward → torque on
+pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-pose anchor recal, prints constants
 ```
 
 ## Capabilities
