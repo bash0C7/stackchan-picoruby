@@ -2,7 +2,63 @@ require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
 require_relative "lib/deploy/picomodem"
 require_relative "lib/deploy/shell_recovery"
 
-PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
+# Vendored build trees, fetched by `rake vendor:setup` (git clone --branch REF
+# REPO vendor/NAME) instead of assumed present as hand-placed sibling
+# directories. ENV-overridable so a fork/branch swap doesn't need editing
+# this file — mirrors the R2P2-darwin/R2P2-macOS `PICORUBY_REPO`/`PICORUBY_REF`
+# convention.
+R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP32.git"
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "stackchan-integration"
+R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
+
+R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
+R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "main"
+R2P2_DARWIN_ROOT = File.expand_path("vendor/R2P2-darwin", __dir__)
+
+namespace :vendor do
+  desc "Fetch both vendored build trees (R2P2-ESP32, R2P2-darwin)"
+  task setup: ["vendor:r2p2_esp32:setup", "vendor:r2p2_darwin:setup"]
+
+  namespace :r2p2_esp32 do
+    desc "Clone R2P2_ESP32_REPO@R2P2_ESP32_REF into vendor/R2P2-ESP32 (skip if present)"
+    task :setup do
+      unless Dir.exist?(R2P2_ROOT)
+        sh "git clone --recursive --branch #{R2P2_ESP32_REF} #{R2P2_ESP32_REPO} #{R2P2_ROOT}"
+      end
+    end
+
+    desc "Re-fetch R2P2_ESP32_REF into the existing vendor/R2P2-ESP32 (no re-clone)"
+    task :refresh do
+      raise "vendor/R2P2-ESP32 absent; run `rake vendor:r2p2_esp32:setup` first" unless Dir.exist?(R2P2_ROOT)
+      sh "git -C #{R2P2_ROOT} fetch #{R2P2_ESP32_REPO} #{R2P2_ESP32_REF}"
+      sh "git -C #{R2P2_ROOT} checkout -B #{R2P2_ESP32_REF} FETCH_HEAD"
+      sh "git -C #{R2P2_ROOT} submodule update --init --recursive"
+    end
+  end
+
+  namespace :r2p2_darwin do
+    desc "Clone R2P2_DARWIN_REPO@R2P2_DARWIN_REF into vendor/R2P2-darwin (skip if present)"
+    task :setup do
+      unless Dir.exist?(R2P2_DARWIN_ROOT)
+        sh "git clone --branch #{R2P2_DARWIN_REF} #{R2P2_DARWIN_REPO} #{R2P2_DARWIN_ROOT}"
+      end
+    end
+
+    desc "Re-fetch R2P2_DARWIN_REF into the existing vendor/R2P2-darwin (no re-clone)"
+    task :refresh do
+      raise "vendor/R2P2-darwin absent; run `rake vendor:r2p2_darwin:setup` first" unless Dir.exist?(R2P2_DARWIN_ROOT)
+      sh "git -C #{R2P2_DARWIN_ROOT} fetch #{R2P2_DARWIN_REPO} #{R2P2_DARWIN_REF}"
+      sh "git -C #{R2P2_DARWIN_ROOT} checkout -B #{R2P2_DARWIN_REF} FETCH_HEAD"
+    end
+  end
+end
+
+# Host picotest VM (test/device/*_test.rb) reuses R2P2-ESP32's own picoruby
+# submodule rather than fetching a third independent picoruby tree — this is
+# the same picoruby build the device firmware actually runs, so host-VM
+# quirks (string/idiom differences from CRuby) match device behavior instead
+# of an unrelated upstream checkout's.
+PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(R2P2_ROOT, "components", "picoruby-esp32", "picoruby")
 PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
 
 desc "Run the PicoRuby-native device test suite (alias of picotest:run)"
@@ -75,29 +131,10 @@ namespace :picotest do
   end
 end
 
-# Resolve the sibling R2P2-ESP32 build tree. Walk up from this Rakefile's dir to
-# the nearest ancestor that has R2P2-ESP32 as a child, so r2p2:* tasks work from
-# both the main checkout (repo root) and any linked worktree (several levels
-# deeper). Falls back to the historical relative path if none is found.
-R2P2_ROOT = begin
-  dir = __dir__
-  found = nil
-  loop do
-    cand = File.join(dir, 'R2P2-ESP32')
-    if File.directory?(cand)
-      found = cand
-      break
-    end
-    parent = File.dirname(dir)
-    break if parent == dir
-    dir = parent
-  end
-  found || File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
-end
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
 
-SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_btstack'
+SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble'
 LIBMRUBY_FILE = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby/lib/libmruby.a"
 LONGRUN_DIR = File.expand_path('tmp/longrun', __dir__)
 SERIAL_LOG_DEFAULT = "#{LONGRUN_DIR}/serial.log"
@@ -120,6 +157,7 @@ def espport
 end
 
 def in_r2p2(*args)
+  abort "vendor/R2P2-ESP32 not found — run `rake vendor:r2p2_esp32:setup` first" unless Dir.exist?(R2P2_ROOT)
   cmd = args.join(' ')
   sh %Q{bash -c '. #{ESP_IDF_EXPORT} && cd #{R2P2_ROOT} && #{cmd}'}
 end
