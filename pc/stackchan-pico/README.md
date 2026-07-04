@@ -24,11 +24,12 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
 - **BLE**: `app/ble_client.rb`. `NusResolver` (UUID→handle, frame classify) is
   host-verified. `StackchanCentral` (verb-facing wrapper) + `StackchanRadio`
   (the actual `BLE` subclass) implement the real picoruby-ble central —
-  scan/connect/GATT-discover/CCCD-subscribe/write/ACK — logic-verified on host
-  by simulating device round-trips (see the file's header comment for the
-  design, and the load-bearing gotcha around calling `start`/`scan` again
-  after the initial connect); live scan/connect against a **physical**
-  StackChan is still pending. `app/fake_ble.rb` stands in for host runs.
+  scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio, and
+  disconnect/reconnect self-heal — verified against a physical StackChan (see
+  the file's header comment for the design, and the load-bearing gotcha
+  around calling `start`/`scan` again after the initial connect).
+  `app/fake_ble.rb` (`STACKCHAN_BLE_FAKE=1`) swaps in for verb-logic testing
+  without hardware in the loop.
 - **sidecar**: `../sidecar/sidecar.rb` (CRuby). Returns data only (reply text /
   mu-law bytes); never touches BLE.
 
@@ -45,7 +46,8 @@ rake
 # → build-stackchan-pc/host/bin/picoruby  (Stackchan::BLE / Stackchan::AI compiled in)
 ```
 
-Then drive it through the wrapper (auto-starts the sidecar + daemon):
+Then drive it through the wrapper (auto-starts the sidecar + daemon, connects
+to a physical StackChan by default):
 
 ```sh
 export STACKCHAN_SIDECAR_STUB=1     # omit for the real FM + say/afconvert sidecar
@@ -65,28 +67,23 @@ raw, touch, demo, tui, calibrate — same surface as CRuby `pc/stackchan`.
 
 `bin/stackchan` env: `STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`,
 `STACKCHAN_PORT` (8787), `STACKCHAN_SIDECAR_PORT` (8788), `STACKCHAN_SIDECAR_STUB`,
-`STACKCHAN_BLE_REAL=1` (drive a physical StackChan via `StackchanCentral`
-instead of the default `FakeBleClient`), `STACKCHAN_BLE_NAME_PREFIX` (real mode
-only, default `StackChan`).
+`STACKCHAN_BLE_FAKE=1` (swap in `FakeBleClient` for testing verb logic without
+hardware in the loop), `STACKCHAN_BLE_NAME_PREFIX` (real mode only, default
+`StackChan`).
 
 ```sh
-STACKCHAN_BLE_REAL=1 pc/stackchan-pico/bin/stackchan connect   # physical device
+STACKCHAN_BLE_FAKE=1 pc/stackchan-pico/bin/stackchan connect   # no hardware needed
 ```
 
 ## Status
 
-- Verified on host (FakeBleClient): every verb, chat via REAL FM, say via REAL
-  say/afconvert, demo/tui/calibrate flows, touch polling. Works on both a plain
-  VM (mrblib `load`ed) and the deployment VM (gem baked in).
-- **Live BLE (real StackChan) is sub-project #5.** `StackchanCentral`/
-  `StackchanRadio` are implemented and logic-verified on host (simulated device
-  round-trips: ACK, servo detail frame, device-rejected ACK, ACK timeout, touch
-  notification, CCCD subscribe, and every `connect` error path). Confirmed
-  against no physical device: `STACKCHAN_BLE_REAL=1 ... connect` scans for the
-  full timeout and fails with a clear `ConnectionError` (not a hang or crash).
-  What's still unverified: scan/connect/discovery against an **actual**
-  advertising StackChan, and the CCCD-subscribe → real notification path this
-  depends on.
+- **Live BLE against a physical StackChan is the default and is verified**:
+  scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio
+  (say/chat), touch notifications, and disconnect/reconnect self-heal
+  (`with_ble`'s reconnect on a real device reset) all confirmed on real
+  hardware. `STACKCHAN_BLE_FAKE=1` (host, no radio) remains verified for
+  every verb, chat via REAL FM, say via REAL say/afconvert, demo/tui/calibrate
+  flows, touch polling — used for testing verb logic without hardware.
 
 ## PicoRuby constraints worked around
 
