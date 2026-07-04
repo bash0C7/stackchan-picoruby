@@ -177,62 +177,10 @@ def ensure_no_concurrent_monitor
         "then retry. If stale: kill #{pids.join(' ')}"
 end
 
-# R2P2-ESP32 integration overlays. stackchan-picoruby needs a few deltas in the
-# shared R2P2-ESP32 fork at build time — build_config gem registrations and
-# extra picoruby-esp32 SRCS / PRIV_REQUIRES / link flags (picoruby-i2s; and the
-# BLE reboot workaround: ble_bridge_port.c + -Wl,--wrap=BLE_write_data + the
-# picoruby-ble-bridge gem). Committing those into the shared fork would bury the
-# intent and risk drifting from upstream (memory
-# shared-commons-no-casual-picoruby-r2p2-edits), so each concern lives as its own
-# patch under r2p2-overlay/ and is applied ONLY around a build, reverted
-# afterward so the fork working tree stays clean. Patches apply in sorted
-# filename order and revert in reverse order (their hunks touch disjoint
-# regions, so order is not significant). Idempotent per patch: an already-applied
-# patch (reverse-check passes) is skipped, so a build interrupted before the
-# ensure-revert self-heals on the next apply.
-R2P2_OVERLAY_PATCHES = Dir[File.expand_path('r2p2-overlay/*.patch', __dir__)].sort
-
-def r2p2_overlay_applied?(patch)
-  system("git -C #{R2P2_ROOT} apply --reverse --check #{patch} >/dev/null 2>&1")
-end
-
-def apply_r2p2_overlay
-  if R2P2_OVERLAY_PATCHES.empty?
-    abort "[overlay] no patches found under r2p2-overlay/"
-  end
-  R2P2_OVERLAY_PATCHES.each do |patch|
-    if r2p2_overlay_applied?(patch)
-      puts "[overlay] already applied — skipping #{File.basename(patch)}"
-      next
-    end
-    sh "git -C #{R2P2_ROOT} apply #{patch}"
-    puts "[overlay] applied #{File.basename(patch)} to R2P2-ESP32"
-  end
-end
-
-def revert_r2p2_overlay
-  R2P2_OVERLAY_PATCHES.reverse_each do |patch|
-    next unless r2p2_overlay_applied?(patch)
-    sh "git -C #{R2P2_ROOT} apply --reverse #{patch}"
-    puts "[overlay] reverted #{File.basename(patch)}"
-  end
-  puts "[overlay] R2P2-ESP32 working tree clean"
-end
-
-# Apply the integration overlays for the duration of a build, then always revert.
-def with_r2p2_overlay
-  apply_r2p2_overlay
-  yield
-ensure
-  revert_r2p2_overlay
-end
-
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup do
-    with_r2p2_overlay do
-      in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
-    end
+    in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
   end
 
   desc 'rm libmruby.a so the next build forces picoruby rake to recompile all gems (catches mrblib/*.rb changes that idf.py build silently ignores)'
@@ -248,9 +196,7 @@ namespace :r2p2 do
   desc "build with CoreS3 sdkconfig (QUAD PSRAM + 16MB flash, VM=mruby)"
   task :build do
     ensure_sdkconfig_fresh
-    with_r2p2_overlay do
-      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
-    end
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
   end
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
@@ -265,9 +211,7 @@ namespace :r2p2 do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     port = espport
-    with_r2p2_overlay do
-      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
-    end
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
   end
 
   desc 'idf.py monitor (HUMAN USE ONLY — claude code Bash has no TTY)'
@@ -385,9 +329,7 @@ namespace :r2p2 do
     abort "picorbc produced no output at #{mrb_dest}" unless File.exist?(mrb_dest)
     puts "[build_flash_appmrb] baked #{src_path} -> #{mrb_dest} (#{File.size(mrb_dest)} bytes)"
     port = espport
-    with_r2p2_overlay do
-      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
-    end
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src_path)} (baked into littlefs /home/app.mrb) flashed. esptool hard-reset will autostart it."
   end
 
