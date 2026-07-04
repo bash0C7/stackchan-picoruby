@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../ble"
+
 module Stackchan::Voice
   # Streams a mu-law clip to the device over the existing NUS RX characteristic.
   #
@@ -11,10 +13,13 @@ module Stackchan::Voice
   #   1. <A:N>\n          PC -> device: announce N-byte clip
   #   2. sleep READY_WAIT_S  PC: wait for device heartbeat to fire (~1s tick)
   #   3. blast N bytes    PC -> device: raw mu-law (btstack accumulates, main_task sleeps)
-  #   4. sleep T+margin   PC: wait for device to drain+play+notify <A:done>
+  #   4. await <A:done>   PC: block on the device's own drain+play completion
+  #                        notification (NOT a fixed sleep -- decode+playback
+  #                        time doesn't scale predictably with clip length).
   class Streamer
     DEFAULT_CHUNK = 180
     READY_WAIT_S  = 1.5   # Time for device heartbeat to pick up <A:N> and enter receive mode.
+    AUDIO_DONE_TIMEOUT_S = 30.0  # safety net if the device's <A:done> notify is somehow lost
 
     def initialize(client)
       @client = client
@@ -41,8 +46,7 @@ module Stackchan::Voice
       self.class.chunks(ulaw_bytes, chunk_size).each do |c|
         @client.write_without_ack(c)
       end
-      # Device T = n*1000/8000 + 500ms; add play time (n/8000s) and notify margin.
-      sleep_fn.call(n / 8000.0 + 0.5 + 1.5)
+      await_audio_done
       n
     end
 
@@ -65,6 +69,31 @@ module Stackchan::Voice
       n && n > 0 ? n : DEFAULT_CHUNK
     rescue StandardError
       DEFAULT_CHUNK
+    end
+
+    # Wait for the device's <A:done> half-duplex-audio completion notification
+    # (app/application.rb's StackChanApp#consume_rx writes this only after
+    # AudioReceiver#consume fully returns -- i.e. after both the T-ms pre-play
+    # delay AND the actual mu-law decode + I2S playback + silence-tail write
+    # have all finished). This replaces a fixed-sleep estimate: real-hardware
+    # repro (pc/stackchan-pico, the PicoRuby port of this same protocol)
+    # showed the device's interpreted-Ruby mu-law decode doesn't scale simply
+    # with "clip length / sample rate," so a formula-based sleep either
+    # wastes time or times out the very next command's ACK for longer clips.
+    # Discards any other frame (e.g. a stray <A:ready>) seen while waiting.
+    def await_audio_done
+      deadline = monotonic_now + AUDIO_DONE_TIMEOUT_S
+      loop do
+        remaining = deadline - monotonic_now
+        raise Stackchan::BLE::TimeoutError, "<A:done> timeout" if remaining <= 0
+        frame = @client.read_frame(timeout: remaining)
+        raise Stackchan::BLE::TimeoutError, "<A:done> timeout" if frame.nil?
+        return if frame.start_with?("<A:done>")
+      end
+    end
+
+    def monotonic_now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
   end
 end

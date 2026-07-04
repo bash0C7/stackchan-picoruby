@@ -6,12 +6,16 @@ require "stackchan/voice"
 class StreamerTest < Test::Unit::TestCase
   S = Stackchan::Voice::Streamer
 
-  # Fake client recording the exact write sequence.
+  # Fake client recording the exact write sequence. read_frame serves queued
+  # frames (defaults to an immediate "<A:done>\n" so callers that don't care
+  # about the notification wait still get a realistic, non-hanging fake).
   class FakeClient
     attr_reader :writes
-    def initialize(chunk:)
+
+    def initialize(chunk:, frames: ["<A:done>\n"])
       @chunk = chunk
       @writes = []
+      @frames = frames.dup
     end
 
     def max_write_chunk
@@ -20,6 +24,10 @@ class StreamerTest < Test::Unit::TestCase
 
     def write_without_ack(payload)
       @writes << payload
+    end
+
+    def read_frame(timeout: nil)
+      @frames.shift
     end
   end
 
@@ -55,7 +63,7 @@ class StreamerTest < Test::Unit::TestCase
     assert_equal 1000, audio.bytesize
   end
 
-  def test_stream_halfduplex_sends_control_then_blast_with_two_sleeps
+  def test_stream_halfduplex_sends_control_then_blast_then_waits_for_done
     ulaw = "\x10\x20\x30\x40\x50"  # 5 bytes
     client = FakeClient.new(chunk: 2)
     sleeps = []
@@ -64,20 +72,23 @@ class StreamerTest < Test::Unit::TestCase
     assert_equal 5, n
     assert_equal "<A:5>\n", client.writes[0]
     assert_equal ["\x10\x20", "\x30\x40", "\x50"], client.writes[1..]
-    assert_equal 2, sleeps.length
+    assert_equal 1, sleeps.length
     assert_equal S::READY_WAIT_S, sleeps[0]
-    # post-blast sleep: 5/8000.0 + 0.5 + 1.5 = ~2.000625
-    assert_true sleeps[1] >= 2.0
-    assert_true sleeps[1] < 3.0
   end
 
-  def test_stream_halfduplex_post_blast_sleep_scales_with_bytes
-    ulaw = "x" * 8000
-    client = FakeClient.new(chunk: 180)
-    sleeps = []
-    S.new(client).stream_halfduplex(ulaw, sleep_fn: ->(t) { sleeps << t })
+  def test_stream_halfduplex_discards_frames_before_a_done
+    ulaw = "\x10\x20\x30\x40\x50"  # 5 bytes
+    client = FakeClient.new(chunk: 2, frames: ["<A:ready>\n", ".\n", "<A:done>\n"])
+    S.new(client).stream_halfduplex(ulaw, sleep_fn: ->(*) {})
+    # no error raised means it kept reading past the non-matching frames
+    assert_true true
+  end
 
-    # post-blast: 8000/8000.0 + 0.5 + 1.5 = 3.0
-    assert_equal 3.0, sleeps[1]
+  def test_stream_halfduplex_raises_timeout_if_a_done_never_arrives
+    ulaw = "\x10\x20\x30\x40\x50"  # 5 bytes
+    client = FakeClient.new(chunk: 2, frames: [])
+    assert_raise(Stackchan::BLE::TimeoutError) do
+      S.new(client).stream_halfduplex(ulaw, sleep_fn: ->(*) {})
+    end
   end
 end

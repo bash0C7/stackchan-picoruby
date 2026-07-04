@@ -252,7 +252,9 @@ module Stackchan
 
     # Stream a mu-law clip over BLE using the Phase1 half-duplex protocol
     # (port of Stackchan::Voice::Streamer#stream_halfduplex): announce -> wait
-    # for the device to enter receive mode -> blast -> wait for drain+play.
+    # for the device to enter receive mode -> blast -> wait for the device's
+    # <A:done> completion notification (see StackchanCentral#await_audio_done
+    # for why an active wait replaced the original fixed-sleep estimate).
     # Caller already holds the BLE link (invoked inside with_ble).
     def stream_audio(ulaw)
       n = ulaw.bytesize
@@ -264,7 +266,7 @@ module Stackchan
         @ble.write_without_ack(ulaw.byteslice(i, chunk))
         i += chunk
       end
-      sleep(n / 8000.0 + 0.5 + 1.5)
+      @ble.await_audio_done
     end
 
     def ble_chunk_size

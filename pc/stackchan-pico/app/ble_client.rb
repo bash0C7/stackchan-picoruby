@@ -278,6 +278,38 @@ if Object.const_defined?(:BLE)
       self
     end
 
+    AUDIO_DONE_TIMEOUT_TICKS = 300  # x POLLING_UNIT_MS(100ms) = ~30s safety net
+
+    # Wait for the device's <A:done> half-duplex-audio completion notification
+    # (app/application.rb's StackChanApp#consume_rx writes this only after
+    # AudioReceiver#consume fully returns -- i.e. after both the T-ms pre-play
+    # delay AND the actual mu-law decode + I2S playback + silence-tail write
+    # have all finished). Call this right after blasting a clip instead of
+    # sleeping a fixed/estimated duration: real-hardware repro showed the
+    # device's interpreted-Ruby mu-law decode doesn't scale simply with
+    # "clip length / sample rate," so a formula-based sleep either wastes
+    # time (short clips) or times out the very next command's ACK (longer
+    # clips, confirmed reproducible for a ~33KB clip). Actively waiting for
+    # the notification the protocol already sends is correct regardless of
+    # clip length or decode-speed variance. The tick budget is a safety net
+    # only, in case the notification is ever lost.
+    def await_audio_done
+      raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+      @inbox.clear
+      i = 0
+      while i < AUDIO_DONE_TIMEOUT_TICKS
+        packet = @radio.pop_packet
+        @radio.packet_callback(packet) if packet
+        if (idx = @inbox.index { |f| f.start_with?("<A:done>") })
+          @inbox.delete_at(idx)
+          return self
+        end
+        sleep_ms(BLE::POLLING_UNIT_MS)
+        i += 1
+      end
+      raise Stackchan::BLE::TimeoutError, "<A:done> timeout"
+    end
+
     private
 
     def resolve_handles
@@ -326,7 +358,21 @@ if Object.const_defined?(:BLE)
       raise Stackchan::BLE::TimeoutError, "ACK timeout for #{frame.inspect}" unless first
       status = NusResolver.classify(first)
       if status == :ack
-        @last_detail_frame = await_inbox if servo_or_read?(frame)
+        if servo_or_read?(frame)
+          @last_detail_frame = await_inbox
+          # Diagnostic only (no behavior change): an intermittent, unexplained
+          # real-hardware defect (2026-07-04, see completion-plan memory
+          # "servo-family real-hardware reliability when torque is OFF") saw
+          # this second await return a bare ACK/ERROR byte instead of a real
+          # <..._actual:...> detail frame. Root cause not established (could
+          # not reproduce in 20+ follow-up attempts) -- log the raw bytes if
+          # it recurs so the next investigation has evidence instead of
+          # starting from zero again.
+          if @last_detail_frame && NusResolver.classify(@last_detail_frame) == :ack
+            $stderr.write("[ble_client] anomaly: detail-frame slot got an ACK-like byte #{@last_detail_frame.inspect} for #{frame.inspect}\n")
+            $stderr.flush
+          end
+        end
         return if first[0, 1] == Stackchan::BLE::FrameCodec::ACK_OK
         raise Stackchan::BLE::DeviceError, "device rejected #{frame.inspect}"
       else

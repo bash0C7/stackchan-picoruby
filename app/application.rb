@@ -872,7 +872,12 @@ module StackchanApp
   # delay_fn (defaults to Machine.delay_ms), then drains all accumulated BLE
   # bytes from drain_fn and plays them. Non-audio frames are yielded to the block.
   #
-  # T = n*1000/8000 + 500ms  (BLE throughput ~8KB/s + margin).
+  # T = n*1000/8000 + 3000ms  (BLE throughput ~8KB/s + margin; see
+  # receive_t_ms below for the exact breakdown). T covers only the pre-play
+  # wait (announce settle + blast + margin) -- the subsequent I2S playback
+  # itself takes a further ~n*1000/8000 ms, which callers waiting on the PC
+  # side must budget for separately (see Stackchan::Voice::Streamer /
+  # pc/stackchan-pico's stream_audio).
   # delay_fn/notify_fn/drain_fn are injectable for picotest.
   class AudioReceiver
     # 200ms of silence overwrites all I2S DMA circular descriptors so the last

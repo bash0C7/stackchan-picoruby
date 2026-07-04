@@ -60,6 +60,14 @@ class FakeBleClient
     cb.call("<touch:#{zone}>\n") if cb
   end
 
+  # No real device to wait on in fake mode -- mirrors StackchanCentral's
+  # interface (see its own comment for why the real client actively waits
+  # for this instead of sleeping a fixed duration) so Daemon#stream_audio
+  # works unchanged against both clients.
+  def await_audio_done
+    self
+  end
+
   private
 
   def write_frame(frame)
