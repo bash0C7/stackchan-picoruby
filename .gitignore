@@ -7,3 +7,6 @@ pc/*/tmp/
 .claude/settings.local.json
 /HANDOFF.md
 /docs/superpowers/
+
+# fetched build trees (rake vendor:setup) — never committed
+/vendor/

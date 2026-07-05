@@ -43,7 +43,7 @@ StackChan を PicoRuby（[R2P2-ESP32](https://github.com/picoruby/R2P2-ESP32)）
 PC連携アバターパターン：
 
 - **StackChan側**：R2P2-ESP32 + PicoRuby スクリプト。I/O 端末として動作。センサ値を読んでシリアルで送信、PCからのコマンドでサーボ/LED/表情を駆動
-- **PC側**：Ruby (rb-foundation-model-mac) でローカルAI判断。Mac との通信は BLE NUS (picoruby-ble の ESP32 port を fork で thread-safe 化、`pc/stackchan` unified CLI 経由)。`stackchan <verb>` を叩くと auto-spawn daemon が永続 BLE link + FM session + touch reader を保持。WiFi 経路 (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) は sdkconfig 有効 + mbedTLS 完成済み、wiring 未着手。USB-serial は uploader / debug 用途
+- **PC側**：PicoRuby (`pc/stackchan-pico`) の unified CLI `stackchan <verb>` 経由。Mac との通信は BLE NUS (picoruby-ble の darwin port、central 側)。`stackchan <verb>` を叩くと auto-spawn daemon が永続 BLE link + touch reader を保持。AI 判断 (rb-foundation-model-mac) と macOS TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。WiFi 経路 (picoruby-esp32 + picoruby-socket + picoruby-net-http/-mqtt/-websocket) は sdkconfig 有効 + mbedTLS 完成済み、wiring 未着手。USB-serial は uploader / debug 用途
 
 ### 設計の核心
 
@@ -102,7 +102,7 @@ head to forward, then sends `<torque:on>` to engage. Detail frame on position co
 reports `<YL_actual:N,PU_actual:N>` or `<YL_actual:unknown,PU_actual:unknown>` (where
 unknown is a protocol-level signal that operator manual calibration is needed).
 
-CLI (実行は `cd pc/stackchan && bundle exec exe/stackchan <verb>`):
+CLI (実行は `pc/stackchan-pico/bin/stackchan <verb>`):
 `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan selftest`。
 servo の Exit code 6 = `EXIT_CALIBRATION_NEEDED`。
 
@@ -245,7 +245,7 @@ Recovery escalation (escalate after 2 tries):
 
 ## R2P2-ESP32 ビルド・flash フロー（CoreS3 ターゲット）
 
-stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣リポジトリ `../../bash0C7/R2P2-ESP32` への呼び出しと esp-idf env source を全部ラップ済み。
+stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。`vendor/R2P2-ESP32`（`rake vendor:r2p2_esp32:setup` で取得、branch `stackchan-integration`）への呼び出しと esp-idf env source を全部ラップ済み。
 
 | タスク | 用途 |
 |---|---|
@@ -259,7 +259,7 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣
 
 - `bash0C7/R2P2-ESP32/sdkconfigs/cores3`：`SPIRAM=y` + `SPIRAM_MODE_QUAD=y` + `SPIRAM_SPEED_80M=y`。CoreS3 は **Quad PSRAM 8MB**（Octal でない）。デフォルトの `sdkconfigs/spiram` は `MODE_OCT=y` なので CoreS3 で使うと PSRAM ID 読み失敗 → boot loop
 - `bash0C7/R2P2-ESP32/sdkconfig.defaults`：`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`（CoreS3 は 16MB Flash）
-- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_btstack`（Rakefile にハードコード済み）
+- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble`（Rakefile にハードコード済み。BLE backend は 2026-07-03 に BTstack→NimBLE 切替済み、fragment 名も追従）
 
 ### sdkconfig fragment 編集後は自動再生成
 
@@ -269,9 +269,9 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。隣
 
 ### BLE on CoreS3: COEX 完全 disable 必須
 
-BLE-only build (BTstack vendored、WiFi 並走無し) で `CONFIG_SW_COEXIST_ENABLE=y` のままだと、BT controller の内部 task `btdm_controller_on_reset` → `bt_rf_coex_hook_st_set` → `coex_schm_status_bit_clear` → **ROM `coex_schm_lock`** で **uninitialized semaphore handle (`0x82xxxxxx` 等の高 bit set) を semphr_take して LoadProhibited panic**。
+BLE-only build (WiFi 並走無し) で `CONFIG_SW_COEXIST_ENABLE=y` のままだと、BT controller の内部 task `btdm_controller_on_reset` → `bt_rf_coex_hook_st_set` → `coex_schm_status_bit_clear` → **ROM `coex_schm_lock`** で **uninitialized semaphore handle (`0x82xxxxxx` 等の高 bit set) を semphr_take して LoadProhibited panic**。
 
-ROM 側の `coex_schm_env` 参照経路が IDF v5.4 + ESP32-S3 + BLE-only で破綻している (詳細は addr2line + 一行 disasm で確認済)。`sdkconfigs/bt_btstack` で **全 coex 関連 flag を `n`** に：
+ROM 側の `coex_schm_env` 参照経路が IDF v5.4 + ESP32-S3 + BLE-only で破綻している (詳細は addr2line + 一行 disasm で確認済)。`sdkconfigs/bt_nimble`（2026-07-03 に `bt_btstack` から切替、`CONFIG_SW_COEXIST_ENABLE=n` は引き継ぎ確認済み）で **全 coex 関連 flag を `n`** に：
 
 ```
 CONFIG_SW_COEXIST_ENABLE=n
@@ -281,7 +281,9 @@ CONFIG_ESP_COEX_ENABLED=n
 
 これで `bt.c` 内 `coex_schm_status_bit_clear_wrapper` 等が `#if CONFIG_SW_COEXIST_ENABLE` ガードで no-op になり、BT controller の coex hook も harmless 化、ROM 経路に到達しない。WiFi 起動時に coex 必要になったら戻す (この時は `coex_schm_init` が正しく走るか別 issue として再評価)。
 
-### BTstack は thread-safe ではない
+### BTstack は thread-safe ではない（2026-07-03 に NimBLE へ切替、下記は歴史的記録）
+
+`R2P2-ESP32` の BLE backend は BTstack から NimBLE (`picoruby-ble/ports/esp32/nimble_owner.c`、`btstack_owner.c` は削除済み) に切り替わった。この節が説明する `btstack_owner.c` の dispatch 実装は現物が存在しない。NimBLE 側の thread 分離設計は `nimble_owner.c` を直接読むこと（`host_task` が `nimble_port_run()` を FreeRTOS task として実行、`gatt_access_cb` が "NimBLE host task only" とコメントされている点は確認済みだが、btstack 版の `run_sync`/`ensure_started` に相当する dispatch API の有無は未確認）。cross-thread mruby heap 破壊対策自体は backend 非依存で必要（`picoruby-ble-bridge` gem、`mrbgems/picoruby-ble-bridge/README.md` 参照）。
 
 BTstack vendored ESP32 port の README 明記：
 > BTstack is not thread-safe... To call a function from the BTstack thread, you can use *btstack_run_loop_execute_on_main_thread*

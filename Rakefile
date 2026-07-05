@@ -2,7 +2,63 @@ require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
 require_relative "lib/deploy/picomodem"
 require_relative "lib/deploy/shell_recovery"
 
-PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
+# Vendored build trees, fetched by `rake vendor:setup` (git clone --branch REF
+# REPO vendor/NAME) instead of assumed present as hand-placed sibling
+# directories. ENV-overridable so a fork/branch swap doesn't need editing
+# this file — mirrors the R2P2-darwin/R2P2-macOS `PICORUBY_REPO`/`PICORUBY_REF`
+# convention.
+R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP32.git"
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "stackchan-integration"
+R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
+
+R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
+R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "main"
+R2P2_DARWIN_ROOT = File.expand_path("vendor/R2P2-darwin", __dir__)
+
+namespace :vendor do
+  desc "Fetch both vendored build trees (R2P2-ESP32, R2P2-darwin)"
+  task setup: ["vendor:r2p2_esp32:setup", "vendor:r2p2_darwin:setup"]
+
+  namespace :r2p2_esp32 do
+    desc "Clone R2P2_ESP32_REPO@R2P2_ESP32_REF into vendor/R2P2-ESP32 (skip if present)"
+    task :setup do
+      unless Dir.exist?(R2P2_ROOT)
+        sh "git clone --recursive --branch #{R2P2_ESP32_REF} #{R2P2_ESP32_REPO} #{R2P2_ROOT}"
+      end
+    end
+
+    desc "Re-fetch R2P2_ESP32_REF into the existing vendor/R2P2-ESP32 (no re-clone)"
+    task :refresh do
+      raise "vendor/R2P2-ESP32 absent; run `rake vendor:r2p2_esp32:setup` first" unless Dir.exist?(R2P2_ROOT)
+      sh "git -C #{R2P2_ROOT} fetch #{R2P2_ESP32_REPO} #{R2P2_ESP32_REF}"
+      sh "git -C #{R2P2_ROOT} checkout -B #{R2P2_ESP32_REF} FETCH_HEAD"
+      sh "git -C #{R2P2_ROOT} submodule update --init --recursive"
+    end
+  end
+
+  namespace :r2p2_darwin do
+    desc "Clone R2P2_DARWIN_REPO@R2P2_DARWIN_REF into vendor/R2P2-darwin (skip if present)"
+    task :setup do
+      unless Dir.exist?(R2P2_DARWIN_ROOT)
+        sh "git clone --branch #{R2P2_DARWIN_REF} #{R2P2_DARWIN_REPO} #{R2P2_DARWIN_ROOT}"
+      end
+    end
+
+    desc "Re-fetch R2P2_DARWIN_REF into the existing vendor/R2P2-darwin (no re-clone)"
+    task :refresh do
+      raise "vendor/R2P2-darwin absent; run `rake vendor:r2p2_darwin:setup` first" unless Dir.exist?(R2P2_DARWIN_ROOT)
+      sh "git -C #{R2P2_DARWIN_ROOT} fetch #{R2P2_DARWIN_REPO} #{R2P2_DARWIN_REF}"
+      sh "git -C #{R2P2_DARWIN_ROOT} checkout -B #{R2P2_DARWIN_REF} FETCH_HEAD"
+    end
+  end
+end
+
+# Host picotest VM (test/device/*_test.rb) reuses R2P2-ESP32's own picoruby
+# submodule rather than fetching a third independent picoruby tree — this is
+# the same picoruby build the device firmware actually runs, so host-VM
+# quirks (string/idiom differences from CRuby) match device behavior instead
+# of an unrelated upstream checkout's.
+PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(R2P2_ROOT, "components", "picoruby-esp32", "picoruby")
 PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
 
 desc "Run the PicoRuby-native device test suite (alias of picotest:run)"
@@ -75,29 +131,10 @@ namespace :picotest do
   end
 end
 
-# Resolve the sibling R2P2-ESP32 build tree. Walk up from this Rakefile's dir to
-# the nearest ancestor that has R2P2-ESP32 as a child, so r2p2:* tasks work from
-# both the main checkout (repo root) and any linked worktree (several levels
-# deeper). Falls back to the historical relative path if none is found.
-R2P2_ROOT = begin
-  dir = __dir__
-  found = nil
-  loop do
-    cand = File.join(dir, 'R2P2-ESP32')
-    if File.directory?(cand)
-      found = cand
-      break
-    end
-    parent = File.dirname(dir)
-    break if parent == dir
-    dir = parent
-  end
-  found || File.expand_path('../../bash0C7/R2P2-ESP32', __dir__)
-end
 ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
 
-SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_btstack'
+SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble'
 LIBMRUBY_FILE = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby/lib/libmruby.a"
 LONGRUN_DIR = File.expand_path('tmp/longrun', __dir__)
 SERIAL_LOG_DEFAULT = "#{LONGRUN_DIR}/serial.log"
@@ -120,6 +157,7 @@ def espport
 end
 
 def in_r2p2(*args)
+  abort "vendor/R2P2-ESP32 not found — run `rake vendor:r2p2_esp32:setup` first" unless Dir.exist?(R2P2_ROOT)
   cmd = args.join(' ')
   sh %Q{bash -c '. #{ESP_IDF_EXPORT} && cd #{R2P2_ROOT} && #{cmd}'}
 end
@@ -177,62 +215,10 @@ def ensure_no_concurrent_monitor
         "then retry. If stale: kill #{pids.join(' ')}"
 end
 
-# R2P2-ESP32 integration overlays. stackchan-picoruby needs a few deltas in the
-# shared R2P2-ESP32 fork at build time — build_config gem registrations and
-# extra picoruby-esp32 SRCS / PRIV_REQUIRES / link flags (picoruby-i2s; and the
-# BLE reboot workaround: ble_bridge_port.c + -Wl,--wrap=BLE_write_data + the
-# picoruby-ble-bridge gem). Committing those into the shared fork would bury the
-# intent and risk drifting from upstream (memory
-# shared-commons-no-casual-picoruby-r2p2-edits), so each concern lives as its own
-# patch under r2p2-overlay/ and is applied ONLY around a build, reverted
-# afterward so the fork working tree stays clean. Patches apply in sorted
-# filename order and revert in reverse order (their hunks touch disjoint
-# regions, so order is not significant). Idempotent per patch: an already-applied
-# patch (reverse-check passes) is skipped, so a build interrupted before the
-# ensure-revert self-heals on the next apply.
-R2P2_OVERLAY_PATCHES = Dir[File.expand_path('r2p2-overlay/*.patch', __dir__)].sort
-
-def r2p2_overlay_applied?(patch)
-  system("git -C #{R2P2_ROOT} apply --reverse --check #{patch} >/dev/null 2>&1")
-end
-
-def apply_r2p2_overlay
-  if R2P2_OVERLAY_PATCHES.empty?
-    abort "[overlay] no patches found under r2p2-overlay/"
-  end
-  R2P2_OVERLAY_PATCHES.each do |patch|
-    if r2p2_overlay_applied?(patch)
-      puts "[overlay] already applied — skipping #{File.basename(patch)}"
-      next
-    end
-    sh "git -C #{R2P2_ROOT} apply #{patch}"
-    puts "[overlay] applied #{File.basename(patch)} to R2P2-ESP32"
-  end
-end
-
-def revert_r2p2_overlay
-  R2P2_OVERLAY_PATCHES.reverse_each do |patch|
-    next unless r2p2_overlay_applied?(patch)
-    sh "git -C #{R2P2_ROOT} apply --reverse #{patch}"
-    puts "[overlay] reverted #{File.basename(patch)}"
-  end
-  puts "[overlay] R2P2-ESP32 working tree clean"
-end
-
-# Apply the integration overlays for the duration of a build, then always revert.
-def with_r2p2_overlay
-  apply_r2p2_overlay
-  yield
-ensure
-  revert_r2p2_overlay
-end
-
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup do
-    with_r2p2_overlay do
-      in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
-    end
+    in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
   end
 
   desc 'rm libmruby.a so the next build forces picoruby rake to recompile all gems (catches mrblib/*.rb changes that idf.py build silently ignores)'
@@ -248,9 +234,7 @@ namespace :r2p2 do
   desc "build with CoreS3 sdkconfig (QUAD PSRAM + 16MB flash, VM=mruby)"
   task :build do
     ensure_sdkconfig_fresh
-    with_r2p2_overlay do
-      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
-    end
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
   end
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
@@ -265,9 +249,7 @@ namespace :r2p2 do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     port = espport
-    with_r2p2_overlay do
-      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
-    end
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
   end
 
   desc 'idf.py monitor (HUMAN USE ONLY — claude code Bash has no TTY)'
@@ -385,9 +367,7 @@ namespace :r2p2 do
     abort "picorbc produced no output at #{mrb_dest}" unless File.exist?(mrb_dest)
     puts "[build_flash_appmrb] baked #{src_path} -> #{mrb_dest} (#{File.size(mrb_dest)} bytes)"
     port = espport
-    with_r2p2_overlay do
-      in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
-    end
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src_path)} (baked into littlefs /home/app.mrb) flashed. esptool hard-reset will autostart it."
   end
 
@@ -428,19 +408,17 @@ namespace :r2p2 do
     puts "[servo_smoke] waiting #{autostart_wait}s for autostart + BLE advertise"
     sleep autostart_wait
 
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan', 'torque', 'on')
-        abort "[servo_smoke] torque on FAIL" unless ok
-        sleep 1
-        args = ['bundle', 'exec', 'exe/stackchan', 'servo',
-                '--time', time_ms, '--pitch-up', pu]
-        args += ['--yaw-left',  yl] if yl
-        args += ['--yaw-right', yr] if yr
-        ok = system(*args)
-        unless ok
-          exit $?.exitstatus
-        end
+      ok = system(stackchan, 'torque', 'on')
+      abort "[servo_smoke] torque on FAIL" unless ok
+      sleep 1
+      args = [stackchan, 'servo', '--time', time_ms, '--pitch-up', pu]
+      args += ['--yaw-left',  yl] if yl
+      args += ['--yaw-right', yr] if yr
+      ok = system(*args)
+      unless ok
+        exit $?.exitstatus
       end
     end
 
@@ -460,13 +438,12 @@ namespace :r2p2 do
     puts "[torque_smoke] waiting #{autostart_wait}s for autostart"
     sleep autostart_wait
 
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        %w[on off].each do |state|
-          ok = system('bundle', 'exec', 'exe/stackchan', 'torque', state)
-          abort "[torque_smoke] torque #{state} FAIL" unless ok
-          sleep 2
-        end
+      %w[on off].each do |state|
+        ok = system(stackchan, 'torque', state)
+        abort "[torque_smoke] torque #{state} FAIL" unless ok
+        sleep 2
       end
     end
 
@@ -499,25 +476,23 @@ namespace :r2p2 do
       { label: 'center (return)',  args: ['--yaw-left', '0', '--pitch-up', '0'],     expect: 'facing forward again' },
     ]
 
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan', 'torque', 'on')
-        abort '[cal] torque on FAIL' unless ok
-        sleep 1
+      ok = system(stackchan, 'torque', 'on')
+      abort '[cal] torque on FAIL' unless ok
+      sleep 1
 
-        positions.each_with_index do |pos, i|
-          puts "\n[cal #{i + 1}/5] sending #{pos[:label]} → expect: #{pos[:expect]}"
-          ok = system('bundle', 'exec', 'exe/stackchan', 'servo',
-                      '--time', '800', *pos[:args])
-          abort "[cal] frame send FAIL at #{pos[:label]}" unless ok
-          sleep 1.5
-          print '   Did StackChan move as expected? [y/N]: '
-          ans = STDIN.gets.to_s.strip.downcase
-          abort "[cal] FAIL at #{pos[:label]} (operator marked N)" unless ans == 'y'
-        end
-
-        system('bundle', 'exec', 'exe/stackchan', 'torque', 'off')
+      positions.each_with_index do |pos, i|
+        puts "\n[cal #{i + 1}/5] sending #{pos[:label]} → expect: #{pos[:expect]}"
+        ok = system(stackchan, 'servo', '--time', '800', *pos[:args])
+        abort "[cal] frame send FAIL at #{pos[:label]}" unless ok
+        sleep 1.5
+        print '   Did StackChan move as expected? [y/N]: '
+        ans = STDIN.gets.to_s.strip.downcase
+        abort "[cal] FAIL at #{pos[:label]} (operator marked N)" unless ans == 'y'
       end
+
+      system(stackchan, 'torque', 'off')
     end
 
     puts "\n[cal] PASS — all 5 positions visually confirmed"
@@ -548,20 +523,17 @@ namespace :r2p2 do
     sleep autostart_wait
 
     # The project-root Bundler env (loaded at the top of this Rakefile) leaks
-    # into any child `bundle exec`, which makes pc/stackchan's
-    # `require "stackchan"` fail with LoadError because resolution
-    # uses the outer Gemfile instead of the inner one. Drop the outer env so
-    # the child `bundle exec` reads its own Gemfile.
+    # into any child `bundle exec` the stackchan wrapper spawns (e.g. the
+    # sidecar). Drop the outer env so those children read their own Gemfile.
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
     Bundler.with_unbundled_env do
-      Dir.chdir(File.expand_path('pc/stackchan', __dir__)) do
-        ok = system('bundle', 'exec', 'exe/stackchan', 'face', face)
-        unless ok
-          exit $?.exitstatus
-        end
-        ok = system('bundle', 'exec', 'exe/stackchan', 'led', side, color, mode)
-        unless ok
-          exit $?.exitstatus
-        end
+      ok = system(stackchan, 'face', face)
+      unless ok
+        exit $?.exitstatus
+      end
+      ok = system(stackchan, 'led', side, color, mode)
+      unless ok
+        exit $?.exitstatus
       end
     end
 
@@ -597,7 +569,8 @@ namespace :r2p2 do
   desc "smoke test the calibrate CLI in --align-only mode (interactive, requires connected device)"
   task :ble_calibration_smoke do
     ensure_no_concurrent_monitor
-    sh "cd pc/stackchan && bundle exec exe/stackchan calibrate --align-only"
+    stackchan = File.expand_path('pc/stackchan-pico/bin/stackchan', __dir__)
+    Bundler.with_unbundled_env { sh stackchan, 'calibrate', '--align-only' }
   end
 
 end

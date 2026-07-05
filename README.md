@@ -43,19 +43,27 @@ the `picoruby-stackchan-protocol` gem. Audio is sent as a length-prefixed
 
 ## Code layout
 
-The hardware drivers are standalone PicoRuby mrbgems, each in its own sibling
-repository rather than an in-tree `mrbgems/` directory:
+`bundle exec rake vendor:setup` fetches the two build trees this repo needs
+into `vendor/` (gitignored, never hand-placed):
 
 ```
-../picoruby-ili9342/              LCD driver
-../picoruby-py32-io-expander/     PY32 I/O expander (LEDs, VM_EN)
-../picoruby-scservo/              feedback servo (yaw + pitch)
-../picoruby-stackchan-protocol/   frame protocol FrameParser
-../picoruby-i2s/                  I2S TX for the speaker
+vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch stackchan-integration.
+                      Device firmware build tree; its own picoruby submodule
+                      (branch stackchan-integration, derived from the
+                      upstream-PR-track picoruby-ble-esp32-port) carries the
+                      StackChan-specific in-tree gems (picoruby-ble-bridge,
+                      picoruby-i2s) alongside picoruby-ble itself.
+vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Mac-side PicoRuby VM
+                      build harness (vendors picoruby's port-darwin branch
+                      internally). See pc/stackchan-pico/README.md.
 ```
 
-The firmware build wires these into R2P2-ESP32. All StackChan business logic
-lives in a single autostart payload:
+Four more hardware-driver mrbgems (LCD, PY32 I/O expander, servo, frame
+protocol) are separate `bash0C7/picoruby-*` repos fetched straight from
+GitHub by the firmware's own build_config (`conf.gem github:`) — no local
+clone or vendoring needed for those.
+
+All StackChan business logic lives in a single autostart payload:
 
 ```
 app/application.rb   Face rendering, the WS2812 LED ring driver, the Si12T
@@ -63,14 +71,21 @@ app/application.rb   Face rendering, the WS2812 LED ring driver, the Si12T
                      command dispatcher, the BLE peripheral, audio receive,
                      and the cold-boot init sequence.
 
-pc/stackchan/              Unified macOS-side CLI (`stackchan <verb>`) backed
-                           by an auto-spawn daemon. Internal modules:
-                           Stackchan::{BLE, Voice, AI, Event, Display}.
+pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
+                           PicoRuby — CLI + auto-spawn daemon + BLE central.
+                           See pc/stackchan-pico/README.md.
+pc/stackchan/              CRuby support library for the AI/voice sidecar
+                           only (Apple Foundation Model + say/afconvert
+                           cannot run under PicoRuby); no CLI here anymore.
+pc/sidecar/                The CRuby sidecar process, bridged to the
+                           PicoRuby daemon over picoruby-drb.
 
-test/                      Host tests (picotest on a host PicoRuby VM).
+test/                      Host tests (picotest on a host PicoRuby VM, reusing
+                           vendor/R2P2-ESP32's own picoruby submodule).
 lib/ruby_class_extract.rb  prism-AST loader for application.rb class bodies.
 lib/deploy/                host-side picomodem uploader.
-Rakefile                   build, flash, deploy, and BLE smoke task wrappers.
+Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
+                           task wrappers.
 ```
 
 Host tests run the device-side logic on a host PicoRuby VM through picotest. A
@@ -81,33 +96,26 @@ interaction (build, flash, deploy, capture) goes through the
 
 ## Quickstart (macOS side)
 
-A single CLI `stackchan` drives the robot. The link is held by a
-persistent daemon (`stackchand`) that owns the BLE connection and the
-Foundation Model session. Connection management and operation are
-separate verbs:
-
-- `stackchan connect` — establish the link (starts the daemon, takes ~12s)
-- `stackchan status`  — passively observe the link (does **not** auto-start)
-- `stackchan stop`    — explicitly terminate the link
-- Operation verbs (`face`, `led`, `servo`, …) auto-establish the link if
-  it is not yet up, then reuse it (~0.3s per call once connected). The
-  daemon keeps the link alive itself and is never torn down implicitly.
+A single CLI `stackchan` drives the robot. See
+[pc/stackchan-pico/README.md](pc/stackchan-pico/README.md) for the full
+architecture, env vars, and verb list. The wrapper auto-spawns the CRuby
+AI/voice sidecar and the PicoRuby daemon (which owns the BLE connection),
+connecting to a physical StackChan by default:
 
 ```bash
-cd pc/stackchan
-bundle install   # first time only
-
-bundle exec exe/stackchan connect                  # explicit: bring the link up
-bundle exec exe/stackchan status                   # observe only (no auto-spawn)
-bundle exec exe/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
-bundle exec exe/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
-bundle exec exe/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
-bundle exec exe/stackchan torque on                # off lets you move the head by hand
-bundle exec exe/stackchan say "ぼくスタックチャンだよ" --gain 0.1  # speaks + shows subtitle on LCD (first 19 chars)
-bundle exec exe/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
-bundle exec exe/stackchan touch listen             # stream `<touch:N>` events as the head sensor fires
-bundle exec exe/stackchan touch listen --react     # same, but also ask the AI to react per tap
-bundle exec exe/stackchan stop                     # explicit: tear the link down
+pc/stackchan-pico/bin/stackchan connect                  # explicit: bring the link up
+pc/stackchan-pico/bin/stackchan status                   # observe only (no auto-spawn)
+pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
+pc/stackchan-pico/bin/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
+pc/stackchan-pico/bin/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
+pc/stackchan-pico/bin/stackchan torque on                # off lets you move the head by hand
+pc/stackchan-pico/bin/stackchan say "ぼくスタックチャンだよ" --gain 0.1  # speaks + shows subtitle on LCD (first 19 chars)
+pc/stackchan-pico/bin/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
+pc/stackchan-pico/bin/stackchan touch listen             # stream `<touch:N>` events as the head sensor fires
+pc/stackchan-pico/bin/stackchan demo                     # scripted intro: speak + face + servo + LED cycling
+pc/stackchan-pico/bin/stackchan tui                      # interactive servo/face REPL
+pc/stackchan-pico/bin/stackchan calibrate --align-only   # torque off → operator aligns forward → torque on
+pc/stackchan-pico/bin/stackchan stop                     # explicit: tear the link down
 ```
 
 ### Touch reactions
@@ -123,18 +131,9 @@ link is idle). Per zone:
 | 1 | Angry | right half, red (300ms pulse) |
 | 2 | Sad | left half, blue (300ms pulse) |
 
-The PC side only sees the `<touch:N>` BLE notify, so `touch listen` /
-`touch listen --react` is the right verb when you want a CLI side-effect
-(printing events, or piping a tap into an AI reply) on top of the on-device
-visual feedback.
-
-### Demo
-
-```bash
-bundle exec exe/stackchan demo                     # 10s of speak + face + servo + LED → "tap me!" → touch listen with AI reactions
-bundle exec exe/stackchan demo --duration 5        # custom length
-bundle exec exe/stackchan demo --no-listen         # do not chain into touch listen
-```
+The PC side only sees the `<touch:N>` BLE notify, so `touch listen` is the
+right verb when you want a CLI side-effect (printing events) on top of the
+on-device visual feedback.
 
 ### Interactive servo console
 
@@ -144,8 +143,8 @@ bundle exec exe/stackchan demo --no-listen         # do not chain into touch lis
 ### Calibration
 
 ```bash
-bundle exec exe/stackchan calibrate --align-only   # daily startup: torque off → align forward → torque on
-bundle exec exe/stackchan calibrate --samples 5 --format ruby   # full 5-pose anchor recal, prints constants
+pc/stackchan-pico/bin/stackchan calibrate --align-only   # daily startup: torque off → align forward → torque on
+pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-pose anchor recal, prints constants
 ```
 
 ## Capabilities
@@ -194,17 +193,17 @@ controlled by the macOS-side `--gain` parameter (default 0.1).
 - PMIC: AXP2101
 - IO expanders: AW9523 and PY32
 - Audio: AW88298 Class-D amplifier, 1W speaker
-- BLE 5.0 LE (BTstack vendored ESP32 port)
+- BLE 5.0 LE (NimBLE ESP32 port)
 
 ## Development environment
 
 macOS only. The Rakefile assumes macOS paths and the macOS
 [`serialport`](https://github.com/larskanis/ruby-serialport) gem. It needs
-Xcode with the Swift toolchain (for the `rb-corebluetooth-mac` native
-extension), esp-idf v5.4 at `~/esp/esp-idf`, Ruby 4.0+, and Bundler. Building
-and controlling the device requires sibling clones of the driver gems,
-`R2P2-ESP32`, `rb-corebluetooth-mac`, and `swift_gem` under the same parent
-directory.
+Xcode with the Swift toolchain (for the `picoruby-ble` Darwin port used by
+`pc/stackchan-pico`'s BLE central), esp-idf v5.4 at `~/esp/esp-idf`, Ruby
+4.0+, and Bundler. Building and controlling the device fetches its build
+trees on demand via `bundle exec rake vendor:setup` (see "Code layout"
+above) rather than requiring hand-placed sibling clones.
 
 ## Related repositories
 
@@ -233,8 +232,9 @@ synchronization.
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 
-A macOS CoreBluetooth binding for Ruby, used by `pc/stackchan` as the
-BLE transport.
+A macOS CoreBluetooth binding for Ruby, used for BLE dev/debug tooling
+(e.g. `repro/flood_rx.rb`). The operational PC-side BLE transport is the
+native `picoruby-ble` darwin port used by `pc/stackchan-pico`.
 
 ## License
 

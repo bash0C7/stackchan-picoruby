@@ -1,0 +1,73 @@
+#!/bin/sh
+# StackChan PC-side CLI entry (PicoRuby edition).
+#
+# Thin lifecycle wrapper: ensure the CRuby AI/voice sidecar and the PicoRuby
+# daemon are running, then dispatch the verb through the PicoRuby CLI. The
+# wrapper owns process spawning because PicoRuby's `system` cannot background
+# or redirect; the CLI itself only attaches over picoruby-drb.
+#
+#   stackchan <verb> [args]
+#   stackchan stop            # stop the daemon (leaves the sidecar)
+#
+# Config via env (defaults target this dev checkout):
+#   STACKCHAN_PICORUBY   path to the picoruby VM (shared gem baked in)
+#   STACKCHAN_ROOT       repo root (for the app boot scripts)
+#   STACKCHAN_PORT       daemon drb port           (default 8787)
+#   STACKCHAN_SIDECAR_PORT                          (default 8788)
+#   STACKCHAN_SIDECAR_STUB=1   use the stub sidecar (no FM/say)
+#   STACKCHAN_BLE_FAKE=1       swap in FakeBleClient (no radio) instead of
+#                              the default physical StackChan over
+#                              picoruby-ble (StackchanCentral), for testing
+#                              verb logic without hardware in the loop
+#   STACKCHAN_BLE_NAME_PREFIX  advertised name prefix to scan for (default
+#                              "StackChan"), real mode only
+set -eu
+
+ROOT="${STACKCHAN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+VM="${STACKCHAN_PICORUBY:-$ROOT/vendor/R2P2-darwin/build/host/bin/picoruby}"
+PORT="${STACKCHAN_PORT:-8787}"
+SIDECAR_PORT="${STACKCHAN_SIDECAR_PORT:-8788}"
+APP="$ROOT/pc/stackchan-pico/app"
+LOGDIR="${STACKCHAN_LOGDIR:-/tmp/stackchan-pico}"
+mkdir -p "$LOGDIR"
+
+listening() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+
+ensure_sidecar() {
+  listening "$SIDECAR_PORT" && return 0
+  ( cd "$ROOT/pc/stackchan-pico" >/dev/null
+    BUNDLE_GEMFILE="$ROOT/pc/stackchan/Gemfile" \
+    STACKCHAN_SIDECAR_STUB="${STACKCHAN_SIDECAR_STUB:-}" \
+    bundle exec ruby "$ROOT/pc/sidecar/sidecar.rb" "$SIDECAR_PORT" \
+      > "$LOGDIR/sidecar.log" 2>&1 & )
+  for _ in $(seq 1 60); do listening "$SIDECAR_PORT" && return 0; sleep 0.25; done
+  echo "stackchan: sidecar failed to start (see $LOGDIR/sidecar.log)" >&2; return 1
+}
+
+ensure_daemon() {
+  listening "$PORT" && return 0
+  if [ "${STACKCHAN_BLE_FAKE:-}" = "1" ]; then
+    "$VM" "$APP/boot_daemon.rb" "$ROOT" "$PORT" > "$LOGDIR/daemon.log" 2>&1 &
+    retries=60
+  else
+    "$VM" "$APP/boot_daemon_real.rb" "$ROOT" "$PORT" "${STACKCHAN_BLE_NAME_PREFIX:-StackChan}" \
+      > "$LOGDIR/daemon.log" 2>&1 &
+    retries=120   # real connect (scan+GATT discovery) can take up to ~15s
+  fi
+  i=0
+  while [ "$i" -lt "$retries" ]; do
+    listening "$PORT" && return 0
+    i=$((i + 1))
+    sleep 0.25
+  done
+  echo "stackchan: daemon failed to start (see $LOGDIR/daemon.log)" >&2; return 1
+}
+
+verb="${1:-}"
+case "$verb" in
+  status) : ;;                       # observe-only: don't spawn anything
+  stop)   ensure_daemon 2>/dev/null || true ;;
+  *)      ensure_sidecar && ensure_daemon ;;
+esac
+
+exec "$VM" "$APP/boot_cli.rb" "$ROOT" "$PORT" "$@"
