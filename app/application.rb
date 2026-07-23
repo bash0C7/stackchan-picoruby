@@ -1212,21 +1212,30 @@ class StackChanApp < BLE
     db.handle_table[NUS_SERVICE_UUID][char_uuid][key]
   end
 
-  # Override BLE#start. The StackChan bridge diverts inbound HCI/ATT event
-  # packets off the BTstack run-loop task (via __wrap_BLE_push_event into a C
-  # FIFO) so that task never touches the mruby VM — without this, the fork's
-  # BLE_push_event mrb_malloc's on the BTstack task and races the main task as
-  # it unwinds _init, corrupting the heap (the device exits during BLE init).
-  # Because events no longer flow through the fork's pop_packet, drain the
-  # bridge's event FIFO here and build each mruby String on this main task, at
-  # the same 100ms unit as the upstream loop. Infinite (no timeout) so a live
-  # connection is never force-dropped.
+  # Override BLE#start. Inbound GATT WRITES still go through BLEBridge
+  # (pop_write, drained by the dispatcher/audio receiver elsewhere) — that
+  # FIFO's __wrap_BLE_write_data interposition is on ports/esp32/ble.c's
+  # att_write_callback, a genuinely different BTstack-task call site.
+  #
+  # HCI/ATT EVENT packets (state/disconnect/can-send-now) are NOT relayed via
+  # BLEBridge.pop_event, despite __wrap_BLE_push_event existing for exactly
+  # this: mrb_pop_packet (src/mruby/ble.c) calls BLE_push_event from within
+  # the SAME translation unit that defines it, so the compiler resolves that
+  # call directly rather than through a linker-visible relocation — the
+  # --wrap=BLE_push_event redirect never engages for it, and BLEBridge's event
+  # FIFO stays empty forever (confirmed on hardware: BLEBridge.pop_event never
+  # returned anything, so packet_callback was never invoked, so advertise()
+  # never ran — device never became visible over BLE). Also, since the
+  # STATE-delivery fix (picoruby-ble-esp32-port 83e9ba66), BLE_push_event is
+  # only ever called from mrb_pop_packet on the VM thread — the original
+  # BTstack-task race BLEBridge's event wrap existed to prevent is already
+  # structurally impossible here, so consuming pop_packet's own return value
+  # (like the upstream BLE#start does) is both necessary and safe.
   def start
     hci_power_control(BLE::HCI_POWER_ON)
     loop do
-      while (event = BLEBridge.pop_event)
-        packet_callback(event)
-      end
+      packet = pop_packet
+      packet_callback(packet) if packet
       heartbeat_callback if pop_heartbeat
       sleep_ms BLE::POLLING_UNIT_MS
     end

@@ -626,3 +626,29 @@ namespace :r2p2 do
   end
 
 end
+
+# macOS refuses (hard SIGABRT, TCC namespace "privacy-sensitive data without a
+# usage description") any CoreBluetooth call from a process that isn't
+# launched through LaunchServices out of an app bundle declaring
+# NSBluetoothAlwaysUsageDescription — even a direct fork/exec of the identical
+# binary+identifier that already has Bluetooth authorization granted from a
+# prior `open`-launched run. bin/stackchan's real-mode daemon spawn therefore
+# goes through `open -a` against this bundle, never a direct exec of the raw
+# build/host/bin/picoruby. Re-run this task after every macos:build (the
+# ad-hoc code signature — and thus the granted TCC authorization — is tied to
+# the binary's exact bytes, so a rebuild invalidates it, same as any other
+# ad-hoc-signed dev binary on this machine).
+namespace :pc do
+  desc "(re)build ~/Applications/StackchanPico.app wrapping vendor/R2P2-darwin's built VM, so real-mode BLE (CoreBluetooth) can pass macOS TCC"
+  task :app_bundle do
+    vm = File.expand_path("vendor/R2P2-darwin/build/host/bin/picoruby", __dir__)
+    abort "#{vm} not found — run `MRUBY_CONFIG=$(pwd)/vendor/R2P2-darwin/build_config/r2p2-stackchan-pc.rb bundle exec rake -f vendor/R2P2-darwin/Rakefile macos:build` first" unless File.exist?(vm)
+    app = File.expand_path("~/Applications/StackchanPico.app")
+    macos_dir = File.join(app, "Contents", "MacOS")
+    mkdir_p macos_dir
+    cp vm, File.join(macos_dir, "picoruby")
+    cp File.expand_path("pc/stackchan-pico/StackchanPico-Info.plist", __dir__), File.join(app, "Contents", "Info.plist")
+    sh "codesign", "--force", "--deep", "-s", "-", app
+    puts "[pc:app_bundle] #{app} ready (STACKCHAN_PICORUBY_APP defaults here)"
+  end
+end
