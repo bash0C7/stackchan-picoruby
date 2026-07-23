@@ -268,6 +268,58 @@ namespace :r2p2 do
     sh "cat #{port} > #{log}"
   end
 
+  # CoreS3 uses ESP32-S3's native USB-Serial/JTAG peripheral, which drops and
+  # re-enumerates the CDC connection for ~0.5-2s around every chip reset
+  # (RTS-pulse `r2p2:reset` included, not just physical replug). A plain `cat`
+  # holds one fd across that gap and goes silent forever once the far end
+  # drops it — reproduced empirically 2026-07-23: a bare `cat` opened <0.3s
+  # after reset caught only the first ~7 boot lines then never received
+  # another byte for 30+s despite the device continuing to boot and run.
+  # This task retries open() in a loop for DURATION seconds so the very first
+  # few seconds of boot (BLE_INIT, this gem's own hci_power_control/esp_timer
+  # diagnostics, etc.) are never silently missed. See
+  # docs/superpowers/handoff/2026-07-22-ble-role-coverage-verification-evidence.md.
+  desc 'capture ESPPORT into SERIAL_LOG with automatic reconnect across USB-Serial-JTAG reset blips (DURATION=seconds, default 30)'
+  task :capture_resilient do
+    ensure_no_concurrent_monitor
+    port = espport
+    log = ENV.fetch('SERIAL_LOG', SERIAL_LOG_DEFAULT)
+    duration = (ENV['DURATION'] || 30).to_f
+    mkdir_p File.dirname(log)
+    sh ESP_PYTHON, '-c', <<~PY
+      import serial, time
+      port = #{port.inspect}
+      deadline = time.time() + #{duration}
+      with open(#{log.inspect}, 'wb') as f:
+          while time.time() < deadline:
+              try:
+                  s = serial.Serial(port, 115200, timeout=0.2)
+              except Exception:
+                  time.sleep(0.05)
+                  continue
+              try:
+                  while time.time() < deadline:
+                      data = s.read(4096)
+                      if data:
+                          f.write(data)
+                          f.flush()
+              except Exception:
+                  pass
+              finally:
+                  try:
+                      s.close()
+                  except Exception:
+                      pass
+      print('[r2p2:capture_resilient] done')
+    PY
+  end
+
+  desc 'pulse RTS to reset CoreS3, then capture_resilient in the SAME process (avoids paying rake/bundler startup twice, which otherwise misses the first several seconds of boot). SERIAL_LOG=path DURATION=seconds'
+  task :reset_and_capture do
+    Rake::Task['r2p2:reset'].invoke
+    Rake::Task['r2p2:capture_resilient'].invoke
+  end
+
   desc 'sleep N seconds inside the rake process — use to chain device tasks in one invocation, e.g. `rake r2p2:wipe_storage r2p2:wait[15] r2p2:upload_appmrb r2p2:reset` (quote in shells that gobble brackets)'
   task :wait, [:seconds] do |_t, args|
     seconds = (args[:seconds] || ENV['WAIT'] || 1).to_f
