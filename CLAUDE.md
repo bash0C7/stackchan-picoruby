@@ -116,6 +116,8 @@ Anchor recal: `stackchan calibrate [--samples N] [--format ruby|json|env]` (5-po
 - **Mac BLE scan/connect/write は `rb-corebluetooth-mac` 経由で Bash から claude 自身が叩ける**。advertise 検出や smoke を「人間に iPhone nRF Connect 開いて」と頼まず、`stackchan-ble-control` CLI で autonomous に実行する
 - **BLE 検証中は serial monitor を並走させない**。`bin/capture-with-pty ... rake r2p2:monitor` (idf_monitor) は port open 時に DTR/RTS で CoreS3 を reset するため、BLE connect/write/ACK の最中に走らせると device が cold-boot をやり直し advertising が消え、`no device with name prefix` や ACK timeout の偽陽性が出る。BLE smoke / servo / face は **monitor 無しで `stackchan-ble-control` CLI 単独**で実行する。device 側ログがどうしても要るなら reset を覚悟して 1 回キャプチャ→その boot で完結する検証だけにする
 - **`rb-corebluetooth-mac` の native 拡張は使用前にビルド必須**。`cd ../rb-corebluetooth-mac && bundle install && bundle exec rake compile` で Swift dylib + Ruby `.bundle` を生成。未ビルドだと CLI が `Library not loaded: @rpath/libCoreBluetoothMac.dylib` で落ちる。Ruby ABI 切替時は再 compile 必要
+- **`BLE#start` を override するアプリコードは `pop_packet` の戻り値を直接消費する**。標準 `mrblib/ble.rb#start` は毎 tick `packet = pop_packet; packet_callback(packet) if packet` を呼ぶ。ESP32 port ではこの呼び出しが `picoruby_nimble_dequeue_event` (evq drain) → `BLE_push_event` (`ble.c`) を VM thread 上で駆動しており、`pop_packet` を呼ばない override は `advertise()` を含む host イベント処理を完全停止させる (`app/application.rb` の custom `start` で実際に踏んだ)。`BLEBridge.pop_event` (`picoruby-ble-bridge` の `--wrap=BLE_push_event` linker interposition) には頼れない — `ble.c` 内 `mrb_pop_packet` から呼ばれる `BLE_push_event(buf, n)` は同一 translation unit のため wrap が効かない
+- **macOS 側 CoreBluetooth は TCC 経由でしか許可されない**。`pc/stackchan-pico/bin/stackchan` の real-mode daemon 起動は `open -a` で `~/Applications/StackchanPico.app` (`rake pc:app_bundle` が生成、`NSBluetoothAlwaysUsageDescription` 入り Info.plist) を叩く。`build/host/bin/picoruby` の直接 fork/exec は署名済み・許可済みでも TCC `SIGABRT` で落ちる。`macos:build` の度に `rake pc:app_bundle` を再実行 (ad-hoc 署名がバイナリの exact bytes に紐づくため)
 
 ### BLE audio half-duplex protocol
 
@@ -259,7 +261,7 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。`ve
 
 - `bash0C7/R2P2-ESP32/sdkconfigs/cores3`：`SPIRAM=y` + `SPIRAM_MODE_QUAD=y` + `SPIRAM_SPEED_80M=y`。CoreS3 は **Quad PSRAM 8MB**（Octal でない）。デフォルトの `sdkconfigs/spiram` は `MODE_OCT=y` なので CoreS3 で使うと PSRAM ID 読み失敗 → boot loop
 - `bash0C7/R2P2-ESP32/sdkconfig.defaults`：`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`（CoreS3 は 16MB Flash）
-- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble`（Rakefile にハードコード済み。BLE backend は 2026-07-03 に BTstack→NimBLE 切替済み、fragment 名も追従）
+- SDKCONFIG_DEFAULTS の組み立て：`sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble`（Rakefile にハードコード済み）
 
 ### sdkconfig fragment 編集後は自動再生成
 
@@ -271,7 +273,7 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。`ve
 
 BLE-only build (WiFi 並走無し) で `CONFIG_SW_COEXIST_ENABLE=y` のままだと、BT controller の内部 task `btdm_controller_on_reset` → `bt_rf_coex_hook_st_set` → `coex_schm_status_bit_clear` → **ROM `coex_schm_lock`** で **uninitialized semaphore handle (`0x82xxxxxx` 等の高 bit set) を semphr_take して LoadProhibited panic**。
 
-ROM 側の `coex_schm_env` 参照経路が IDF v5.4 + ESP32-S3 + BLE-only で破綻している (詳細は addr2line + 一行 disasm で確認済)。`sdkconfigs/bt_nimble`（2026-07-03 に `bt_btstack` から切替、`CONFIG_SW_COEXIST_ENABLE=n` は引き継ぎ確認済み）で **全 coex 関連 flag を `n`** に：
+ROM 側の `coex_schm_env` 参照経路が IDF v5.4 + ESP32-S3 + BLE-only で破綻している (詳細は addr2line + 一行 disasm で確認済)。`sdkconfigs/bt_nimble` で **全 coex 関連 flag を `n`** に：
 
 ```
 CONFIG_SW_COEXIST_ENABLE=n
@@ -281,21 +283,15 @@ CONFIG_ESP_COEX_ENABLED=n
 
 これで `bt.c` 内 `coex_schm_status_bit_clear_wrapper` 等が `#if CONFIG_SW_COEXIST_ENABLE` ガードで no-op になり、BT controller の coex hook も harmless 化、ROM 経路に到達しない。WiFi 起動時に coex 必要になったら戻す (この時は `coex_schm_init` が正しく走るか別 issue として再評価)。
 
-### BTstack は thread-safe ではない（2026-07-03 に NimBLE へ切替、下記は歴史的記録）
+### BLE backend は NimBLE (upstream: picoruby/picoruby PR #427)
 
-`R2P2-ESP32` の BLE backend は BTstack から NimBLE (`picoruby-ble/ports/esp32/nimble_owner.c`、`btstack_owner.c` は削除済み) に切り替わった。この節が説明する `btstack_owner.c` の dispatch 実装は現物が存在しない。NimBLE 側の thread 分離設計は `nimble_owner.c` を直接読むこと（`host_task` が `nimble_port_run()` を FreeRTOS task として実行、`gatt_access_cb` が "NimBLE host task only" とコメントされている点は確認済みだが、btstack 版の `run_sync`/`ensure_started` に相当する dispatch API の有無は未確認）。cross-thread mruby heap 破壊対策自体は backend 非依存で必要（`picoruby-ble-bridge` gem、`mrbgems/picoruby-ble-bridge/README.md` 参照）。
+`R2P2-ESP32` の BLE backend は NimBLE (`picoruby-ble/ports/esp32/nimble_owner.c`)。この ESP32 porting は https://github.com/picoruby/picoruby/pull/427 として upstream 化中で、目標は ESP32 porting の実装充足。実機動作は stackchan-picoruby で主要パスは確認済み（カバレッジ不明）。
 
-BTstack vendored ESP32 port の README 明記：
-> BTstack is not thread-safe... To call a function from the BTstack thread, you can use *btstack_run_loop_execute_on_main_thread*
+`nimble_owner.c` の `host_task` が `nimble_port_run()` を専用 FreeRTOS task として実行し、GATT access callback は "NimBLE host task only" とコメントされている。公開 API (`nimble_owner.h`) は `picoruby_nimble_start/stop/started/own_addr_type/enqueue_event/heartbeat_enable` の 6 個のみで、cross-thread dispatch (Ruby thread からの呼び出しを NimBLE host thread に同期させる) API は無い。Ruby thread から NimBLE API を直接呼ぶ経路 (`ble.c` / `ble_central.c` / `ble_peripheral.c`) があれば無保護になるため、変更時はそこを直接確認する。
 
-picoruby-ble の `BLE_init` / `BLE_hci_power_control` / `BLE_peripheral_advertise` 等は Ruby thread から呼ばれるが BTstack 内部は run_loop_freertos thread。**全部 btstack thread で実行** させる必要がある：
+cross-thread mruby heap 破壊対策自体は backend 非依存で必要（`picoruby-ble-bridge` gem、`mrbgems/picoruby-ble-bridge/README.md` 参照）。
 
-- `ports/esp32/btstack_owner.c` に `picoruby_btstack_ensure_started(setup_cb, ctx)` + `picoruby_btstack_run_sync(cb, ctx)` API を追加
-- `BLE_init` の `l2cap_init / sm_init / att_server_init / hci_add_event_handler` 一式は setup callback として btstack_task 内 (run_loop_execute 前) で実行
-- 起動後の runtime call (`hci_power_control` / `gap_advertisements_*` 等) は `btstack_run_loop_execute_on_main_thread` 経由で semaphore 同期 dispatch
-- 同じ btstack thread から呼ばれた場合は dispatch せず直接 call (short-circuit) — deadlock 回避
-
-**位置付け**: BTstack は公式 ESP-IDF docs ではサポートされてへん vendored 実装。host 層 (GATT discovery / advertise behavior / CCCD subscribe semantics 等) の正しさは Bluetooth Core Spec と BTstack 自身の docs を参照する。ESP-IDF docs は controller / PHY / coex 層のみの参考に使う。host 側の bug (GC safety, binding) は picoruby-ble fork で直す。
+**位置付け**: host 層 (GATT discovery / advertise behavior / CCCD subscribe semantics 等) の正しさは Bluetooth Core Spec と NimBLE 自身の docs を参照する。ESP-IDF docs は controller / PHY / coex 層のみの参考に使う。host 側の bug (GC safety, binding) は picoruby-ble fork (upstream PR #427) で直す。
 
 ### Storage 区画は `idf.py flash` で wipe される
 

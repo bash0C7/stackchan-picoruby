@@ -48,6 +48,14 @@ MRUBY_CONFIG=build_config/r2p2-stackchan-pc.rb bundle exec rake macos:build
 # → build/host/bin/picoruby  (Stackchan::BLE / Stackchan::AI compiled in)
 ```
 
+Then package that VM into `~/Applications/StackchanPico.app` (from the repo
+root; required once, and again after every `macos:build`, so real-mode BLE
+can pass macOS TCC — see "macOS TCC / CoreBluetooth" below):
+
+```sh
+bundle exec rake pc:app_bundle
+```
+
 Then drive it through the wrapper (auto-starts the sidecar + daemon, connects
 to a physical StackChan by default):
 
@@ -86,6 +94,19 @@ STACKCHAN_BLE_FAKE=1 pc/stackchan-pico/bin/stackchan connect   # no hardware nee
   hardware. `STACKCHAN_BLE_FAKE=1` (host, no radio) remains verified for
   every verb, chat via REAL FM, say via REAL say/afconvert, demo/tui/calibrate
   flows, touch polling — used for testing verb logic without hardware.
+
+## macOS TCC / CoreBluetooth
+
+macOS hard-aborts (TCC, `SIGABRT`) any CoreBluetooth call from a process not
+launched through LaunchServices out of an app bundle declaring
+`NSBluetoothAlwaysUsageDescription` — a direct fork/exec of
+`build/host/bin/picoruby`, even signed and previously authorized, always
+crashes. `bin/stackchan`'s real-mode daemon spawn therefore runs the VM via
+`open -a` against `~/Applications/StackchanPico.app` (built by `rake
+pc:app_bundle`, path overridable with `STACKCHAN_PICORUBY_APP`), never a
+direct exec. Rebuild the bundle (`rake pc:app_bundle`) after every
+`macos:build` — the ad-hoc code signature, and the TCC authorization tied to
+it, is bound to the binary's exact bytes.
 
 ## PicoRuby constraints worked around
 

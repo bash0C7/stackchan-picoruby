@@ -55,7 +55,11 @@ vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch stackchan-integration.
                       picoruby-i2s) alongside picoruby-ble itself.
 vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Mac-side PicoRuby VM
                       build harness (vendors picoruby's port-darwin branch
-                      internally). See pc/stackchan-pico/README.md.
+                      internally). See pc/stackchan-pico/README.md. Also
+                      holds the iOS control app
+                      (vendor/R2P2-darwin/examples/ios/stackchan) — a BLE
+                      central written in Ruby, verified against a physical
+                      StackChan from a physical iPhone.
 ```
 
 Four more hardware-driver mrbgems (LCD, PY32 I/O expander, servo, frame
