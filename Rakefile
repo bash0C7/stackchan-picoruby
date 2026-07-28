@@ -163,15 +163,15 @@ def in_r2p2(*args)
 end
 
 def upload_mrb_via_picomodem(src:, dst:, port:)
-  picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
-  abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
+  picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/mrbc"
+  abort "mrbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
   build_dir = File.expand_path('tmp/build', __dir__)
   mkdir_p build_dir
   base = File.basename(src, File.extname(src))
   mrb_path = File.join(build_dir, "#{base}.mrb")
   rm_f mrb_path
   sh picorbc, '-o', mrb_path, src
-  abort "picorbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
+  abort "mrbc produced no output at #{mrb_path}" unless File.exist?(mrb_path)
   puts "[upload_mrb] compiled #{src} -> #{mrb_path} (#{File.size(mrb_path)} bytes)"
   Deploy::Picomodem.upload(src: mrb_path, dst: dst, port: port)
 end
@@ -410,13 +410,13 @@ namespace :r2p2 do
     src = ENV.fetch('SRC') { abort 'SRC=path/to/app.rb required for r2p2:build_flash_appmrb' }
     src_path = File.expand_path(src, __dir__)
     abort "SRC not found: #{src_path}" unless File.exist?(src_path)
-    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/picorbc"
-    abort "picorbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
+    picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/mrbc"
+    abort "mrbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
     mrb_dest = "#{R2P2_ROOT}/storage/home/app.mrb"
     mkdir_p File.dirname(mrb_dest)
     rm_f mrb_dest
     sh picorbc, '-o', mrb_dest, src_path
-    abort "picorbc produced no output at #{mrb_dest}" unless File.exist?(mrb_dest)
+    abort "mrbc produced no output at #{mrb_dest}" unless File.exist?(mrb_dest)
     puts "[build_flash_appmrb] baked #{src_path} -> #{mrb_dest} (#{File.size(mrb_dest)} bytes)"
     port = espport
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" ESPPORT=#{port} rake picoruby:build flash}
