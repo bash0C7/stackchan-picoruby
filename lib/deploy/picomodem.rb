@@ -27,10 +27,29 @@ module Deploy
 
     DEFAULT_HANDSHAKE_SECONDS = 8.0
 
+    # Defensive bound, NOT a confirmed root-cause fix.
+    #
+    # "[picomodem] FILE_ACK expected, got nil" has recurred for months. It was
+    # once reproducible 6/6 (wipe_storage -> 15s settle -> upload) and stopped
+    # reproducing entirely after the USB cable was re-plugged; A/B'ing the old
+    # fire-once path against this retry path afterwards showed both passing 3/3
+    # even at a 5s settle, so the trigger is environmental (suspected stale or
+    # mis-selected /dev/cu.usbmodem* node) and remains unidentified. Timing was
+    # ruled out: the settle that failed placed the STX *later* after reset than
+    # settles that succeed.
+    #
+    # Offering FILE_WRITE exactly once turned any such hiccup into a hard
+    # failure. Re-offering it until the shell answers costs nothing on the happy
+    # path (attempt 1 succeeds) and makes the give-up message state how long and
+    # how many attempts it actually waited, which is what the next occurrence
+    # will need.
+    DEFAULT_READY_TIMEOUT = 60.0
+
     module_function
 
     def upload(src:, dst:, port:, baud: 115_200,
-               handshake_seconds: DEFAULT_HANDSHAKE_SECONDS, stdout: $stdout)
+               handshake_seconds: DEFAULT_HANDSHAKE_SECONDS,
+               ready_timeout: DEFAULT_READY_TIMEOUT, stdout: $stdout)
       content = File.binread(src)
       stdout.puts "[picomodem] src=#{src} dst=#{dst} port=#{port} size=#{content.bytesize}"
 
@@ -38,21 +57,8 @@ module Deploy
       serial.dtr = 1
       stdout.puts "[picomodem] opened #{port} @ #{baud} (DTR=1)"
       begin
-        run_handshake_responder(serial, handshake_seconds, stdout)
-        drain(serial)
-
-        # Single STX byte triggers PicoModem.session on the shell side.
-        serial.write [STX].pack("C")
-        sleep 0.05
-
         payload = [content.bytesize].pack("N") + dst
-        serial.write make_frame(FILE_WRITE, payload)
-
-        frame = recv_frame(serial, timeout: 5.0)
-        unless frame && frame[0] == FILE_ACK
-          raise "[picomodem] FILE_ACK expected, got #{frame.inspect}"
-        end
-        stdout.puts "[picomodem] FILE_ACK READY"
+        await_file_ack(serial, payload, handshake_seconds, ready_timeout, stdout)
 
         offset = 0
         while offset < content.bytesize
@@ -126,6 +132,38 @@ module Deploy
       expected = rest.byteslice(length, 2).unpack1("n")
       return nil unless crc16(body) == expected
       [body.getbyte(0), body.byteslice(1, length - 1) || ""]
+    end
+
+    # Offers the FILE_WRITE frame until the shell answers FILE_ACK, or the
+    # deadline expires. Each attempt runs the handshake responder first: the
+    # shell's line editor emits \e[6n / \e[5n on startup and blocks until they
+    # are answered, so it cannot see the STX otherwise. (cursor_replies=0 is
+    # normal and does not predict failure -- uploads succeed with 0 replies
+    # when the editor was already past that point.)
+    def await_file_ack(serial, payload, handshake_seconds, ready_timeout, stdout)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + ready_timeout
+      attempt = 0
+      loop do
+        attempt += 1
+        run_handshake_responder(serial, handshake_seconds, stdout)
+        drain(serial)
+
+        # Single STX byte triggers PicoModem.session on the shell side.
+        serial.write [STX].pack("C")
+        sleep 0.05
+        serial.write make_frame(FILE_WRITE, payload)
+
+        frame = recv_frame(serial, timeout: 5.0)
+        if frame && frame[0] == FILE_ACK
+          stdout.puts "[picomodem] FILE_ACK READY (attempt #{attempt})"
+          return
+        end
+        if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          raise "[picomodem] FILE_ACK expected, got #{frame.inspect} " \
+                "(no answer within #{ready_timeout}s over #{attempt} attempt(s))"
+        end
+        stdout.puts "[picomodem] no FILE_ACK on attempt #{attempt}; shell not up yet, retrying"
+      end
     end
 
     def run_handshake_responder(serial, duration, stdout)
