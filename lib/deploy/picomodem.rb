@@ -12,7 +12,16 @@ require "serialport"
 
 module Deploy
   module Picomodem
+    # Raised when /home/app.mrb is autostarting and never returns, so the shell
+    # that answers Ctrl-B is never constructed. Distinct from a transient
+    # failure because retrying cannot help.
+    class AutostartBlocked < StandardError; end
+
+    # Raised when the board is not enumerated on USB at all.
+    class PortMissing < StandardError; end
+
     STX        = 0x02
+    ACK        = 0x06
     FILE_WRITE = 0x02
     CHUNK      = 0x04
     FILE_ACK   = 0x82
@@ -25,64 +34,193 @@ module Deploy
     DSR_QUERY    = "\e[5n"
     DSR_REPLY    = "\e[0n"
 
-    DEFAULT_HANDSHAKE_SECONDS = 8.0
+    # main_task.rb prints these, in this order, on every boot.
+    APP_AUTOSTART = "Loading app.mrb"
+    SHELL_BANNER  = "Starting shell"
 
-    # Defensive bound, NOT a confirmed root-cause fix.
-    #
-    # "[picomodem] FILE_ACK expected, got nil" has recurred for months. It was
-    # once reproducible 6/6 (wipe_storage -> 15s settle -> upload) and stopped
-    # reproducing entirely after the USB cable was re-plugged; A/B'ing the old
-    # fire-once path against this retry path afterwards showed both passing 3/3
-    # even at a 5s settle, so the trigger is environmental (suspected stale or
-    # mis-selected /dev/cu.usbmodem* node) and remains unidentified. Timing was
-    # ruled out: the settle that failed placed the STX *later* after reset than
-    # settles that succeed.
-    #
-    # Offering FILE_WRITE exactly once turned any such hiccup into a hard
-    # failure. Re-offering it until the shell answers costs nothing on the happy
-    # path (attempt 1 succeeds) and makes the give-up message state how long and
-    # how many attempts it actually waited, which is what the next occurrence
-    # will need.
-    DEFAULT_READY_TIMEOUT = 60.0
+    DEFAULT_BOOT_TIMEOUT = 25.0
+    DEFAULT_ATTEMPTS     = 3
+
+    # The ESP32-S3 USB-Serial/JTAG peripheral drops and re-enumerates its CDC
+    # connection for ~0.5-2s around every reset, so the file descriptor that
+    # issued the reset is dead afterwards and must be reopened. Same finding as
+    # the one that forced r2p2:capture_resilient to reopen in a loop.
+    REENUMERATE_TIMEOUT = 15.0
+
+    # After the banner, wait for the device to stop talking before offering
+    # Ctrl-B. Both IO.get_cursor_position and IO.wait_terminal begin with
+    # `STDIN.read_nonblock(100)` to discard the input buffer (io-console.rb:47
+    # and :89), so an STX that arrives while the shell is still probing the
+    # terminal is thrown away rather than acted on. Quiescence is the signal
+    # that those probes are done and the editor is in its read loop.
+    QUIET_SECONDS = 0.4
+    QUIET_CAP     = 8.0
 
     module_function
 
     def upload(src:, dst:, port:, baud: 115_200,
-               handshake_seconds: DEFAULT_HANDSHAKE_SECONDS,
-               ready_timeout: DEFAULT_READY_TIMEOUT, stdout: $stdout)
+               boot_timeout: DEFAULT_BOOT_TIMEOUT,
+               attempts: DEFAULT_ATTEMPTS, stdout: $stdout)
       content = File.binread(src)
       stdout.puts "[picomodem] src=#{src} dst=#{dst} port=#{port} size=#{content.bytesize}"
+      assert_port_present(port)
 
-      serial = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
-      serial.dtr = 1
-      stdout.puts "[picomodem] opened #{port} @ #{baud} (DTR=1)"
+      payload = [content.bytesize].pack("N") + dst
+      serial  = nil
+      attempt = 0
       begin
-        payload = [content.bytesize].pack("N") + dst
-        await_file_ack(serial, payload, handshake_seconds, ready_timeout, stdout)
+        loop do
+          attempt += 1
+          serial&.close
+          serial, port = reset_and_reopen(port, baud, stdout)
+          await_shell(serial, boot_timeout, stdout)
 
-        offset = 0
-        while offset < content.bytesize
-          chunk = content.byteslice(offset, CHUNK_SIZE)
-          serial.write make_frame(CHUNK, chunk)
-          ack = recv_frame(serial, timeout: 5.0)
-          unless ack && ack[0] == CHUNK_ACK
-            raise "[picomodem] CHUNK_ACK expected at offset=#{offset}, got #{ack.inspect}"
+          reason = offer_file_write(serial, payload, stdout, attempt)
+          break if reason.nil?
+
+          if attempt >= attempts
+            raise "[picomodem] #{reason} — gave up after #{attempt} attempt(s)"
           end
-          offset += chunk.bytesize
-          stdout.print "."
-          stdout.flush
+          stdout.puts "[picomodem] attempt #{attempt} failed: #{reason}; resetting and retrying"
         end
-        stdout.puts
 
-        done = recv_frame(serial, timeout: 5.0)
-        unless done && done[0] == DONE_ACK
-          raise "[picomodem] DONE_ACK expected, got #{done.inspect}"
-        end
-        stdout.puts "[picomodem] DONE_ACK ok"
+        send_chunks(serial, content, stdout)
       ensure
-        serial.close
+        serial&.close
       end
       true
+    end
+
+    def assert_port_present(port)
+      return if File.exist?(port)
+      others = Dir.glob("/dev/cu.usbmodem*").sort
+      hint = others.empty? ? "no /dev/cu.usbmodem* node exists at all" : "present instead: #{others.inspect}"
+      raise PortMissing,
+            "[picomodem] #{port} does not exist (#{hint}). The board is not enumerated on USB — " \
+            "replug the USB-C cable, or pass ESPPORT=... if the node was renamed."
+    end
+
+    # Pulses RTS on a throwaway handle, waits out the CDC re-enumeration, and
+    # returns [fresh_serial, port]. The port is returned because the node can
+    # come back under a different name, which is the failure the old
+    # "stale or mis-selected /dev/cu.usbmodem*" note was guessing at.
+    def reset_and_reopen(port, baud, stdout)
+      pulse = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
+      begin
+        pulse.dtr = 0
+        pulse.rts = 1
+        sleep 0.15
+        pulse.rts = 0
+      ensure
+        pulse.close
+      end
+      stdout.puts "[picomodem] reset pulsed on #{port}; waiting for USB CDC to re-enumerate"
+
+      deadline = now + REENUMERATE_TIMEOUT
+      while now < deadline
+        sleep 0.1
+        if File.exist?(port)
+          begin
+            return [SerialPort.new(port, baud, 8, 1, SerialPort::NONE), port]
+          rescue Errno::ENOENT, Errno::EBUSY, Errno::EIO
+            next
+          end
+        end
+      end
+
+      others = Dir.glob("/dev/cu.usbmodem*").sort
+      if others.size == 1
+        renamed = others.first
+        stdout.puts "[picomodem] WARNING: #{port} never came back; the board re-enumerated as #{renamed}"
+        return [SerialPort.new(renamed, baud, 8, 1, SerialPort::NONE), renamed]
+      end
+      raise PortMissing,
+            "[picomodem] #{port} did not come back within #{REENUMERATE_TIMEOUT}s of reset " \
+            "(nodes now present: #{others.inspect}). The board dropped off USB — replug it."
+    end
+
+    # Reads the boot log until the shell announces itself, answering the
+    # editor's terminal queries throughout.
+    def await_shell(serial, boot_timeout, stdout)
+      stdout.puts "[picomodem] waiting up to #{boot_timeout}s for the shell banner"
+      seen      = +""
+      pending   = +""
+      autostart = false
+      deadline  = now + boot_timeout
+
+      while now < deadline
+        chunk = read_available(serial, 0.1)
+        next unless chunk
+        seen << chunk
+        pending << chunk
+        answer_queries(serial, pending)
+
+        if !autostart && seen.include?(APP_AUTOSTART)
+          autostart = true
+          stdout.puts "[picomodem] device is loading /home/app.mrb"
+        end
+        if seen.include?(SHELL_BANNER)
+          stdout.puts "[picomodem] shell banner seen#{autostart ? ' (app.mrb returned)' : ''}"
+          settle(serial, stdout)
+          return
+        end
+      end
+
+      if autostart
+        raise AutostartBlocked,
+              "[picomodem] /home/app.mrb started but never returned, so main_task.rb never " \
+              "reaches `$shell.start` — the shell that answers Ctrl-B does not exist, and no " \
+              "amount of retrying will change that. Run `rake r2p2:wipe_storage` to drop the " \
+              "autostart payload, then retry the upload."
+      end
+      raise "[picomodem] no shell banner and no boot log within #{boot_timeout}s of reset — " \
+            "the board is enumerated but silent. Check the USB cable and power."
+    end
+
+    # Offers Ctrl-B and the FILE_WRITE frame. Returns nil on success, or a
+    # string describing where it stopped.
+    #
+    # Every synchronisation point here is a byte the device actually emits,
+    # rather than a sleep long enough to probably cover it:
+    #
+    #   * "Starting shell" (main_task.rb:42) says the editor loop is about to
+    #     run, and that loop is the only place Ctrl-B is read (shell.rb:421);
+    #   * ACK 0x06 (shell.rb:424) says the editor read our Ctrl-B and is
+    #     entering PicoModem.session, so the FILE_WRITE frame has a reader.
+    def offer_file_write(serial, payload, stdout, attempt)
+      drain(serial)
+      serial.write [STX].pack("C")
+      return "shell did not ACK Ctrl-B within 3s" unless wait_for_byte(serial, ACK, timeout: 3.0)
+
+      # PicoModem.session flips STDIN to raw right after writing that ACK.
+      sleep 0.05
+      serial.write make_frame(FILE_WRITE, payload)
+      frame = recv_frame(serial, timeout: 5.0)
+      unless frame && frame[0] == FILE_ACK
+        return "session entered but FILE_ACK did not arrive (got #{frame.inspect})"
+      end
+      stdout.puts "[picomodem] FILE_ACK READY (attempt #{attempt})"
+      nil
+    end
+
+    def send_chunks(serial, content, stdout)
+      offset = 0
+      while offset < content.bytesize
+        chunk = content.byteslice(offset, CHUNK_SIZE)
+        serial.write make_frame(CHUNK, chunk)
+        ack = recv_frame(serial, timeout: 5.0)
+        unless ack && ack[0] == CHUNK_ACK
+          raise "[picomodem] CHUNK_ACK expected at offset=#{offset}, got #{ack.inspect}"
+        end
+        offset += chunk.bytesize
+        stdout.print "."
+        stdout.flush
+      end
+      stdout.puts
+
+      done = recv_frame(serial, timeout: 5.0)
+      raise "[picomodem] DONE_ACK expected, got #{done.inspect}" unless done && done[0] == DONE_ACK
+      stdout.puts "[picomodem] DONE_ACK ok"
     end
 
     def crc16(data, crc = 0xFFFF)
@@ -100,11 +238,15 @@ module Deploy
       [STX, body.bytesize].pack("Cn") + body + [crc16(body)].pack("n")
     end
 
+    def now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
+
     def read_exact(io, n, timeout: 5.0)
       buf = +""
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      deadline = now + timeout
       while buf.bytesize < n
-        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        remaining = deadline - now
         return nil if remaining <= 0
         return nil unless io.wait_readable(remaining)
         chunk = io.read(n - buf.bytesize)
@@ -115,9 +257,9 @@ module Deploy
     end
 
     def recv_frame(io, timeout: 5.0)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      deadline = now + timeout
       loop do
-        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        remaining = deadline - now
         return nil if remaining <= 0
         b = read_exact(io, 1, timeout: remaining)
         return nil unless b
@@ -134,72 +276,62 @@ module Deploy
       [body.getbyte(0), body.byteslice(1, length - 1) || ""]
     end
 
-    # Offers the FILE_WRITE frame until the shell answers FILE_ACK, or the
-    # deadline expires. Each attempt runs the handshake responder first: the
-    # shell's line editor emits \e[6n / \e[5n on startup and blocks until they
-    # are answered, so it cannot see the STX otherwise. (cursor_replies=0 is
-    # normal and does not predict failure -- uploads succeed with 0 replies
-    # when the editor was already past that point.)
-    def await_file_ack(serial, payload, handshake_seconds, ready_timeout, stdout)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + ready_timeout
-      attempt = 0
-      loop do
-        attempt += 1
-        run_handshake_responder(serial, handshake_seconds, stdout)
-        drain(serial)
-
-        # Single STX byte triggers PicoModem.session on the shell side.
-        serial.write [STX].pack("C")
-        sleep 0.05
-        serial.write make_frame(FILE_WRITE, payload)
-
-        frame = recv_frame(serial, timeout: 5.0)
-        if frame && frame[0] == FILE_ACK
-          stdout.puts "[picomodem] FILE_ACK READY (attempt #{attempt})"
-          return
-        end
-        if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-          raise "[picomodem] FILE_ACK expected, got #{frame.inspect} " \
-                "(no answer within #{ready_timeout}s over #{attempt} attempt(s))"
-        end
-        stdout.puts "[picomodem] no FILE_ACK on attempt #{attempt}; shell not up yet, retrying"
+    # Keeps answering terminal queries until the device has been quiet for
+    # QUIET_SECONDS, which is when the logo has finished printing and the
+    # editor is sitting in its read loop.
+    def settle(serial, stdout)
+      pending  = +""
+      replies  = 0
+      cap      = now + QUIET_CAP
+      quiet_at = now + QUIET_SECONDS
+      while now < cap && now < quiet_at
+        chunk = read_available(serial, 0.05)
+        next unless chunk
+        pending << chunk
+        replies += answer_queries(serial, pending)
+        quiet_at = now + QUIET_SECONDS
       end
+      stdout.puts "[picomodem] settled after #{format('%.1f', QUIET_SECONDS)}s quiet " \
+                  "(terminal queries answered: #{replies})"
     end
 
-    def run_handshake_responder(serial, duration, stdout)
-      stop = false
-      cursor_replies = 0
-      dsr_replies    = 0
-      buf = +""
-      thr = Thread.new do
-        while !stop
-          if serial.wait_readable(0.05)
-            begin
-              chunk = serial.read_nonblock(256)
-              buf << chunk if chunk && !chunk.empty?
-              while (i = buf.index(CURSOR_QUERY))
-                buf.slice!(0, i + CURSOR_QUERY.bytesize)
-                serial.write CURSOR_REPLY
-                cursor_replies += 1
-              end
-              while (i = buf.index(DSR_QUERY))
-                buf.slice!(0, i + DSR_QUERY.bytesize)
-                serial.write DSR_REPLY
-                dsr_replies += 1
-              end
-              buf.slice!(0, buf.bytesize - 64) if buf.bytesize > 1024
-            rescue IO::WaitReadable, EOFError
-              # transient — wait_readable returned but read_nonblock raced or
-              # device went away briefly; the outer loop will retry.
-            end
-          end
-        end
+    # Answers every \e[6n / \e[5n in buf, consuming what it answers.
+    # Returns how many replies were sent.
+    def answer_queries(serial, buf)
+      replies = 0
+      while (i = buf.index(CURSOR_QUERY))
+        buf.slice!(0, i + CURSOR_QUERY.bytesize)
+        serial.write CURSOR_REPLY
+        replies += 1
       end
-      stdout.puts "[picomodem] handshake phase: #{duration}s (answers \\e[6n / \\e[5n so editor unblocks)"
-      sleep duration
-      stop = true
-      thr.join
-      stdout.puts "[picomodem] handshake done: cursor_replies=#{cursor_replies} dsr_replies=#{dsr_replies}"
+      while (i = buf.index(DSR_QUERY))
+        buf.slice!(0, i + DSR_QUERY.bytesize)
+        serial.write DSR_REPLY
+        replies += 1
+      end
+      buf.slice!(0, buf.bytesize - 64) if buf.bytesize > 1024
+      replies
+    end
+
+    def read_available(io, timeout)
+      return nil unless io.wait_readable(timeout)
+      io.read_nonblock(512)
+    rescue IO::WaitReadable, EOFError, SystemCallError
+      # A SystemCallError here means the CDC endpoint went away mid-read. Let
+      # the caller's deadline turn that into its own diagnosis rather than a
+      # backtrace out of the middle of a boot log read.
+      nil
+    end
+
+    def wait_for_byte(io, byte, timeout:)
+      deadline = now + timeout
+      loop do
+        remaining = deadline - now
+        return false if remaining <= 0
+        b = read_exact(io, 1, timeout: remaining)
+        return false unless b
+        return true if b.getbyte(0) == byte
+      end
     end
 
     def drain(serial)
