@@ -254,7 +254,7 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。`ve
 | `rake r2p2:build_flash` | **基本フロー**。`picoruby:build → flash` を 1 screen 内で連結。build 失敗時は rake が flash を自動 skip。build と flash を別 kick する流れは禁止 |
 | `rake r2p2:setup` | 初回・target 切り替え後。`setup_esp32s3` = deep_clean + mruby host rebuild + `idf.py set-target esp32s3`。`idf.py fullclean` のみだと target が default `esp32` に戻り IRAM overflow でリンク失敗する |
 | `rake r2p2:reset` | RTS pulse で CoreS3 再起動。serial キャプチャ前に呼ぶ |
-| `rake r2p2:build_flash_appmrb SRC=app/application.rb` | **picomodem 不要 deploy**。SRC を `R2P2-ESP32/storage/home/app.mrb` に picorbc compile → build → flash で firmware と storage を 1 pass 焼き。USB 抜き差し不要なので人間離席中の自律 flash に使う。詳細は下記「Storage 区画」節 |
+| `rake r2p2:build_flash_appmrb SRC=app/application.rb` | **picomodem 不要 deploy**。SRC を `R2P2-ESP32/storage/home/app.mrb` に picorbc compile → build → flash で firmware と storage を 1 pass 焼き。firmware をどのみち焼き直す時に使う。詳細は下記「Storage 区画」節 |
 | `rake r2p2:flash` / `rake r2p2:build` | 個別 fallback。普段使わない |
 
 ### CoreS3 固有の sdkconfig
@@ -301,9 +301,11 @@ cross-thread mruby heap 破壊対策自体は backend 非依存で必要（`pico
 
 storage partition は littlefs (`R2P2-ESP32/main/CMakeLists.txt` の `littlefs_create_partition_image(storage ../storage FLASH_IN_PROJECT)`)。`R2P2-ESP32/storage/` 配下がデバイス FS root になり、`storage/home/` → `/home/` にマップされる。littlefs image は `idf.py build` 毎にディスクから再生成され、`idf.py flash` が `storage.bin` を 0x210000 に焼く。
 
-→ `app.rb` を picorbc compile して `R2P2-ESP32/storage/home/app.mrb` に置けば、`/home/app.mrb` autostart payload として firmware と一緒に焼ける。**picomodem (runtime USB upload) 不要 = USB 抜き差し不要**。`rake r2p2:build_flash_appmrb SRC=...` がこれを実行 (reset はしない — esptool が自前で hard-reset するので boot capture が monitor guard と競合しない)。
+→ `app.rb` を picorbc compile して `R2P2-ESP32/storage/home/app.mrb` に置けば、`/home/app.mrb` autostart payload として firmware と一緒に焼ける。**picomodem (runtime USB upload) 不要**。`rake r2p2:build_flash_appmrb SRC=...` がこれを実行 (reset はしない — esptool が自前で hard-reset するので boot capture が monitor guard と競合しない)。
 
-**常用しない (flash 寿命)**: build_flash_appmrb は毎回 firmware (約 2MB) + storage (1MB) を全書き込みするので flash 消耗が大きい。app だけ変えた iteration では picomodem upload (storage に app.mrb のみ ~16KB 書込) の方が flash に優しい。build_flash_appmrb を default にせず、**(a) mrbgem / firmware 自体を頻繁に変える開発 (どのみち full flash が要る)**、**(b) 人間が離席を宣言して picomodem の USB 抜き差しができない時**、に限定する。日常の app-only iteration は従来の picomodem 経路 (`/stackchan-device-iterate` 等) を default にする。
+**常用しない (flash 寿命)**: build_flash_appmrb は毎回 firmware (約 2MB) + storage (1MB) を全書き込みするので flash 消耗が大きい。app だけ変えた iteration では picomodem upload (storage に app.mrb のみ ~16KB 書込) の方が flash に優しい。build_flash_appmrb を default にせず、**mrbgem / firmware 自体を頻繁に変える開発 (どのみち full flash が要る)** に限定する。日常の app-only iteration は picomodem 経路 (`/stackchan-device-iterate` 等) を default にする。
+
+**USB 抜き差しは build_flash_appmrb を選ぶ理由にならない**: picomodem は自分で reset を打ち shell banner を待つので人間の物理操作を要さない (2026-07-31 実測、ケーブルに触れずに 5/5 連続成功)。抜き差しが要るのはボードが USB から列挙されなくなった時だけで、その時は build_flash_appmrb も同じく使えない。
 
 **注意 (Phase C)**: `storage/home/app.mrb` は R2P2-ESP32 fork tree に untracked で残る。app 固有の build 成果物なので R2P2-ESP32 PR には含めない (`.gitignore` に `storage/home/*.mrb` を検討)。
 

@@ -398,12 +398,14 @@ namespace :r2p2 do
   # rebuilt from `storage/home/` on every `idf.py build` (FLASH_IN_PROJECT), and
   # `idf.py flash` writes storage.bin at 0x210000 alongside the app binary. So
   # placing app.mrb at R2P2_ROOT/storage/home/app.mrb before build makes it land
-  # at /home/app.mrb on device with NO runtime picomodem USB upload — and thus no
-  # physical USB replug. Use this when the operator is away and the normal
-  # picomodem path (which needs a replug) is unavailable. Does NOT reset; the
-  # esptool flash performs its own hard-reset, and boot capture is done
-  # separately so the monitor guard does not race the flasher.
-  desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass (no picomodem / no USB replug; SRC=path required)'
+  # at /home/app.mrb on device with NO runtime picomodem USB upload. Use this
+  # when the firmware is being rebuilt anyway, or when the shell cannot be
+  # reached at all. It is NOT the way to avoid a USB replug: the picomodem path
+  # resets the board and waits for the shell banner itself, and needs no human
+  # (verified 2026-07-31, 5/5 consecutive uploads with the cable untouched).
+  # Does NOT reset; the esptool flash performs its own hard-reset, and boot
+  # capture is done separately so the monitor guard does not race the flasher.
+  desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass (no picomodem; SRC=path required)'
   task :build_flash_appmrb => :clear_libmruby_cache do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
@@ -430,7 +432,10 @@ namespace :r2p2 do
     Rake::Task['r2p2:build_flash'].invoke
     sleep 3  # USB CDC renum settle after esptool flash
     Rake::Task['r2p2:wipe_storage'].invoke
-    sleep 12 # USB renum + R2P2 shell come-up after esptool erase_region
+    # Waits only for the /dev node to come back after esptool's hard-reset;
+    # upload_appmrb needs it to exist before it can pulse a reset of its own.
+    # Shell come-up is not timed here — the uploader waits for the banner.
+    sleep 12
     ENV['SRC'] = src
     Rake::Task['r2p2:upload_appmrb'].invoke
     Rake::Task['r2p2:reset'].invoke

@@ -33,7 +33,7 @@ Dispatch a general-purpose haiku subagent with this prompt:
 - Exit 0 + `[r2p2:full_rebuild] PASS — firmware rebuilt + ... deployed` → success.
 - `[monitor guard] idf_monitor.py is running` → human has `rake r2p2:monitor` open; ask them to Ctrl+] and retry.
 - `Hash of data verified` missing from tail → flash phase failed; escalate to `stackchan-device-setup`.
-- `FILE_ACK got nil` → upload phase failed (autostart loop on stale firmware); escalate to wipe-then-retry.
+- `/home/app.mrb started but never returned` → upload phase failed because the payload already on the device autostarts and never returns; escalate to wipe-then-retry.
 
 ## Escalation
 

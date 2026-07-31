@@ -24,4 +24,4 @@ in sequence.
 ## Pass / fail signal
 
 - Upload PASS + reset PASS → deploy complete. Cold-boot should begin.
-- Upload `FILE_ACK got nil` → escalate to `stackchan-device-cold-recovery`.
+- Upload `/home/app.mrb started but never returned` → escalate to `stackchan-device-cold-recovery`.

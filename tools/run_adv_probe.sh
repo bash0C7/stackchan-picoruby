@@ -1,8 +1,10 @@
 #!/bin/bash
 # Self-driving harness for the short-advertising-report (36d99a94) verification.
 # One invocation: flash probe -> reset -> capture -> parse -> verdict.
-# Absorbs the known picomodem FILE_ACK flakiness with a wipe+retry loop so the
-# whole run needs no interactive supervision.
+# The wipe before each upload is required, not defensive: the probe app is an
+# autostart payload that never returns, so until it is erased main_task.rb
+# never reaches `$shell.start` and picomodem has nothing to talk to. The retry
+# loop remains as a safety net so the run needs no interactive supervision.
 set -u
 
 REPO=/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby

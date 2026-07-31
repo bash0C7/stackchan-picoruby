@@ -1,6 +1,6 @@
 ---
 name: stackchan-device-cold-recovery
-description: Standard recovery when device autostart is misbehaving — wipe storage, upload application, reset (~30 s total). Use when FILE_ACK got nil persists, autostart loops, or LCD is unexpectedly blank after a deploy attempt.
+description: Standard recovery when device autostart is misbehaving — wipe storage, upload application, reset (~30 s total). Use when an upload reports that /home/app.mrb never returned, autostart loops, or LCD is unexpectedly blank after a deploy attempt.
 ---
 
 # stackchan-device-cold-recovery

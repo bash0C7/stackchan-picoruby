@@ -1,6 +1,6 @@
 ---
 name: stackchan-device-wipe
-description: Erase the storage partition (0x210000-0x310000, 1 MB) via esptool + hard-reset (~7 s). Use when app.mrb autostart loops, FILE_ACK got nil persists, or shell is unreachable.
+description: Erase the storage partition (0x410000-0x510000, 1 MB) via esptool + hard-reset (~7 s). Use when app.mrb autostart loops, an upload reports that /home/app.mrb never returned, or the shell is unreachable.
 ---
 
 # stackchan-device-wipe
@@ -13,7 +13,10 @@ Subagent (haiku), 60000ms timeout.
 
 Dispatch:
 
-> Run `bundle exec rake r2p2:wipe_storage` in the foreground with 60000ms timeout from the repo root, teeing stdout+stderr into `/tmp/stackchan-picoruby-debug/wipe.log`, then sleep 15 to let the device settle. Report exit code. Under 80 words.
+> Run `bundle exec rake r2p2:wipe_storage` in the foreground with 60000ms timeout from the repo root, teeing stdout+stderr into `/tmp/stackchan-picoruby-debug/wipe.log`. Report exit code. Under 80 words.
+
+No settle sleep afterwards: the upload task resets the board and waits for the
+shell banner on its own.
 
 ## Pass / fail signal
 
