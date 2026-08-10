@@ -32,7 +32,10 @@ class AudioReceiverTest < Picotest::Test
 
     assert_equal 1, done
     assert_equal ["<A:ready>\n"], notifies
-    assert_equal [3000], delays
+    # The wait is split into DRAIN_STEP_MS steps; what matters is the total.
+    total = 0
+    delays.each { |ms| total += ms }
+    assert_equal 3000, total
     assert_equal 3212, spk.i2s.written.bytesize
   end
 
@@ -51,7 +54,9 @@ class AudioReceiverTest < Picotest::Test
       drain_fn:  -> { drain_queue.shift }
     )
 
-    assert_equal [4000], delays  # 8000*1000/8000 + 3000 = 1000+3000 = 4000
+    total = 0
+    delays.each { |ms| total += ms }
+    assert_equal 4000, total  # 8000*1000/8000 + 3000 = 1000+3000 = 4000
   end
 
   def test_played_clip_decodes_ulaw_correctly
@@ -124,6 +129,42 @@ class AudioReceiverTest < Picotest::Test
 
     assert_equal 0, done
     assert_equal 0, delays.length
+  end
+
+  # The ESP32 port hands inbound writes to Ruby only while the BLE poll runs,
+  # and holds them in a bounded queue until then. One multi-second delay here
+  # overflows that queue -- measured on hardware as a dropped audio frame. So
+  # the wait has to be split, and each step has to pump the port and take
+  # whatever it handed over.
+  def test_wait_is_split_and_pumps_the_port_between_steps
+    spk = make_speaker
+    delays = []
+    pumps = 0
+    # Bytes only become visible after a pump, which is what the port does.
+    arrivals = ["\x01\x02", "\x03\x04", "\x05\x06"]
+    drained = []
+
+    rx = StackchanApp::AudioReceiver.new(
+      speaker: spk,
+      parser: FakeParser.new([{"A" => "6"}]),
+      delay_fn: ->(ms) { delays << ms }
+    )
+    rx.consume(
+      "<A:6>\n",
+      notify_fn: ->(msg) {},
+      drain_fn:  -> { drained.shift },
+      pump_fn:   -> { pumps += 1; (a = arrivals.shift) && (drained << a) }
+    )
+
+    total = 0
+    delays.each { |ms| total += ms }
+    assert_equal 3000, total
+    longest = 0
+    delays.each { |ms| longest = ms if ms > longest }
+    assert_equal StackchanApp::AudioReceiver::DRAIN_STEP_MS, longest
+    assert_equal delays.length, pumps
+    # All 6 bytes arrived across separate pumps and still played as one clip.
+    assert_equal 3212, spk.i2s.written.bytesize
   end
 
   def test_drain_multiple_chunks_concatenated

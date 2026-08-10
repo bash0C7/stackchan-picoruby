@@ -884,6 +884,14 @@ module StackchanApp
     # audio frame does not replay at EOF.
     SILENCE_TAIL = ("\x00" * 3200)
 
+    # The wait for a clip is split into steps of this length. The ESP32 port
+    # holds inbound writes in a bounded queue and only hands them to Ruby while
+    # the BLE poll runs, so waiting out a whole clip in one call overflows it:
+    # measured on hardware as "write queue full (depth=32), dropping" during a
+    # 27KB clip, which silently loses audio the peer already sent. 50ms holds
+    # ~400 bytes at the ~8KB/s this link sustains -- two of the port's slots.
+    DRAIN_STEP_MS = 50
+
     def initialize(speaker:, parser:, delay_fn: nil)
       @speaker  = speaker
       @parser   = parser
@@ -892,19 +900,13 @@ module StackchanApp
 
     # Consume one RX chunk. Returns 1 if a clip was played, 0 otherwise.
     # Non-audio frames are yielded to the block.
-    def consume(rx_data, notify_fn: nil, drain_fn: nil)
+    def consume(rx_data, notify_fn: nil, drain_fn: nil, pump_fn: nil)
       @parser.feed(rx_data).each do |frame|
         if frame.key?("A")
           n = frame["A"].to_i
           next if @speaker.nil? || n <= 0
           notify_fn.call("<A:ready>\n") if notify_fn
-          t = receive_t_ms(n)
-          if @delay_fn
-            @delay_fn.call(t)
-          else
-            Machine.delay_ms(t)
-          end
-          ulaw = drain_all(drain_fn)
+          ulaw = wait_and_drain(receive_t_ms(n), drain_fn, pump_fn)
           play(ulaw)
           return 1
         else
@@ -922,11 +924,26 @@ module StackchanApp
       (n * 1000 / 8000) + 3000
     end
 
-    def drain_all(drain_fn)
+    # Wait out t ms in DRAIN_STEP_MS steps, pumping the BLE port and collecting
+    # everything it hands over on each step. Splitting the wait is what keeps
+    # the port's inbound queue from overflowing; see DRAIN_STEP_MS.
+    def wait_and_drain(t, drain_fn, pump_fn)
       buf = ""
-      return buf unless drain_fn
-      while (chunk = drain_fn.call)
-        buf << chunk
+      waited = 0
+      while waited < t
+        step = t - waited
+        step = DRAIN_STEP_MS if step > DRAIN_STEP_MS
+        if @delay_fn
+          @delay_fn.call(step)
+        else
+          Machine.delay_ms(step)
+        end
+        waited += step
+        pump_fn.call if pump_fn
+        next unless drain_fn
+        while (chunk = drain_fn.call)
+          buf << chunk
+        end
       end
       buf
     end
@@ -1307,7 +1324,15 @@ class StackChanApp < BLE
     done = @audio.consume(
       rx_data,
       notify_fn: ->(msg) { write(msg) },
-      drain_fn:  -> { pop_write_value(@rx_handle) }
+      drain_fn:  -> { pop_write_value(@rx_handle) },
+      # pop_packet is what drives the ESP32 port's per-tick work: it drains the
+      # port's inbound write queue into Ruby and refreshes the read mirrors.
+      # The audio wait runs inside heartbeat_callback, so the run loop's own
+      # pop_packet is not reached until the clip is done -- without this the
+      # port's queue overflows mid-clip. The packet is handed to
+      # packet_callback rather than discarded so a disconnect arriving during
+      # playback is still acted on.
+      pump_fn:   -> { p = pop_packet; packet_callback(p) if p }
     ) { |frame| @dispatcher.handle(frame) }
     done.times { write("<A:done>\n") }
   end
