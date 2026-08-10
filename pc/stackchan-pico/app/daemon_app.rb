@@ -66,6 +66,16 @@ module Stackchan
     # before sending anything else over the link.
     READY_WAIT_S = 1.5
 
+    # Write Without Response has no flow control at the ATT layer, and the
+    # darwin BLE port exposes no can-send-now signal, so an unpaced blast
+    # outruns the radio and CoreBluetooth silently discards the overflow.
+    # Measured: every clip, whatever its length, reached the device as exactly
+    # 11340 bytes (63 chunks of 180) and played truncated. The device's own
+    # receive window is n*1000/8000 + 3000ms, so the blast has to stay at or
+    # above ~8KB/s to fit inside it; 180 bytes per 20ms is 9KB/s, the fastest
+    # pace that still leaves the window room to spare.
+    CHUNK_PACE_S = 0.02
+
     def initialize(ble:, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788")
       @ble           = ble
       @port          = port
@@ -265,6 +275,7 @@ module Stackchan
       while i < n
         @ble.write_without_ack(ulaw.byteslice(i, chunk))
         i += chunk
+        sleep CHUNK_PACE_S
       end
       @ble.await_audio_done
     end
