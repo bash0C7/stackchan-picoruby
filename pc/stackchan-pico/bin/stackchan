@@ -64,15 +64,48 @@ probe_sidecar() {
   ' "$SIDECAR_PORT" >/dev/null 2>&1
 }
 
+# Rough external safety-net estimate of the BLE audio-done wait, mirroring
+# app/ble_client.rb's measured formula (BASE_MS=3300, ms = BASE + n*6/5) but
+# from an estimated byte count (~1200 bytes/char, i.e. ~150ms of 8kHz mu-law
+# audio per character -- a generous, not tightly-measured, ja TTS rate)
+# since the real byte count isn't known until synthesis runs. Capped at 180s
+# to match AUDIO_DONE_TIMEOUT_MAX_TICKS -- the real wait never exceeds that
+# regardless of text length, so neither should this external estimate. This
+# is only a fallback net, not the primary wait (that's the daemon/BLE
+# client's own audio_done_timeout_ticks, which uses the real byte count).
+estimate_audio_wait_s() {
+  chars=$(printf '%s' "$1" | wc -m | tr -d ' ')
+  case "$chars" in ""|*[!0-9]*) chars=0 ;; esac
+  ms=$((3300 + chars * 1200 * 6 / 5))
+  s=$((ms / 1000 + 1))
+  [ "$s" -gt 180 ] && s=180
+  echo "$s"
+}
+
 # touch/tui/calibrate are intentionally long-running or interactive
 # (infinite poll loop / REPL / HITL Enter-key prompts) -- excluded from
-# the watchdog by returning an empty timeout. chat shares say's 240s bucket
-# because it can internally call say() with the same BLE speech path after
-# an unbounded AI round-trip; connect shares status/stop's 30s bucket as a
-# single DRb round-trip.
+# the watchdog by returning an empty timeout. connect shares status/stop's
+# 30s bucket as a single DRb round-trip. say/chat buckets are computed from
+# the actual text (see estimate_audio_wait_s) rather than a static worst
+# case: say's text length is known at invocation time; chat's AI reply
+# length isn't, but sidecar.rb's PERSONA constrains replies to ~19 chars,
+# so a small fixed estimate covers it instead of say's unbounded-length
+# ceiling.
+CHAT_REPLY_MAX_CHARS_ESTIMATE=19
+
 watchdog_timeout_for() {
   case "$1" in
-    say|chat) echo 240 ;;
+    say)
+      echo $((60 + $(estimate_audio_wait_s "${2:-}") + 10)) ;;
+    chat)
+      no_speak=0
+      for a in "$@"; do [ "$a" = "--no-speak" ] && no_speak=1; done
+      if [ "$no_speak" -eq 1 ]; then
+        echo $((60 + 10))
+      else
+        chat_audio_s=$(( (3300 + CHAT_REPLY_MAX_CHARS_ESTIMATE * 1200 * 6 / 5) / 1000 + 1 ))
+        echo $((60 + 60 + chat_audio_s + 10))
+      fi ;;
     face|led|servo|torque|selftest|raw|status|stop|connect) echo 30 ;;
     demo)
       dur=10
