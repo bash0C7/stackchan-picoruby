@@ -50,6 +50,20 @@ probe_daemon() {
   ' "$PORT" >/dev/null 2>&1
 }
 
+# Same "TCP alive != app alive" gap as probe_daemon, applied to the sidecar:
+# if its own Timeout.timeout (added to bound Apple Intelligence / TTS calls)
+# fails to interrupt a truly stuck FFI call, the sidecar process wedges but
+# keeps its listen socket open. Without this probe ensure_sidecar would keep
+# reusing that dead process forever.
+probe_sidecar() {
+  listening "$SIDECAR_PORT" || return 1
+  ruby "$WATCHDOG" 5 sidecar_preflight ruby -e '
+    require "drb"
+    DRb.start_service
+    DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{ARGV[0]}").ping
+  ' "$SIDECAR_PORT" >/dev/null 2>&1
+}
+
 # touch/tui/calibrate are intentionally long-running or interactive
 # (infinite poll loop / REPL / HITL Enter-key prompts) -- excluded from
 # the watchdog by returning an empty timeout. chat shares say's 240s bucket
@@ -74,7 +88,12 @@ watchdog_timeout_for() {
 }
 
 ensure_sidecar() {
-  listening "$SIDECAR_PORT" && return 0
+  if listening "$SIDECAR_PORT"; then
+    probe_sidecar && return 0
+    echo "stackchan: sidecar on port $SIDECAR_PORT appears wedged -- recovering (diagnostics in $LOGDIR/hang-incidents/ if the probe timed out)" >&2
+    pkill -9 -f "ruby.*pc/sidecar/sidecar\.rb" 2>/dev/null || true
+    sleep 1
+  fi
   ( cd "$ROOT/pc/stackchan-pico" >/dev/null
     BUNDLE_GEMFILE="$ROOT/pc/stackchan/Gemfile" \
     STACKCHAN_SIDECAR_STUB="${STACKCHAN_SIDECAR_STUB:-}" \
