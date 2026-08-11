@@ -122,7 +122,10 @@ ensure_daemon() {
 verb="${1:-}"
 case "$verb" in
   status) : ;;                       # observe-only: don't spawn anything
-  stop)   ensure_daemon 2>/dev/null || true ;;
+  stop)   ensure_daemon || true ;;   # stderr NOT suppressed: a wedge-recovery notice from
+                                      # ensure_daemon (added for daemon hang detection) must
+                                      # reach the operator, especially on the verb most likely
+                                      # to be run first when a wedge is suspected
   *)      ensure_sidecar && ensure_daemon ;;
 esac
 
