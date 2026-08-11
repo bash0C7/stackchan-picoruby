@@ -64,7 +64,7 @@ class FakeBleClient
   # interface (see its own comment for why the real client actively waits
   # for this instead of sleeping a fixed duration) so Daemon#stream_audio
   # works unchanged against both clients.
-  def await_audio_done
+  def await_audio_done(n)
     self
   end
 

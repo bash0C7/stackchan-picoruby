@@ -277,7 +277,7 @@ module Stackchan
         i += chunk
         sleep CHUNK_PACE_S
       end
-      @ble.await_audio_done
+      @ble.await_audio_done(n)
     end
 
     def ble_chunk_size

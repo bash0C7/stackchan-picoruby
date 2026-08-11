@@ -278,26 +278,40 @@ if Object.const_defined?(:BLE)
       self
     end
 
-    AUDIO_DONE_TIMEOUT_TICKS = 300  # x POLLING_UNIT_MS(100ms) = ~30s safety net
+    AUDIO_DONE_TIMEOUT_MIN_TICKS = 300   # x POLLING_UNIT_MS(100ms) = ~30s floor (previous fixed value; short-clip behavior unchanged)
+    AUDIO_DONE_TIMEOUT_MAX_TICKS = 1800  # x POLLING_UNIT_MS(100ms) = ~180s hard cap -- never an unbounded wait
+    AUDIO_DONE_BASE_MS = 3300            # measured intercept, see audio_done_timeout_ticks
 
     # Wait for the device's <A:done> half-duplex-audio completion notification
     # (app/application.rb's StackChanApp#consume_rx writes this only after
     # AudioReceiver#consume fully returns -- i.e. after both the T-ms pre-play
     # delay AND the actual mu-law decode + I2S playback + silence-tail write
-    # have all finished). Call this right after blasting a clip instead of
-    # sleeping a fixed/estimated duration: real-hardware repro showed the
-    # device's interpreted-Ruby mu-law decode doesn't scale simply with
-    # "clip length / sample rate," so a formula-based sleep either wastes
-    # time (short clips) or times out the very next command's ACK (longer
-    # clips, confirmed reproducible for a ~33KB clip). Actively waiting for
-    # the notification the protocol already sends is correct regardless of
-    # clip length or decode-speed variance. The tick budget is a safety net
-    # only, in case the notification is ever lost.
-    def await_audio_done
+    # have all finished). Actively waiting for the notification -- rather than
+    # sleeping a fixed/estimated duration -- stays correct regardless of the
+    # formula's accuracy; the tick budget below is only a safety net in case
+    # the notification is ever lost, but it must scale with clip size (a
+    # fixed ~30s net was observed timing out on longer clips while the device
+    # stayed healthy) and still stay bounded.
+    def audio_done_timeout_ticks(n)
+      # Derived from a real-hardware sweep (2026-08-11, 15KB-61KB range):
+      # ~0.95ms/byte + ~3.3s base, essentially linear (mid-range prediction
+      # off actual by <1%). Rounded up to 1.2ms/byte for margin. This
+      # contradicts the sub-linear 5.6KB/33KB spot-check in e29b0341's commit
+      # message -- that measurement predates this sweep and is superseded by
+      # it, not reconciled with it.
+      ms = AUDIO_DONE_BASE_MS + (n * 6 / 5)
+      ticks = ms / BLE::POLLING_UNIT_MS
+      return AUDIO_DONE_TIMEOUT_MIN_TICKS if ticks < AUDIO_DONE_TIMEOUT_MIN_TICKS
+      return AUDIO_DONE_TIMEOUT_MAX_TICKS if ticks > AUDIO_DONE_TIMEOUT_MAX_TICKS
+      ticks
+    end
+
+    def await_audio_done(n)
       raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
       @inbox.clear
+      cap = audio_done_timeout_ticks(n)
       i = 0
-      while i < AUDIO_DONE_TIMEOUT_TICKS
+      while i < cap
         packet = @radio.pop_packet
         @radio.packet_callback(packet) if packet
         if (idx = @inbox.index { |f| f.start_with?("<A:done>") })
