@@ -52,11 +52,14 @@ probe_daemon() {
 
 # touch/tui/calibrate are intentionally long-running or interactive
 # (infinite poll loop / REPL / HITL Enter-key prompts) -- excluded from
-# the watchdog by returning an empty timeout.
+# the watchdog by returning an empty timeout. chat shares say's 240s bucket
+# because it can internally call say() with the same BLE speech path after
+# an unbounded AI round-trip; connect shares status/stop's 30s bucket as a
+# single DRb round-trip.
 watchdog_timeout_for() {
   case "$1" in
-    say) echo 240 ;;
-    face|led|servo|torque|selftest|raw|status|stop|chat) echo 30 ;;
+    say|chat) echo 240 ;;
+    face|led|servo|torque|selftest|raw|status|stop|connect) echo 30 ;;
     demo)
       dur=10
       shift
@@ -64,6 +67,7 @@ watchdog_timeout_for() {
         if [ "$1" = "--duration" ] && [ $# -ge 2 ]; then dur="$2"; fi
         shift
       done
+      case "$dur" in ""|*[!0-9]*) dur=10 ;; esac
       echo $((dur + 60)) ;;
     *) echo "" ;;
   esac
