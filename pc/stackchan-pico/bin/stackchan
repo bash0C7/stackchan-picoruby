@@ -64,9 +64,9 @@ ensure_sidecar() {
 ensure_daemon() {
   if listening "$PORT"; then
     probe_daemon && return 0
-    echo "stackchan: daemon on port $PORT appears wedged -- recovering (see $LOGDIR/hang-incidents/)" >&2
-    pkill -9 -f boot_daemon_real.rb 2>/dev/null
-    pkill -9 -f boot_daemon.rb 2>/dev/null
+    echo "stackchan: daemon on port $PORT appears wedged -- recovering (diagnostics in $LOGDIR/hang-incidents/ if the probe timed out)" >&2
+    pkill -9 -f "picoruby.*boot_daemon_real.rb" 2>/dev/null || true
+    pkill -9 -f "picoruby.*boot_daemon.rb" 2>/dev/null || true
     sleep 1
   fi
   if [ "${STACKCHAN_BLE_FAKE:-}" = "1" ]; then
