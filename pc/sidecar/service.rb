@@ -41,6 +41,9 @@ module StackchanSidecar
     # cannot Marshal a Time). Returns the reply text (the daemon frames +
     # sends), or nil on any failure including a Timeout::Error.
     def respond(prompt, ctx = {})
+      # Strings arriving from PicoRuby over Marshal are tagged ASCII-8BIT;
+      # re-tag as UTF-8 at this boundary so interpolation with our literals
+      # doesn't raise Encoding::CompatibilityError.
       prompt = u8(prompt)
       ctx = normalize_ctx(ctx)
       Timeout.timeout(@timeout_s) do
@@ -78,6 +81,7 @@ module StackchanSidecar
 
     private
 
+    # Re-tag a PicoRuby-origin (ASCII-8BIT) String as UTF-8. Non-strings pass through.
     def u8(s)
       s.is_a?(String) ? s.dup.force_encoding("UTF-8") : s
     end
