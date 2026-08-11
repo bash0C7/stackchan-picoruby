@@ -29,10 +29,26 @@ VM_APP="${STACKCHAN_PICORUBY_APP:-$HOME/Applications/StackchanPico.app}"
 PORT="${STACKCHAN_PORT:-8787}"
 SIDECAR_PORT="${STACKCHAN_SIDECAR_PORT:-8788}"
 APP="$ROOT/pc/stackchan-pico/app"
+WATCHDOG="$ROOT/pc/stackchan-pico/bin/run_with_watchdog.rb"
 LOGDIR="${STACKCHAN_LOGDIR:-/tmp/stackchan-pico}"
 mkdir -p "$LOGDIR"
 
 listening() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+
+# TCP alone can't tell a wedged daemon from a healthy one -- the OS accept
+# queue completes the handshake even if the app never calls accept() at the
+# DRb layer (observed 2026-08-11: a wedged daemon still passed `listening`).
+# This does a real DRb round-trip under run_with_watchdog.rb so a wedge is
+# caught (and diagnosed + killed by the watchdog itself) instead of being
+# mistaken for "already running fine".
+probe_daemon() {
+  listening "$PORT" || return 1
+  ruby "$WATCHDOG" 5 preflight ruby -e '
+    require "drb"
+    DRb.start_service
+    DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{ARGV[0]}").status
+  ' "$PORT" >/dev/null 2>&1
+}
 
 ensure_sidecar() {
   listening "$SIDECAR_PORT" && return 0
@@ -46,7 +62,13 @@ ensure_sidecar() {
 }
 
 ensure_daemon() {
-  listening "$PORT" && return 0
+  if listening "$PORT"; then
+    probe_daemon && return 0
+    echo "stackchan: daemon on port $PORT appears wedged -- recovering (see $LOGDIR/hang-incidents/)" >&2
+    pkill -9 -f boot_daemon_real.rb 2>/dev/null
+    pkill -9 -f boot_daemon.rb 2>/dev/null
+    sleep 1
+  fi
   if [ "${STACKCHAN_BLE_FAKE:-}" = "1" ]; then
     "$VM" "$APP/boot_daemon.rb" "$ROOT" "$PORT" > "$LOGDIR/daemon.log" 2>&1 &
     retries=60
