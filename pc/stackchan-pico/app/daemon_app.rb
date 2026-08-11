@@ -171,10 +171,13 @@ module Stackchan
     # gets the bytes over dRuby, pushes the on-LCD subtitle, then streams the
     # audio over BLE. The sidecar call (network, no BLE) stays OUTSIDE with_ble.
     def say(text, gain = nil, rate = nil)
+      log "[checkpoint] synth_start"
       ulaw = sidecar.synthesize(text, gain, rate)
+      log "[checkpoint] synth_done bytes=#{ulaw ? ulaw.bytesize : 0}"
       subtitle = Stackchan::AI::FrameText.build(face_index: nil, text: text)
       with_ble do
         @ble.write_without_ack(subtitle)
+        log "[checkpoint] subtitle_write_done"
         stream_audio(ulaw) if ulaw
       end
       record(:say, last_say: text)
@@ -269,14 +272,19 @@ module Stackchan
     def stream_audio(ulaw)
       n = ulaw.bytesize
       @ble.write_without_ack("<A:#{n}>\n")
+      log "[checkpoint] announce_done n=#{n}"
       sleep READY_WAIT_S
       chunk = ble_chunk_size
       i = 0
+      chunk_count = 0
       while i < n
         @ble.write_without_ack(ulaw.byteslice(i, chunk))
         i += chunk
+        chunk_count += 1
+        log "[checkpoint] blast_progress i=#{i} n=#{n}" if chunk_count % 100 == 0
         sleep CHUNK_PACE_S
       end
+      log "[checkpoint] blast_done i=#{i} n=#{n}, entering await"
       @ble.await_audio_done(n)
     end
 
