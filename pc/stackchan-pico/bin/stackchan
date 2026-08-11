@@ -93,6 +93,11 @@ estimate_audio_wait_s() {
 # ceiling.
 CHAT_REPLY_MAX_CHARS_ESTIMATE=19
 
+# 60 mirrors pc/sidecar/service.rb's DEFAULT_TIMEOUT_S (the sidecar's own
+# Timeout.timeout bound; bash can't reference the Ruby constant directly, so
+# it's a mirrored literal). chat sums it twice because chat internally calls
+# say() after respond() -- one 60s pad for the AI round-trip, one for TTS.
+# +10 is margin for DRb round-trip/process overhead on top of the wait.
 watchdog_timeout_for() {
   case "$1" in
     say)
@@ -103,7 +108,7 @@ watchdog_timeout_for() {
       if [ "$no_speak" -eq 1 ]; then
         echo $((60 + 10))
       else
-        chat_audio_s=$(( (3300 + CHAT_REPLY_MAX_CHARS_ESTIMATE * 1200 * 6 / 5) / 1000 + 1 ))
+        chat_audio_s=$(estimate_audio_wait_s "$(printf 'a%.0s' $(seq 1 "$CHAT_REPLY_MAX_CHARS_ESTIMATE"))")
         echo $((60 + 60 + chat_audio_s + 10))
       fi ;;
     face|led|servo|torque|selftest|raw|status|stop|connect) echo 30 ;;
