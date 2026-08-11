@@ -17,13 +17,14 @@ secs  = ARGV.shift.to_i
 label = ARGV.shift
 cmd   = ARGV
 abort "usage: run_with_watchdog.rb <timeout_seconds> <label> <command...>" if cmd.empty?
+abort "run_with_watchdog.rb: timeout_seconds must be a positive integer, got #{secs}" if secs <= 0
 
 LOGDIR = ENV["STACKCHAN_LOGDIR"] || "/tmp/stackchan-pico"
 
 def daemon_pid
-  real = `pgrep -f boot_daemon_real.rb`.split("\n").first
+  real = `pgrep -f "picoruby.*boot_daemon_real.rb"`.split("\n").first
   return real if real && !real.empty?
-  fake = `pgrep -f boot_daemon.rb`.split("\n").first
+  fake = `pgrep -f "picoruby.*boot_daemon.rb"`.split("\n").first
   fake && !fake.empty? ? fake : nil
 end
 
