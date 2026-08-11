@@ -104,7 +104,25 @@ module Stackchan
       @server_task    = DRb.thread
       @keepalive_task = start_keepalive
       @running        = true
-      @fallback_audio = sidecar.synthesize(FALLBACK_CHAT_PHRASE)
+      # NOTE: this rescue does not protect against every failure mode. If the
+      # sidecar's TCP connect itself hangs instead of failing fast (observed in
+      # code review 2026-08-11 -- a bare DRbObject call to an unreachable sidecar
+      # fails in <1ms outside Daemon#start's Task context, but the identical call
+      # from inside #start hangs indefinitely with no exception), this call can
+      # still freeze the whole daemon VM before it ever starts servicing DRb
+      # requests, since #start already called DRb.start_service above and
+      # PicoRuby's cooperative scheduling means no other Task runs while this one
+      # is blocked. Root-causing that is out of scope here (likely a second,
+      # distinct instance of the connect-vs-read blocking-without-yield class of
+      # issue documented in docs/superpowers/specs/2026-08-11-sidecar-call-timeout-design.md,
+      # this time on the connect path rather than the read path) -- tracked as a
+      # follow-up investigation, not fixed by this rescue.
+      @fallback_audio = begin
+        sidecar.synthesize(FALLBACK_CHAT_PHRASE)
+      rescue StandardError => e
+        log "fallback priming failed: #{e.class}: #{e.message}"
+        nil
+      end
       log "listening on druby://#{@host}:#{@port}"
       self
     end
