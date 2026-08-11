@@ -59,6 +59,13 @@ module Stackchan
     KEEPALIVE_INTERVAL_S = 7
     TOUCH_ZONE_LABELS = { 0 => "頭のうしろ", 1 => "右側", 2 => "左側" }
 
+    # Played instead of a real chat reply when sidecar.respond returns nil
+    # (Apple Intelligence timeout or any other respond failure -- the two
+    # aren't distinguishable from here). Synthesized once at #start via the
+    # TTS-only path (no Apple Intelligence involved), so a stuck respond()
+    # later never adds a second sidecar dependency to the fallback itself.
+    FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
+
     # Phase1 half-duplex audio protocol (port of Stackchan::Voice::Streamer).
     # Device sleeps T = n*1000/8000 + 3000ms starting right after <A:N>, so the
     # PC must wait READY_WAIT_S before blasting (lets the device heartbeat pick
@@ -87,6 +94,7 @@ module Stackchan
       @touch_events  = []
       @ble_busy      = false
       @running       = false
+      @fallback_audio = nil
     end
 
     def start
@@ -96,6 +104,7 @@ module Stackchan
       @server_task    = DRb.thread
       @keepalive_task = start_keepalive
       @running        = true
+      @fallback_audio = sidecar.synthesize(FALLBACK_CHAT_PHRASE)
       log "listening on druby://#{@host}:#{@port}"
       self
     end
@@ -181,7 +190,8 @@ module Stackchan
         stream_audio(ulaw) if ulaw
       end
       record(:say, last_say: text)
-      "OK say bytes=#{ulaw ? ulaw.bytesize : 0}"
+      return "NG say: synthesis failed or timed out" unless ulaw
+      "OK say bytes=#{ulaw.bytesize}"
     end
 
     # chat: AI reply text comes from the sidecar (FM); the daemon frames it to
@@ -195,6 +205,8 @@ module Stackchan
       if reply
         with_ble { @ble.raw_send(Stackchan::AI::FrameText.build(face_index: 1, text: reply)) }
         say(reply) if speak
+      elsif speak && @fallback_audio
+        with_ble { stream_audio(@fallback_audio) }
       end
       reply
     end
