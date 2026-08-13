@@ -160,6 +160,18 @@ if Object.const_defined?(:BLE)
       @conn_handle
     end
 
+    # Non-blocking drain of one event from the queue @event_queue/_event_popped
+    # replaced pop_packet with. Only this class can reach those (BLE ivars/
+    # private methods), so StackchanCentral's cooperative waits call this
+    # instead of touching them directly.
+    def pop_and_dispatch
+      event = @event_queue.pop(timeout_ms: 0)
+      return nil unless event
+      _event_popped
+      packet_callback(event) if event.is_a?(String)
+      event
+    end
+
     # Called by the base class while @state == :TC_W4_SCAN_RESULT (you must
     # override this — the base body is empty). Connecting to the FIRST
     # matching advertiser from inside this callback, via the INHERITED
@@ -199,6 +211,9 @@ if Object.const_defined?(:BLE)
   # last_detail_frame / on_unsolicited= / disconnect.
   class StackchanCentral
     CONNECT_TIMEOUT_MS = 15_000   # scan-wait + connect + full GATT discovery
+    # This class's own cooperative-wait cadence, no longer sourced from
+    # BLE::POLLING_UNIT_MS (dropped when the gem moved to Task::Queue).
+    POLLING_UNIT_MS    = 100
     ACK_TIMEOUT_TICKS  = 30       # x POLLING_UNIT_MS(100ms) = ~3s
     SUBSCRIBE_ENABLE   = "\x01\x00"
 
@@ -300,7 +315,7 @@ if Object.const_defined?(:BLE)
       # message -- that measurement predates this sweep and is superseded by
       # it, not reconciled with it.
       ms = AUDIO_DONE_BASE_MS + (n * 6 / 5)
-      ticks = ms / BLE::POLLING_UNIT_MS
+      ticks = ms / POLLING_UNIT_MS
       return AUDIO_DONE_TIMEOUT_MIN_TICKS if ticks < AUDIO_DONE_TIMEOUT_MIN_TICKS
       return AUDIO_DONE_TIMEOUT_MAX_TICKS if ticks > AUDIO_DONE_TIMEOUT_MAX_TICKS
       ticks
@@ -312,13 +327,12 @@ if Object.const_defined?(:BLE)
       cap = audio_done_timeout_ticks(n)
       i = 0
       while i < cap
-        packet = @radio.pop_packet
-        @radio.packet_callback(packet) if packet
+        @radio.pop_and_dispatch
         if (idx = @inbox.index { |f| f.start_with?("<A:done>") })
           @inbox.delete_at(idx)
           return self
         end
-        sleep_ms(BLE::POLLING_UNIT_MS)
+        sleep_ms(POLLING_UNIT_MS)
         i += 1
       end
       raise Stackchan::BLE::TimeoutError, "<A:done> timeout"
@@ -400,16 +414,15 @@ if Object.const_defined?(:BLE)
       @inbox.shift
     end
 
-    # Cooperative wait: drain the BLE packet FIFO directly (pop_packet +
-    # packet_callback) rather than BLE#start/#scan — see the file-level
-    # comment for why calling start/scan again after the initial connect would
-    # flush any in-flight packet we are waiting on.
+    # Cooperative wait: drain the BLE event queue directly (pop_and_dispatch)
+    # rather than BLE#start/#scan — see the file-level comment for why calling
+    # start/scan again after the initial connect would flush any in-flight
+    # packet we are waiting on.
     def pump(ticks)
       i = 0
       while @inbox.empty? && i < ticks
-        packet = @radio.pop_packet
-        @radio.packet_callback(packet) if packet
-        sleep_ms(BLE::POLLING_UNIT_MS)
+        @radio.pop_and_dispatch
+        sleep_ms(POLLING_UNIT_MS)
         i += 1
       end
     end
