@@ -1229,17 +1229,16 @@ class StackChanApp < BLE
     db.handle_table[NUS_SERVICE_UUID][char_uuid][key]
   end
 
-  # Override BLE#start.
-  def start
-    hci_power_control(BLE::HCI_POWER_ON)
-    loop do
-      packet = pop_packet
-      packet_callback(packet) if packet
-      heartbeat_callback if pop_heartbeat
-      sleep_ms BLE::POLLING_UNIT_MS
-    end
-  ensure
-    hci_power_control(BLE::HCI_POWER_OFF)
+  # Non-blocking drain of one event from the queue pop_packet/pop_heartbeat
+  # used to wrap (dropped when the gem moved to the Task::Queue @event_queue
+  # architecture). Only a BLE subclass can reach @event_queue/_event_popped,
+  # which is why this lives here rather than in a helper class.
+  def pop_and_dispatch
+    event = @event_queue.pop(timeout_ms: 0)
+    return nil unless event
+    _event_popped
+    packet_callback(event) if event.is_a?(String)
+    event
   end
 
   def packet_callback(event_packet)
@@ -1325,14 +1324,14 @@ class StackChanApp < BLE
       rx_data,
       notify_fn: ->(msg) { write(msg) },
       drain_fn:  -> { pop_write_value(@rx_handle) },
-      # pop_packet is what drives the ESP32 port's per-tick work: it drains the
-      # port's inbound write queue into Ruby and refreshes the read mirrors.
-      # The audio wait runs inside heartbeat_callback, so the run loop's own
-      # pop_packet is not reached until the clip is done -- without this the
-      # port's queue overflows mid-clip. The packet is handed to
-      # packet_callback rather than discarded so a disconnect arriving during
-      # playback is still acted on.
-      pump_fn:   -> { p = pop_packet; packet_callback(p) if p }
+      # pop_and_dispatch is what drives the ESP32 port's per-tick work: it
+      # drains the port's inbound write queue into Ruby and refreshes the
+      # read mirrors. The audio wait runs inside heartbeat_callback, so the
+      # run loop's own queue pop is not reached until the clip is done --
+      # without this the port's queue overflows mid-clip. Dispatch happens
+      # inside pop_and_dispatch so a disconnect arriving during playback is
+      # still acted on.
+      pump_fn:   -> { pop_and_dispatch }
     ) { |frame| @dispatcher.handle(frame) }
     done.times { write("<A:done>\n") }
   end
