@@ -1242,10 +1242,10 @@ class StackChanApp < BLE
   end
 
   def packet_callback(event_packet)
-    puts "[application] pkt evt=#{event_packet[0] ? event_packet[0].ord : 'nil'}"
-    case event_packet[0]&.ord
+    puts "[application] pkt evt=#{event_packet.getbyte(0) || 'nil'}"
+    case event_packet.getbyte(0)
     when BTSTACK_EVENT_STATE
-      return unless event_packet[2]&.ord == BLE::HCI_STATE_WORKING
+      return unless event_packet.getbyte(2) == BLE::HCI_STATE_WORKING
       puts "[application] HCI WORKING — advertising"
       advertise(@adv_data)
     when HCI_EVENT_DISCONNECTION_COMPLETE

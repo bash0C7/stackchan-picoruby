@@ -85,9 +85,9 @@ class RxMeter < BLE
   end
 
   def packet_callback(event_packet)
-    case event_packet[0]&.ord
+    case event_packet.getbyte(0)
     when BTSTACK_EVENT_STATE
-      return unless event_packet[2]&.ord == BLE::HCI_STATE_WORKING
+      return unless event_packet.getbyte(2) == BLE::HCI_STATE_WORKING
       puts "[rx-meter] HCI WORKING — advertising"
       advertise(@adv_data)
     when HCI_EVENT_DISCONNECTION_COMPLETE
