@@ -309,7 +309,15 @@ namespace :r2p2 do
       with open(#{log.inspect}, 'wb') as f:
           while time.time() < deadline:
               try:
-                  s = serial.Serial(port, 115200, timeout=0.2)
+                  # Deassert DTR/RTS before open(): on this board those lines
+                  # drive reset and download mode, and pyserial asserts both by
+                  # default, so an unconfigured open would reset the chip on
+                  # every reconnect. exclusive=False matches r2p2:reset.
+                  s = serial.Serial(baudrate=115200, timeout=0.2, exclusive=False)
+                  s.port = port
+                  s.dtr = False
+                  s.rts = False
+                  s.open()
               except Exception:
                   time.sleep(0.05)
                   continue
