@@ -113,6 +113,7 @@ Anchor recal: `stackchan calibrate [--samples N] [--format ruby|json|env]` (5-po
 
 - **picoruby-ble の `heartbeat_callback` tick は ~1 秒** (NOT 100ms)。NOTIFY 周期や idle-detection timeout を heartbeat 数で計算する時は「tick=1s」前提に
 - **Mac CoreBluetooth idle-disconnect window は経験値 15-20 秒**。無 PDU 状態が続くと link 切断、保持には 10 秒以下の notify or write を流す
+- **advertise しているはずのロボットが Mac 側 scan で見えない時、まず `sudo pkill bluetoothd` を疑う**。macOS の `bluetoothd` は CoreBluetooth の scan 結果・device name を stale にキャッシュする well-known 問題があり、System Settings 上の Bluetooth off/on トグルでは直らない(プロセス自体は再起動されないため)。ロボット側コードや BLE role ロジックを疑って延々 A/B するより先に、変更していない別の BLE central (例 `PicoRubyBLE.app`) で同じ症状が起きるか確認し、環境側要因を切り分ける(2026-08-20 発生、`sudo pkill bluetoothd` 後に解消を確認)
 - **Mac BLE scan/connect/write は `rb-corebluetooth-mac` 経由で Bash から claude 自身が叩ける**。advertise 検出や smoke を「人間に iPhone nRF Connect 開いて」と頼まず、`stackchan-ble-control` CLI で autonomous に実行する
 - **BLE 検証中は serial monitor を並走させない**。`bin/capture-with-pty ... rake r2p2:monitor` (idf_monitor) は port open 時に DTR/RTS で CoreS3 を reset するため、BLE connect/write/ACK の最中に走らせると device が cold-boot をやり直し advertising が消え、`no device with name prefix` や ACK timeout の偽陽性が出る。BLE smoke / servo / face は **monitor 無しで `stackchan-ble-control` CLI 単独**で実行する。device 側ログがどうしても要るなら reset を覚悟して 1 回キャプチャ→その boot で完結する検証だけにする
 - **`rb-corebluetooth-mac` の native 拡張は使用前にビルド必須**。`cd ../rb-corebluetooth-mac && bundle install && bundle exec rake compile` で Swift dylib + Ruby `.bundle` を生成。未ビルドだと CLI が `Library not loaded: @rpath/libCoreBluetoothMac.dylib` で落ちる。Ruby ABI 切替時は再 compile 必要
@@ -326,6 +327,8 @@ See `stackchan-device-cold-recovery` / `-full-rebuild` skills and the
 README recovery section.
 
 **autostart 中の Ctrl-C で shell プロンプトは戻らない**: R2P2 は `/home/app.mrb` autostart に SIGINT を投げると main_task が return するだけで shell prompt は出ず、raw serial 経由の blind `rm` recovery は不可。`rake r2p2:wipe_storage` (esptool partition erase、~7s) を使う。
+
+**esptool の erase offset は firmware (partition table) ごとに違う、暗記した値を他 repo/他 session へ使い回さない**: storage/partition の erase は必ず `rake r2p2:wipe_storage` (このリポジトリの Rakefile に正しい offset `0x410000` が埋め込み済み) を通す。別の R2P2-ESP32 branch/repo (例: partition レイアウトが違う実験用 fork) で使った offset をそのまま `esptool erase_region` に手打ちすると、factory app パーティションの中間を破壊してブートループを起こす (2026-08-20 発生、`0x210000` を誤用して被弾、`rake r2p2:full_rebuild` で復旧)。
 
 ### R2P2 shell REPL は二段構成
 
