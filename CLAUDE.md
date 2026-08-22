@@ -258,6 +258,16 @@ stackchan-picoruby 直下の `Rakefile` に `r2p2:*` タスク群を集約。`ve
 | `rake r2p2:build_flash_appmrb SRC=app/application.rb` | **picomodem 不要 deploy**。SRC を `R2P2-ESP32/storage/home/app.mrb` に picorbc compile → build → flash で firmware と storage を 1 pass 焼き。firmware をどのみち焼き直す時に使う。詳細は下記「Storage 区画」節 |
 | `rake r2p2:flash` / `rake r2p2:build` | 個別 fallback。普段使わない |
 
+### firmware を build する時は必ず clean build
+
+`r2p2:build` / `build_flash` / `build_flash_appmrb` は `clean_picoruby_build` に依存し、picoruby 側の build 出力 (`components/picoruby-esp32/picoruby/build/esp32-picoruby`) を丸ごと捨ててから走る。**この依存を外したり、incremental build で済ませようとしてはいけない。**
+
+`libmruby.a` だけを消す方式では足りない。rake は object リストからアーカイブを組み直すので、**ソースが移動・改名・削除されて中身の意味が変わった `.o` がそのまま新しいアーカイブに入る**。症状は「設定不良に見える undefined symbol」で、原因追及が config 側へ逸れる。
+
+undefined symbol が出たら、まずそのシンボルを **ソースツリーに対して** grep すること。ツリーに無ければ原因は object の陳腐化で、config ではない。`.o` と `.c` の mtime を比べれば一発で分かる。
+
+firmware を焼き直さない app のみの iteration (`r2p2:upload_appmrb` 経由) はこの規律の対象外。そちらは firmware を build しないので陳腐化のしようがない。
+
 ### CoreS3 固有の sdkconfig
 
 - `bash0C7/R2P2-ESP32/sdkconfigs/cores3`：`SPIRAM=y` + `SPIRAM_MODE_QUAD=y` + `SPIRAM_SPEED_80M=y`。CoreS3 は **Quad PSRAM 8MB**（Octal でない）。デフォルトの `sdkconfigs/spiram` は `MODE_OCT=y` なので CoreS3 で使うと PSRAM ID 読み失敗 → boot loop

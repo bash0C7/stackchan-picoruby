@@ -135,7 +135,7 @@ ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
 ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
 
 SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble'
-LIBMRUBY_FILE = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby/lib/libmruby.a"
+PICORUBY_BUILD_DIR = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby"
 LONGRUN_DIR = File.expand_path('tmp/longrun', __dir__)
 SERIAL_LOG_DEFAULT = "#{LONGRUN_DIR}/serial.log"
 
@@ -221,18 +221,24 @@ namespace :r2p2 do
     in_r2p2 %Q{rm -f sdkconfig && SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake setup_esp32s3}
   end
 
-  desc 'rm libmruby.a so the next build forces picoruby rake to recompile all gems (catches mrblib/*.rb changes that idf.py build silently ignores)'
-  task :clear_libmruby_cache do
-    if File.exist?(LIBMRUBY_FILE)
-      rm LIBMRUBY_FILE
-      puts "[r2p2] cleared libmruby cache (#{LIBMRUBY_FILE}) — next build will recompile gems"
+  # Removing libmruby.a alone is not enough: rake re-archives it from the
+  # object list, so a .o whose source moved or changed identity is silently
+  # carried into the new archive. Two link failures on 2026-08-22 came from
+  # exactly that (a 12-day-old ble.o still referencing a deleted symbol, and a
+  # machine.o predating the estalloc relocation). Drop the whole build dir so
+  # every gem object is recompiled from the tree that is actually checked out.
+  desc 'rm picoruby build dir so the next build recompiles every gem object from the current tree'
+  task :clean_picoruby_build do
+    if Dir.exist?(PICORUBY_BUILD_DIR)
+      rm_rf PICORUBY_BUILD_DIR
+      puts "[r2p2] removed #{PICORUBY_BUILD_DIR} — next build recompiles all gems"
     else
-      puts "[r2p2] libmruby cache already absent"
+      puts "[r2p2] picoruby build dir already absent"
     end
   end
 
   desc "build with CoreS3 sdkconfig (QUAD PSRAM + 16MB flash, VM=mruby)"
-  task :build do
+  task :build => :clean_picoruby_build do
     ensure_sdkconfig_fresh
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}" rake picoruby:build}
   end
@@ -245,7 +251,7 @@ namespace :r2p2 do
   end
 
   desc 'build + flash in one shot (default workflow for code iteration)'
-  task :build_flash => :clear_libmruby_cache do
+  task :build_flash => :clean_picoruby_build do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     port = espport
@@ -406,7 +412,7 @@ namespace :r2p2 do
   # Does NOT reset; the esptool flash performs its own hard-reset, and boot
   # capture is done separately so the monitor guard does not race the flasher.
   desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass (no picomodem; SRC=path required)'
-  task :build_flash_appmrb => :clear_libmruby_cache do
+  task :build_flash_appmrb => :clean_picoruby_build do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     src = ENV.fetch('SRC') { abort 'SRC=path/to/app.rb required for r2p2:build_flash_appmrb' }
