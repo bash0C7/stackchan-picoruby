@@ -285,6 +285,14 @@ namespace :r2p2 do
   # few seconds of boot (BLE_INIT, this gem's own hci_power_control/esp_timer
   # diagnostics, etc.) are never silently missed. See
   # docs/superpowers/handoff/2026-07-22-ble-role-coverage-verification-evidence.md.
+  #
+  # Reopening only on an exception is not enough: a re-enumeration can leave the
+  # fd readable-but-dead, where read() raises nothing and just returns b''
+  # forever. Observed 2026-08-22 — a capture caught 286 bytes of boot, then held
+  # the port silent for the rest of DURATION while the device ran a probe that
+  # printed throughout. So treat a long gap with no bytes as a dead link and
+  # reopen. IDLE_REOPEN_S must stay above the device's real quiet stretches
+  # (the BLE heartbeat prints about once a second).
   desc 'capture ESPPORT into SERIAL_LOG with automatic reconnect across USB-Serial-JTAG reset blips (DURATION=seconds, default 30)'
   task :capture_resilient do
     ensure_no_concurrent_monitor
@@ -296,6 +304,8 @@ namespace :r2p2 do
       import serial, time
       port = #{port.inspect}
       deadline = time.time() + #{duration}
+      IDLE_REOPEN_S = 5.0
+      reopens = 0
       with open(#{log.inspect}, 'wb') as f:
           while time.time() < deadline:
               try:
@@ -303,12 +313,17 @@ namespace :r2p2 do
               except Exception:
                   time.sleep(0.05)
                   continue
+              last_data = time.time()
               try:
                   while time.time() < deadline:
                       data = s.read(4096)
                       if data:
                           f.write(data)
                           f.flush()
+                          last_data = time.time()
+                      elif time.time() - last_data > IDLE_REOPEN_S:
+                          reopens += 1
+                          break
               except Exception:
                   pass
               finally:
@@ -316,7 +331,7 @@ namespace :r2p2 do
                       s.close()
                   except Exception:
                       pass
-      print('[r2p2:capture_resilient] done')
+      print('[r2p2:capture_resilient] done reopens=%d' % reopens)
     PY
   end
 
