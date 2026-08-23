@@ -209,6 +209,27 @@ Xcode with the Swift toolchain (for the `picoruby-ble` Darwin port used by
 trees on demand via `bundle exec rake vendor:setup` (see "Code layout"
 above) rather than requiring hand-placed sibling clones.
 
+## Dependencies
+
+Everything below is fetched on demand — no hand-placed sibling clones needed.
+Repo/ref pins are the single source of truth for what a build actually runs;
+this table exists so that fact doesn't have to be re-derived from Rakefiles
+and build_configs each time.
+
+| Repo | Ref | Role | Pinned by |
+|---|---|---|---|
+| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `stackchan-integration` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`) |
+| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
+| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
+| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `stackchan-integration` (moving ref) | LCD driver | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
+| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
+| [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
+| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
+
+The WS2812 LED ring driver (`picoruby-stackchan-led`) is not a separate repo
+dependency — it is inlined into this repo's `app/application.rb`.
+
 ## Related repositories
 
 ### [R2P2-ESP32 fork](https://github.com/bash0C7/R2P2-ESP32)
@@ -221,18 +242,27 @@ Adds on top of upstream:
   avoids a `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with
   IDF v5.4 and ESP32-S3.
 - `build_config/xtensa-esp-picoruby.rb` (on the `stackchan-integration` branch):
-  wires the standalone driver gems and `picoruby-ble` / `picoruby-ble-uart`.
-- Points its `components/picoruby-esp32/picoruby` submodule at the picoruby fork
-  below.
+  wires the 4 standalone driver gems above plus `picoruby-ble` /
+  `picoruby-ble-uart` / `picoruby-i2s`.
+- Points its `components/picoruby-esp32/picoruby` submodule at the picoruby
+  fork's `stackchan-integration` branch below.
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby)
 
-BLE fixes scoped to `mrbgems/picoruby-ble/`, on the `feature/ble-bringup`
-branch. Makes the build host-aware so ESP32 and host can opt out of the Pico W
-CYW43 path, and adds an ESP32 port that marshals Ruby-thread BLE calls onto
-BTstack's run-loop thread (BTstack is not thread-safe), runs `BLE_init` inside
-the BTstack setup callback, and dispatches runtime calls with semaphore
-synchronization.
+BLE support (`mrbgems/picoruby-ble/`), tracked on two branches, both rebased
+onto upstream picoruby/picoruby's `master`:
+
+- `stackchan-integration` — the ESP32 (NimBLE) peripheral port, derived from
+  the upstream-PR-track [`picoruby-ble-esp32-port`](https://github.com/picoruby/picoruby/pull/427)
+  branch, plus the StackChan-specific in-tree gems (`picoruby-i2s`,
+  `picoruby-ble-bridge`).
+- `port-darwin` — the macOS (CoreBluetooth) central/peripheral port used by
+  `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
+  role can receive a GAP disconnect but cannot initiate one (no such API
+  exists in this port yet) — `StackchanCentral#disconnect` in
+  `pc/stackchan-pico/app/ble_client.rb` is therefore a local-state-only
+  no-op; reconnect-from-ACK-timeout relies on the peripheral's own
+  supervision timeout, not on the central closing the link.
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 

@@ -89,11 +89,18 @@ STACKCHAN_BLE_FAKE=1 pc/stackchan-pico/bin/stackchan connect   # no hardware nee
 
 - **Live BLE against a physical StackChan is the default and is verified**:
   scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio
-  (say/chat), touch notifications, and disconnect/reconnect self-heal
-  (`with_ble`'s reconnect on a real device reset) all confirmed on real
-  hardware. `STACKCHAN_BLE_FAKE=1` (host, no radio) remains verified for
-  every verb, chat via REAL FM, say via REAL say/afconvert, demo/tui/calibrate
-  flows, touch polling — used for testing verb logic without hardware.
+  (say/chat), and touch notifications all confirmed on real hardware.
+  Reconnect after a **peripheral-side reset** (ESP32 reboots, resumes
+  advertising) works via `with_ble`'s reconnect. Reconnect after an
+  **ACK-timeout with the peripheral still connected is NOT reliable**:
+  `StackchanCentral#disconnect` (`app/ble_client.rb`) only clears local
+  state — the darwin central port has no API to actively close a GAP
+  connection (see the top-level README's Dependencies / picoruby fork
+  entry) — so the ESP32 peripheral never re-advertises and the following
+  rescan finds nothing. `STACKCHAN_BLE_FAKE=1` (host, no radio) remains
+  verified for every verb, chat via REAL FM, say via REAL say/afconvert,
+  demo/tui/calibrate flows, touch polling — used for testing verb logic
+  without hardware.
 
 ## macOS TCC / CoreBluetooth
 
