@@ -5,8 +5,14 @@
 
 module PicotestHarness
   REPO_ROOT     = File.expand_path("../..", __dir__) # test/picotest -> repo root
-  PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || "/Users/bash/dev/src/github.com/picoruby/picoruby"
+  # Must be the vendored R2P2-ESP32's own picoruby (same VM the device firmware
+  # runs), not an independent upstream checkout — an unrelated checkout's
+  # host-VM quirks silently diverge from device behavior and break the suite.
+  PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby")
   APPLICATION_RB = File.join(REPO_ROOT, "app", "application.rb")
+  # No vendored source of truth for this one (picoruby-scservo is fetched by
+  # R2P2-ESP32's build_config as a build-time mrbgem, not vendored as a repo
+  # tree) — override with ENV on any machine other than the original author's.
   SCSERVO_RB     = ENV["SCSERVO_RB"] || "/Users/bash/dev/src/github.com/bash0C7/picoruby-scservo/mrblib/scservo.rb"
   TEST_DIR       = File.join(REPO_ROOT, "test", "device")
   STUBS_RB       = File.join(REPO_ROOT, "test", "picotest", "stubs.rb")
