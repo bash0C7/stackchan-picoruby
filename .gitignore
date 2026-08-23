@@ -13,3 +13,5 @@ pc/*/tmp/
 
 # Bundler project-local settings (gems live in vendor/bundle, already ignored)
 /.bundle/
+/pc/stackchan/.bundle/
+/pc/stackchan/vendor/
