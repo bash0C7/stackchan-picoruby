@@ -10,3 +10,6 @@ pc/*/tmp/
 
 # fetched build trees (rake vendor:setup) — never committed
 /vendor/
+
+# Bundler project-local settings (gems live in vendor/bundle, already ignored)
+/.bundle/
