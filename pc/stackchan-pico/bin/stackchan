@@ -151,7 +151,7 @@ watchdog_timeout_for() {
         chat_audio_s=$(estimate_audio_wait_s "$(printf 'a%.0s' $(seq 1 "$CHAT_REPLY_MAX_CHARS_ESTIMATE"))")
         echo $((60 + 60 + chat_audio_s + 10))
       fi ;;
-    face|led|servo|torque|selftest|raw|status|stop|connect) echo 30 ;;
+    face|led|servo|torque|selftest|raw|status|connect) echo 30 ;;
     demo)
       dur=10
       shift
@@ -246,10 +246,25 @@ ensure_daemon() {
 verb="${1:-}"
 case "$verb" in
   status) : ;;                       # observe-only: don't spawn anything
-  stop)   ensure_daemon || true ;;   # stderr NOT suppressed: a wedge-recovery notice from
-                                      # ensure_daemon (added for daemon hang detection) must
-                                      # reach the operator, especially on the verb most likely
-                                      # to be run first when a wedge is suspected
+  stop)
+    # stop no longer goes through the CLI/Daemon#stop DRb round trip --
+    # Daemon#stop's own @ble.disconnect is a no-op (picoruby-ble has no
+    # active GAP-disconnect API on any port), so a "graceful" stop never
+    # actually released the BLE connection. Killing the process directly
+    # is what releases it (macOS tears down the CoreBluetooth connection
+    # when the owning process exits) -- confirmed on real hardware
+    # 2026-08-24. This intentionally leaves the sidecar running (existing
+    # "stop the daemon (leaves the sidecar)" contract).
+    acquire_lock "$LOCKDIR_DAEMON" "$LOCK_TIMEOUT_S" || exit 1
+    if [ -f "$PIDFILE_DAEMON" ] && kill -0 "$(cat "$PIDFILE_DAEMON")" 2>/dev/null; then
+      kill_pidfile "$PIDFILE_DAEMON"
+      echo "stackchan: daemon stopped"
+    else
+      echo "stackchan: daemon not running"
+    fi
+    release_lock "$LOCKDIR_DAEMON"
+    exit 0
+    ;;
   *)      ensure_sidecar && ensure_daemon ;;
 esac
 
