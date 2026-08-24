@@ -33,6 +33,46 @@ WATCHDOG="$ROOT/pc/stackchan-pico/bin/run_with_watchdog.rb"
 LOGDIR="${STACKCHAN_LOGDIR:-/tmp/stackchan-pico}"
 mkdir -p "$LOGDIR"
 
+# shellcheck source=bin/proclock.sh
+. "$(dirname "$0")/proclock.sh"
+
+LOCKDIR_DAEMON="$LOGDIR/daemon.lockdir"
+LOCKDIR_SIDECAR="$LOGDIR/sidecar.lockdir"
+PIDFILE_DAEMON="$LOGDIR/daemon.pid"
+PIDFILE_SIDECAR="$LOGDIR/sidecar.pid"
+LOCK_TIMEOUT_S=45
+
+# kill_pidfile PIDFILE
+# Kills the process recorded in PIDFILE if it's alive, then removes the
+# file. Silent no-op if the file is absent, empty, or already stale --
+# this replaces pattern-matching pkill -f, which had no way to distinguish
+# "this invocation's daemon" from an unrelated process that happens to
+# match the same command-line substring (different port, different
+# checkout).
+kill_pidfile() {
+  pidfile="$1"
+  [ -f "$pidfile" ] || return 0
+  target_pid=$(cat "$pidfile" 2>/dev/null)
+  if [ -n "$target_pid" ] && kill -0 "$target_pid" 2>/dev/null; then
+    kill -9 "$target_pid" 2>/dev/null || true
+  fi
+  rm -f "$pidfile"
+}
+
+# resolve_daemon_pid PORT
+# `open -a` launches the real-mode VM through LaunchServices, so $! after
+# the open call is open(1)'s own pid, not the VM's -- there is no direct
+# way to capture it at spawn time. Once the daemon is confirmed listening,
+# find it by pattern, scoped to this invocation's PORT (not just the
+# script name) so a second stackchan-pico instance on a different port
+# isn't matched. If pgrep somehow returns more than one match, the highest
+# pid is taken as the most recently spawned (simple, no ps -o lstart
+# comparison -- YAGNI unless this proves unreliable in practice).
+resolve_daemon_pid() {
+  port="$1"
+  pgrep -f "picoruby.*boot_daemon_real\.rb.*$port" 2>/dev/null | sort -n | tail -1
+}
+
 listening() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
 
 # TCP alone can't tell a wedged daemon from a healthy one -- the OS accept
@@ -126,31 +166,48 @@ watchdog_timeout_for() {
 }
 
 ensure_sidecar() {
+  acquire_lock "$LOCKDIR_SIDECAR" "$LOCK_TIMEOUT_S" || return 1
   if listening "$SIDECAR_PORT"; then
-    probe_sidecar && return 0
+    if probe_sidecar; then
+      release_lock "$LOCKDIR_SIDECAR"
+      return 0
+    fi
     echo "stackchan: sidecar on port $SIDECAR_PORT appears wedged -- recovering (diagnostics in $LOGDIR/hang-incidents/ if the probe timed out)" >&2
-    pkill -9 -f "ruby.*pc/sidecar/sidecar\.rb" 2>/dev/null || true
+    kill_pidfile "$PIDFILE_SIDECAR"
     sleep 1
   fi
   ( cd "$ROOT/pc/stackchan-pico" >/dev/null
     BUNDLE_GEMFILE="$ROOT/pc/stackchan/Gemfile" \
     STACKCHAN_SIDECAR_STUB="${STACKCHAN_SIDECAR_STUB:-}" \
     bundle exec ruby "$ROOT/pc/sidecar/sidecar.rb" "$SIDECAR_PORT" \
-      > "$LOGDIR/sidecar.log" 2>&1 & )
-  for _ in $(seq 1 60); do listening "$SIDECAR_PORT" && return 0; sleep 0.25; done
-  echo "stackchan: sidecar failed to start (see $LOGDIR/sidecar.log)" >&2; return 1
+      > "$LOGDIR/sidecar.log" 2>&1 &
+    echo $! > "$PIDFILE_SIDECAR" )
+  for _ in $(seq 1 60); do
+    if listening "$SIDECAR_PORT"; then
+      release_lock "$LOCKDIR_SIDECAR"
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "stackchan: sidecar failed to start (see $LOGDIR/sidecar.log)" >&2
+  release_lock "$LOCKDIR_SIDECAR"
+  return 1
 }
 
 ensure_daemon() {
+  acquire_lock "$LOCKDIR_DAEMON" "$LOCK_TIMEOUT_S" || return 1
   if listening "$PORT"; then
-    probe_daemon && return 0
+    if probe_daemon; then
+      release_lock "$LOCKDIR_DAEMON"
+      return 0
+    fi
     echo "stackchan: daemon on port $PORT appears wedged -- recovering (diagnostics in $LOGDIR/hang-incidents/ if the probe timed out)" >&2
-    pkill -9 -f "picoruby.*boot_daemon_real.rb" 2>/dev/null || true
-    pkill -9 -f "picoruby.*boot_daemon.rb" 2>/dev/null || true
+    kill_pidfile "$PIDFILE_DAEMON"
     sleep 1
   fi
   if [ "${STACKCHAN_BLE_FAKE:-}" = "1" ]; then
     "$VM" "$APP/boot_daemon.rb" "$ROOT" "$PORT" > "$LOGDIR/daemon.log" 2>&1 &
+    echo $! > "$PIDFILE_DAEMON"
     retries=60
   else
     # macOS hard-crashes (SIGABRT, TCC namespace) any direct fork/exec of a
@@ -161,6 +218,7 @@ ensure_daemon() {
     # via `open -a` against VM_APP (see `rake pc:app_bundle`), never $VM directly.
     if [ ! -d "$VM_APP" ]; then
       echo "stackchan: $VM_APP missing — run \`bundle exec rake pc:app_bundle\` first (real BLE mode needs a signed .app bundle for CoreBluetooth/TCC)" >&2
+      release_lock "$LOCKDIR_DAEMON"
       return 1
     fi
     open -a "$VM_APP" --stdout "$LOGDIR/daemon.log" --stderr "$LOGDIR/daemon.log" \
@@ -169,11 +227,20 @@ ensure_daemon() {
   fi
   i=0
   while [ "$i" -lt "$retries" ]; do
-    listening "$PORT" && return 0
+    if listening "$PORT"; then
+      if [ "${STACKCHAN_BLE_FAKE:-}" != "1" ]; then
+        real_pid=$(resolve_daemon_pid "$PORT")
+        [ -n "$real_pid" ] && echo "$real_pid" > "$PIDFILE_DAEMON"
+      fi
+      release_lock "$LOCKDIR_DAEMON"
+      return 0
+    fi
     i=$((i + 1))
     sleep 0.25
   done
-  echo "stackchan: daemon failed to start (see $LOGDIR/daemon.log)" >&2; return 1
+  echo "stackchan: daemon failed to start (see $LOGDIR/daemon.log)" >&2
+  release_lock "$LOCKDIR_DAEMON"
+  return 1
 }
 
 verb="${1:-}"
