@@ -73,7 +73,13 @@ end
 pid = Process.spawn(*cmd, out: $stdout, err: $stderr)
 begin
   Timeout.timeout(secs) { Process.wait(pid) }
-  exit($?.exitstatus || 1)
+  status = $?.exitstatus || 1
+  # A fast (non-hanging) failure still means the daemon/sidecar the caller
+  # was talking to came back wedged or already dead -- capture the same
+  # diagnostic bundle as the timeout path so it isn't silently lost. Only
+  # the trigger differs; capture_incident's own behavior is unchanged.
+  capture_incident(label, secs, cmd, pid) if status != 0
+  exit status
 rescue Timeout::Error
   tpid = capture_incident(label, secs, cmd, pid)
   begin
