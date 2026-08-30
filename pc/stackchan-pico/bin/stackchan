@@ -72,7 +72,7 @@ probe_sidecar() {
 # to match AUDIO_DONE_TIMEOUT_MAX_TICKS -- the real wait never exceeds that
 # regardless of text length, so neither should this external estimate. This
 # is only a fallback net, not the primary wait (that's the daemon/BLE
-# client's own audio_done_timeout_ticks, which uses the real byte count).
+# client's own audio_done_timeout_ms, which uses the real byte count).
 estimate_audio_wait_s() {
   chars=$(printf '%s' "$1" | wc -m | tr -d ' ')
   case "$chars" in ""|*[!0-9]*) chars=0 ;; esac

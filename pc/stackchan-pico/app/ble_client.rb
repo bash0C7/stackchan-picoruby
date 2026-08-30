@@ -209,21 +209,34 @@ if Object.const_defined?(:BLE)
   # Verb-facing wrapper. Same interface as FakeBleClient: connect / connected? /
   # send{|builder| } / raw_send / write_without_ack / max_write_chunk /
   # last_detail_frame / on_unsolicited= / disconnect.
+  #
+  # Every wait is a poll loop: drain the radio, return the moment the awaited
+  # frame is in the inbox, otherwise sleep one POLLING_UNIT_MS and retry.
+  # Budgets are written in milliseconds and converted with polls_for, so the
+  # cadence can change without changing any timeout.
   class StackchanCentral
-    CONNECT_TIMEOUT_MS = 15_000   # scan-wait + connect + full GATT discovery
-    # This class's own cooperative-wait cadence, no longer sourced from
-    # BLE::POLLING_UNIT_MS (dropped when the gem moved to Task::Queue).
-    POLLING_UNIT_MS    = 100
-    ACK_TIMEOUT_TICKS  = 30       # x POLLING_UNIT_MS(100ms) = ~3s
-    SUBSCRIBE_ENABLE   = "\x01\x00"
+    CONNECT_TIMEOUT_MS        = 15_000   # scan-wait + connect + full GATT discovery
+    POLLING_UNIT_MS           = 20
+    ACK_TIMEOUT_MS            = 3_000
+    SUBSCRIBE_SETTLE_MS       = 200      # CoreBluetooth setNotifyValue needs a moment before the first write
+    AUDIO_DONE_TIMEOUT_MIN_MS = 30_000   # floor (previous fixed value; short-clip behavior unchanged)
+    AUDIO_DONE_TIMEOUT_MAX_MS = 180_000  # hard cap -- never an unbounded wait
+    AUDIO_DONE_BASE_MS        = 3_300    # measured intercept, see audio_done_timeout_ms
+    SUBSCRIBE_ENABLE          = "\x01\x00"
 
     attr_accessor :on_unsolicited
     attr_reader   :last_detail_frame
 
-    def initialize(name_prefix: "StackChan")
+    # radio / sleep_fn / clock_fn / log_fn are injection points for the host
+    # suite (test/pc). Defaults: the real darwin-ble radio, the VM's cooperative
+    # sleep, Machine.board_millis, and stderr (= daemon.log under the wrapper).
+    def initialize(name_prefix: "StackChan", radio: nil, sleep_fn: nil, clock_fn: nil, log_fn: nil)
       @name_prefix        = name_prefix
-      @radio              = StackchanRadio.new(name_prefix: name_prefix)
+      @radio              = radio || StackchanRadio.new(name_prefix: name_prefix)
       @radio.on_notification = method(:handle_notification)
+      @sleep_fn           = sleep_fn || ->(ms) { sleep_ms(ms) }
+      @clock_fn           = clock_fn || -> { Machine.board_millis }
+      @log_fn             = log_fn   || ->(line) { $stderr.write(line + "\n"); $stderr.flush }
       @rx_handle          = nil
       @tx_handle          = nil
       @cccd_handle        = nil
@@ -293,52 +306,54 @@ if Object.const_defined?(:BLE)
       self
     end
 
-    AUDIO_DONE_TIMEOUT_MIN_TICKS = 300   # x POLLING_UNIT_MS(100ms) = ~30s floor (previous fixed value; short-clip behavior unchanged)
-    AUDIO_DONE_TIMEOUT_MAX_TICKS = 1800  # x POLLING_UNIT_MS(100ms) = ~180s hard cap -- never an unbounded wait
-    AUDIO_DONE_BASE_MS = 3300            # measured intercept, see audio_done_timeout_ticks
-
-    # Wait for the device's <A:done> half-duplex-audio completion notification
+    # Budget for the device's <A:done> half-duplex-audio completion notification
     # (app/application.rb's StackChanApp#consume_rx writes this only after
     # AudioReceiver#consume fully returns -- i.e. after both the T-ms pre-play
     # delay AND the actual mu-law decode + I2S playback + silence-tail write
-    # have all finished). Actively waiting for the notification -- rather than
-    # sleeping a fixed/estimated duration -- stays correct regardless of the
-    # formula's accuracy; the tick budget below is only a safety net in case
-    # the notification is ever lost, but it must scale with clip size (a
-    # fixed ~30s net was observed timing out on longer clips while the device
-    # stayed healthy) and still stay bounded.
-    def audio_done_timeout_ticks(n)
-      # Derived from a real-hardware sweep (2026-08-11, 15KB-61KB range):
-      # ~0.95ms/byte + ~3.3s base, essentially linear (mid-range prediction
-      # off actual by <1%). Rounded up to 1.2ms/byte for margin. This
-      # contradicts the sub-linear 5.6KB/33KB spot-check in e29b0341's commit
-      # message -- that measurement predates this sweep and is superseded by
-      # it, not reconciled with it.
+    # have all finished). await_audio_done actively waits for the notification;
+    # this budget is only a safety net in case it is ever lost, but it must
+    # scale with clip size (a fixed ~30s net was observed timing out on longer
+    # clips while the device stayed healthy) and still stay bounded.
+    # Derived from a real-hardware sweep (2026-08-11, 15KB-61KB range):
+    # ~0.95ms/byte + ~3.3s base, essentially linear (mid-range prediction off
+    # actual by <1%). Rounded up to 1.2ms/byte for margin.
+    def audio_done_timeout_ms(n)
       ms = AUDIO_DONE_BASE_MS + (n * 6 / 5)
-      ticks = ms / POLLING_UNIT_MS
-      return AUDIO_DONE_TIMEOUT_MIN_TICKS if ticks < AUDIO_DONE_TIMEOUT_MIN_TICKS
-      return AUDIO_DONE_TIMEOUT_MAX_TICKS if ticks > AUDIO_DONE_TIMEOUT_MAX_TICKS
-      ticks
+      return AUDIO_DONE_TIMEOUT_MIN_MS if ms < AUDIO_DONE_TIMEOUT_MIN_MS
+      return AUDIO_DONE_TIMEOUT_MAX_MS if ms > AUDIO_DONE_TIMEOUT_MAX_MS
+      ms
     end
 
     def await_audio_done(n)
       raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
       @inbox.clear
-      cap = audio_done_timeout_ticks(n)
+      polls = polls_for(audio_done_timeout_ms(n))
       i = 0
-      while i < cap
-        @radio.pop_and_dispatch
-        if (idx = @inbox.index { |f| f.start_with?("<A:done>") })
+      while true
+        drain
+        idx = @inbox.index { |f| f.start_with?("<A:done>") }
+        if idx
           @inbox.delete_at(idx)
           return self
         end
-        sleep_ms(POLLING_UNIT_MS)
+        raise Stackchan::BLE::TimeoutError, "<A:done> timeout" if i >= polls
+        @sleep_fn.call(POLLING_UNIT_MS)
         i += 1
       end
-      raise Stackchan::BLE::TimeoutError, "<A:done> timeout"
+    end
+
+    # Pull every packet the radio holds right now (one per pop_and_dispatch),
+    # so a burst of notifications lands in a single poll step.
+    def drain
+      while @radio.pop_and_dispatch
+      end
     end
 
     private
+
+    def polls_for(ms)
+      (ms + POLLING_UNIT_MS - 1) / POLLING_UNIT_MS
+    end
 
     def resolve_handles
       services = @radio.services
@@ -352,15 +367,22 @@ if Object.const_defined?(:BLE)
     end
 
     # Enable notifications on TX so ACK/detail/touch frames route through
-    # StackchanRadio#packet_callback -> handle_notification. A couple of
-    # settle ticks give CoreBluetooth's setNotifyValue time to land before the
-    # first real write goes out — ble_central.rb's decode table has no
-    # central-side "subscribe complete" event to wait on instead.
+    # StackchanRadio#packet_callback -> handle_notification, then keep draining
+    # for SUBSCRIBE_SETTLE_MS so CoreBluetooth's setNotifyValue lands before the
+    # first real write — ble_central.rb's decode table has no central-side
+    # "subscribe complete" event to wait on instead.
     def subscribe_tx
       return unless @cccd_handle
       @radio.write_characteristic_descriptor_using_descriptor_handle(
         @radio.conn_handle, @cccd_handle, SUBSCRIBE_ENABLE)
-      pump(2)
+      settle(SUBSCRIBE_SETTLE_MS)
+    end
+
+    def settle(ms)
+      polls_for(ms).times do
+        drain
+        @sleep_fn.call(POLLING_UNIT_MS)
+      end
     end
 
     def handle_notification(handle, value)
@@ -381,13 +403,20 @@ if Object.const_defined?(:BLE)
     def write_and_await_ack(frame)
       @last_detail_frame = nil
       @inbox.clear
+      t0 = @clock_fn.call
       write_rx(frame)
       first = await_inbox
-      raise Stackchan::BLE::TimeoutError, "ACK timeout for #{frame.inspect}" unless first
+      unless first
+        @log_fn.call("[t] #{frame.chomp} ack=timeout")
+        raise Stackchan::BLE::TimeoutError, "ACK timeout for #{frame.inspect}"
+      end
+      t_ack = @clock_fn.call
       status = NusResolver.classify(first)
       if status == :ack
+        t_detail = nil
         if servo_or_read?(frame)
           @last_detail_frame = await_inbox
+          t_detail = @clock_fn.call if @last_detail_frame
           # Diagnostic only (no behavior change): an intermittent, unexplained
           # real-hardware defect (2026-07-04, see completion-plan memory
           # "servo-family real-hardware reliability when torque is OFF") saw
@@ -401,28 +430,35 @@ if Object.const_defined?(:BLE)
             $stderr.flush
           end
         end
+        log_timing(frame, t0, t_ack, t_detail)
         return if first[0, 1] == Stackchan::BLE::FrameCodec::ACK_OK
         raise Stackchan::BLE::DeviceError, "device rejected #{frame.inspect}"
       else
         # detail-only response (no separate ACK byte)
         @last_detail_frame = first
+        log_timing(frame, t0, t_ack, nil)
       end
     end
 
-    def await_inbox
-      pump(ACK_TIMEOUT_TICKS)
-      @inbox.shift
+    # One line per command in daemon.log: PC-side write->ACK (and ->detail)
+    # latency in ms at this layer, i.e. without wrapper / drb overhead.
+    def log_timing(frame, t0, t_ack, t_detail)
+      line = "[t] #{frame.chomp} ack=#{t_ack - t0}ms"
+      line += " detail=#{t_detail - t0}ms" if t_detail
+      @log_fn.call(line)
     end
 
-    # Cooperative wait: drain the BLE event queue directly (pop_and_dispatch)
-    # rather than BLE#start/#scan — see the file-level comment for why calling
-    # start/scan again after the initial connect would flush any in-flight
-    # packet we are waiting on.
-    def pump(ticks)
+    # Poll until the inbox has a frame or ACK_TIMEOUT_MS elapses. Returns the
+    # frame, or nil on timeout. Returns the moment a frame is present -- no
+    # trailing sleep.
+    def await_inbox
+      polls = polls_for(ACK_TIMEOUT_MS)
       i = 0
-      while @inbox.empty? && i < ticks
-        @radio.pop_and_dispatch
-        sleep_ms(POLLING_UNIT_MS)
+      while true
+        drain
+        return @inbox.shift unless @inbox.empty?
+        return nil if i >= polls
+        @sleep_fn.call(POLLING_UNIT_MS)
         i += 1
       end
     end
