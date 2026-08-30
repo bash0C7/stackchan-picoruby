@@ -56,7 +56,7 @@ module PicotestHarness
       dir: File.join(REPO_ROOT, "test", "pc"),
       cruby: lambda {
         load PC_STUBS_RB
-        SHARED_MRBLIB.each { |f| load f }
+        SHARED_MRBLIB.each { |f| require f }
         RubyClassExtract.load_classes_from(BLE_CLIENT_RB)
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
       },
@@ -69,7 +69,7 @@ module PicotestHarness
     },
     "shared" => {
       dir: File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "test"),
-      cruby: lambda { SHARED_MRBLIB.each { |f| load f } },
+      cruby: lambda { SHARED_MRBLIB.each { |f| require f } },
       load_files: lambda { SHARED_MRBLIB },
     },
   }.freeze
