@@ -61,7 +61,7 @@ end
 PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(R2P2_ROOT, "components", "picoruby-esp32", "picoruby")
 PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
 
-desc "Run the PicoRuby-native device test suite (alias of picotest:run)"
+desc "Run all PicoRuby-native suites (alias of picotest:run)"
 task :test => "picotest:run"
 
 namespace :test do
@@ -123,11 +123,11 @@ namespace :picotest do
     Rake::Task["picotest:build"].invoke unless File.executable?(PICORUBY_VM)
   end
 
-  desc "Run the PicoRuby-native device suite (test/device/*_test.rb) on the host picoruby VM. FILTER=<substr> to scope."
+  desc "Run the PicoRuby-native suites (device / pc / shared) on the host picoruby VM. SUITE=<name> for one suite, FILTER=<substr> to scope by test file name."
   task :run => :ensure_vm do
     $LOAD_PATH.unshift File.expand_path("test", __dir__)
     require "picotest/harness"
-    exit PicotestHarness.run(filter: ENV["FILTER"])
+    exit PicotestHarness.run(filter: ENV["FILTER"], suite: ENV["SUITE"])
   end
 end
 
