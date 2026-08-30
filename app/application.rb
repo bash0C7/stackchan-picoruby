@@ -1036,6 +1036,95 @@ module StackchanApp
       end
     end
   end
+
+  # One tick of the BLE peripheral's run loop, plus the notify gate. BLE is
+  # reached only through `port`, so this runs on the host picotest VM.
+  #
+  # Why event_popped on EVERY tick: on the ESP32 port, NimBLE's host task only
+  # fills ring buffers; inbound writes and events reach Ruby exclusively inside
+  # BLE#_event_popped. BLE#start calls that only after the queue already
+  # yielded an event, and the only thing that wakes the queue on its own is
+  # the 1 s heartbeat — that was the 1 s command latency. This loop wakes on
+  # its own every TICK_MS and drains regardless.
+  class LinkLoop
+    TICK_MS = 20   # ESP32 VM tick is 10 ms: a pop with no event returns after 2 ticks
+
+    # port: pop_event(timeout_ms:) / event_popped / take_write(handle) / send_notification(handle, frame)
+    def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:)
+      @port        = port
+      @rx_handle   = rx_handle
+      @tx_handle   = tx_handle
+      @cccd_handle = cccd_handle
+      @ticker      = ticker
+      @on_packet   = on_packet
+      @on_rx       = on_rx
+      @clock       = clock
+      @log         = log
+      @notify_enabled = false
+      @rx_at = nil
+    end
+
+    def notify_enabled?
+      @notify_enabled
+    end
+
+    def tick
+      event = @port.pop_event(timeout_ms: TICK_MS)
+      @port.event_popped
+      @on_packet.call(event) if event.is_a?(String)
+      poll_cccd      # before drain_rx: a subscribe landing with the first command must not lose its ACK
+      drain_rx
+      @ticker.tick(@clock.call / 1000)
+    end
+
+    # Non-blocking variant for callers already waiting on something else
+    # (AudioReceiver's pump_fn): keeps the port's queues moving.
+    def pump
+      @port.event_popped
+      event = @port.pop_event(timeout_ms: 0)
+      @on_packet.call(event) if event.is_a?(String)
+      event
+    end
+
+    # AckSink: one complete newline-terminated frame. Sent immediately; dropped
+    # while no central is subscribed (the PC subscribes before its first write).
+    def write(frame)
+      return unless @notify_enabled
+      @port.send_notification(@tx_handle, frame)
+      stamp_ack
+    end
+
+    def disconnected
+      @notify_enabled = false
+    end
+
+    private
+
+    def poll_cccd
+      cccd = @port.take_write(@cccd_handle)
+      return unless cccd
+      @notify_enabled = (cccd == "\x01\x00")
+      @log.call("[application] notify #{@notify_enabled ? 'enabled' : 'disabled'}")
+    end
+
+    def drain_rx
+      data = @port.take_write(@rx_handle)
+      while data
+        @rx_at = @clock.call
+        @on_rx.call(data)
+        data = @port.take_write(@rx_handle)
+      end
+    end
+
+    # One line per command: the first notification after an RX chunk carries
+    # the rx->ack delta in microseconds (the device-side latency component).
+    def stamp_ack
+      return unless @rx_at
+      ack_at = @clock.call
+      @log.call("[t] rx=#{@rx_at} ack=#{ack_at} d=#{ack_at - @rx_at}")
+      @rx_at = nil
+    end
+  end
 end
 
 # [2] cold-boot init — pinch-perfect copy of app.rb's init block (Phase 2
