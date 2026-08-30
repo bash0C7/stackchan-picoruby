@@ -14,12 +14,7 @@
 # only the on-LCD subtitle frame; `chat` is wired in #4.
 
 module Stackchan
-  module BLE
-    class Error < StandardError; end
-    class TimeoutError < Error; end
-    class DeviceError < Error; end
-    class ConnectionError < Error; end
-  end
+  # Stackchan::BLE::{Error,TimeoutError,DeviceError,ConnectionError} come from the shared gem (mrblib/stackchan/ble/errors.rb).
 
   # Thin verb-friendly wrapper over a BLE client's #send (builds frames via the
   # shared SendBuilder, waits ACK, captures the detail frame). Port of

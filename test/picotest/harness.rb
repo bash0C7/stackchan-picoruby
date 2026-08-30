@@ -29,6 +29,7 @@ module PicotestHarness
   # Same order as the boot_daemon*.rb load lists: namespace root first.
   SHARED_MRBLIB = %w[
     stackchan.rb
+    stackchan/ble/errors.rb
     stackchan/ble/face_table.rb
     stackchan/ble/led_color_table.rb
     stackchan/ble/hsb_to_rgb.rb

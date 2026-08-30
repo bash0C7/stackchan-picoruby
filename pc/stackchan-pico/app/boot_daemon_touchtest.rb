@@ -7,6 +7,7 @@ port = (ARGV[1] || "8787").to_i
 unless Object.const_defined?(:Stackchan)
   [
     "stackchan.rb",
+    "stackchan/ble/errors.rb",
     "stackchan/ble/face_table.rb",
     "stackchan/ble/led_color_table.rb",
     "stackchan/ble/hsb_to_rgb.rb",

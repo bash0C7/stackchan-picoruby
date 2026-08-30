@@ -74,4 +74,11 @@ class StackchanSharedTest < Picotest::Test
     assert_equal "<F:1,text:あいうえおかきくけこさしすせそたちつて>\n",
                  FT.build(face_index: 1, text: "あいうえおかきくけこさしすせそたちつてとなにぬ")
   end
+
+  def test_ble_error_hierarchy
+    assert Stackchan::BLE::TimeoutError.ancestors.include?(Stackchan::BLE::Error)
+    assert Stackchan::BLE::DeviceError.ancestors.include?(Stackchan::BLE::Error)
+    assert Stackchan::BLE::ConnectionError.ancestors.include?(Stackchan::BLE::Error)
+    assert Stackchan::BLE::Error.ancestors.include?(StandardError)
+  end
 end
