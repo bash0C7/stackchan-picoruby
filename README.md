@@ -94,8 +94,9 @@ Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
 
 Host tests run the device-side logic on a host PicoRuby VM through picotest. A
 CRuby orchestrator extracts the class bodies from `application.rb` with a prism
-AST so the device classes can be exercised without the device. Device
-interaction (build, flash, deploy, capture) goes through the
+AST so the device classes can be exercised without the device;
+`pc/stackchan-pico/app/ble_client.rb` is extracted the same way for the pc
+suite. Device interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
 ## Quickstart (macOS side)

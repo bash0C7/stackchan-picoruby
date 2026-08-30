@@ -46,10 +46,11 @@
 # `pbleSharedFifo.flush()` — dropping every pending packet, INCLUDING an
 # in-flight ACK/notification this code is waiting on. Conclusion: after the
 # initial `scan`, this code never calls `scan`/`start`/`connect` again. All
-# further draining (ACK-wait, touch notifications) uses the lower-level
-# `pop_packet` + `packet_callback` primitives directly (the same primitives
-# `picoruby-ble-uart`/`-hid` call bare, without `start`), which never touch
-# `hci_power_control` and therefore never re-trigger the rescan/flush chain.
+# further draining (ACK-wait, touch notifications) uses
+# `StackchanRadio#pop_and_dispatch` (`_event_popped` first, then a
+# non-blocking `@event_queue.pop(timeout_ms: 0)` + `packet_callback`), which
+# never touches `hci_power_control` and therefore never re-triggers the
+# rescan/flush chain.
 # `hci_power_control(OFF)` (in `scan`'s own `ensure`) is confirmed benign on
 # darwin: CoreBluetooth callbacks (writes, `didUpdateValueFor` notifications)
 # are not gated by that flag (`PicoBLECentral.swift#powerOff`'s own comment:

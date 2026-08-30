@@ -69,7 +69,7 @@ probe_sidecar() {
 # from an estimated byte count (~1200 bytes/char, i.e. ~150ms of 8kHz mu-law
 # audio per character -- a generous, not tightly-measured, ja TTS rate)
 # since the real byte count isn't known until synthesis runs. Capped at 180s
-# to match AUDIO_DONE_TIMEOUT_MAX_TICKS -- the real wait never exceeds that
+# to match AUDIO_DONE_TIMEOUT_MAX_MS -- the real wait never exceeds that
 # regardless of text length, so neither should this external estimate. This
 # is only a fallback net, not the primary wait (that's the daemon/BLE
 # client's own audio_done_timeout_ms, which uses the real byte count).

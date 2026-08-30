@@ -23,8 +23,11 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   is cooperative Tasks (no Mutex/Queue/Thread): drb accept loop + keepalive Task,
   a `Task.pass` spinlock for BLE exclusion, an Array touch queue drained by polling.
 - **BLE**: `app/ble_client.rb`. `NusResolver` (UUID→handle, frame classify) is
-  host-verified. `StackchanCentral` (verb-facing wrapper) + `StackchanRadio`
-  (the actual `BLE` subclass) implement the real picoruby-ble central —
+  host-verified. `StackchanRadio` / `StackchanCentral` are host-tested too, in
+  `test/pc` (`SUITE=pc bundle exec rake test` from the repo root) against a
+  `BLE` stub and `FakeRadio`. `StackchanCentral` (verb-facing wrapper) +
+  `StackchanRadio` (the actual `BLE` subclass) implement the real
+  picoruby-ble central —
   scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio, and
   disconnect/reconnect self-heal — verified against a physical StackChan (see
   the file's header comment for the design, and the load-bearing gotcha
