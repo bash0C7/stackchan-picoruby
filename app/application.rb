@@ -4,7 +4,7 @@
 #   [1] 5s escape hatch (sleep_ms 5000) — crash-loop recovery window
 #   [2] cold-boot init (AXP2101 → AW9523 → ILI9342 → PY32 → LED → Face::Neutral)
 #   [3] BLE NUS service + Dispatcher + FrameParser + AckSink
-#   [4] peri.start(60_000) — 60s advertise window (Phase 2 で実証された引数; 経過後 return)
+#   [4] peri.run — StackChanApp#run, infinite 20 ms tick loop (StackchanApp::LinkLoop)
 #
 # Upload: rake r2p2:upload_mrb SRC=app/application.rb
 # Smoke:  rake r2p2:ble_control_smoke COLOR=red MODE=blink FACE=joy SIDE=both
@@ -1331,13 +1331,17 @@ sleep_ms 3000
 
 # [3] BLE NUS service. UUID / property masks copied from Phase 2 ble_smoke.rb
 # (deleted in this Phase 3 PR; structure lives in application.rb now).
+#
+# Thin adapter: GATT database, advertising, the four `port` methods LinkLoop
+# needs, and the run loop. All per-tick logic (drain order, notify gate, ACK
+# stamps) is in StackchanApp::LinkLoop; periodic work is in StackchanApp::Ticker.
+# Both are host-tested; only what is left here needs the device.
 class StackChanApp < BLE
   AD_TYPE_FLAGS = 0x01
   AD_TYPE_COMPLETE_LOCAL_NAME = 0x09
   AD_FLAGS = 0x06
   BTSTACK_EVENT_STATE = 0x60
   HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
-  ATT_EVENT_CAN_SEND_NOW = 0xB7
 
   NUS_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
   NUS_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x02\x00\x40\x6e"
@@ -1360,12 +1364,23 @@ class StackChanApp < BLE
     @rx_handle = nus_handle(db, NUS_RX_CHAR_UUID, :value_handle)
     @tx_handle = nus_handle(db, NUS_TX_CHAR_UUID, :value_handle)
     @tx_cccd_handle = nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION)
-    @notify_enabled = false
     @parser = StackchanProtocol::FrameParser.new
     @audio = StackchanApp::AudioReceiver.new(speaker: speaker, parser: @parser)
-    @notify_queue = []
     @dispatcher = StackchanApp::Dispatcher.new(
       display: @display, led: @led, head: @head, stdout: self
+    )
+    ticker = StackchanApp::Ticker.new(
+      display: @display, led: @led, touch: @touch, dispatcher: @dispatcher,
+      notify: ->(frame) { write(frame) }
+    )
+    @link = StackchanApp::LinkLoop.new(
+      port: self,
+      rx_handle: @rx_handle, tx_handle: @tx_handle, cccd_handle: @tx_cccd_handle,
+      ticker: ticker,
+      on_packet: ->(pkt) { packet_callback(pkt) },
+      on_rx: ->(data) { consume_rx(data) },
+      clock: -> { Machine.uptime_us },
+      log: ->(line) { puts line }
     )
     puts "[application] initialize: super(:peripheral) entering"
     super(:peripheral, db.profile_data)
@@ -1373,10 +1388,44 @@ class StackChanApp < BLE
   end
 
   # AckSink contract: Dispatcher calls write(frame_string) with one complete
-  # newline-terminated frame. We queue each frame as a separate element so the
-  # heartbeat-driven flush sends exactly one BLE notification per frame.
+  # newline-terminated frame. LinkLoop notifies it immediately, or drops it
+  # while no central is subscribed.
   def write(frame)
-    @notify_queue << frame
+    @link.write(frame)
+  end
+
+  # --- LinkLoop port: thin bridge to BLE's event queue / value store ---
+  # (BLE#notify takes one argument and must not be shadowed, hence the names.)
+
+  def pop_event(timeout_ms:)
+    @event_queue.pop(timeout_ms: timeout_ms)
+  end
+
+  def event_popped
+    _event_popped
+  end
+
+  def take_write(handle)
+    pop_write_value(handle)
+  end
+
+  def send_notification(handle, frame)
+    push_read_value(handle, frame)
+    notify(handle)
+  end
+
+  # Own run loop instead of BLE#start (see LinkLoop for why). Never returns;
+  # the controller stays up and connections persist. Mirrors start's setup and
+  # its ensure (mrblib/ble.rb).
+  def run
+    @event_queue.clear
+    _event_queue_cleared
+    hci_power_control(HCI_POWER_ON)
+    while true
+      @link.tick
+    end
+  ensure
+    hci_power_control(HCI_POWER_OFF)
   end
 
   def build_adv_data
@@ -1404,18 +1453,6 @@ class StackChanApp < BLE
     db.handle_table[NUS_SERVICE_UUID][char_uuid][key]
   end
 
-  # Non-blocking drain of one event from the queue pop_packet/pop_heartbeat
-  # used to wrap (dropped when the gem moved to the Task::Queue @event_queue
-  # architecture). Only a BLE subclass can reach @event_queue/_event_popped,
-  # which is why this lives here rather than in a helper class.
-  def pop_and_dispatch
-    event = @event_queue.pop(timeout_ms: 0)
-    return nil unless event
-    _event_popped
-    packet_callback(event) if event.is_a?(String)
-    event
-  end
-
   def packet_callback(event_packet)
     puts "[application] pkt evt=#{event_packet.getbyte(0) || 'nil'}"
     case event_packet.getbyte(0)
@@ -1425,122 +1462,36 @@ class StackChanApp < BLE
       advertise(@adv_data)
     when HCI_EVENT_DISCONNECTION_COMPLETE
       puts "[application] disconnected"
-      @notify_enabled = false
-      @notify_queue = []
-      # Re-enable advertising so a central can reconnect. With the infinite
-      # run loop (no 60s HCI power-cycle), nothing else re-advertises after a
-      # disconnect — the old loop+start(60_000) relied on the boundary
-      # power-cycle's BTSTACK_EVENT_STATE → advertise side effect for this.
+      @link.disconnected
+      # Re-enable advertising so a central can reconnect; nothing else
+      # re-advertises after a disconnect with the infinite run loop.
       advertise(@adv_data)
-    when ATT_EVENT_CAN_SEND_NOW
-      flush_one_frame
-    end
-  end
-
-  def heartbeat_callback
-    puts "[application] heartbeat"
-    # NUS RX drain — routes raw audio (after a <A:N> control frame) to the
-    # speaker, everything else through the frame parser to the dispatcher.
-    # The ESP32 port queues inbound writes on the NimBLE host task and calls
-    # BLE_write_data from the VM thread, so pop_write_value is safe here.
-    rx_data = pop_write_value(@rx_handle)
-    while rx_data
-      consume_rx(rx_data)
-      rx_data = pop_write_value(@rx_handle)
-    end
-    # CCCD subscribe state
-    cccd = pop_write_value(@tx_cccd_handle)
-    if cccd
-      @notify_enabled = (cccd == "\x01\x00")
-      puts "[application] notify #{@notify_enabled ? 'enabled' : 'disabled'}"
-    end
-    # Tick LED animator
-    @led.tick(Machine.uptime_us / 1000)
-    # Head-touch poll (rising-edge -> one <touch:N> per onset). Reuses the
-    # existing notify queue; only meaningful while a central is subscribed.
-    if @touch
-      begin
-        zone = @touch.poll
-        if zone
-          # On-device immediate feedback: change the face the moment the
-          # rising edge fires, BEFORE notifying the PC. The PC may then
-          # decide to fire an AI reaction with extra context, but the
-          # human-visible face change has zero round-trip latency.
-          @dispatcher.react_to_touch(zone)
-          write("<touch:#{zone}>\n")
-        end
-      rescue => e
-        puts "[application] touch poll error: #{e.class}: #{e.message}"
-      end
-    end
-    # Request can_send_now if we have frames queued and the central is subscribed
-    if @notify_enabled && !@notify_queue.empty?
-      request_can_send_now_event
-    end
-    # Blink for liveness indicator. Tick is ~1s on R2P2-ESP32 (memory:
-    # project_picoruby_ble_heartbeat_tick_one_second). 5 tick = ~5s 周期で
-    # 1 tick だけ Closed (目つむり) → 同 tick 内で current face を再描画して
-    # 「瞬き」演出。これがあれば人間がフリーズ vs 稼働中を視認できる。
-    @blink_tick = (@blink_tick || 0) + 1
-    if @blink_tick % 5 == 0
-      @dispatcher.current_face_class.new.redraw_eyes_closed(@display)
-      Machine.delay_ms 150
-      @dispatcher.current_face_class.new.redraw_eyes_open(@display)
     end
   end
 
   # Route one RX chunk through the audio receiver: it accumulates raw mu-law
   # after a <A:N> control frame and plays (blocking) on completion, and yields
   # every non-audio frame back here for the dispatcher. Blocking playback during
-  # the BLE poll is fine — the Mac is idle by then and a sentence plays in
-  # ~1-3s (< the ~15-20s idle-disconnect window). One <A:done> ACK per clip.
+  # the poll is fine — the Mac is idle by then and a sentence plays in ~1-3s
+  # (< the ~15-20s idle-disconnect window). One <A:done> ACK per clip.
   def consume_rx(rx_data)
     done = @audio.consume(
       rx_data,
       notify_fn: ->(msg) { write(msg) },
       drain_fn:  -> { pop_write_value(@rx_handle) },
-      # pop_and_dispatch is what drives the ESP32 port's per-tick work: it
-      # drains the port's inbound write queue into Ruby and refreshes the
-      # read mirrors. The audio wait runs inside heartbeat_callback, so the
-      # run loop's own queue pop is not reached until the clip is done --
-      # without this the port's queue overflows mid-clip. Dispatch happens
-      # inside pop_and_dispatch so a disconnect arriving during playback is
-      # still acted on.
-      pump_fn:   -> { pop_and_dispatch }
+      # Keeps the ESP32 port's inbound queue draining every DRAIN_STEP_MS while
+      # the audio wait blocks the run loop; a disconnect arriving during
+      # playback is still dispatched through on_packet.
+      pump_fn:   -> { @link.pump }
     ) { |frame| @dispatcher.handle(frame) }
     done.times { write("<A:done>\n") }
   end
-
-  def flush_one_frame
-    return if @notify_queue.empty?
-    frame = @notify_queue.shift
-    push_read_value(@tx_handle, frame)
-    notify(@tx_handle)
-    # Chain: if more frames are queued, request another CAN_SEND_NOW immediately
-    # so the rest of the queue drains at BLE conn-interval pace (~110ms measured)
-    # instead of waiting for the next heartbeat tick (~1s). Without this, a
-    # 2-frame response (ACK + detail) takes ~1s/frame and a 3-command burst
-    # overruns the host's ack_timeout (3s).
-    request_can_send_now_event unless @notify_queue.empty?
-  end
 end
 
-# [4] Run BTstack run_loop for 60_000ms. Phase 2 ble_smoke.rb で実証済みの引数で、
-# 60s 経過後に start() は return する仕様 (引数は ms)。Phase 3 production として
-# 常時 advertise したい場合の loop 化や別 N 値は未検証なので別件。60s 経過後は
-# このスクリプトが終了し、R2P2 shell に制御が戻る (Phase 2 と同じ挙動)。
+# [4] Run the peripheral forever. StackChanApp#run is our own loop (a 20 ms
+# tick that drains NimBLE's queues every time), not BLE#start — see
+# StackchanApp::LinkLoop. An active central connection is never force-dropped.
 puts "[application] BLE peripheral starting (infinite advertise)"
 peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch, speaker: @speaker)
 peri.debug = true
-# Run the BTstack run loop indefinitely (start with no timeout). An active
-# central connection is therefore never force-dropped.
-#
-# Previously this was `loop { peri.start(60_000) }`. ble.rb#start runs a
-# polling loop until timeout_ms elapses, then its `ensure` block calls
-# hci_power_control(HCI_POWER_OFF) — powering off the BT controller every
-# 60s and tearing down any live connection at the window boundary. An
-# operator connecting at a random point in the 60s window got 0–60s of link
-# time, which made operator-paced HITL calibration impossible ("timing too
-# tight"). start(nil) never hits the timeout break and only powers off on
-# exception, so the controller stays up and connections persist.
-peri.start
+peri.run
