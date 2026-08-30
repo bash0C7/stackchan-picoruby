@@ -177,4 +177,40 @@ class StackchanLedAnimatorTest < Picotest::Test
     # Static modes don't re-push on tick.
     assert(@py32.calls.empty?)
   end
+
+  def led_ram_writes
+    @py32.calls.select { |c| c.first == :write_led_ram }.size
+  end
+
+  def test_animator_tick_skips_i2c_when_the_colour_is_unchanged
+    a = animator
+    a.set(10, 20, 30, :blink)
+    a.tick(0)
+    n = led_ram_writes
+    a.tick(20)
+    a.tick(40)
+    assert_equal n, led_ram_writes
+    a.tick(500)                      # half period elapsed -> off phase -> one write
+    assert_equal n + 1, led_ram_writes
+    a.tick(520)
+    assert_equal n + 1, led_ram_writes
+  end
+
+  def test_animator_set_always_writes_even_with_the_same_colour
+    a = animator
+    a.set(10, 20, 30, :solid)
+    n = led_ram_writes
+    a.set(10, 20, 30, :solid)
+    assert_equal n + 1, led_ram_writes
+  end
+
+  def test_animator_restarting_blink_writes_on_the_first_tick_again
+    a = animator
+    a.set(10, 20, 30, :blink)
+    a.tick(0)
+    a.set(10, 20, 30, :blink)
+    n = led_ram_writes
+    a.tick(1000)
+    assert_equal n + 1, led_ram_writes
+  end
 end

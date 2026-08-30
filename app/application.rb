@@ -52,9 +52,13 @@ class StackchanLed
       @b = b
       @mode = mode
       @phase_start_ms = nil
+      @last_applied = nil
       apply_immediately
     end
 
+    # Called every LED_PERIOD_MS by the Ticker. Each apply_color is three PY32
+    # I2C transactions (~4 ms) on the bus the touch sensor shares, so only
+    # write when the animated colour actually changes.
     def tick(now_ms)
       return unless dynamic?
       @phase_start_ms ||= now_ms
@@ -62,10 +66,10 @@ class StackchanLed
       case @mode
       when :blink
         on = (elapsed / BLINK_HALF_PERIOD_MS) % 2 == 0
-        apply_color(on ? @r : 0, on ? @g : 0, on ? @b : 0)
+        apply_color_if_changed(on ? @r : 0, on ? @g : 0, on ? @b : 0)
       when :breathing
         ratio = BREATHING_LUT[(elapsed / BREATHING_STEP_MS) % BREATHING_LUT.size]
-        apply_color(@r * ratio / 100, @g * ratio / 100, @b * ratio / 100)
+        apply_color_if_changed(@r * ratio / 100, @g * ratio / 100, @b * ratio / 100)
       end
     end
 
@@ -85,6 +89,13 @@ class StackchanLed
     def apply_color(r, g, b)
       @led.fill_range(@pixel_range.first, @pixel_range.last, r, g, b)
       @led.show
+    end
+
+    def apply_color_if_changed(r, g, b)
+      rgb = [r, g, b]
+      return if @last_applied == rgb
+      @last_applied = rgb
+      apply_color(r, g, b)
     end
   end
 
