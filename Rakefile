@@ -65,9 +65,11 @@ desc "Run all PicoRuby-native suites (alias of picotest:run)"
 task :test => "picotest:run"
 
 namespace :test do
-  desc "Run CRuby-only host tests (RubyClassExtract extractor)"
+  desc "Run CRuby-only host tests (test-host/*_test.rb: extractor, latency summary)"
   task :host do
-    sh "bundle exec ruby -Ilib -Itest-host test-host/ruby_class_extract_test.rb"
+    Dir[File.expand_path("test-host/*_test.rb", __dir__)].sort.each do |file|
+      sh "bundle exec ruby -Ilib -Itest-host -Itools #{file}"
+    end
   end
 end
 
