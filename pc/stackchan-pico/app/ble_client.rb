@@ -160,14 +160,14 @@ if Object.const_defined?(:BLE)
       @conn_handle
     end
 
-    # Non-blocking drain of one event from the queue @event_queue/_event_popped
-    # replaced pop_packet with. Only this class can reach those (BLE ivars/
-    # private methods), so StackchanCentral's cooperative waits call this
-    # instead of touching them directly.
+    # One poll step. `_event_popped` FIRST: on the darwin port that is the
+    # only place a packet moves from the Swift FIFO into @event_queue, so a
+    # poll that skipped it while the queue was empty would wait for the 1 s
+    # heartbeat before seeing anything. Then a non-blocking pop + dispatch.
     def pop_and_dispatch
+      _event_popped
       event = @event_queue.pop(timeout_ms: 0)
       return nil unless event
-      _event_popped
       packet_callback(event) if event.is_a?(String)
       event
     end
