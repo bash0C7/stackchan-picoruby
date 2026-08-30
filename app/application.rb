@@ -1089,13 +1089,17 @@ module StackchanApp
     # AckSink: one complete newline-terminated frame. Sent immediately; dropped
     # while no central is subscribed (the PC subscribes before its first write).
     def write(frame)
-      return unless @notify_enabled
+      unless @notify_enabled
+        @rx_at = nil   # nothing answers this command; never stamp a later one against it
+        return
+      end
       @port.send_notification(@tx_handle, frame)
       stamp_ack
     end
 
     def disconnected
       @notify_enabled = false
+      @rx_at = nil
     end
 
     private

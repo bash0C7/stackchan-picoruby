@@ -177,4 +177,35 @@ class LinkLoopTest < Picotest::Test
     @link.write("<touch:1>\n")
     assert_equal [], stamp_lines
   end
+
+  def test_tick_ms_is_20
+    assert_equal 20, StackchanApp::LinkLoop::TICK_MS
+  end
+
+  def test_dropped_write_does_not_leave_a_stale_rx_stamp
+    @port.queue_write(RX, "<F:2>\n")   # gate closed: on_rx's ACK write is dropped
+    @link.tick
+    subscribe
+    @link.write("<touch:1>\n")
+    assert_equal [], stamp_lines
+  end
+
+  def test_disconnected_clears_the_rx_stamp
+    silent = StackchanApp::LinkLoop.new(
+      port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
+      ticker: @ticker,
+      on_packet: ->(pkt) { @packets << pkt },
+      on_rx: ->(data) { @rx << data },      # records only, never answers
+      clock: -> { @now },
+      log: ->(line) { @logs << line },
+    )
+    @port.queue_write(CCCD, "\x01\x00")
+    @port.queue_write(RX, "<F:2>\n")
+    silent.tick                          # rx stamp latched, nothing notified
+    silent.disconnected
+    @port.queue_write(CCCD, "\x01\x00")
+    silent.tick
+    silent.write("<touch:1>\n")
+    assert_equal [], stamp_lines
+  end
 end
