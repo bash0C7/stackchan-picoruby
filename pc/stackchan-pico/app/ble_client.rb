@@ -416,7 +416,7 @@ if Object.const_defined?(:BLE)
         t_detail = nil
         if servo_or_read?(frame)
           @last_detail_frame = await_inbox
-          t_detail = @clock_fn.call if @last_detail_frame
+          t_detail = @last_detail_frame ? @clock_fn.call : :timeout
           # Diagnostic only (no behavior change): an intermittent, unexplained
           # real-hardware defect (2026-07-04, see completion-plan memory
           # "servo-family real-hardware reliability when torque is OFF") saw
@@ -444,7 +444,11 @@ if Object.const_defined?(:BLE)
     # latency in ms at this layer, i.e. without wrapper / drb overhead.
     def log_timing(frame, t0, t_ack, t_detail)
       line = "[t] #{frame.chomp} ack=#{t_ack - t0}ms"
-      line += " detail=#{t_detail - t0}ms" if t_detail
+      if t_detail == :timeout
+        line += " detail=timeout"
+      elsif t_detail
+        line += " detail=#{t_detail - t0}ms"
+      end
       @log_fn.call(line)
     end
 

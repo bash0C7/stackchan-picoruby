@@ -104,6 +104,14 @@ class StackchanCentralTest < Picotest::Test
     assert_equal ["[t] <YL:0,PU:0,T:300> ack=0ms detail=40ms"], @logs
   end
 
+  def test_detail_timeout_is_named_in_the_timing_log
+    @radio.schedule_notification(TX, ".\n", after_polls: 1)   # ACK arrives, detail never does
+    @central.raw_send("<YL:0,PU:0,T:300>\n")
+    assert_nil @central.last_detail_frame
+    assert_equal ack_timeout_polls, @sleeps.size
+    assert_equal ["[t] <YL:0,PU:0,T:300> ack=0ms detail=timeout"], @logs
+  end
+
   def test_detail_only_response_is_kept_as_detail
     @radio.schedule_notification(TX, "<yaw_raw:12,pitch_raw:34>\n", after_polls: 1)
     @central.raw_send("<read:pos>\n")
