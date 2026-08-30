@@ -23,10 +23,14 @@ run() {
   printf '%s\t%.3f\trc=%d\t%s\n' "$label" $((t1 - t0)) $rc "${short:0:140}" | tee -a $LOG
   if (( rc != 0 )); then recover || exit 3; fi
 }
-faces=(neutral joy smile sad surprised neutral joy smile)
-for i in 1 2 3 4 5 6 7 8; do run "face-$i" $S face ${faces[$i]}; done
-for i in 1 2 3 4; do run "servo-$i" $S servo --yaw-left 0 --pitch-up 0 --time 300; done
-for i in 1 2 3; do run "led-$i" $S led both red solid; done
+# wrapper floor: a verb that never touches BLE
+for i in 1 2 3; do run "status-$i" $S status; done
+faces=(neutral joy smile sad surprised angry neutral joy smile sad surprised angry neutral joy smile sad surprised angry neutral joy)
+for i in {1..20}; do run "face-$i" $S face ${faces[$i]}; done
+for i in {1..10}; do run "servo-$i" $S servo --yaw-left 0 --pitch-up 0 --time 300; done
+for i in {1..10}; do run "led-$i" $S led both red solid; done
 run "torque-off" $S torque off
 run "say-1" $S say "テスト" --gain 0.1
 echo "=== done ===" | tee -a $LOG
+echo
+ruby tools/latency_summary.rb $LOG
