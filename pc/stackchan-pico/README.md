@@ -105,10 +105,15 @@ daemon it hangs rather than failing.
 read by the wrapper): `STUB=1` (stub sidecar, was `STACKCHAN_SIDECAR_STUB`),
 `BLE_FAKE=1` (swap in `FakeBleClient` for testing verb logic without hardware
 in the loop, was `STACKCHAN_BLE_FAKE=1`), `PREFIX=` (real mode only, default
-`StackChan`, was `STACKCHAN_BLE_NAME_PREFIX`), `PORT=` (daemon drb port,
-default 8787), `SIDECAR_PORT=` (default 8788, was `STACKCHAN_SIDECAR_PORT`),
-`NS=` (launchd label namespace), plus `STACKCHAN_LOGDIR` and
-`STACKCHAN_PICORUBY_APP` (unchanged names, read the same way).
+`StackChan`, was `STACKCHAN_BLE_NAME_PREFIX`), `STACKCHAN_PORT=` (daemon drb
+port, default 8787), `STACKCHAN_SIDECAR_PORT=` (default 8788), `NS=` (launchd
+label namespace), plus `STACKCHAN_LOGDIR` and `STACKCHAN_PICORUBY_APP`.
+
+Use `STACKCHAN_PORT` rather than the bare `PORT` (still accepted) for the
+daemon port: it is the same variable the wrapper reads, so exporting it once
+keeps `pc:up` and the CLI on the same port. Set only `PORT=9999` and the
+daemon listens on 9999 while every later command still asks 8787 and reports
+that the backends are not running.
 
 ```sh
 bundle exec rake pc:up BLE_FAKE=1   # no hardware needed
