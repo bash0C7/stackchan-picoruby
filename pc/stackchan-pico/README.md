@@ -86,6 +86,13 @@ pc/stackchan-pico/bin/stackchan stop
 Verbs: connect, status, stop, say, chat, face, led, servo, torque, selftest,
 raw, touch, demo, tui, calibrate.
 
+`stop` asks the daemon to exit; launchd leaves it down (`KeepAlive` only
+restarts an abnormal exit) but its plist stays in `~/Library/LaunchAgents/`,
+so it returns at the next login. `bundle exec rake pc:down` is what removes
+the plists from `~/Library/LaunchAgents/` and keeps both jobs down. A verb
+also has no time limit any more — against a wedged daemon it hangs rather
+than failing.
+
 `bin/stackchan` env — this is all it reads now, since it only attaches:
 `STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`, `STACKCHAN_PORT` (8787).
 
