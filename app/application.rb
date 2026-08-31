@@ -397,6 +397,24 @@ module StackchanApp
     BROW_HALF_LENGTH = 16   # horizontal extent each side of eye cx
     BROW_INNER_DROP  = 8    # inner end of brow drops 8px relative to outer end
 
+    # Bounding boxes of everything a face can paint. Every face sits on the same
+    # black field, so changing expression only has to repaint these two bands:
+    # refilling all 320x200 pushes ~64000 pixels to move ~5600 of them, and that
+    # fill is the bulk of what a face command costs.
+    FEATURE_MARGIN = 2
+    # Joy raises the mouth corners 18px and Sad drops them 8, while Surprised's
+    # open mouth reaches SURPRISED_MOUTH_HALF_H below centre — deeper than Sad.
+    MOUTH_MAX_RISE = 18
+    EYE_BAND_X   = EYE_LEFT_CX - BROW_HALF_LENGTH - FEATURE_MARGIN
+    EYE_BAND_W   = (EYE_RIGHT_CX + BROW_HALF_LENGTH + FEATURE_MARGIN) - EYE_BAND_X
+    EYE_BAND_Y   = EYE_LEFT_CY - BROW_OFFSET_Y - FEATURE_MARGIN
+    EYE_BAND_H   = (EYE_LEFT_CY + EYE_RY + FEATURE_MARGIN) - EYE_BAND_Y
+    MOUTH_BAND_X = MOUTH_CX - MOUTH_HALF_WIDTH - FEATURE_MARGIN
+    MOUTH_BAND_W = (MOUTH_CX + MOUTH_HALF_WIDTH + FEATURE_MARGIN) - MOUTH_BAND_X
+    MOUTH_BAND_Y = MOUTH_CY - MOUTH_MAX_RISE - FEATURE_MARGIN
+    MOUTH_BAND_H = (MOUTH_CY + SURPRISED_MOUTH_HALF_H + FEATURE_MARGIN) - MOUTH_BAND_Y
+
+
     class Base
       DELTA_Y = 0
 
@@ -416,10 +434,29 @@ module StackchanApp
         display.draw_line(cx,     cy,       right_x, corner_y, MOUTH_COLOR)
       end
 
+      # Full repaint. Used at cold boot, when nothing is known about what is
+      # already on the panel.
       def draw(display)
         display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
+        draw_features(display)
+      end
+
+      # What this face paints on top of the black field. Subclasses extend this
+      # rather than `draw`, so the full and differential paths stay in step.
+      def draw_features(display)
         draw_eyes(display)
         draw_mouth(display)
+      end
+
+      # Repaint over a panel that already shows a face: clear only the bands a
+      # face can paint, then draw this one. Same result as `draw` when a face is
+      # already on screen, at about a tenth of the pixels.
+      def redraw(display)
+        display.draw_rect(EYE_BAND_X, EYE_BAND_Y, EYE_BAND_W, EYE_BAND_H,
+                          BACKGROUND_COLOR, fill: true)
+        display.draw_rect(MOUTH_BAND_X, MOUTH_BAND_Y, MOUTH_BAND_W, MOUTH_BAND_H,
+                          BACKGROUND_COLOR, fill: true)
+        draw_features(display)
       end
 
       # Clear the small bounding box around each eye to BACKGROUND_COLOR,
@@ -479,7 +516,7 @@ module StackchanApp
     class Angry < Base
       DELTA_Y = 0   # neutral mouth
 
-      def draw(display)
+      def draw_features(display)
         super
         # Left brow: outer end up, inner end down (V-slant toward bridge of nose).
         display.draw_line(
@@ -534,13 +571,11 @@ module StackchanApp
         )
       end
 
-      # Full-face draw: black background + closed eyes only (no mouth).
-      # Used as the "torque off" idle indicator. For blink animation use
-      # Base#redraw_eyes_closed instead (eye-only, no flicker).
-      def draw(display)
-        display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
+      # Closed eyes only, no mouth — the torque-off idle face is intentionally
+      # mouthless. For blink animation use Base#redraw_eyes_closed instead
+      # (eye-only, no flicker).
+      def draw_features(display)
         draw_eyes(display)
-        # No mouth — torque-off idle face is intentionally mouthless.
       end
     end
   end
@@ -707,7 +742,7 @@ module StackchanApp
     def react_to_touch(zone)
       face_class = TOUCH_FACE_TABLE[zone] || Face::Surprised
       @current_face_class = face_class
-      face_class.new.draw(@display)
+      face_class.new.redraw(@display)
       led_entry = TOUCH_LED_TABLE[zone]
       if @led && led_entry
         side, r, g, b = led_entry
@@ -721,7 +756,7 @@ module StackchanApp
       face_class = FACE_TABLE[frame["F"]]
       return false unless face_class
       @current_face_class = face_class
-      face_class.new.draw(@display)
+      face_class.new.redraw(@display)
       true
     end
 
@@ -742,12 +777,12 @@ module StackchanApp
       when "on"
         @head.enable_torque(true) if @head
         @current_face_class = Face::Neutral
-        Face::Neutral.new.draw(@display)
+        Face::Neutral.new.redraw(@display)
         @stdout.write(ACK_FRAME)
       when "off"
         @head.enable_torque(false) if @head
         @current_face_class = Face::Closed
-        Face::Closed.new.draw(@display)
+        Face::Closed.new.redraw(@display)
         @stdout.write(ACK_FRAME)
       else
         @stdout.write(ERROR_FRAME)

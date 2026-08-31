@@ -26,7 +26,19 @@ class DispatcherFaceTest < Picotest::Test
   def test_F_5_draws_angry_with_brows
     @disp.handle({ "F" => "5" })
     methods = @display.calls.map(&:first)
-    assert_equal [:draw_rect, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
+    assert_equal [:draw_rect, :draw_rect, :draw_ellipse, :draw_ellipse,
+                  :draw_line, :draw_line, :draw_line, :draw_line], methods
+  end
+
+  # A face command repaints only the eye and mouth bands. Falling back to the
+  # full 320x200 fill would still look right on the panel — only the clock
+  # would show it, at about a second per face — so pin it here.
+  def test_a_face_command_never_fills_the_whole_face_region
+    @disp.handle({ "F" => "5" })
+    rects = @display.calls.select { |c| c.first == :draw_rect }.map(&:last)
+    assert_equal 2, rects.length
+    full = rects.select { |r| r[2] == 320 && r[3] == StackchanApp::Face::FACE_REGION_HEIGHT }
+    assert_equal 0, full.length
   end
 
   def test_F_known_writes_ack_dot
