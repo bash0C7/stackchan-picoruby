@@ -12,6 +12,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   def setup
     @calls = []
     @holder = nil
+    @loaded = false
     @ports_ok = true
     @status = { ble_connected: true }
     @bootstrap_result = ["", true]
@@ -33,7 +34,7 @@ class PcLifecycleTest < Test::Unit::TestCase
       logdir: LOGDIR, ns: "it" }.merge(over)
   end
 
-  def subject(**over)
+  def subject(sleep_fn: nil, clock_fn: nil, **over)
     PcLifecycle.new(
       config(**over), dir: DIR,
       runner: ->(*argv) {
@@ -41,11 +42,18 @@ class PcLifecycleTest < Test::Unit::TestCase
         # Only the bootstrap call's exit status matters to `start`; bootout's
         # is discarded, so any other verb can always report success.
         return @bootstrap_result if argv[0..1] == %w[launchctl bootstrap]
+        # `launchctl print` here answers "is the job still loaded" for the
+        # post-bootout unload wait -- not the old bootstrap-vs-kickstart
+        # branch. Default false ("gone") so every other test's `start`
+        # clears the wait on its first check.
+        return ["", @loaded] if argv[0..1] == %w[launchctl print]
         ["", true]
       },
       waiter:   ->(_port, _timeout) { @ports_ok },
       releaser: ->(_port, _timeout) { @holder },
       verifier: ->(_port) { @status },
+      sleep_fn: sleep_fn,
+      clock_fn: clock_fn,
     )
   end
 
@@ -62,12 +70,38 @@ class PcLifecycleTest < Test::Unit::TestCase
 
   def test_up_always_boots_out_before_bootstrapping
     subject.up
+    # `print` is a separate concern (the post-bootout unload wait, covered by
+    # its own test below) -- filter it out so this assertion keeps saying
+    # only what it means: bootout, then bootstrap, never kickstart.
     assert_equal [["bootout", "com.bash0c7.stackchan-it-sidecar"],
                   ["bootstrap", "com.bash0c7.stackchan-it-sidecar.plist"],
                   ["bootout", "com.bash0c7.stackchan-it-daemon"],
                   ["bootstrap", "com.bash0c7.stackchan-it-daemon.plist"]],
-                 launchctl_verbs
+                 launchctl_verbs.reject { |verb, _| verb == "print" }
     assert_false @calls.any? { |a| a[1] == "kickstart" }
+  end
+
+  # bootout returns before launchd finishes unloading the service, and
+  # bootstrapping while the domain still holds the label fails with
+  # "Bootstrap failed: 5: Input/output error" (observed 2026-08-31 on the
+  # second pc:up of the session -- intermittent, the very next pc:up
+  # succeeded). `start` must wait for the label to actually leave the
+  # domain before ever writing a plist or bootstrapping.
+  def test_up_waits_for_the_job_to_unload_before_bootstrapping
+    @loaded = true
+    # A fake clock that jumps straight past the deadline on its second read,
+    # so the timeout path is proven without spending UNLOAD_WAIT_S of real
+    # time (and, since nothing throttles the loop between reads, real CPU)
+    # on it. The no-op sleep_fn stays as a safety net in case the loop ever
+    # reads the clock more than twice.
+    start = Time.now
+    reads = [start, start + PcLifecycle::UNLOAD_WAIT_S + 1]
+    clock = -> { reads.size > 1 ? reads.shift : reads.first }
+    error = assert_raise(PcLifecycle::Error) {
+      subject(sleep_fn: ->(_s) {}, clock_fn: clock).up
+    }
+    assert_match(/was still loaded/, error.message)
+    assert_false @calls.any? { |a| a[1] == "bootstrap" }
   end
 
   # launchd reads a job's definition only at bootstrap; if a second `up` ever
@@ -83,7 +117,7 @@ class PcLifecycleTest < Test::Unit::TestCase
                   ["bootstrap", "com.bash0c7.stackchan-it-sidecar.plist"],
                   ["bootout", "com.bash0c7.stackchan-it-daemon"],
                   ["bootstrap", "com.bash0c7.stackchan-it-daemon.plist"]],
-                 launchctl_verbs
+                 launchctl_verbs.reject { |verb, _| verb == "print" }
   end
 
   def test_up_fails_when_a_port_never_comes_up

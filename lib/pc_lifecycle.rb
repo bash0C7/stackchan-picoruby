@@ -13,16 +13,25 @@ class PcLifecycle
 
   SIDECAR_WAIT_S = 15
   DAEMON_WAIT_S  = 30   # BLE scan + GATT discovery; measured 13s on 2026-08-31
+  UNLOAD_WAIT_S  = 10   # grace for bootout to actually leave the launchd domain
   RELEASE_WAIT_S = 10   # grace for a booted-out job to let go of its port
   STATUS_WAIT_S  = 10   # a wedged daemon accepts TCP but never answers DRb
 
-  def initialize(config, dir:, runner: nil, waiter: nil, releaser: nil, verifier: nil)
+  def initialize(config, dir:, runner: nil, waiter: nil, releaser: nil, verifier: nil,
+                 sleep_fn: nil, clock_fn: nil)
     @c        = config
     @dir      = dir
     @runner   = runner   || method(:run_command)
     @waiter   = waiter   || method(:wait_for_port)
     @releaser = releaser || method(:wait_for_port_release)
     @verifier = verifier || method(:daemon_status)
+    @sleep_fn = sleep_fn  || ->(s) { sleep(s) }
+    # `wait_until_unloaded` below is exercised through its real
+    # implementation in tests (unlike wait_for_port / wait_for_port_release,
+    # which are always fully replaced by waiter:/releaser:), so its wall
+    # clock has to be fakeable too, or a test that forces the timeout path
+    # would burn UNLOAD_WAIT_S of real time and CPU to prove it.
+    @clock    = clock_fn  || -> { Time.now }
   end
 
   def up
@@ -86,6 +95,16 @@ class PcLifecycle
   def start(job, port)
     label = job["Label"]
     @runner.call("launchctl", "bootout", domain(label))
+    # bootout returns before launchd has finished unloading the service, and
+    # bootstrapping while the domain still holds the label fails with
+    # "Bootstrap failed: 5: Input/output error" (observed 2026-08-31 on the
+    # second pc:up of the session). This use of `print` is not the old
+    # kickstart branch returning: it confirms absence, and is never used to
+    # decide whether to reuse a job that is still loaded.
+    unless wait_until_unloaded(label)
+      raise Error, "#{label} was still loaded #{UNLOAD_WAIT_S}s after bootout " \
+                   "(`launchctl print #{domain(label)}`)"
+    end
     # A port still held once our own job is gone belongs to something launchd
     # does not manage. Refuse: otherwise the new job dies on EADDRINUSE and the
     # port check passes against the squatter, reporting success for a process we
@@ -129,6 +148,16 @@ class PcLifecycle
       end
     end
     false
+  end
+
+  def wait_until_unloaded(label)
+    deadline = @clock.call + UNLOAD_WAIT_S
+    loop do
+      _, loaded = @runner.call("launchctl", "print", domain(label))
+      return true unless loaded
+      return false if @clock.call >= deadline
+      @sleep_fn.call(0.25)
+    end
   end
 
   # nil once nothing listens on the port; otherwise lsof's description of who
