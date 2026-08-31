@@ -32,12 +32,19 @@ module Stackchan
 
     # Attach to the launchd-managed daemon. Nothing here spawns it, so there is
     # nothing to wait for: one attempt, then report the command that fixes it.
-    def self.attach(host, port, drb_factory: nil)
+    def self.attach(host, port, drb_factory: nil, warn_fn: nil)
       factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
       d = factory.call("druby://#{host}:#{port}")
       d.status   # force a real round-trip
       d
-    rescue StandardError
+    rescue StandardError => e
+      # The rescue stays broad on purpose: a stopped daemon surfaces here as
+      # SocketError ("connect(...): Connection refused"), not DRb::DRbConnError
+      # (measured on the darwin VM 2026-08-31), so narrowing to a guessed set of
+      # transport classes would replace the NOT_RUNNING_MESSAGE hint with a
+      # backtrace in exactly the case that hint exists for. Naming the exception
+      # is what stops a CLI-side bug from masquerading as a stopped daemon.
+      warn_fn ? warn_fn.call(e) : $stderr.write("stackchan: attach failed: #{e.class}: #{e.message}\n")
       nil
     end
 
