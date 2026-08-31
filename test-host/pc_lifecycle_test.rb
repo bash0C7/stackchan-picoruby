@@ -3,23 +3,34 @@ require 'fileutils'
 require 'pc_lifecycle'
 
 class PcLifecycleTest < Test::Unit::TestCase
-  DIR = "/tmp/pc_lifecycle_test_#{Process.pid}"
+  DIR     = "/tmp/pc_lifecycle_test_#{Process.pid}"
+  APP_DIR = "/tmp/pc_lifecycle_test_app_#{Process.pid}"
+  LOGDIR  = "/tmp/pc_lifecycle_test_log_#{Process.pid}"
+  VM_APP  = File.join(APP_DIR, "App.app")
+  VM_BIN  = File.join(VM_APP, "Contents", "MacOS", "picoruby")
 
   def setup
     @calls = []
-    @bootstrapped = []
+    @holder = nil
     @ports_ok = true
     @status = { ble_connected: true }
+    @bootstrap_result = ["", true]
+    # A real (empty) binary at the expected path, so the app-bundle check in
+    # `up` is genuinely exercised rather than stubbed out.
+    FileUtils.mkdir_p(File.dirname(VM_BIN))
+    FileUtils.touch(VM_BIN)
   end
 
   def teardown
     FileUtils.rm_rf(DIR)
+    FileUtils.rm_rf(APP_DIR)
+    FileUtils.rm_rf(LOGDIR)
   end
 
   def config(**over)
-    { root: "/repo", vm_app: "/App.app", ruby: "/usr/bin/ruby", port: 8787,
+    { root: "/repo", vm_app: VM_APP, ruby: "/usr/bin/ruby", port: 8787,
       sidecar_port: 8788, prefix: "StackChan", ble_fake: true, stub: true,
-      logdir: "/tmp/stackchan-pico", ns: "it" }.merge(over)
+      logdir: LOGDIR, ns: "it" }.merge(over)
   end
 
   def subject(**over)
@@ -27,11 +38,13 @@ class PcLifecycleTest < Test::Unit::TestCase
       config(**over), dir: DIR,
       runner: ->(*argv) {
         @calls << argv
-        # `launchctl print` decides bootstrap-vs-kickstart.
-        return ["", @bootstrapped.include?(argv.last)] if argv[0..1] == %w[launchctl print]
+        # Only the bootstrap call's exit status matters to `start`; bootout's
+        # is discarded, so any other verb can always report success.
+        return @bootstrap_result if argv[0..1] == %w[launchctl bootstrap]
         ["", true]
       },
       waiter:   ->(_port, _timeout) { @ports_ok },
+      releaser: ->(_port, _timeout) { @holder },
       verifier: ->(_port) { @status },
     )
   end
@@ -47,27 +60,30 @@ class PcLifecycleTest < Test::Unit::TestCase
     assert_match(/boot_daemon\.rb/, File.read(File.join(DIR, "com.bash0c7.stackchan-it-daemon.plist")))
   end
 
-  def test_up_bootstraps_a_job_that_is_not_loaded_yet
+  def test_up_always_boots_out_before_bootstrapping
     subject.up
-    assert_equal [["print", "com.bash0c7.stackchan-it-sidecar"],
+    assert_equal [["bootout", "com.bash0c7.stackchan-it-sidecar"],
                   ["bootstrap", "com.bash0c7.stackchan-it-sidecar.plist"],
-                  ["print", "com.bash0c7.stackchan-it-daemon"],
+                  ["bootout", "com.bash0c7.stackchan-it-daemon"],
                   ["bootstrap", "com.bash0c7.stackchan-it-daemon.plist"]],
                  launchctl_verbs
+    assert_false @calls.any? { |a| a[1] == "kickstart" }
   end
 
-  # The determinism the whole design rests on: an already-loaded job is never
-  # left alone, it is killed and started again (-k).
-  def test_up_kickstarts_an_already_loaded_job_so_the_process_is_always_new
-    @bootstrapped = ["gui/#{Process.uid}/com.bash0c7.stackchan-it-sidecar",
-                     "gui/#{Process.uid}/com.bash0c7.stackchan-it-daemon"]
-    subject.up
-    assert_equal [["print", "com.bash0c7.stackchan-it-sidecar"],
-                  ["kickstart", "com.bash0c7.stackchan-it-sidecar"],
-                  ["print", "com.bash0c7.stackchan-it-daemon"],
-                  ["kickstart", "com.bash0c7.stackchan-it-daemon"]],
+  # launchd reads a job's definition only at bootstrap; if a second `up` ever
+  # took a kickstart path it would restart yesterday's plist, and a stub
+  # sidecar would keep answering after the caller asked for the real one.
+  def test_a_second_up_installs_the_new_configuration
+    subject(stub: true).up
+    @calls.clear
+    subject(stub: false).up
+    plist = File.read(File.join(DIR, "com.bash0c7.stackchan-it-sidecar.plist"))
+    assert_not_match(/STACKCHAN_SIDECAR_STUB/, plist)
+    assert_equal [["bootout", "com.bash0c7.stackchan-it-sidecar"],
+                  ["bootstrap", "com.bash0c7.stackchan-it-sidecar.plist"],
+                  ["bootout", "com.bash0c7.stackchan-it-daemon"],
+                  ["bootstrap", "com.bash0c7.stackchan-it-daemon.plist"]],
                  launchctl_verbs
-    assert_true @calls.any? { |a| a[0..2] == %w[launchctl kickstart -k] }
   end
 
   def test_up_fails_when_a_port_never_comes_up
@@ -80,6 +96,43 @@ class PcLifecycleTest < Test::Unit::TestCase
   def test_up_fails_when_the_daemon_is_not_ble_connected
     @status = { ble_connected: false }
     assert_raise(PcLifecycle::Error) { subject.up }
+  end
+
+  # A wedged daemon can accept TCP and never answer DRb. This has to fail
+  # with a different message than "not connected" -- the operator needs to
+  # know the daemon is unresponsive, not merely BLE-less.
+  def test_up_fails_when_the_daemon_never_answers_status
+    @status = nil
+    error = assert_raise(PcLifecycle::Error) { subject.up }
+    assert_match(/did not answer status/, error.message)
+  end
+
+  # A port still held after our own job has been booted out belongs to a
+  # process launchd does not manage -- the exact shape of all three
+  # 2026-08-31 incidents. `up` must refuse rather than let the new job die
+  # on EADDRINUSE while the port check passes against the squatter.
+  def test_up_refuses_when_something_outside_launchd_still_holds_the_port
+    @holder = "ruby     38562 bash   10u  IPv4 0x0      0t0  TCP *:8788 (LISTEN)"
+    error = assert_raise(PcLifecycle::Error) { subject.up }
+    assert_true error.message.include?(@holder)
+  end
+
+  def test_up_fails_when_bootstrap_itself_fails
+    @bootstrap_result = ["bootstrap refused", false]
+    error = assert_raise(PcLifecycle::Error) { subject.up }
+    assert_match(/bootstrap refused/, error.message)
+  end
+
+  def test_up_creates_the_log_directory
+    FileUtils.rm_rf(LOGDIR)
+    subject.up
+    assert_true Dir.exist?(LOGDIR)
+  end
+
+  def test_up_refuses_when_the_app_bundle_binary_is_missing
+    File.unlink(VM_BIN)
+    error = assert_raise(PcLifecycle::Error) { subject.up }
+    assert_match(/pc:app_bundle/, error.message)
   end
 
   def test_down_boots_out_both_jobs_and_removes_the_plists

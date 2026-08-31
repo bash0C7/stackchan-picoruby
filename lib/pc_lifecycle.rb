@@ -4,7 +4,8 @@
 # whether a resident process was usable is what produced all three of the
 # 2026-08-31 incidents (a busy daemon killed as wedged, an 8-day-stale stub
 # sidecar, a healthy daemon killed over one transient DRb error). `up` always
-# ends with processes launchd started just now.
+# ends with processes launchd started just now, from the plist just written.
+require "fileutils"
 require_relative "launch_agent"
 
 class PcLifecycle
@@ -12,33 +13,52 @@ class PcLifecycle
 
   SIDECAR_WAIT_S = 15
   DAEMON_WAIT_S  = 30   # BLE scan + GATT discovery; measured 13s on 2026-08-31
+  RELEASE_WAIT_S = 10   # grace for a booted-out job to let go of its port
+  STATUS_WAIT_S  = 10   # a wedged daemon accepts TCP but never answers DRb
 
-  def initialize(config, dir:, runner: nil, waiter: nil, verifier: nil)
+  def initialize(config, dir:, runner: nil, waiter: nil, releaser: nil, verifier: nil)
     @c        = config
     @dir      = dir
     @runner   = runner   || method(:run_command)
     @waiter   = waiter   || method(:wait_for_port)
+    @releaser = releaser || method(:wait_for_port_release)
     @verifier = verifier || method(:daemon_status)
   end
 
   def up
+    # launchd does not create the parent of StandardOutPath. Without this the
+    # job fails to spawn at all, and the timeout below points the operator at a
+    # log file that was never created.
+    FileUtils.mkdir_p(@c[:logdir])
+    vm = File.join(@c[:vm_app], "Contents", "MacOS", "picoruby")
+    unless File.exist?(vm)
+      raise Error, "#{vm} is missing — run `bundle exec rake pc:app_bundle` first. " \
+                   "The daemon has to run from the signed bundle or macOS denies it CoreBluetooth."
+    end
+
     sidecar = LaunchAgent.sidecar_job(root: @c[:root], ruby: @c[:ruby], port: @c[:sidecar_port],
                                       stub: @c[:stub], logdir: @c[:logdir], ns: @c[:ns])
     daemon  = LaunchAgent.daemon_job(root: @c[:root], vm_app: @c[:vm_app], port: @c[:port],
                                      prefix: @c[:prefix], ble_fake: @c[:ble_fake],
                                      logdir: @c[:logdir], ns: @c[:ns])
-    start(sidecar)
+
+    start(sidecar, @c[:sidecar_port])
     unless @waiter.call(@c[:sidecar_port], SIDECAR_WAIT_S)
       raise Error, "sidecar did not listen on #{@c[:sidecar_port]} within #{SIDECAR_WAIT_S}s " \
                    "(see #{@c[:logdir]}/sidecar.log, `launchctl print gui/#{Process.uid}/#{sidecar['Label']}`)"
     end
-    start(daemon)
+    start(daemon, @c[:port])
     unless @waiter.call(@c[:port], DAEMON_WAIT_S)
       raise Error, "daemon did not listen on #{@c[:port]} within #{DAEMON_WAIT_S}s " \
                    "(see #{@c[:logdir]}/daemon.log, `launchctl print gui/#{Process.uid}/#{daemon['Label']}`)"
     end
+
     status = @verifier.call(@c[:port])
-    unless status && status[:ble_connected]
+    if status.nil?
+      raise Error, "daemon on #{@c[:port]} is listening but did not answer status within " \
+                   "#{STATUS_WAIT_S}s (see #{@c[:logdir]}/daemon.log)"
+    end
+    unless status[:ble_connected]
       raise Error, "daemon is listening but not connected to the robot: #{status.inspect}"
     end
     status
@@ -56,15 +76,28 @@ class PcLifecycle
 
   private
 
-  def start(job)
+  # Always bootout then bootstrap, never kickstart. launchd caches a job's
+  # definition when it is bootstrapped; `kickstart -k` restarts the process from
+  # that cached copy and never rereads the plist (measured 2026-08-31: a job
+  # bootstrapped with PROBE_VALUE=first still ran `first` after its plist had
+  # been rewritten to `second`). Reusing a loaded job would restart yesterday's
+  # configuration — the stale stub sidecar this design exists to prevent,
+  # reappearing inside the fix.
+  def start(job, port)
     path  = LaunchAgent.write(job, dir: @dir)
     label = job["Label"]
-    _, loaded = @runner.call("launchctl", "print", domain(label))
-    if loaded
-      @runner.call("launchctl", "kickstart", "-k", domain(label))
-    else
-      @runner.call("launchctl", "bootstrap", "gui/#{Process.uid}", path)
+    @runner.call("launchctl", "bootout", domain(label))
+    # A port still held once our own job is gone belongs to something launchd
+    # does not manage. Refuse: otherwise the new job dies on EADDRINUSE and the
+    # port check passes against the squatter, reporting success for a process we
+    # did not start.
+    holder = @releaser.call(port, RELEASE_WAIT_S)
+    if holder
+      raise Error, "port #{port} is still held #{RELEASE_WAIT_S}s after booting out #{label}, " \
+                   "so a process outside launchd owns it. Stop it, then run pc:up again:\n#{holder}"
     end
+    out, ok = @runner.call("launchctl", "bootstrap", "gui/#{Process.uid}", path)
+    raise Error, "launchctl bootstrap failed for #{label} (#{path}): #{out.to_s.strip}" unless ok
   end
 
   def domain(label)
@@ -90,10 +123,29 @@ class PcLifecycle
     false
   end
 
+  # nil once nothing listens on the port; otherwise lsof's description of who
+  # still does, so the operator is handed a PID rather than "it didn't work".
+  def wait_for_port_release(port, timeout_s)
+    deadline = Time.now + timeout_s
+    loop do
+      holder = IO.popen(["lsof", "-nP", "-iTCP:#{port}", "-sTCP:LISTEN"],
+                        err: [:child, :out], &:read).to_s
+      return nil if holder.strip.empty?
+      return holder if Time.now >= deadline
+      sleep 0.25
+    end
+  end
+
   def daemon_status(port)
     require "drb"
+    require "timeout"
     DRb.start_service
-    DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{port}").status
+    # A daemon can accept TCP and never answer DRb (observed 2026-08-11). Without
+    # this bound, `rake pc:up` hangs with no output and no way to tell that from
+    # a slow BLE connect.
+    Timeout.timeout(STATUS_WAIT_S) do
+      DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{port}").status
+    end
   rescue StandardError
     nil
   end
