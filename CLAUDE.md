@@ -186,6 +186,7 @@ Spec/plan: `docs/superpowers/specs/2026-06-17-picotest-native-test-migration-des
 - **`build_config/xtensa-esp-picoruby.rb` に新 gem 行追加 → `rake r2p2:setup` 必須**。`rake r2p2:build_flash` 単独では `gem_init.c` / `picogem_init.c` が再生成されず新 gem が含まれない
 - **既存 gem の `mrblib/*.rb` 内容を変えただけなら軽量修復ルート**: `cd $R2P2/components/picoruby-esp32/picoruby && MRUBY_CONFIG=$R2P2/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb rake` → `idf.py build flash`。重い `r2p2:setup` フル不要
 - **`conf.gem` 表記は `gemdir:` のみ**。`path:` は picoruby の `MRuby::LoadGems` に拒否される
+- **`conf.gem github:` で取る gem は `build/repos/` にキャッシュされ、pull されない**。gem 側を直して push しても、firmware を焼き直すだけでは**入らない**。`clean_picoruby_build` が消すのは `build/esp32-picoruby` の方だけで、clone した実体は `components/picoruby-esp32/picoruby/build/repos/esp32-picoruby/<gem>` に残り続ける。症状は「直したのに測定値が 1 mm も動かない」で、エラーは一切出ない。**gem を直したら必ず `git -C <その path> log --oneline -1` で push した commit か確認し、違えばそのディレクトリを `rm -rf` してから build する**
 - **picoruby-uart on-device API の 3 つの罠**: (1) unit symbol は `:ESP32_UART0` / `:ESP32_UART1` / `:ESP32_UART2` (`:UART1` 等を渡すと silent Guru Meditation crash)、(2) `write` 引数は **String only**、Array は TypeError なので `array.pack('C*')` で変換、(3) `read(n)` は timeout_ms 無視 — `readpartial(n)` を使って poll を自前で回す
 
 ### bring-up app の書き方 (upload race-free)
