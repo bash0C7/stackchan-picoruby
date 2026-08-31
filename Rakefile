@@ -664,4 +664,35 @@ namespace :pc do
     sh "codesign", "--force", "--deep", "-s", "-", app
     puts "[pc:app_bundle] #{app} ready (STACKCHAN_PICORUBY_APP defaults here)"
   end
+
+  def pc_lifecycle
+    require_relative "lib/pc_lifecycle"
+    PcLifecycle.new(
+      { root:         __dir__,
+        vm_app:       ENV["STACKCHAN_PICORUBY_APP"] || File.expand_path("~/Applications/StackchanPico.app"),
+        ruby:         RbConfig.ruby,
+        port:         (ENV["PORT"] || "8787").to_i,
+        sidecar_port: (ENV["SIDECAR_PORT"] || "8788").to_i,
+        prefix:       ENV["PREFIX"] || "StackChan",
+        ble_fake:     ENV["BLE_FAKE"] == "1",
+        stub:         ENV["STUB"] == "1",
+        logdir:       ENV["STACKCHAN_LOGDIR"] || "/tmp/stackchan-pico",
+        ns:           ENV["NS"] },
+      dir: File.expand_path("~/Library/LaunchAgents"),
+    )
+  end
+
+  desc "(re)start the PC-side backends under launchd. STUB=1 / BLE_FAKE=1 / PREFIX= / PORT= / SIDECAR_PORT= / NS="
+  task :up do
+    status = pc_lifecycle.up
+    puts "[pc:up] backends running — #{status.inspect}"
+  rescue PcLifecycle::Error => e
+    abort "[pc:up] #{e.message}"
+  end
+
+  desc "stop the PC-side backends and remove their launchd definitions"
+  task :down do
+    pc_lifecycle.down
+    puts "[pc:down] backends stopped"
+  end
 end
