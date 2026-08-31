@@ -86,12 +86,17 @@ pc/stackchan-pico/bin/stackchan stop
 Verbs: connect, status, stop, say, chat, face, led, servo, torque, selftest,
 raw, touch, demo, tui, calibrate.
 
-`stop` asks the daemon to exit; launchd leaves it down (`KeepAlive` only
-restarts an abnormal exit) but its plist stays in `~/Library/LaunchAgents/`,
-so it returns at the next login. `bundle exec rake pc:down` is what removes
-the plists from `~/Library/LaunchAgents/` and keeps both jobs down. A verb
-also has no time limit any more — against a wedged daemon it hangs rather
-than failing.
+**Use `bundle exec rake pc:down` to stop the backends.** It boots both jobs
+out and removes their plists from `~/Library/LaunchAgents/`. The `stop` verb
+is not the same thing: it asks the daemon to exit — launchd leaves it down,
+since `KeepAlive` only restarts an abnormal exit — but the plist stays, so
+the daemon returns at the next login. `stop` also acknowledges nothing. It
+runs inside the daemon's DRb server task and tears that task down, so the
+reply never reaches the CLI: a successful stop prints nothing, and the verb
+can hang instead of returning. The BLE link is not closed by the command
+either; the Mac drops it on its own 15-20s idle timeout once the daemon's
+keepalive stops. A verb has no time limit any more, so against a wedged
+daemon it hangs rather than failing.
 
 `bin/stackchan` env — this is all it reads now, since it only attaches:
 `STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`, `STACKCHAN_PORT` (8787).
