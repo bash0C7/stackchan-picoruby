@@ -59,11 +59,18 @@ can pass macOS TCC — see "macOS TCC / CoreBluetooth" below):
 bundle exec rake pc:app_bundle
 ```
 
-Then drive it through the wrapper (auto-starts the sidecar + daemon, connects
-to a physical StackChan by default):
+Then bring the backends up under launchd — `STUB=1` picks the stub sidecar
+(no Apple Foundation Model / say / afconvert calls), omit it for the real
+sidecar:
 
 ```sh
-export STACKCHAN_SIDECAR_STUB=1     # omit for the real FM + say/afconvert sidecar
+bundle exec rake pc:up STUB=1       # omit STUB=1 for the real FM + say/afconvert sidecar
+```
+
+Then drive them through the wrapper, which only attaches (connects to a
+physical StackChan by default):
+
+```sh
 pc/stackchan-pico/bin/stackchan face joy
 pc/stackchan-pico/bin/stackchan led left red blink
 pc/stackchan-pico/bin/stackchan chat "やあ"
@@ -78,14 +85,21 @@ pc/stackchan-pico/bin/stackchan stop
 Verbs: connect, status, stop, say, chat, face, led, servo, torque, selftest,
 raw, touch, demo, tui, calibrate.
 
-`bin/stackchan` env: `STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`,
-`STACKCHAN_PORT` (8787), `STACKCHAN_SIDECAR_PORT` (8788), `STACKCHAN_SIDECAR_STUB`,
-`STACKCHAN_BLE_FAKE=1` (swap in `FakeBleClient` for testing verb logic without
-hardware in the loop), `STACKCHAN_BLE_NAME_PREFIX` (real mode only, default
-`StackChan`).
+`bin/stackchan` env — this is all it reads now, since it only attaches:
+`STACKCHAN_PICORUBY` (VM path), `STACKCHAN_ROOT`, `STACKCHAN_PORT` (8787).
+
+`bundle exec rake pc:up` env (baked into the launchd plists it writes, not
+read by the wrapper): `STUB=1` (stub sidecar, was `STACKCHAN_SIDECAR_STUB`),
+`BLE_FAKE=1` (swap in `FakeBleClient` for testing verb logic without hardware
+in the loop, was `STACKCHAN_BLE_FAKE=1`), `PREFIX=` (real mode only, default
+`StackChan`, was `STACKCHAN_BLE_NAME_PREFIX`), `PORT=` (daemon drb port,
+default 8787), `SIDECAR_PORT=` (default 8788, was `STACKCHAN_SIDECAR_PORT`),
+`NS=` (launchd label namespace), plus `STACKCHAN_LOGDIR` and
+`STACKCHAN_PICORUBY_APP` (unchanged names, read the same way).
 
 ```sh
-STACKCHAN_BLE_FAKE=1 pc/stackchan-pico/bin/stackchan connect   # no hardware needed
+bundle exec rake pc:up BLE_FAKE=1   # no hardware needed
+pc/stackchan-pico/bin/stackchan connect
 ```
 
 ## Status
@@ -100,7 +114,7 @@ STACKCHAN_BLE_FAKE=1 pc/stackchan-pico/bin/stackchan connect   # no hardware nee
   state — the darwin central port has no API to actively close a GAP
   connection (see the top-level README's Dependencies / picoruby fork
   entry) — so the ESP32 peripheral never re-advertises and the following
-  rescan finds nothing. `STACKCHAN_BLE_FAKE=1` (host, no radio) remains
+  rescan finds nothing. `BLE_FAKE=1` (`rake pc:up`, host, no radio) remains
   verified for every verb, chat via REAL FM, say via REAL say/afconvert,
   demo/tui/calibrate flows, touch polling — used for testing verb logic
   without hardware.
@@ -109,12 +123,14 @@ STACKCHAN_BLE_FAKE=1 pc/stackchan-pico/bin/stackchan connect   # no hardware nee
 
 macOS hard-aborts (TCC, `SIGABRT`) any CoreBluetooth call from a process not
 launched through LaunchServices out of an app bundle declaring
-`NSBluetoothAlwaysUsageDescription` — a direct fork/exec of
-`build/host/bin/picoruby`, even signed and previously authorized, always
-crashes. `bin/stackchan`'s real-mode daemon spawn therefore runs the VM via
-`open -a` against `~/Applications/StackchanPico.app` (built by `rake
-pc:app_bundle`, path overridable with `STACKCHAN_PICORUBY_APP`), never a
-direct exec. Rebuild the bundle (`rake pc:app_bundle`) after every
+`NSBluetoothAlwaysUsageDescription`, or as a launchd job — a direct fork/exec
+from a shell, even signed and previously authorized, always crashes.
+`bundle exec rake pc:up` launches the daemon as a LaunchAgent whose
+`ProgramArguments` points straight at the binary inside the signed
+`~/Applications/StackchanPico.app` bundle (built by `rake pc:app_bundle`,
+path overridable with `STACKCHAN_PICORUBY_APP`); launchd is an acceptable
+responsible process for TCC (confirmed by a 2026-08-31 spike), so this needs
+no `open -a` step. Rebuild the bundle (`rake pc:app_bundle`) after every
 `macos:build` — the ad-hoc code signature, and the TCC authorization tied to
 it, is bound to the binary's exact bytes.
 

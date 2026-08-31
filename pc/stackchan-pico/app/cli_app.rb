@@ -3,9 +3,10 @@
 # Unix-socket DRb; picoruby-drb is TCP/WS only).
 #
 # Scope (sub-project #3): device-control verbs. chat (AI) waits on the CRuby
-# sidecar bridge (#4); tui / demo / calibrate are ported later. The CRuby CLI's
-# auto-spawn of the daemon is deferred — here the daemon is started separately;
-# a verb against an unreachable daemon reports "not connected".
+# sidecar bridge (#4); tui / demo / calibrate are ported later. Auto-spawn of
+# the daemon is gone, not deferred — the daemon is a launchd job started by
+# `rake pc:up`; a verb against an unreachable daemon reports NOT_RUNNING_MESSAGE,
+# which names that command.
 module Stackchan
   class CLI
     VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui calibrate].freeze

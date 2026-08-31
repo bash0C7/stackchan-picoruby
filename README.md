@@ -76,7 +76,7 @@ app/application.rb   Face rendering, the WS2812 LED ring driver, the Si12T
                      and the cold-boot init sequence.
 
 pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
-                           PicoRuby — CLI + auto-spawn daemon + BLE central.
+                           PicoRuby — CLI + launchd-managed daemon + BLE central.
                            See pc/stackchan-pico/README.md.
 pc/stackchan/              CRuby support library for the AI/voice sidecar
                            only (Apple Foundation Model + say/afconvert
@@ -103,13 +103,17 @@ suite. Device interaction (build, flash, deploy, capture) goes through the
 
 A single CLI `stackchan` drives the robot. See
 [pc/stackchan-pico/README.md](pc/stackchan-pico/README.md) for the full
-architecture, env vars, and verb list. The wrapper auto-spawns the CRuby
-AI/voice sidecar and the PicoRuby daemon (which owns the BLE connection),
-connecting to a physical StackChan by default:
+architecture, env vars, and verb list. `bundle exec rake pc:up` starts both
+backends — the CRuby AI/voice sidecar and the PicoRuby daemon, which owns
+the BLE connection — under launchd, recreating them every time it runs;
+`rake pc:down` stops the backends and removes their launchd plists. The CLI
+only attaches to the already-running daemon, connecting to a physical
+StackChan by default:
 
 ```bash
+bundle exec rake pc:up                                   # (re)start the backends under launchd
 pc/stackchan-pico/bin/stackchan connect                  # explicit: bring the link up
-pc/stackchan-pico/bin/stackchan status                   # observe only (no auto-spawn)
+pc/stackchan-pico/bin/stackchan status                   # observe only
 pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
 pc/stackchan-pico/bin/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 pc/stackchan-pico/bin/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
