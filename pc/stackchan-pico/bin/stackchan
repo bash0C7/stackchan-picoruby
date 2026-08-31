@@ -1,198 +1,24 @@
 #!/bin/sh
 # StackChan PC-side CLI entry (PicoRuby edition).
 #
-# Thin lifecycle wrapper: ensure the CRuby AI/voice sidecar and the PicoRuby
-# daemon are running, then dispatch the verb through the PicoRuby CLI. The
-# wrapper owns process spawning because PicoRuby's `system` cannot background
-# or redirect; the CLI itself only attaches over picoruby-drb.
+# Attach only. The daemon and the AI/voice sidecar are launchd jobs; bring them
+# up with `bundle exec rake pc:up` (see the deterministic-backend-lifecycle
+# spec). This script deliberately does not probe, spawn or kill anything:
+# deciding whether a resident process was usable is what produced the
+# 2026-08-31 incidents (a busy daemon killed as wedged, an 8-day-stale stub
+# sidecar, a healthy daemon killed over one transient DRb error), and the
+# probing itself cost ~0.62s of CRuby startup on every command.
 #
 #   stackchan <verb> [args]
-#   stackchan stop            # stop the daemon (leaves the sidecar)
 #
 # Config via env (defaults target this dev checkout):
-#   STACKCHAN_PICORUBY   path to the picoruby VM (shared gem baked in)
+#   STACKCHAN_PICORUBY   path to the picoruby VM
 #   STACKCHAN_ROOT       repo root (for the app boot scripts)
-#   STACKCHAN_PORT       daemon drb port           (default 8787)
-#   STACKCHAN_SIDECAR_PORT                          (default 8788)
-#   STACKCHAN_SIDECAR_STUB=1   use the stub sidecar (no FM/say)
-#   STACKCHAN_BLE_FAKE=1       swap in FakeBleClient (no radio) instead of
-#                              the default physical StackChan over
-#                              picoruby-ble (StackchanCentral), for testing
-#                              verb logic without hardware in the loop
-#   STACKCHAN_BLE_NAME_PREFIX  advertised name prefix to scan for (default
-#                              "StackChan"), real mode only
+#   STACKCHAN_PORT       daemon drb port (default 8787)
 set -eu
 
 ROOT="${STACKCHAN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 VM="${STACKCHAN_PICORUBY:-$ROOT/vendor/R2P2-darwin/build/host/bin/picoruby}"
-VM_APP="${STACKCHAN_PICORUBY_APP:-$HOME/Applications/StackchanPico.app}"
 PORT="${STACKCHAN_PORT:-8787}"
-SIDECAR_PORT="${STACKCHAN_SIDECAR_PORT:-8788}"
-APP="$ROOT/pc/stackchan-pico/app"
-WATCHDOG="$ROOT/pc/stackchan-pico/bin/run_with_watchdog.rb"
-LOGDIR="${STACKCHAN_LOGDIR:-/tmp/stackchan-pico}"
-mkdir -p "$LOGDIR"
 
-listening() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
-
-# TCP alone can't tell a wedged daemon from a healthy one -- the OS accept
-# queue completes the handshake even if the app never calls accept() at the
-# DRb layer (observed 2026-08-11: a wedged daemon still passed `listening`).
-# This does a real DRb round-trip under run_with_watchdog.rb so a wedge is
-# caught (and diagnosed + killed by the watchdog itself) instead of being
-# mistaken for "already running fine".
-probe_daemon() {
-  listening "$PORT" || return 1
-  ruby "$WATCHDOG" 5 preflight ruby -e '
-    require "drb"
-    DRb.start_service
-    DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{ARGV[0]}").status
-  ' "$PORT" >/dev/null 2>&1
-}
-
-# Same "TCP alive != app alive" gap as probe_daemon, applied to the sidecar:
-# if its own Timeout.timeout (added to bound Apple Intelligence / TTS calls)
-# fails to interrupt a truly stuck FFI call, the sidecar process wedges but
-# keeps its listen socket open. Without this probe ensure_sidecar would keep
-# reusing that dead process forever.
-probe_sidecar() {
-  listening "$SIDECAR_PORT" || return 1
-  ruby "$WATCHDOG" 5 sidecar_preflight ruby -e '
-    require "drb"
-    DRb.start_service
-    DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{ARGV[0]}").ping
-  ' "$SIDECAR_PORT" >/dev/null 2>&1
-}
-
-# Rough external safety-net estimate of the BLE audio-done wait, mirroring
-# app/ble_client.rb's measured formula (BASE_MS=3300, ms = BASE + n*6/5) but
-# from an estimated byte count (~1200 bytes/char, i.e. ~150ms of 8kHz mu-law
-# audio per character -- a generous, not tightly-measured, ja TTS rate)
-# since the real byte count isn't known until synthesis runs. Capped at 180s
-# to match AUDIO_DONE_TIMEOUT_MAX_MS -- the real wait never exceeds that
-# regardless of text length, so neither should this external estimate. This
-# is only a fallback net, not the primary wait (that's the daemon/BLE
-# client's own audio_done_timeout_ms, which uses the real byte count).
-estimate_audio_wait_s() {
-  chars=$(printf '%s' "$1" | wc -m | tr -d ' ')
-  case "$chars" in ""|*[!0-9]*) chars=0 ;; esac
-  ms=$((3300 + chars * 1200 * 6 / 5))
-  s=$((ms / 1000 + 1))
-  [ "$s" -gt 180 ] && s=180
-  echo "$s"
-}
-
-# touch/tui/calibrate are intentionally long-running or interactive
-# (infinite poll loop / REPL / HITL Enter-key prompts) -- excluded from
-# the watchdog by returning an empty timeout. connect shares status/stop's
-# 30s bucket as a single DRb round-trip. say/chat buckets are computed from
-# the actual text (see estimate_audio_wait_s) rather than a static worst
-# case: say's text length is known at invocation time; chat's AI reply
-# length isn't, but sidecar.rb's PERSONA constrains replies to ~19 chars,
-# so a small fixed estimate covers it instead of say's unbounded-length
-# ceiling.
-CHAT_REPLY_MAX_CHARS_ESTIMATE=19
-
-# 60 mirrors pc/sidecar/service.rb's DEFAULT_TIMEOUT_S (the sidecar's own
-# Timeout.timeout bound; bash can't reference the Ruby constant directly, so
-# it's a mirrored literal). chat sums it twice because chat internally calls
-# say() after respond() -- one 60s pad for the AI round-trip, one for TTS.
-# +10 is margin for DRb round-trip/process overhead on top of the wait.
-watchdog_timeout_for() {
-  case "$1" in
-    say)
-      echo $((60 + $(estimate_audio_wait_s "${2:-}") + 10)) ;;
-    chat)
-      no_speak=0
-      for a in "$@"; do [ "$a" = "--no-speak" ] && no_speak=1; done
-      if [ "$no_speak" -eq 1 ]; then
-        echo $((60 + 10))
-      else
-        chat_audio_s=$(estimate_audio_wait_s "$(printf 'a%.0s' $(seq 1 "$CHAT_REPLY_MAX_CHARS_ESTIMATE"))")
-        echo $((60 + 60 + chat_audio_s + 10))
-      fi ;;
-    face|led|servo|torque|selftest|raw|status|stop|connect) echo 30 ;;
-    demo)
-      dur=10
-      shift
-      while [ $# -gt 0 ]; do
-        if [ "$1" = "--duration" ] && [ $# -ge 2 ]; then dur="$2"; fi
-        shift
-      done
-      case "$dur" in ""|*[!0-9]*) dur=10 ;; esac
-      echo $((dur + 60)) ;;
-    *) echo "" ;;
-  esac
-}
-
-ensure_sidecar() {
-  if listening "$SIDECAR_PORT"; then
-    probe_sidecar && return 0
-    echo "stackchan: sidecar on port $SIDECAR_PORT appears wedged -- recovering (diagnostics in $LOGDIR/hang-incidents/ if the probe timed out)" >&2
-    pkill -9 -f "ruby.*pc/sidecar/sidecar\.rb" 2>/dev/null || true
-    sleep 1
-  fi
-  ( cd "$ROOT/pc/stackchan-pico" >/dev/null
-    BUNDLE_GEMFILE="$ROOT/pc/stackchan/Gemfile" \
-    STACKCHAN_SIDECAR_STUB="${STACKCHAN_SIDECAR_STUB:-}" \
-    bundle exec ruby "$ROOT/pc/sidecar/sidecar.rb" "$SIDECAR_PORT" \
-      > "$LOGDIR/sidecar.log" 2>&1 & )
-  for _ in $(seq 1 60); do listening "$SIDECAR_PORT" && return 0; sleep 0.25; done
-  echo "stackchan: sidecar failed to start (see $LOGDIR/sidecar.log)" >&2; return 1
-}
-
-ensure_daemon() {
-  if listening "$PORT"; then
-    probe_daemon && return 0
-    echo "stackchan: daemon on port $PORT appears wedged -- recovering (diagnostics in $LOGDIR/hang-incidents/ if the probe timed out)" >&2
-    pkill -9 -f "picoruby.*boot_daemon_real.rb" 2>/dev/null || true
-    pkill -9 -f "picoruby.*boot_daemon.rb" 2>/dev/null || true
-    sleep 1
-  fi
-  if [ "${STACKCHAN_BLE_FAKE:-}" = "1" ]; then
-    "$VM" "$APP/boot_daemon.rb" "$ROOT" "$PORT" > "$LOGDIR/daemon.log" 2>&1 &
-    retries=60
-  else
-    # macOS hard-crashes (SIGABRT, TCC namespace) any direct fork/exec of a
-    # CoreBluetooth-touching binary that wasn't launched through
-    # LaunchServices out of a bundle declaring NSBluetoothAlwaysUsageDescription
-    # -- even once that bundle identifier already has Bluetooth authorization
-    # granted from a prior `open`-launched run. So real mode always launches
-    # via `open -a` against VM_APP (see `rake pc:app_bundle`), never $VM directly.
-    if [ ! -d "$VM_APP" ]; then
-      echo "stackchan: $VM_APP missing — run \`bundle exec rake pc:app_bundle\` first (real BLE mode needs a signed .app bundle for CoreBluetooth/TCC)" >&2
-      return 1
-    fi
-    open -a "$VM_APP" --stdout "$LOGDIR/daemon.log" --stderr "$LOGDIR/daemon.log" \
-      --args "$APP/boot_daemon_real.rb" "$ROOT" "$PORT" "${STACKCHAN_BLE_NAME_PREFIX:-StackChan}"
-    retries=120   # real connect (scan+GATT discovery) can take up to ~15s
-  fi
-  i=0
-  while [ "$i" -lt "$retries" ]; do
-    listening "$PORT" && return 0
-    i=$((i + 1))
-    sleep 0.25
-  done
-  echo "stackchan: daemon failed to start (see $LOGDIR/daemon.log)" >&2; return 1
-}
-
-verb="${1:-}"
-case "$verb" in
-  status) : ;;                       # observe-only: don't spawn anything
-  stop)   ensure_daemon || true ;;   # stderr NOT suppressed: a wedge-recovery notice from
-                                      # ensure_daemon (added for daemon hang detection) must
-                                      # reach the operator, especially on the verb most likely
-                                      # to be run first when a wedge is suspected
-  *)      ensure_sidecar && ensure_daemon ;;
-esac
-
-timeout_s=$(watchdog_timeout_for "$@")
-if [ -n "$timeout_s" ]; then
-  set +e
-  ruby "$WATCHDOG" "$timeout_s" "$verb" "$VM" "$APP/boot_cli.rb" "$ROOT" "$PORT" "$@"
-  rc=$?
-  set -e
-  exit "$rc"
-else
-  exec "$VM" "$APP/boot_cli.rb" "$ROOT" "$PORT" "$@"
-fi
+exec "$VM" "$ROOT/pc/stackchan-pico/app/boot_cli.rb" "$ROOT" "$PORT" "$@"
