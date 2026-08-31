@@ -26,6 +26,10 @@ module PicotestHarness
   DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
+  # Loadable anywhere: its DRb and TCPSocket patches are guarded on those
+  # constants, which the host VM does not have, leaving the SocketReadRetry
+  # policy the suite exercises.
+  PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
   # Same order as the boot_daemon*.rb load lists: namespace root first.
   SHARED_MRBLIB = %w[
     stackchan.rb
@@ -59,11 +63,12 @@ module PicotestHarness
         load PC_STUBS_RB
         SHARED_MRBLIB.each { |f| require f }
         RubyClassExtract.load_classes_from(BLE_CLIENT_RB)
+        load PC_DRB_PATCH_RB
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(BLE_CLIENT_RB, EXTRACTED_PC_RB)
-        files = [PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB]
+        files = [PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, PC_DRB_PATCH_RB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files
       },
