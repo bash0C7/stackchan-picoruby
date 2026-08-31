@@ -90,4 +90,15 @@ class PcLifecycleTest < Test::Unit::TestCase
                   ["bootout", "com.bash0c7.stackchan-it-daemon"]], launchctl_verbs
     assert_empty Dir[File.join(DIR, "*.plist")]
   end
+
+  # rake pc:up reaches this file through the Rakefile's require_relative, with
+  # no -Ilib on the command line. The suite always runs with -Ilib, so without
+  # this check a require that only resolves under -Ilib passes every test here
+  # and still crashes both rake tasks.
+  def test_the_file_loads_the_way_rake_loads_it_without_ilib
+    path = File.expand_path("../lib/pc_lifecycle", __dir__)
+    ok = system(RbConfig.ruby, "-e", "require_relative #{path.inspect}",
+                out: File::NULL, err: File::NULL)
+    assert_true ok, "lib/pc_lifecycle.rb does not load without -Ilib — rake pc:up would raise LoadError"
+  end
 end

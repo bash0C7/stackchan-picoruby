@@ -5,7 +5,7 @@
 # 2026-08-31 incidents (a busy daemon killed as wedged, an 8-day-stale stub
 # sidecar, a healthy daemon killed over one transient DRb error). `up` always
 # ends with processes launchd started just now.
-require "launch_agent"
+require_relative "launch_agent"
 
 class PcLifecycle
   class Error < StandardError; end
