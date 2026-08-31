@@ -82,6 +82,11 @@ PC連携アバターパターン：
 
 固定リストに頼らない。以下の順で確認する。
 
+確認済みの差異 (2026-08-31 に host / darwin 両 VM で実測): **`rescue` 節の裸の `raise` は元例外を
+再送出しない** — 空メッセージの `RuntimeError` が新たに上がり、クラスもメッセージも失われる (CRuby は保存)。
+再送出は必ず `rescue Foo => e` … `raise e` と書く。再現: `begin; raise "x"; rescue => e; raise; end` を
+両 VM で走らせてメッセージを見る。
+
 1. `chiebukuro-mcp` の Ruby/PicoRuby ナレッジDB (`chiebukuro_query_ruby_knowledge` / `chiebukuro_semantic_search_ruby_knowledge`)
 2. 答えが無い・根拠が必要なら `/Users/bash/dev/src/github.com/picoruby/picoruby` を Explore subagent で調査
 3. 仕様確認できないまま「禁止メソッド」前提で書かない
