@@ -102,6 +102,13 @@ head to forward, then sends `<torque:on>` to engage. Detail frame on position co
 reports `<YL_actual:N,PU_actual:N>` or `<YL_actual:unknown,PU_actual:unknown>` (where
 unknown is a protocol-level signal that operator manual calibration is needed).
 
+**detail は「コマンド受信時点の姿勢」であり、移動完了後の姿勢ではない。** device は
+`@head.apply` (移動指令) の直後に読むので、`<T:600>` 付きコマンドの detail には移動前の値が出る
+(`YL:30` の直後に `YL_actual:1`、次コマンドの detail に前回の 29 が出る、の形)。移動完了後の値を
+ACK に載せると ACK が T ms 遅れ、その間 LinkLoop が止まって Phase 1 で解体した遅延要因が戻るため、
+この意味付けを採る (2026-08-31 裁定)。detail の運用目的は `unknown` 検出 = キャリブレーション要否の
+判定で、これは読み取り時点に依存しない。移動後の姿勢が要るときは移動完了を待って `<read:pos>` を撃つ。
+
 CLI (実行は `pc/stackchan-pico/bin/stackchan <verb>`):
 `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan selftest`。
 servo の Exit code 6 = `EXIT_CALIBRATION_NEEDED`。

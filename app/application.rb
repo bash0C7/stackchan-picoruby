@@ -832,6 +832,14 @@ module StackchanApp
       true
     end
 
+    # Reports the pose AT COMMAND RECEIPT, not after the move: handle calls
+    # @head.apply (which only commands the move) and lands here immediately, so
+    # a <T:600> command reads the servo while it is still leaving the old pose.
+    # Deliberate (2026-08-31): waiting out T before answering would delay the
+    # ACK by T and stall LinkLoop for that long, rebuilding the latency Phase 1
+    # removed. The detail's operational job is the `unknown` signal (operator
+    # calibration needed), which does not depend on when the read happens; a
+    # post-move pose comes from a separate <read:pos> once the move is done.
     def emit_servo_detail(_frame)
       if @head.nil?
         @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")
