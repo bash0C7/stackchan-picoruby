@@ -9,8 +9,8 @@ macOS TTS stay in a CRuby sidecar bridged over dRuby.
 ## Architecture
 
 ```
-stackchan <verb>           ← bin/stackchan (shell wrapper: process lifecycle)
-   │ spawns / attaches
+stackchan <verb>           ← bin/stackchan (shell wrapper: exec only)
+   │ attaches
    ▼
 CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
                                           │  ├─ BLE central  → StackChan (NUS)   [live = #5, real device]
@@ -32,8 +32,9 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   disconnect/reconnect self-heal — verified against a physical StackChan (see
   the file's header comment for the design, and the load-bearing gotcha
   around calling `start`/`scan` again after the initial connect).
-  `app/fake_ble.rb` (`STACKCHAN_BLE_FAKE=1`) swaps in for verb-logic testing
-  without hardware in the loop.
+  `app/fake_ble.rb` (`bundle exec rake pc:up BLE_FAKE=1`, was
+  `STACKCHAN_BLE_FAKE=1`) swaps in for verb-logic testing without hardware
+  in the loop.
 - **sidecar**: `../sidecar/sidecar.rb` (CRuby). Returns data only (reply text /
   mu-law bytes); never touches BLE.
 
@@ -138,6 +139,6 @@ it, is bound to the binary's exact bytes.
 
 No Mutex/Queue/Thread (cooperative Tasks); drb carries no kwargs (Hash args) and
 no remote block (poll, not yield-back); `system` can't background/redirect
-(spawning is in this shell wrapper); regexp has no `|` alternation; `gsub`/`sub`
+(spawning belongs to launchd now, not this wrapper); regexp has no `|` alternation; `gsub`/`sub`
 mishandle multibyte (each_char); `module_function` bare form is a no-op; strings
 from PicoRuby arrive ASCII-8BIT in CRuby (re-tag UTF-8 at the sidecar boundary).
