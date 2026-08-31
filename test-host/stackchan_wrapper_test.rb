@@ -40,11 +40,18 @@ class StackchanWrapperTest < Test::Unit::TestCase
     refute_match(/run_with_watchdog/, argv.join(" "))
   end
 
-  # Everything that used to guess about resident processes is gone.
-  def test_the_wrapper_no_longer_contains_probe_or_kill_machinery
-    src = File.read(File.join(ROOT, "pc/stackchan-pico/bin/stackchan"))
-    %w[nc\ -z probe_daemon probe_sidecar ensure_daemon ensure_sidecar pkill run_with_watchdog].each do |gone|
-      assert_false src.include?(gone), "wrapper still mentions #{gone}"
-    end
+  # Everything that used to guess about resident processes is gone. The guard is
+  # structural rather than a list of banned identifiers: the wrapper's contract
+  # is "some assignments, then one exec", so a probe reintroduced under any new
+  # name breaks this, while a name grep would wave it through.
+  def test_the_wrapper_body_is_only_assignments_and_the_final_exec
+    body = File.readlines(File.join(ROOT, "pc/stackchan-pico/bin/stackchan"))
+               .map(&:strip)
+               .reject { |line| line.empty? || line.start_with?("#") }
+    assert_equal "set -eu", body.first
+    assert_true body.last.start_with?("exec "),
+                "the wrapper's last executable line must be the exec, got: #{body.last}"
+    assert_empty body[1..-2].reject { |line| line.match?(/\A[A-Z_]+=/) },
+                 "the wrapper must hold nothing but variable assignments between `set -eu` and the exec"
   end
 end
