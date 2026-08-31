@@ -77,3 +77,10 @@ class BLE
     @event_queue.push(pkt) if pkt
   end
 end
+
+# Stand-in for the daemon proxy the CLI gets back from DRb.
+class FakeDaemonProxy
+  def status
+    { ble_connected: true }
+  end
+end

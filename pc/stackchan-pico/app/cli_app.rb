@@ -18,36 +18,26 @@ module Stackchan
         return 1
       end
       DRb.start_service
-      daemon = attach_or_spawn(host, port, !OBSERVE_ONLY.include?(verb))
+      daemon = attach(host, port)
       if daemon.nil?
-        out "stackchan: not connected. start the daemon, or set STACKCHAN_DAEMON_SPAWN " \
-            "to a shell command that launches it (auto-spawn)."
+        out NOT_RUNNING_MESSAGE
         return OBSERVE_ONLY.include?(verb) ? 0 : 1
       end
       new(daemon).dispatch(verb, args)
     end
 
-    # Attach to a running daemon. Daemon/sidecar process lifecycle (spawning)
-    # is the `stackchan` shell wrapper's job — PicoRuby's `system` cannot
-    # background or redirect, so the CLI itself only attaches. When the wrapper
-    # has just launched the daemon, a non-observe verb polls up to ~15s for it
-    # to accept; observe-only verbs (status) check once. Returns a live
-    # DRbObject or nil.
-    def self.attach_or_spawn(host, port, wait_for_daemon)
-      uri = "druby://#{host}:#{port}"
-      attempts = wait_for_daemon ? 30 : 1
-      tries = 0
-      while tries < attempts
-        d = DRb::DRbObject.new_with_uri(uri)
-        begin
-          d.status   # force a real round-trip
-          return d
-        rescue StandardError
-          tries += 1
-          return nil if tries >= attempts
-          sleep 0.5
-        end
-      end
+    NOT_RUNNING_MESSAGE =
+      "stackchan: backends are not running. Start them with:\n" \
+      "  bundle exec rake pc:up"
+
+    # Attach to the launchd-managed daemon. Nothing here spawns it, so there is
+    # nothing to wait for: one attempt, then report the command that fixes it.
+    def self.attach(host, port, drb_factory: nil)
+      factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
+      d = factory.call("druby://#{host}:#{port}")
+      d.status   # force a real round-trip
+      d
+    rescue StandardError
       nil
     end
 
