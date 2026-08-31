@@ -84,7 +84,6 @@ class PcLifecycle
   # configuration — the stale stub sidecar this design exists to prevent,
   # reappearing inside the fix.
   def start(job, port)
-    path  = LaunchAgent.write(job, dir: @dir)
     label = job["Label"]
     @runner.call("launchctl", "bootout", domain(label))
     # A port still held once our own job is gone belongs to something launchd
@@ -94,10 +93,19 @@ class PcLifecycle
     holder = @releaser.call(port, RELEASE_WAIT_S)
     if holder
       raise Error, "port #{port} is still held #{RELEASE_WAIT_S}s after booting out #{label}, " \
-                   "so a process outside launchd owns it. Stop it, then run pc:up again:\n#{holder}"
+                   "so a process outside launchd owns it. Stop it, then run pc:up again. " \
+                   "If the pid below is the job that was just booted out, it is still shutting " \
+                   "down — rerun pc:up.\n#{holder}"
     end
+    # Write the definition only once we know it can be bootstrapped: a plist
+    # left in ~/Library/LaunchAgents by a failed `up` is loaded at the next
+    # login, starting a backend that never came up successfully.
+    path = LaunchAgent.write(job, dir: @dir)
     out, ok = @runner.call("launchctl", "bootstrap", "gui/#{Process.uid}", path)
-    raise Error, "launchctl bootstrap failed for #{label} (#{path}): #{out.to_s.strip}" unless ok
+    unless ok
+      File.unlink(path) if File.exist?(path)
+      raise Error, "launchctl bootstrap failed for #{label} (#{path}): #{out.to_s.strip}"
+    end
   end
 
   def domain(label)
@@ -130,7 +138,7 @@ class PcLifecycle
     loop do
       holder = IO.popen(["lsof", "-nP", "-iTCP:#{port}", "-sTCP:LISTEN"],
                         err: [:child, :out], &:read).to_s
-      return nil if holder.strip.empty?
+      return nil unless holder.include?("LISTEN")
       return holder if Time.now >= deadline
       sleep 0.25
     end

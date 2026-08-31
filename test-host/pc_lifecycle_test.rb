@@ -121,6 +121,17 @@ class PcLifecycleTest < Test::Unit::TestCase
     assert_false @calls.any? { |a| a[1] == "bootstrap" }
   end
 
+  # `start` used to write the plist before checking the port, so a refusal
+  # here left the definition in ~/Library/LaunchAgents anyway -- and that
+  # directory auto-loads at the next login, starting a backend that never
+  # came up successfully. The write must not happen until bootstrap is
+  # actually going to be attempted.
+  def test_up_leaves_no_plist_behind_when_the_port_owner_is_refused
+    @holder = "ruby     38562 bash   10u  IPv4 0x0      0t0  TCP *:8788 (LISTEN)"
+    assert_raise(PcLifecycle::Error) { subject.up }
+    assert_empty Dir[File.join(DIR, "*.plist")]
+  end
+
   def test_up_fails_when_bootstrap_itself_fails
     @bootstrap_result = ["bootstrap refused", false]
     error = assert_raise(PcLifecycle::Error) { subject.up }
