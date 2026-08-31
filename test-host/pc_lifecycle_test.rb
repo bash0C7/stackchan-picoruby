@@ -115,6 +115,10 @@ class PcLifecycleTest < Test::Unit::TestCase
     @holder = "ruby     38562 bash   10u  IPv4 0x0      0t0  TCP *:8788 (LISTEN)"
     error = assert_raise(PcLifecycle::Error) { subject.up }
     assert_true error.message.include?(@holder)
+    # The refusal has to land BEFORE bootstrap. Bootstrapping over a foreign
+    # owner is what produced the original defect: the new job dies on
+    # EADDRINUSE and the port check then passes against the squatter.
+    assert_false @calls.any? { |a| a[1] == "bootstrap" }
   end
 
   def test_up_fails_when_bootstrap_itself_fails
