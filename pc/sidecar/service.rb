@@ -15,8 +15,7 @@ module StackchanSidecar
     # respond/synthesize each bound their real work in Timeout.timeout so a
     # stuck Apple Intelligence call or a stuck say/afconvert TTS pipeline
     # can't block this method forever -- the PicoRuby daemon's DRb client
-    # read has no yield point of its own (see docs/superpowers/specs/
-    # 2026-08-11-sidecar-call-timeout-design.md), so an unbounded sidecar
+    # read has no yield point of its own, so an unbounded sidecar
     # response would freeze the whole daemon VM. timeout_s/delay_s are
     # constructor overrides (not just ENV) so tests can force an exact, fast
     # timeout without waiting the real default.

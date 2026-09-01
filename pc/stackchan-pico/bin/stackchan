@@ -2,12 +2,9 @@
 # StackChan PC-side CLI entry (PicoRuby edition).
 #
 # Attach only. The daemon and the AI/voice sidecar are launchd jobs; bring them
-# up with `bundle exec rake pc:up` (see the deterministic-backend-lifecycle
-# spec). This script deliberately does not probe, spawn or kill anything:
-# deciding whether a resident process was usable is what produced the
-# 2026-08-31 incidents (a busy daemon killed as wedged, an 8-day-stale stub
-# sidecar, a healthy daemon killed over one transient DRb error), and the
-# probing itself cost ~0.62s of CRuby startup on every command.
+# up with `bundle exec rake pc:up`. This script does not probe, spawn or kill
+# anything: guessing whether a resident process is usable kills healthy
+# daemons, and the probe itself costs CRuby startup on every command.
 #
 #   stackchan <verb> [args]
 #

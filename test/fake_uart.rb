@@ -9,8 +9,8 @@ class FakeUART
     @read_queue  = []           # each element: { bytes: [..], delay_ms: 0 } or :timeout
     @pending_rx  = []           # flat array of bytes consumed by readpartial(n)
     @echo        = echo         # when true, TX bytes loop back on RX (half-duplex sim).
-                                # Default false reflects ESP32-S3 UART1 reality (no
-                                # loopback) verified 2026-05-21. Tests that need
+                                # Default false matches ESP32-S3 UART1 (no
+                                # loopback). Tests that need
                                 # half-duplex echo (e.g. read_pos_raw_debug echo path)
                                 # must pass echo: true explicitly.
     @read_queue_after_writes = {} # indexed by write count; values are arrays of queue items
@@ -52,12 +52,6 @@ class FakeUART
     take = [@pending_rx.length, n].min
     chunk_array = @pending_rx.shift(take)
     chunk_array.pack('C*')
-  end
-
-  # Legacy method for tests that exercised the old signature. Kept for
-  # backward compatibility but production SCServo no longer calls it.
-  def read(n, timeout_ms: 0)
-    readpartial(n)&.bytes
   end
 
   def gets

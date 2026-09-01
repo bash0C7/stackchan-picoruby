@@ -4,9 +4,9 @@
 # macOS `say`/`afconvert` TTS pipeline cannot run under PicoRuby, so they live
 # here in CRuby and are reached from the PicoRuby daemon over picoruby-drb
 # (TCP loopback -- picoruby-drb has no Unix-socket transport). Marshal wire is
-# byte-compatible across CRuby<->PicoRuby (verified PoC).
+# byte-compatible across CRuby<->PicoRuby.
 #
-# Clean split vs the old in-daemon design: the sidecar returns DATA ONLY
+# The sidecar returns DATA ONLY
 # (reply text / mu-law bytes) and never touches BLE. The daemon owns the BLE
 # link and does the device writes (chat reply frame, audio streaming).
 #

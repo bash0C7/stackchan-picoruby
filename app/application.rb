@@ -1,4 +1,4 @@
-# app/application.rb — Phase 3 production dispatcher.
+# app/application.rb — StackChan autostart payload (/home/app.mrb).
 #
 # Flow:
 #   [1] 5s escape hatch (sleep_ms 5000) — crash-loop recovery window
@@ -6,7 +6,7 @@
 #   [3] BLE NUS service + Dispatcher + FrameParser + AckSink
 #   [4] peri.run — StackChanApp#run, infinite 20 ms tick loop (StackchanApp::LinkLoop)
 #
-# Upload: rake r2p2:upload_mrb SRC=app/application.rb
+# Deploy: /stackchan-device-iterate
 # Smoke:  rake r2p2:ble_control_smoke COLOR=red MODE=blink FACE=joy SIDE=both
 
 require 'spi'
@@ -356,7 +356,7 @@ end
 
 # [1] 5-second escape hatch. If a previous app.mrb crash-loops the device,
 # this window lets a human reach the R2P2 shell and `rm /home/app.mrb` to
-# recover. Phase 2 used 2s which was borderline — Phase 3 raises it to 5s.
+# recover.
 sleep_ms 5000
 
 # ================================
@@ -581,8 +581,8 @@ module StackchanApp
   end
 
   class Head
-    # Raw servo position range per axis for 90° from forward, measured via
-    # the 5-pose HITL calibration (stackchan-ble-control calibrate, 2026-05-25).
+    # Raw servo position range per axis for 90° from forward, measured with
+    # `stackchan calibrate` (5-pose).
     # YAW_RANGE_RAW=300 → 90° = 300 raw units (≈0.3°/unit at head output):
     #   forward=482, LEFT MAX(90°)=182 (-300), RIGHT MAX(90°)=783 (+301).
     # PITCH_RANGE_RAW=296 → 90° up = 296 raw units; pitch-down not supported:
@@ -590,9 +590,8 @@ module StackchanApp
     YAW_RANGE_RAW   = 300
     PITCH_RANGE_RAW = 296
 
-    # Forward (zero) positions measured by HITL calibration 2026-05-25.
-    # Supersede the old factory-firmware guess (460/620): operator aligned
-    # the head to forward by hand, then read raw servo position.
+    # Forward (zero) raw positions: operator aligns the head forward by
+    # hand, then reads the servo position.
     SERVO_YAW_ZERO   = 482
     SERVO_PITCH_ZERO = 633
 
@@ -615,15 +614,11 @@ module StackchanApp
     end
 
     # Returns raw positions keyed by axis. nil for missing/unreachable servos.
-    # Note: symbol keys. Dispatcher's emit_servo_detail rewrite (Task 11) will
-    # read these symbol keys; the old string-keyed format ("Y_actual" /
-    # "P_actual") is removed.
     def read_actual
       { yaw: (@yaw && @yaw.read_pos), pitch: (@pitch && @pitch.read_pos) }
     end
 
-    # Cold-boot bring-up self-test: nudge yaw ±10 raw and return to center.
-    # Unchanged from Task 9 — copied here as part of the Head class rewrite.
+    # <selftest:run>: nudge yaw ±10 raw and return to center (UART round-trip check).
     def selftest
       return false if @yaw.nil?
       y0 = SERVO_YAW_ZERO
@@ -706,9 +701,8 @@ module StackchanApp
     end
 
     def handle(frame)
-      # Legacy raw Y/P keys are retired (2026-05-21 direction-key migration).
-      # Reject outright so old PC clients see the migration via ERROR ACK
-      # rather than getting silently dropped.
+      # Raw Y/P keys are not part of the protocol; reject with ERROR so the
+      # sender notices instead of being silently dropped.
       if frame.key?("Y") || frame.key?("P")
         @stdout.write(ERROR_FRAME)
         return
@@ -837,9 +831,8 @@ module StackchanApp
       yaw_raw   = nil
       pitch_raw = nil
 
-      # Direction confirmed by HITL 2026-05-25: raw BELOW the forward zero is
-      # StackChan's left (cal LEFT MAX = 182), raw ABOVE is its right
-      # (RIGHT MAX = 783). So YL ("StackChan's left") subtracts, YR adds.
+      # Raw below the forward zero is StackChan's left, above is its right:
+      # YL subtracts, YR adds.
       if frame.key?("YL")
         mag = frame["YL"].to_i
         return false unless mag >= 0 && mag <= 100
@@ -870,9 +863,8 @@ module StackchanApp
     # Reports the pose AT COMMAND RECEIPT, not after the move: handle calls
     # @head.apply (which only commands the move) and lands here immediately, so
     # a <T:600> command reads the servo while it is still leaving the old pose.
-    # Deliberate (2026-08-31): waiting out T before answering would delay the
-    # ACK by T and stall LinkLoop for that long, rebuilding the latency Phase 1
-    # removed. The detail's operational job is the `unknown` signal (operator
+    # Waiting out T before answering would delay the ACK by T and stall
+    # LinkLoop for that long. The detail's operational job is the `unknown` signal (operator
     # calibration needed), which does not depend on when the read happens; a
     # post-move pose comes from a separate <read:pos> once the move is done.
     def emit_servo_detail(_frame)
@@ -1011,7 +1003,7 @@ module StackchanApp
 end
 
 module StackchanApp
-  # Periodic work that used to ride on the 1 s BLE heartbeat: head-touch poll,
+  # Periodic work: head-touch poll,
   # LED animation, liveness blink. Pure: the caller passes now_ms, nothing here
   # reads Machine or sleeps, so the run loop never stalls on it.
   class Ticker
@@ -1174,9 +1166,8 @@ module StackchanApp
   end
 end
 
-# [2] cold-boot init — pinch-perfect copy of app.rb's init block (Phase 2
-# bring-up smoke v13-aw9523-p0). Order is critical; see CLAUDE.md
-# "CoreS3 cold-boot 初期化シーケンス" section for the why behind each I2C write.
+# [2] cold-boot init. Order is critical; see CLAUDE.md "cold-boot 初期化"
+# for the why behind each I2C write.
 I2C_SDA_PIN  = 12
 I2C_SCL_PIN  = 11
 AXP2101_ADDR = 0x34
@@ -1234,11 +1225,9 @@ if ver_bytes && ver_bytes.length > 0
   puts sprintf("[application] PY32 REG_VERSION = 0x%02X", ver_bytes.bytes[0])
 end
 
-# NOTE: The puts statements in this block are REQUIRED to prevent a
-# LoadProhibited crash at PY32 init region. See memory entry
-# `project-py32-init-puts-required` — empirically each puts shifts the
-# crash position one line later; with 5 puts the boot completes. Treat
-# these as production boot markers, NOT removable debug logs.
+# REQUIRED FOR PY32 COLD-BOOT: the puts in this block prevent a
+# LoadProhibited crash in the PY32 init region (bytecode-layout dependent;
+# removing one shifts the crash a line later). Not debug logs.
 puts "[boot] step:py32-init-begin"
 py32 = PY32IOExpander.new(i2c)
 puts "[boot] step:py32-instance"
@@ -1281,7 +1270,7 @@ end
 # Servo bring-up — torque is intentionally left OFF so the operator can
 # physically align the head before sending <torque:on>. Failure must NOT
 # block face/LED — keep @head=nil so Dispatcher can emit the "unknown"
-# detail signal while Phase A features stay live.
+# detail signal while face/LED stay live.
 @head = nil
 begin
   # Pin mapping: per StackChan/firmware/main/hal/hal_servo.cpp:169
@@ -1359,23 +1348,12 @@ rescue => e
   puts "[boot] speaker init failed: #{e.class}: #{e.message}"
 end
 
-# Cold-boot self-test removed 2026-05-21 — protocol now exposes
-# <selftest:run> for on-demand UART round-trip check, and the cold-boot
-# face/servo state (Face::Closed + torque OFF) is itself the idle indicator
-# that operators read for "alive vs. wedged" at a glance.
-
-# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Closed.draw) は
-# 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
-# yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
-# されない (silent fail、device-side log だけ HCI WORKING 出る)。
-# sleep_ms で control を yield して BTstack task に initialization を完了させる。
-# 2026-05-17 bisect: cold-boot 削除 variant HIT / cold-boot + sleep_ms 3000 variant HIT / sleep 無し MISS。
+# The cold-boot block above is synchronous I2C/SPI and starves the NimBLE
+# host task. Without this yield BLE.new/start looks fine in the log but
+# nothing is emitted over RF.
 sleep_ms 3000
 
-# [3] BLE NUS service. UUID / property masks copied from Phase 2 ble_smoke.rb
-# (deleted in this Phase 3 PR; structure lives in application.rb now).
-#
-# Thin adapter: GATT database, advertising, the four `port` methods LinkLoop
+# [3] BLE NUS service. Thin adapter: GATT database, advertising, the four `port` methods LinkLoop
 # needs, and the run loop. All per-tick logic (drain order, notify gate, ACK
 # stamps) is in StackchanApp::LinkLoop; periodic work is in StackchanApp::Ticker.
 # Both are host-tested; only what is left here needs the device.

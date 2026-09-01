@@ -1,10 +1,9 @@
 # Bring the PC-side backends up and down through launchd.
 #
-# There is deliberately no "reuse what is already running" path: deciding
-# whether a resident process was usable is what produced all three of the
-# 2026-08-31 incidents (a busy daemon killed as wedged, an 8-day-stale stub
-# sidecar, a healthy daemon killed over one transient DRb error). `up` always
-# ends with processes launchd started just now, from the plist just written.
+# There is deliberately no "reuse what is already running" path: guessing
+# whether a resident process is usable kills healthy daemons and keeps stale
+# ones. `up` always ends with processes launchd started just now, from the
+# plist just written.
 require "fileutils"
 require_relative "launch_agent"
 
@@ -12,7 +11,7 @@ class PcLifecycle
   class Error < StandardError; end
 
   SIDECAR_WAIT_S = 15
-  DAEMON_WAIT_S  = 30   # BLE scan + GATT discovery; measured 13s on 2026-08-31
+  DAEMON_WAIT_S  = 30   # BLE scan + GATT discovery takes ~13s
   UNLOAD_WAIT_S  = 10   # grace for bootout to actually leave the launchd domain
   RELEASE_WAIT_S = 10   # grace for a booted-out job to let go of its port
   STATUS_WAIT_S  = 10   # a wedged daemon accepts TCP but never answers DRb
@@ -87,20 +86,15 @@ class PcLifecycle
 
   # Always bootout then bootstrap, never kickstart. launchd caches a job's
   # definition when it is bootstrapped; `kickstart -k` restarts the process from
-  # that cached copy and never rereads the plist (measured 2026-08-31: a job
-  # bootstrapped with PROBE_VALUE=first still ran `first` after its plist had
-  # been rewritten to `second`). Reusing a loaded job would restart yesterday's
-  # configuration — the stale stub sidecar this design exists to prevent,
-  # reappearing inside the fix.
+  # that cached copy and never rereads the plist. Reusing a loaded job would
+  # restart yesterday's configuration.
   def start(job, port)
     label = job["Label"]
     @runner.call("launchctl", "bootout", domain(label))
     # bootout returns before launchd has finished unloading the service, and
     # bootstrapping while the domain still holds the label fails with
-    # "Bootstrap failed: 5: Input/output error" (observed 2026-08-31 on the
-    # second pc:up of the session). This use of `print` is not the old
-    # kickstart branch returning: it confirms absence, and is never used to
-    # decide whether to reuse a job that is still loaded.
+    # "Bootstrap failed: 5: Input/output error". `print` here confirms absence
+    # only; it never decides whether to reuse a loaded job.
     unless wait_until_unloaded(label)
       raise Error, "#{label} was still loaded #{UNLOAD_WAIT_S}s after bootout " \
                    "(`launchctl print #{domain(label)}`)"
@@ -177,7 +171,7 @@ class PcLifecycle
     require "drb"
     require "timeout"
     DRb.start_service
-    # A daemon can accept TCP and never answer DRb (observed 2026-08-11). Without
+    # A daemon can accept TCP and never answer DRb. Without
     # this bound, `rake pc:up` hangs with no output and no way to tell that from
     # a slow BLE connect.
     Timeout.timeout(STATUS_WAIT_S) do

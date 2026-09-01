@@ -1,12 +1,6 @@
 # frozen_string_literal: true
 
-# PicoModem file uploader for R2P2 (PicoRuby shell). Ported from
-# pc/stackchan-protocol/exe/picomodem-upload as part of Phase 3 (2026-05-17);
-# the gem is being retired so the upload logic now lives at the project root
-# as a Rakefile-callable Ruby module.
-#
-# See the original exe header (still in git history as of Phase 2) for the
-# rationale on the handshake-responder phase.
+# PicoModem file uploader for R2P2 (PicoRuby shell), called from the Rakefile.
 
 require "serialport"
 

@@ -1,12 +1,7 @@
-# StackChan CLI, PicoRuby port of pc/stackchan/lib/stackchan/cli.rb.
-# Talks to the daemon over picoruby-drb TCP loopback (the CRuby original used a
-# Unix-socket DRb; picoruby-drb is TCP/WS only).
-#
-# Scope (sub-project #3): device-control verbs. chat (AI) waits on the CRuby
-# sidecar bridge (#4); tui / demo / calibrate are ported later. Auto-spawn of
-# the daemon is gone, not deferred — the daemon is a launchd job started by
-# `rake pc:up`; a verb against an unreachable daemon reports NOT_RUNNING_MESSAGE,
-# which names that command.
+# StackChan CLI. Talks to the daemon over picoruby-drb TCP loopback
+# (picoruby-drb is TCP/WS only). The daemon is a launchd job started by
+# `rake pc:up`; a verb against an unreachable daemon reports
+# NOT_RUNNING_MESSAGE, which names that command.
 module Stackchan
   class CLI
     VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui calibrate].freeze
@@ -41,7 +36,7 @@ module Stackchan
     rescue StandardError => e
       # The rescue stays broad on purpose: a stopped daemon surfaces here as
       # SocketError ("connect(...): Connection refused"), not DRb::DRbConnError
-      # (measured on the darwin VM 2026-08-31), so narrowing to a guessed set of
+      # on the darwin VM, so narrowing to a guessed set of
       # transport classes would replace the NOT_RUNNING_MESSAGE hint with a
       # backtrace in exactly the case that hint exists for. Naming the exception
       # is what stops a CLI-side bug from masquerading as a stopped daemon.

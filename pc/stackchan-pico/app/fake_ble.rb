@@ -1,5 +1,5 @@
 # In-memory fake BLE client. Lets the daemon/CLI be verified on the host VM
-# without a real StackChan (live BLE = sub-project #5, needs the device).
+# without a real StackChan.
 # Records every frame the daemon writes and mirrors the device dispatcher's
 # ACK / detail-frame behaviour closely enough for logic tests.
 class FakeBleClient

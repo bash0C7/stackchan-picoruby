@@ -43,8 +43,7 @@ class PcLifecycleTest < Test::Unit::TestCase
         # is discarded, so any other verb can always report success.
         return @bootstrap_result if argv[0..1] == %w[launchctl bootstrap]
         # `launchctl print` here answers "is the job still loaded" for the
-        # post-bootout unload wait -- not the old bootstrap-vs-kickstart
-        # branch. Default false ("gone") so every other test's `start`
+        # post-bootout unload wait. Default false ("gone") so every other test's `start`
         # clears the wait on its first check.
         return ["", @loaded] if argv[0..1] == %w[launchctl print]
         ["", true]
@@ -83,9 +82,7 @@ class PcLifecycleTest < Test::Unit::TestCase
 
   # bootout returns before launchd finishes unloading the service, and
   # bootstrapping while the domain still holds the label fails with
-  # "Bootstrap failed: 5: Input/output error" (observed 2026-08-31 on the
-  # second pc:up of the session -- intermittent, the very next pc:up
-  # succeeded). `start` must wait for the label to actually leave the
+  # "Bootstrap failed: 5: Input/output error" (intermittent). `start` must wait for the label to actually leave the
   # domain before ever writing a plist or bootstrapping.
   def test_up_waits_for_the_job_to_unload_before_bootstrapping
     @loaded = true
@@ -142,8 +139,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   # A port still held after our own job has been booted out belongs to a
-  # process launchd does not manage -- the exact shape of all three
-  # 2026-08-31 incidents. `up` must refuse rather than let the new job die
+  # process launchd does not manage. `up` must refuse rather than let the new job die
   # on EADDRINUSE while the port check passes against the squatter.
   def test_up_refuses_when_something_outside_launchd_still_holds_the_port
     @holder = "ruby     38562 bash   10u  IPv4 0x0      0t0  TCP *:8788 (LISTEN)"
@@ -155,8 +151,8 @@ class PcLifecycleTest < Test::Unit::TestCase
     assert_false @calls.any? { |a| a[1] == "bootstrap" }
   end
 
-  # `start` used to write the plist before checking the port, so a refusal
-  # here left the definition in ~/Library/LaunchAgents anyway -- and that
+  # If `start` wrote the plist before checking the port, a refusal
+  # here would leave the definition in ~/Library/LaunchAgents anyway -- and that
   # directory auto-loads at the next login, starting a backend that never
   # came up successfully. The write must not happen until bootstrap is
   # actually going to be attempted.

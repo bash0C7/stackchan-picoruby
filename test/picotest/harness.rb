@@ -45,7 +45,6 @@ module PicotestHarness
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
   # Same order as the boot_daemon*.rb load lists: namespace root first.
   SHARED_MRBLIB = %w[
-    stackchan.rb
     stackchan/ble/errors.rb
     stackchan/ble/face_table.rb
     stackchan/ble/led_color_table.rb

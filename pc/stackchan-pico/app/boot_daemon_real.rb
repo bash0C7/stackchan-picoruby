@@ -11,7 +11,6 @@ name_prefix = ARGV[2] || "StackChan"
 # only load the mrblib when running on a plain VM without it baked in.
 unless Object.const_defined?(:Stackchan)
   [
-    "stackchan.rb",
     "stackchan/ble/errors.rb",
     "stackchan/ble/face_table.rb",
     "stackchan/ble/led_color_table.rb",

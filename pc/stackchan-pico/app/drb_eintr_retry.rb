@@ -11,19 +11,17 @@
 #            call, so every call is exposed.
 #   read     RuntimeError "read failed" — ports/posix/tcp_socket.c returns -1
 #            for every recv() error and src/mruby/tcp_socket.c raises that one
-#            message. Observed live 2026-08-31 as a relayed server-side error
-#            ("RuntimeError: RuntimeError: read failed"): the daemon failed to
-#            read a request it therefore never dispatched, stayed healthy, and
-#            served the next call, but the CLI has no resilience and a
-#            long-running loop (touch listen, demo) died on it.
+#            message. Surfaces as a relayed "RuntimeError: RuntimeError: read failed";
+#            the daemon stays healthy but a long-running CLI loop (touch
+#            listen, demo) dies on it without this retry.
 #
 # A recv() that fails consumes no bytes, so re-issuing the same readpartial is
 # lossless — unlike a retry one layer up, which would re-read from the middle
 # of a message. A peer that is genuinely gone fails again and the error
 # surfaces as before, after a bounded wait.
 #
-# Loaded by every boot script (boot_cli / boot_daemon / boot_daemon_real /
-# boot_daemon_touchtest), each of which requires "drb" first. Both patches are
+# Loaded by every boot script (boot_cli / boot_daemon / boot_daemon_real),
+# each of which requires "drb" first. Both patches are
 # guarded on the constants they extend so this file also loads on a VM that has
 # neither (the picotest host VM), leaving SocketReadRetry testable on its own.
 

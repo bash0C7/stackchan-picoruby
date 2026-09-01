@@ -1,9 +1,7 @@
 # LaunchAgent job definitions for the StackChan PC-side backends.
 #
 # Pure data: every value comes from an argument, never from the ambient
-# environment. An ambient STACKCHAN_SIDECAR_STUB leaking into a spawned
-# sidecar is what silently muted `say` for 8 days (2026-08-23..08-31), so the
-# stub flag reaches a job only when the caller asks for it here.
+# environment, so a stub flag reaches a job only when the caller asks for it.
 require "json"
 require "fileutils"
 
@@ -20,7 +18,7 @@ module LaunchAgent
 
   # The daemon runs the binary inside the signed app bundle. launchd is an
   # acceptable responsible process for TCC, so CoreBluetooth works without
-  # `open -a` (spike 2026-08-31); a plain shell fork/exec still does not.
+  # `open -a`; a plain shell fork/exec does not.
   def self.daemon_job(root:, vm_app:, port:, prefix:, ble_fake:, logdir:, ns: nil)
     boot = ble_fake ? "boot_daemon.rb" : "boot_daemon_real.rb"
     args = [File.join(vm_app, "Contents", "MacOS", "picoruby"),

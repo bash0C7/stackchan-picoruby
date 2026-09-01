@@ -1,8 +1,8 @@
-# Real picoruby-ble central client for the StackChan NUS. Replaces FakeBleClient
-# in deployment. Three parts:
+# picoruby-ble central client for the StackChan NUS (FakeBleClient is the
+# host stand-in). Three parts:
 #
 #   NusResolver      — PURE logic (UUID -> handle resolution, frame classification).
-#                      Host-testable without a radio (verified 10/10).
+#                      Host-testable without a radio.
 #   StackchanRadio   — the actual `BLE` subclass. Only overrides what BLE requires
 #                      (advertising_report_callback, packet_callback) plus the
 #                      connect-and-discover driver.
@@ -10,17 +10,12 @@
 #                      Wraps a StackchanRadio and exposes the verb-facing API
 #                      (connect/connected?/send/raw_send/write_without_ack/...).
 #
-# Implemented against a sibling project's WORKING picoruby-ble central for this
-# same darwin-port gem: R2P2-iOS's Stack-chan example
-# (github.com/bash0C7/R2P2-iOS, examples/virtual-peripheral's sibling design —
-# see build/ios-stackchan-app*/.../Stackchan.app/app.rb for the built artifact).
-# That reference resolved the two load-bearing questions this file previously
-# left as NotImplementedError:
+# Two load-bearing facts about the darwin port:
 #
 # 1. StackchanRadio must NOT define its own `connect`. `BLE#connect(report)`
 #    (ble_central.rb) is the inherited "GAP-connect to this advertiser" method;
 #    `advertising_report_callback` calls it BY NAME. A same-named zero-arg
-#    override on the subclass (the old design) would shadow it and break that
+#    override on the subclass would shadow it and break that
 #    call with ArgumentError the moment a matching advertiser was seen. The
 #    daemon-facing "connect everything" entry point lives on the WRAPPER
 #    (StackchanCentral#connect) instead, under a different receiver.
@@ -34,8 +29,7 @@
 #    descriptors) until `@state == :TC_IDLE` — one `scan` call is the whole
 #    connect+discover sequence, no manual state polling needed.
 #
-# LOAD-BEARING GOTCHA (found by reading the darwin port's own Swift source,
-# not by trial and error): `BLE#start` calls `hci_power_control(HCI_POWER_ON)`
+# LOAD-BEARING GOTCHA: `BLE#start` calls `hci_power_control(HCI_POWER_ON)`
 # on ENTRY every time, and the darwin port re-emits a fresh
 # BTSTACK_EVENT_STATE(WORKING) packet on every such call (PicoBLECentral.swift
 # `powerOn()`, deliberately, per its own comment). `ble_central.rb`'s decoder
@@ -59,17 +53,14 @@
 # GATT_EVENT_NOTIFICATION (0xA7): the darwin port's Swift backend DOES
 # synthesize this for every unsolicited update on a subscribed characteristic
 # (`PicoBLEPackets.swift#pbleNotification`, called from
-# `PicoBLECentral.swift#didUpdateValueFor` — contradicting the port README's
-# blanket "central path does not synthesize ... 0xA7/0xA8" note, which is
-# stale). `ble_central.rb`'s `packet_callback` still leaves the 0xA7 branch
+# `PicoBLECentral.swift#didUpdateValueFor`). `ble_central.rb`'s `packet_callback` still leaves the 0xA7 branch
 # empty (`# TODO`), so `StackchanRadio#packet_callback` overrides it (calling
 # `super` first to preserve the base state machine) to decode and route it.
 #
 # CCCD subscribe: `write_characteristic_descriptor_using_descriptor_handle`
 # targeting a characteristic's CCCD handle maps to CoreBluetooth's
 # `setNotifyValue` (`PicoBLECentral.swift#writeDescriptor`) — a non-zero first
-# byte enables notifications, matching the `"\x01\x00"` convention used
-# elsewhere in this codebase (e.g. the PBLE-TEST live-BLE spike).
+# byte enables notifications (`"\x01\x00"`).
 
 module NusResolver
   # NOTE: bare `module_function` is a no-op on PicoRuby; the explicit
@@ -315,9 +306,8 @@ if Object.const_defined?(:BLE)
     # this budget is only a safety net in case it is ever lost, but it must
     # scale with clip size (a fixed ~30s net was observed timing out on longer
     # clips while the device stayed healthy) and still stay bounded.
-    # Derived from a real-hardware sweep (2026-08-11, 15KB-61KB range):
-    # ~0.95ms/byte + ~3.3s base, essentially linear (mid-range prediction off
-    # actual by <1%). Rounded up to 1.2ms/byte for margin.
+    # Measured on hardware (15KB-61KB clips): ~0.95ms/byte + ~3.3s base,
+    # linear. Rounded up to 1.2ms/byte for margin.
     def audio_done_timeout_ms(n)
       ms = AUDIO_DONE_BASE_MS + (n * 6 / 5)
       return AUDIO_DONE_TIMEOUT_MIN_MS if ms < AUDIO_DONE_TIMEOUT_MIN_MS
@@ -419,9 +409,7 @@ if Object.const_defined?(:BLE)
           @last_detail_frame = await_inbox
           t_detail = @last_detail_frame ? @clock_fn.call : :timeout
           # Diagnostic only (no behavior change): an intermittent, unexplained
-          # real-hardware defect (2026-07-04, see completion-plan memory
-          # "servo-family real-hardware reliability when torque is OFF") saw
-          # this second await return a bare ACK/ERROR byte instead of a real
+          # real-hardware defect (torque OFF) saw this second await return a bare ACK/ERROR byte instead of a real
           # <..._actual:...> detail frame. Root cause not established (could
           # not reproduce in 20+ follow-up attempts) -- log the raw bytes if
           # it recurs so the next investigation has evidence instead of

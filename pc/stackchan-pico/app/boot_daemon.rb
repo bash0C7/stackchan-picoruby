@@ -8,7 +8,6 @@ port = (ARGV[1] || "8787").to_i
 # only load the mrblib when running on a plain VM without it baked in.
 unless Object.const_defined?(:Stackchan)
   [
-    "stackchan.rb",
     "stackchan/ble/errors.rb",
     "stackchan/ble/face_table.rb",
     "stackchan/ble/led_color_table.rb",
