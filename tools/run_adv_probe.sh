@@ -7,7 +7,7 @@
 # loop remains as a safety net so the run needs no interactive supervision.
 set -u
 
-REPO=/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PROBE=${PROBE:-/tmp/adv_probe.rb}
 LOG=${LOG:-/tmp/adv_probe_capture.log}
 DURATION=${DURATION:-90}

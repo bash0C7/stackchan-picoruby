@@ -6,7 +6,7 @@
 #     [COUNTERPART_ENV="--env K=V --env K2=V2"] tools/run_device_probe.sh
 set -u
 
-REPO=/Users/bash/dev/src/github.com/bash0C7/stackchan-picoruby
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PROBE=${PROBE:?PROBE=path/to/probe.rb required}
 COUNTERPART=${COUNTERPART:?COUNTERPART=AppName required}
 COUNTERPART_ENV=${COUNTERPART_ENV:-}

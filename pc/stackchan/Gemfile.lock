@@ -1,5 +1,7 @@
-PATH
-  remote: /Users/bash/dev/src/github.com/bash0C7/rb-foundation-model-mac
+GIT
+  remote: https://github.com/bash0C7/rb-foundation-model-mac.git
+  revision: 9ecc3bebfb35483fe1cfe69a6e8e9e5abd8dbfdd
+  branch: main
   specs:
     rb-foundation-model-mac (0.2.0)
 

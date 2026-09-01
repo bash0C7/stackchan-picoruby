@@ -13,9 +13,9 @@ Subagent (haiku), 60000ms timeout.
 
 Dispatch:
 
-> Read $LOG (default /tmp/stackchan-picoruby-debug/boot.log). Extract any `Guru Meditation Error` PC, EXCVADDR, A0/A1/.., and Backtrace addresses. For each address, also try the variant with bit 31 cleared (`0x82xxxxxx` → `0x42xxxxxx`). Run xtensa-esp32s3-elf-addr2line against /Users/bash/dev/src/github.com/bash0C7/R2P2-ESP32/build/R2P2-ESP32.elf:
+> Read $LOG (default /tmp/stackchan-picoruby-debug/boot.log). Extract any `Guru Meditation Error` PC, EXCVADDR, A0/A1/.., and Backtrace addresses. For each address, also try the variant with bit 31 cleared (`0x82xxxxxx` → `0x42xxxxxx`). Run xtensa-esp32s3-elf-addr2line against vendor/R2P2-ESP32/build/R2P2-ESP32.elf, from the repo root:
 >
->     source /Users/bash/dev/src/github.com/bash0C7/esp-idf/export.sh && xtensa-esp32s3-elf-addr2line -pfiaC -e .../R2P2-ESP32.elf <addresses>
+>     source ~/esp/esp-idf/export.sh && xtensa-esp32s3-elf-addr2line -pfiaC -e vendor/R2P2-ESP32/build/R2P2-ESP32.elf <addresses>
 >
 > Write the analysis to `/tmp/stackchan-picoruby-debug/crash-analyze.log` and also report under 250 words. Categorize each resolved function (mruby / BTstack / esp-idf / FreeRTOS / app).
 

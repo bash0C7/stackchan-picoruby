@@ -647,15 +647,29 @@ end
 # binary+identifier that already has Bluetooth authorization granted from a
 # prior `open`-launched run. bin/stackchan's real-mode daemon spawn therefore
 # goes through `open -a` against this bundle, never a direct exec of the raw
-# build/host/bin/picoruby. Re-run this task after every macos:build (the
+# build/host/bin/picoruby. Re-run this task after every pc:vm_build (the
 # ad-hoc code signature — and thus the granted TCC authorization — is tied to
 # the binary's exact bytes, so a rebuild invalidates it, same as any other
 # ad-hoc-signed dev binary on this machine).
 namespace :pc do
+  # The VM that owns the BLE link. vendor/R2P2-darwin drives the mruby build
+  # system out of its own vendored picoruby, so the build is MRUBY_BUILD_DIR +
+  # MRUBY_CONFIG around a plain `rake` there; that config declares an unnamed
+  # MRuby::Build, which lands the binary in build/host/bin/picoruby.
+  desc "build vendor/R2P2-darwin's picoruby VM with the stackchan-pc config (input to pc:app_bundle)"
+  task :vm_build do
+    darwin = File.expand_path("vendor/R2P2-darwin", __dir__)
+    src    = File.join(darwin, "vendor", "picoruby")
+    abort "#{src} not found — run `bundle exec rake vendor:setup` first" unless Dir.exist?(src)
+    sh({ "MRUBY_BUILD_DIR" => File.join(darwin, "build"),
+         "MRUBY_CONFIG"    => File.join(darwin, "build_config", "r2p2-stackchan-pc.rb") },
+       "rake", "-C", src)
+  end
+
   desc "(re)build ~/Applications/StackchanPico.app wrapping vendor/R2P2-darwin's built VM, so real-mode BLE (CoreBluetooth) can pass macOS TCC"
   task :app_bundle do
     vm = File.expand_path("vendor/R2P2-darwin/build/host/bin/picoruby", __dir__)
-    abort "#{vm} not found — run `MRUBY_CONFIG=$(pwd)/vendor/R2P2-darwin/build_config/r2p2-stackchan-pc.rb bundle exec rake -f vendor/R2P2-darwin/Rakefile macos:build` first" unless File.exist?(vm)
+    abort "#{vm} not found — run `bundle exec rake pc:vm_build` first" unless File.exist?(vm)
     app = File.expand_path("~/Applications/StackchanPico.app")
     macos_dir = File.join(app, "Contents", "MacOS")
     mkdir_p macos_dir

@@ -14,10 +14,18 @@ module PicotestHarness
   # host-VM quirks silently diverge from device behavior and break the suite.
   PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby")
   PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
-  # No vendored source of truth for this one (picoruby-scservo is fetched by
-  # R2P2-ESP32's build_config as a build-time mrbgem, not vendored as a repo
-  # tree) — override with ENV on any machine other than the original author's.
-  SCSERVO_RB    = ENV["SCSERVO_RB"] || "/Users/bash/dev/src/github.com/bash0C7/picoruby-scservo/mrblib/scservo.rb"
+  # picoruby-scservo is fetched by R2P2-ESP32's build_config as a build-time
+  # mrbgem (from GitHub), not vendored here as a repo tree, so it has to be
+  # located rather than required. Preference order: explicit override, the
+  # author's sibling clone layout, the copy the firmware build already fetched.
+  SCSERVO_SIBLING  = File.expand_path("../picoruby-scservo/mrblib/scservo.rb", REPO_ROOT)
+  SCSERVO_VENDORED = File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
+                                "picoruby", "build", "repos", "esp32-picoruby", "picoruby-scservo",
+                                "mrblib", "scservo.rb")
+  SCSERVO_RB = ENV["SCSERVO_RB"] || [SCSERVO_SIBLING, SCSERVO_VENDORED].find { |path| File.exist?(path) }
+  unless SCSERVO_RB && File.exist?(SCSERVO_RB)
+    abort("SCSERVO_RB not found (set the env var); searched:\n  #{SCSERVO_SIBLING}\n  #{SCSERVO_VENDORED}")
+  end
 
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")

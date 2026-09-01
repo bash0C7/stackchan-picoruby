@@ -99,6 +99,80 @@ AST so the device classes can be exercised without the device;
 suite. Device interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
+## Setting up a new machine
+
+Prerequisites are listed under "Development environment" below; install those
+first. Nothing here needs hand-placed sibling clones — every dependency is
+either fetched by a rake task or pulled from GitHub at build time.
+
+```bash
+git clone https://github.com/bash0C7/stackchan-picoruby.git
+cd stackchan-picoruby
+bundle install
+bundle exec rake vendor:setup          # clone vendor/R2P2-ESP32 and vendor/R2P2-darwin
+```
+
+### Device (ESP32-S3)
+
+```bash
+bundle exec rake r2p2:setup            # 10-20 min; first time, and after a target switch
+bundle exec rake r2p2:build_flash_appmrb SRC=app/application.rb
+```
+
+`r2p2:setup` rebuilds the host mruby and runs `idf.py set-target esp32s3`.
+Skipping it leaves the target at the default `esp32`, which fails to link with an
+IRAM overflow. The second command builds the firmware and bakes
+`app/application.rb` into the littlefs storage partition as `/home/app.mrb`, so
+the robot autostarts it. Both need the CoreS3 attached over USB-C.
+
+Day-to-day iteration on the application alone does not reflash the firmware — use
+the `/stackchan-device-iterate` skill, which uploads only `app.mrb`.
+
+### macOS side
+
+The PicoRuby VM that owns the BLE link has to be built and then wrapped in an app
+bundle, because CoreBluetooth is only granted through macOS TCC and that grant
+binds to a bundle identity:
+
+```bash
+bundle exec rake pc:vm_build           # build the PicoRuby VM under vendor/R2P2-darwin
+bundle exec rake pc:app_bundle         # -> ~/Applications/StackchanPico.app
+bundle exec rake pc:up                 # start the backends under launchd
+pc/stackchan-pico/bin/stackchan status
+pc/stackchan-pico/bin/stackchan face joy
+```
+
+Re-run `pc:app_bundle` after every `pc:vm_build`: the bundle is ad-hoc signed, and
+the signature binds to the exact bytes of the binary.
+
+The first `pc:up` after a device flash can report that the daemon did not answer
+within its timeout while the BLE link is still coming up. Run it again; it is
+idempotent and recreates the launchd jobs each time.
+
+### Tests
+
+```bash
+bundle exec rake picotest:build        # build the host picoruby VM (also run after any firmware build)
+bundle exec rake test                  # picotest: device / pc / shared suites
+bundle exec rake test:host             # CRuby-only tools and the class extractor
+```
+
+`rake test` reads the sources of two mrbgems that are fetched from GitHub at
+firmware-build time rather than vendored here — `picoruby-scservo` and
+`picoruby-ili9342`. It finds them in the firmware build tree, so run a device
+build once first, or point `SCSERVO_RB` and `ILI9342_MRBLIB` at your own clones.
+
+A firmware build overwrites the host picoruby VM with a non-picotest
+configuration, so `picotest:build` has to run again after one; the symptom of
+forgetting is `uninitialized constant Picotest`.
+
+### Optional
+
+`bash0C7/rb-corebluetooth-mac` gives a Bash-callable BLE central, used by the
+`stackchan-ble-control` CLI for smoke tests. It needs `bundle install && bundle
+exec rake compile` in its own checkout to build the Swift dylib before first use,
+and again after any Ruby ABI change.
+
 ## Quickstart (macOS side)
 
 A single CLI `stackchan` drives the robot. See

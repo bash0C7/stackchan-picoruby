@@ -12,15 +12,21 @@
 #
 #   ruby tools/face_spi_cost.rb
 #
-# ILI9342_MRBLIB overrides where the driver is read from; it is a build-time
-# mrbgem fetched from GitHub, not vendored here, so the default points at the
-# author's checkout the same way test/picotest/harness.rb points at scservo.
+# ILI9342_MRBLIB overrides where the driver is read from (see below for the
+# default resolution order).
 require "rbconfig"
 
-ROOT   = File.expand_path("..", __dir__)
-DRIVER = ENV["ILI9342_MRBLIB"] ||
-         "/Users/bash/dev/src/github.com/bash0C7/picoruby-ili9342/mrblib/ili9342.rb"
-abort "driver not found: #{DRIVER} (set ILI9342_MRBLIB)" unless File.exist?(DRIVER)
+ROOT = File.expand_path("..", __dir__)
+# picoruby-ili9342 is fetched by R2P2-ESP32's build_config as a build-time
+# mrbgem (from GitHub), not vendored here as a repo tree, so it has to be
+# located rather than required — same resolution order as SCSERVO_RB in
+# test/picotest/harness.rb: explicit override, sibling clone, build fetch copy.
+ILI9342_SIBLING  = File.expand_path("../picoruby-ili9342/mrblib/ili9342.rb", ROOT)
+ILI9342_VENDORED = File.join(ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
+                              "picoruby", "build", "repos", "esp32-picoruby", "picoruby-ili9342",
+                              "mrblib", "ili9342.rb")
+DRIVER = ENV["ILI9342_MRBLIB"] || [ILI9342_SIBLING, ILI9342_VENDORED].find { |path| File.exist?(path) }
+abort "driver not found (set ILI9342_MRBLIB); searched:\n  #{ILI9342_SIBLING}\n  #{ILI9342_VENDORED}" unless DRIVER && File.exist?(DRIVER)
 
 $LOAD_PATH.unshift File.join(ROOT, "lib")
 
