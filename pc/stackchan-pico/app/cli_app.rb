@@ -26,20 +26,13 @@ module Stackchan
       "stackchan: backends are not running. Start them with:\n" \
       "  bundle exec rake pc:up"
 
-    # Attach to the launchd-managed daemon. Nothing here spawns it, so there is
-    # nothing to wait for: one attempt, then report the command that fixes it.
     def self.attach(host, port, drb_factory: nil, warn_fn: nil)
       factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
       d = factory.call("druby://#{host}:#{port}")
       d.status   # force a real round-trip
       d
     rescue StandardError => e
-      # The rescue stays broad on purpose: a stopped daemon surfaces here as
-      # SocketError ("connect(...): Connection refused"), not DRb::DRbConnError
-      # on the darwin VM, so narrowing to a guessed set of
-      # transport classes would replace the NOT_RUNNING_MESSAGE hint with a
-      # backtrace in exactly the case that hint exists for. Naming the exception
-      # is what stops a CLI-side bug from masquerading as a stopped daemon.
+      # Broad on purpose: a stopped daemon raises SocketError, not DRbConnError.
       warn_fn ? warn_fn.call(e) : $stderr.write("stackchan: attach failed: #{e.class}: #{e.message}\n")
       nil
     end
@@ -149,9 +142,7 @@ module Stackchan
       end
     end
 
-    # Demo: scripted intro performance (LED/face/servo cycling + say). Port of
-    # Stackchan::Demo. Uses a step count, not a Time deadline (no Time on
-    # PicoRuby), and passes servo poses as positional Hashes (drb has no kwargs).
+    # Step count, not a Time deadline (no Time on PicoRuby).
     DEMO_SPEECH_RATE = 250   # wpm — faster speech => fewer bytes => less BLE timing exposure
     DEMO_INTRO_LINE = "ぼくスタックチャン！"
     DEMO_OUTRO_LINE = "タッチしてみて"
@@ -230,8 +221,7 @@ module Stackchan
       out "  detail: #{detail.inspect}" if detail
     end
 
-    # Calibration: operator-paced 5-pose flow (or --align-only). Port of
-    # Stackchan::Calibrate::Runner. Exit codes: 0 ok, 6 device-unknown, 7 verify-fail.
+    # Exit codes: 0 ok, 6 device-unknown, 7 verify-fail.
     def verb_calibrate(args)
       align_only = delete_flag(args, "--align-only")
       engage     = delete_flag(args, "--engage-torque")

@@ -1,73 +1,21 @@
-# picoruby-ble central client for the StackChan NUS (FakeBleClient is the
-# host stand-in). Three parts:
+# picoruby-ble central for the StackChan NUS. NusResolver is pure logic,
+# StackchanRadio is the BLE subclass, StackchanCentral is the verb-facing
+# wrapper the daemon holds (same interface as FakeBleClient).
 #
-#   NusResolver      — PURE logic (UUID -> handle resolution, frame classification).
-#                      Host-testable without a radio.
-#   StackchanRadio   — the actual `BLE` subclass. Only overrides what BLE requires
-#                      (advertising_report_callback, packet_callback) plus the
-#                      connect-and-discover driver.
-#   StackchanCentral — the drop-in FakeBleClient replacement the daemon holds.
-#                      Wraps a StackchanRadio and exposes the verb-facing API
-#                      (connect/connected?/send/raw_send/write_without_ack/...).
-#
-# Two load-bearing facts about the darwin port:
-#
-# 1. StackchanRadio must NOT define its own `connect`. `BLE#connect(report)`
-#    (ble_central.rb) is the inherited "GAP-connect to this advertiser" method;
-#    `advertising_report_callback` calls it BY NAME. A same-named zero-arg
-#    override on the subclass would shadow it and break that
-#    call with ArgumentError the moment a matching advertiser was seen. The
-#    daemon-facing "connect everything" entry point lives on the WRAPPER
-#    (StackchanCentral#connect) instead, under a different receiver.
-#
-# 2. `BLE#scan(timeout_ms:, stop_state: :TC_IDLE)` (-> `start`) blocks
-#    (cooperative `sleep_ms` inside `start`'s loop) until the state machine
-#    reaches `stop_state` or the timeout elapses. Connecting to the first
-#    matching advertiser from INSIDE `advertising_report_callback` (by calling
-#    the inherited `connect(report)`) keeps the still-running outer `scan`
-#    loop driving the rest of GATT discovery (services -> characteristics ->
-#    descriptors) until `@state == :TC_IDLE` — one `scan` call is the whole
-#    connect+discover sequence, no manual state polling needed.
-#
-# LOAD-BEARING GOTCHA: `BLE#start` calls `hci_power_control(HCI_POWER_ON)`
-# on ENTRY every time, and the darwin port re-emits a fresh
-# BTSTACK_EVENT_STATE(WORKING) packet on every such call (PicoBLECentral.swift
-# `powerOn()`, deliberately, per its own comment). `ble_central.rb`'s decoder
-# processes that packet whenever `@state` is `:TC_OFF` OR `:TC_IDLE` — and
-# `:TC_IDLE` is exactly the state we are in once connected+discovered. So
-# calling `scan`/`start` a second time after the initial connect would
-# immediately call `start_scan` again, which the Swift side implements as
-# `pbleSharedFifo.flush()` — dropping every pending packet, INCLUDING an
-# in-flight ACK/notification this code is waiting on. Conclusion: after the
-# initial `scan`, this code never calls `scan`/`start`/`connect` again. All
-# further draining (ACK-wait, touch notifications) uses
-# `StackchanRadio#pop_and_dispatch` (`_event_popped` first, then a
-# non-blocking `@event_queue.pop(timeout_ms: 0)` + `packet_callback`), which
-# never touches `hci_power_control` and therefore never re-triggers the
-# rescan/flush chain.
-# `hci_power_control(OFF)` (in `scan`'s own `ensure`) is confirmed benign on
-# darwin: CoreBluetooth callbacks (writes, `didUpdateValueFor` notifications)
-# are not gated by that flag (`PicoBLECentral.swift#powerOff`'s own comment:
-# "Do NOT drop an established connection").
-#
-# GATT_EVENT_NOTIFICATION (0xA7): the darwin port's Swift backend DOES
-# synthesize this for every unsolicited update on a subscribed characteristic
-# (`PicoBLEPackets.swift#pbleNotification`, called from
-# `PicoBLECentral.swift#didUpdateValueFor`). `ble_central.rb`'s `packet_callback` still leaves the 0xA7 branch
-# empty (`# TODO`), so `StackchanRadio#packet_callback` overrides it (calling
-# `super` first to preserve the base state machine) to decode and route it.
-#
-# CCCD subscribe: `write_characteristic_descriptor_using_descriptor_handle`
-# targeting a characteristic's CCCD handle maps to CoreBluetooth's
-# `setNotifyValue` (`PicoBLECentral.swift#writeDescriptor`) — a non-zero first
-# byte enables notifications (`"\x01\x00"`).
+# Darwin-port rules this file depends on:
+# - StackchanRadio must not define `connect`: BLE#connect(report) is called by
+#   name from advertising_report_callback. Connecting from inside that callback
+#   lets one `scan` call drive connect + full GATT discovery.
+# - After the initial scan, never call scan/start/connect again: BLE#start
+#   re-powers the controller and the port flushes its FIFO, dropping in-flight
+#   packets. Drain with pop_and_dispatch only.
+# - The port synthesizes GATT_EVENT_NOTIFICATION (0xA7); ble_central.rb leaves
+#   it undecoded, so packet_callback here handles it after super.
 
 module NusResolver
-  # NOTE: bare `module_function` is a no-op on PicoRuby; the explicit
-  # `module_function :sym, ...` form at the end of the module is required.
+  # bare `module_function` is a no-op on PicoRuby; use the explicit form.
 
-  # 16-byte big-endian UUID for a Nordic UART Service member.
-  #   suffix 0x0001 = service, 0x0002 = RX (write), 0x0003 = TX (notify)
+  # 16-byte UUID; suffix 0x0001 = service, 0x0002 = RX (write), 0x0003 = TX (notify)
   def nus_uuid(suffix_hi, suffix_lo)
     [0x6e, 0x40, suffix_hi, suffix_lo,
      0xb5, 0xa3, 0xf3, 0x93, 0xe0, 0xa9,
@@ -77,15 +25,11 @@ module NusResolver
   def rx_uuid; nus_uuid(0x00, 0x02); end
   def tx_uuid; nus_uuid(0x00, 0x03); end
 
-  # CCCD (Client Characteristic Configuration Descriptor) UUID 0x2902, as the
-  # 16-byte form the central stores after reverse_128.
   def cccd_uuid
     [0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x10, 0x00,
      0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb].pack("C*")
   end
 
-  # Find a characteristic Hash (the shape ble_central.rb builds) by uuid128
-  # across all discovered services. Returns nil if absent.
   def find_characteristic(services, uuid128)
     si = 0
     while si < services.size
@@ -100,7 +44,6 @@ module NusResolver
     nil
   end
 
-  # The CCCD descriptor handle of a characteristic, or nil.
   def cccd_handle(characteristic)
     return nil unless characteristic
     ds = characteristic[:descriptors]
@@ -112,11 +55,7 @@ module NusResolver
     nil
   end
 
-  # Classify an inbound notified frame the way the daemon's reader needs:
-  #   :touch  — unsolicited <touch:N> (route to touch handler)
-  #   :ack    — bare "." / "?" ACK byte
-  #   :detail — a servo/read detail frame (<..._actual:..> / <yaw_raw:..>)
-  #   :other  — anything else (e.g. <rx:...> throughput summary)
+  # :touch (<touch:N>), :ack ("."/"?"), :detail (<..._actual:..>/<yaw_raw:..>), :other
   def classify(frame)
     return :touch if Stackchan::BLE::FrameCodec.touch_event?(frame)
     head = frame[0, 1]
@@ -129,12 +68,8 @@ module NusResolver
                   :find_characteristic, :cccd_handle, :classify
 end
 
-# `defined?(BLE)` guards both radio-touching classes so this file also loads on
-# a VM without the ble gem (host testing of NusResolver in isolation).
+# `defined?(BLE)` guards: this file also loads on a VM without the ble gem.
 if Object.const_defined?(:BLE)
-  # The actual `BLE` subclass. Deliberately minimal: only the two callbacks BLE
-  # requires, plus the connect-and-discover driver. See the file-level comment
-  # for why this class must never define its own `connect`.
   class StackchanRadio < BLE
     attr_reader :target
 
@@ -147,15 +82,12 @@ if Object.const_defined?(:BLE)
 
     attr_accessor :on_notification
 
-    # Not exposed by ble_central.rb's own attr_reader list.
     def conn_handle
       @conn_handle
     end
 
-    # One poll step. `_event_popped` FIRST: on the darwin port that is the
-    # only place a packet moves from the Swift FIFO into @event_queue, so a
-    # poll that skipped it while the queue was empty would wait for the 1 s
-    # heartbeat before seeing anything. Then a non-blocking pop + dispatch.
+    # `_event_popped` first: on the darwin port it is the only place a packet
+    # moves from the Swift FIFO into @event_queue.
     def pop_and_dispatch
       _event_popped
       event = @event_queue.pop(timeout_ms: 0)
@@ -164,11 +96,6 @@ if Object.const_defined?(:BLE)
       event
     end
 
-    # Called by the base class while @state == :TC_W4_SCAN_RESULT (you must
-    # override this — the base body is empty). Connecting to the FIRST
-    # matching advertiser from inside this callback, via the INHERITED
-    # `connect(report)`, is what lets discovery finish inside the caller's
-    # single `scan` call (see file-level comment, point 2).
     def advertising_report_callback(report)
       return if @target
       return unless report.name_include?(@name_prefix)
@@ -176,9 +103,6 @@ if Object.const_defined?(:BLE)
       connect(report)
     end
 
-    # Extend the shared decoder with GATT_EVENT_NOTIFICATION (0xA7); see the
-    # file-level comment for why the darwin backend emits it but
-    # ble_central.rb leaves it undecoded.
     def packet_callback(event_packet)
       super
       return unless event_packet.getbyte(0) == GATT_EVENT_NOTIFICATION
@@ -188,24 +112,14 @@ if Object.const_defined?(:BLE)
       cb.call(handle, event_packet.byteslice(8, len)) if cb
     end
 
-    # Drive scan -> connect -> full GATT discovery in one blocking (but
-    # cooperative — `sleep_ms` inside `start`'s loop yields to other Tasks)
-    # call. Returns once @state == :TC_IDLE or timeout_ms elapses; check
-    # `target`/`state` afterward to see which.
     def connect_and_discover(timeout_ms)
       @target = nil
       scan(timeout_ms: timeout_ms, stop_state: :TC_IDLE)
     end
   end
 
-  # Verb-facing wrapper. Same interface as FakeBleClient: connect / connected? /
-  # send{|builder| } / raw_send / write_without_ack / max_write_chunk /
-  # last_detail_frame / on_unsolicited= / disconnect.
   #
-  # Every wait is a poll loop: drain the radio, return the moment the awaited
-  # frame is in the inbox, otherwise sleep one POLLING_UNIT_MS and retry.
-  # Budgets are written in milliseconds and converted with polls_for, so the
-  # cadence can change without changing any timeout.
+  # Every wait is a poll loop in POLLING_UNIT_MS steps; budgets are in ms.
   class StackchanCentral
     CONNECT_TIMEOUT_MS        = 15_000   # scan-wait + connect + full GATT discovery
     POLLING_UNIT_MS           = 20
@@ -219,9 +133,6 @@ if Object.const_defined?(:BLE)
     attr_accessor :on_unsolicited
     attr_reader   :last_detail_frame
 
-    # radio / sleep_fn / clock_fn / log_fn are injection points for the host
-    # suite (test/pc). Defaults: the real darwin-ble radio, the VM's cooperative
-    # sleep, Machine.board_millis, and stderr (= daemon.log under the wrapper).
     def initialize(name_prefix: "StackChan", radio: nil, sleep_fn: nil, clock_fn: nil, log_fn: nil)
       @name_prefix        = name_prefix
       @radio              = radio || StackchanRadio.new(name_prefix: name_prefix)
@@ -247,14 +158,8 @@ if Object.const_defined?(:BLE)
       unless @radio.target
         raise Stackchan::BLE::ConnectionError, "no #{@name_prefix} advertiser found"
       end
-      # NOT @radio.state == :TC_IDLE: ble_central.rb's `scan` unconditionally
-      # resets @state to :TC_OFF via its own trailing `reset_state` call
-      # ("In order to be able to scan again") once `start` returns, whether
-      # discovery succeeded or not — so checking @state here is always false,
-      # even after a fully successful connect+discover. @conn_handle is set
-      # once (HCI_SUBEVENT_LE_CONNECTION_COMPLETE) and untouched by
-      # `reset_state`, so it is the correct success signal (same check as
-      # R2P2-darwin's reference StackchanCentral#connected?).
+      # @state is reset to :TC_OFF after scan whether or not discovery
+      # succeeded; @conn_handle is the success signal.
       unless @radio.conn_handle != BLE::HCI_CON_HANDLE_INVALID
         raise Stackchan::BLE::ConnectionError, "GATT connect did not complete"
       end
@@ -269,11 +174,7 @@ if Object.const_defined?(:BLE)
       self
     end
 
-    # Real client reads a negotiated MTU from CoreBluetooth on the CRuby side
-    # (rb-corebluetooth-mac); the darwin-ble central gem exposes no equivalent
-    # query, so this mirrors FakeBleClient's fixed value — the same
-    # conservative default (macOS write-without-response cap) used everywhere
-    # else in this codebase (Voice::Streamer::DEFAULT_CHUNK etc.).
+    # The darwin port exposes no MTU query; macOS write-without-response cap.
     def max_write_chunk
       180
     end
@@ -298,16 +199,8 @@ if Object.const_defined?(:BLE)
       self
     end
 
-    # Budget for the device's <A:done> half-duplex-audio completion notification
-    # (app/application.rb's StackChanApp#consume_rx writes this only after
-    # AudioReceiver#consume fully returns -- i.e. after both the T-ms pre-play
-    # delay AND the actual mu-law decode + I2S playback + silence-tail write
-    # have all finished). await_audio_done actively waits for the notification;
-    # this budget is only a safety net in case it is ever lost, but it must
-    # scale with clip size (a fixed ~30s net was observed timing out on longer
-    # clips while the device stayed healthy) and still stay bounded.
-    # Measured on hardware (15KB-61KB clips): ~0.95ms/byte + ~3.3s base,
-    # linear. Rounded up to 1.2ms/byte for margin.
+    # Safety net for a lost <A:done>; scales with clip size (~0.95 ms/byte +
+    # 3.3 s base measured, 1.2 ms/byte used).
     def audio_done_timeout_ms(n)
       ms = AUDIO_DONE_BASE_MS + (n * 6 / 5)
       return AUDIO_DONE_TIMEOUT_MIN_MS if ms < AUDIO_DONE_TIMEOUT_MIN_MS
@@ -333,8 +226,6 @@ if Object.const_defined?(:BLE)
       end
     end
 
-    # Pull every packet the radio holds right now (one per pop_and_dispatch),
-    # so a burst of notifications lands in a single poll step.
     def drain
       while @radio.pop_and_dispatch
       end
@@ -357,11 +248,8 @@ if Object.const_defined?(:BLE)
       @cccd_handle = NusResolver.cccd_handle(tx)
     end
 
-    # Enable notifications on TX so ACK/detail/touch frames route through
-    # StackchanRadio#packet_callback -> handle_notification, then keep draining
-    # for SUBSCRIBE_SETTLE_MS so CoreBluetooth's setNotifyValue lands before the
-    # first real write — ble_central.rb's decode table has no central-side
-    # "subscribe complete" event to wait on instead.
+    # Subscribe TX, then drain SUBSCRIBE_SETTLE_MS: there is no central-side
+    # "subscribe complete" event to wait on.
     def subscribe_tx
       return unless @cccd_handle
       @radio.write_characteristic_descriptor_using_descriptor_handle(
@@ -408,12 +296,7 @@ if Object.const_defined?(:BLE)
         if servo_or_read?(frame)
           @last_detail_frame = await_inbox
           t_detail = @last_detail_frame ? @clock_fn.call : :timeout
-          # Diagnostic only (no behavior change): an intermittent, unexplained
-          # real-hardware defect (torque OFF) saw this second await return a bare ACK/ERROR byte instead of a real
-          # <..._actual:...> detail frame. Root cause not established (could
-          # not reproduce in 20+ follow-up attempts) -- log the raw bytes if
-          # it recurs so the next investigation has evidence instead of
-          # starting from zero again.
+          # Log raw bytes if the detail await returns a bare ACK byte (seen once, unexplained).
           if @last_detail_frame && NusResolver.classify(@last_detail_frame) == :ack
             $stderr.write("[ble_client] anomaly: detail-frame slot got an ACK-like byte #{@last_detail_frame.inspect} for #{frame.inspect}\n")
             $stderr.flush
@@ -423,14 +306,12 @@ if Object.const_defined?(:BLE)
         return if first[0, 1] == Stackchan::BLE::FrameCodec::ACK_OK
         raise Stackchan::BLE::DeviceError, "device rejected #{frame.inspect}"
       else
-        # detail-only response (no separate ACK byte)
         @last_detail_frame = first
         log_timing(frame, t0, t_ack, nil)
       end
     end
 
-    # One line per command in daemon.log: PC-side write->ACK (and ->detail)
-    # latency in ms at this layer, i.e. without wrapper / drb overhead.
+    # One line per command in daemon.log: write→ACK (and →detail) latency in ms.
     def log_timing(frame, t0, t_ack, t_detail)
       line = "[t] #{frame.chomp} ack=#{t_ack - t0}ms"
       if t_detail == :timeout
@@ -441,9 +322,6 @@ if Object.const_defined?(:BLE)
       @log_fn.call(line)
     end
 
-    # Poll until the inbox has a frame or ACK_TIMEOUT_MS elapses. Returns the
-    # frame, or nil on timeout. Returns the moment a frame is present -- no
-    # trailing sleep.
     def await_inbox
       polls = polls_for(ACK_TIMEOUT_MS)
       i = 0

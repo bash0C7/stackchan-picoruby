@@ -1,7 +1,4 @@
-# In-memory fake BLE client. Lets the daemon/CLI be verified on the host VM
-# without a real StackChan.
-# Records every frame the daemon writes and mirrors the device dispatcher's
-# ACK / detail-frame behaviour closely enough for logic tests.
+# In-memory BLE client for host runs; mirrors the device's ACK / detail behaviour.
 class FakeBleClient
   attr_accessor :on_unsolicited
   attr_reader :last_detail_frame, :sent_frames
@@ -27,8 +24,6 @@ class FakeBleClient
     @connected
   end
 
-  # Negotiated max write-without-response chunk. Real client reads it from the
-  # CoreBluetooth peripheral; the fake returns a typical macOS-central value.
   def max_write_chunk
     180
   end
@@ -60,10 +55,6 @@ class FakeBleClient
     cb.call("<touch:#{zone}>\n") if cb
   end
 
-  # No real device to wait on in fake mode -- mirrors StackchanCentral's
-  # interface (see its own comment for why the real client actively waits
-  # for this instead of sleeping a fixed duration) so Daemon#stream_audio
-  # works unchanged against both clients.
   def await_audio_done(n)
     self
   end
@@ -73,9 +64,7 @@ class FakeBleClient
   def write_frame(frame)
     @sent_frames << frame
     $stderr.write("[fake_ble] write_frame #{frame.inspect}\n"); $stderr.flush
-    # Device emits a detail frame after servo / read frames; mirror that so
-    # Display#servo returns something non-nil. String includes, NOT an
-    # alternation regex — PicoRuby's regexp engine does not support `|`.
+    # String includes, not alternation regex (unsupported on PicoRuby).
     @last_detail_frame =
       if frame.start_with?("<read:")
         "<yaw_raw:0,pitch_raw:0>\n"   # calibration raw read

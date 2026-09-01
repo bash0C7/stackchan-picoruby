@@ -1,7 +1,4 @@
-# Calibration math + raw-detail parsing, PicoRuby port of
-# pc/stackchan/lib/stackchan/ble/calibration.rb (the pure parts).
-# PicoRuby-safe: no alternation regex (manual parse), no kwargs (Hash args),
-# explicit module_function list.
+# Calibration math + raw-detail parsing.
 require "json"
 
 module CalibrationMath
@@ -75,12 +72,9 @@ module CalibrationMath
     end
   end
 
-  # Parse "<yaw_raw:N,pitch_raw:M>\n" (N/M an integer or "unknown") WITHOUT an
-  # alternation regex (unsupported on PicoRuby). Returns { yaw_raw:, pitch_raw: }
-  # with nil for "unknown" / unparseable.
+  # Parse "<yaw_raw:N,pitch_raw:M>\n"; nil for "unknown". No alternation regex on PicoRuby.
   def parse_raw_detail(frame)
     s = frame.to_s
-    # strip trailing newline, then surrounding < >
     s = s[0, s.length - 1] while s.length > 0 && (s[-1] == "\n" || s[-1] == "\r")
     s = s[1, s.length - 2] if s.length >= 2 && s[0] == "<" && s[-1] == ">"
     yaw = nil

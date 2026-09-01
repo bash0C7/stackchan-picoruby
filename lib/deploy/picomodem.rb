@@ -6,9 +6,7 @@ require "serialport"
 
 module Deploy
   module Picomodem
-    # Raised when /home/app.mrb is autostarting and never returns, so the shell
-    # that answers Ctrl-B is never constructed. Distinct from a transient
-    # failure because retrying cannot help.
+    # /home/app.mrb autostarts and never returns; retrying cannot help.
     class AutostartBlocked < StandardError; end
 
     # Raised when the board is not enumerated on USB at all.
@@ -35,18 +33,12 @@ module Deploy
     DEFAULT_BOOT_TIMEOUT = 25.0
     DEFAULT_ATTEMPTS     = 3
 
-    # The ESP32-S3 USB-Serial/JTAG peripheral drops and re-enumerates its CDC
-    # connection for ~0.5-2s around every reset, so the file descriptor that
-    # issued the reset is dead afterwards and must be reopened. Same finding as
-    # the one that forced r2p2:capture_resilient to reopen in a loop.
+    # The USB-Serial/JTAG CDC endpoint re-enumerates ~0.5-2 s after a reset,
+    # so the handle that issued the reset must be reopened.
     REENUMERATE_TIMEOUT = 15.0
 
-    # After the banner, wait for the device to stop talking before offering
-    # Ctrl-B. Both IO.get_cursor_position and IO.wait_terminal begin with
-    # `STDIN.read_nonblock(100)` to discard the input buffer (io-console.rb:47
-    # and :89), so an STX that arrives while the shell is still probing the
-    # terminal is thrown away rather than acted on. Quiescence is the signal
-    # that those probes are done and the editor is in its read loop.
+    # The shell discards input while probing the terminal (read_nonblock in
+    # io-console), so wait for quiescence before offering Ctrl-B.
     QUIET_SECONDS = 0.4
     QUIET_CAP     = 8.0
 
@@ -94,10 +86,8 @@ module Deploy
             "replug the USB-C cable, or pass ESPPORT=... if the node was renamed."
     end
 
-    # Pulses RTS on a throwaway handle, waits out the CDC re-enumeration, and
-    # returns [fresh_serial, port]. The port is returned because the node can
-    # come back under a different name, which is the failure the old
-    # "stale or mis-selected /dev/cu.usbmodem*" note was guessing at.
+    # Pulses RTS, waits out re-enumeration, returns [serial, port] (the node
+    # can come back under another name).
     def reset_and_reopen(port, baud, stdout)
       pulse = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
       begin
@@ -171,16 +161,9 @@ module Deploy
             "the board is enumerated but silent. Check the USB cable and power."
     end
 
-    # Offers Ctrl-B and the FILE_WRITE frame. Returns nil on success, or a
-    # string describing where it stopped.
-    #
-    # Every synchronisation point here is a byte the device actually emits,
-    # rather than a sleep long enough to probably cover it:
-    #
-    #   * "Starting shell" (main_task.rb:42) says the editor loop is about to
-    #     run, and that loop is the only place Ctrl-B is read (shell.rb:421);
-    #   * ACK 0x06 (shell.rb:424) says the editor read our Ctrl-B and is
-    #     entering PicoModem.session, so the FILE_WRITE frame has a reader.
+    # Every sync point is a byte the device emits: "Starting shell" before the
+    # editor loop that reads Ctrl-B, ACK 0x06 once PicoModem.session has a reader.
+    # Returns nil on success or a string describing where it stopped.
     def offer_file_write(serial, payload, stdout, attempt)
       drain(serial)
       serial.write [STX].pack("C")
@@ -270,9 +253,7 @@ module Deploy
       [body.getbyte(0), body.byteslice(1, length - 1) || ""]
     end
 
-    # Keeps answering terminal queries until the device has been quiet for
-    # QUIET_SECONDS, which is when the logo has finished printing and the
-    # editor is sitting in its read loop.
+    # Answer terminal queries until the device has been quiet for QUIET_SECONDS.
     def settle(serial, stdout)
       pending  = +""
       replies  = 0
@@ -311,9 +292,7 @@ module Deploy
       return nil unless io.wait_readable(timeout)
       io.read_nonblock(512)
     rescue IO::WaitReadable, EOFError, SystemCallError
-      # A SystemCallError here means the CDC endpoint went away mid-read. Let
-      # the caller's deadline turn that into its own diagnosis rather than a
-      # backtrace out of the middle of a boot log read.
+      # CDC endpoint went away mid-read; let the caller's deadline diagnose it.
       nil
     end
 
@@ -334,8 +313,6 @@ module Deploy
           drained = serial.read_nonblock(256)
           break if drained.nil? || drained.empty?
         rescue IO::WaitReadable, EOFError
-          # transient — drain ended; either no more data is buffered or the
-          # device hiccuped. Either way we are done flushing.
           break
         end
       end

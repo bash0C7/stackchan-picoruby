@@ -1,14 +1,9 @@
-# Device boot for the PicoRuby daemon using the REAL picoruby-ble central
-# client (StackchanCentral in ble_client.rb) against a physical StackChan,
-# instead of FakeBleClient. Requires the device already advertising as
-# "StackChan*" and a VM built with the darwin-ble backend (deployment VM:
-# build-stackchan-pc/host/bin/picoruby).
+# Daemon boot with the real BLE central against a physical StackChan.
 #   picoruby boot_daemon_real.rb <repo-root> [port] [name-prefix]
 root = ARGV[0] || "."
 port = (ARGV[1] || "8787").to_i
 name_prefix = ARGV[2] || "StackChan"
-# On a deployment VM the shared gem is compiled in (Stackchan already defined);
-# only load the mrblib when running on a plain VM without it baked in.
+# Skip the mrblib loads when the shared gem is compiled into the VM.
 unless Object.const_defined?(:Stackchan)
   [
     "stackchan/ble/errors.rb",
@@ -32,10 +27,7 @@ begin
   daemon.start
   daemon.join
 rescue => e
-  # PicoRuby's top-level uncaught-exception handling is silent (prints
-  # nothing, exits 0), which would otherwise leave daemon.log empty on a
-  # failed connect (e.g. no matching advertiser within
-  # StackchanCentral::CONNECT_TIMEOUT_MS) — surface it explicitly.
+  # PicoRuby's uncaught-exception handling prints nothing and exits 0.
   $stderr.write("[stackchand] FATAL #{e.class}: #{e.message}\n")
   $stderr.flush
 end

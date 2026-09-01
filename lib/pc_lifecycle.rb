@@ -1,9 +1,5 @@
-# Bring the PC-side backends up and down through launchd.
-#
-# There is deliberately no "reuse what is already running" path: guessing
-# whether a resident process is usable kills healthy daemons and keeps stale
-# ones. `up` always ends with processes launchd started just now, from the
-# plist just written.
+# Bring the PC-side backends up and down through launchd. Never reuses a
+# running process: `up` always ends with jobs launchd started just now.
 require "fileutils"
 require_relative "launch_agent"
 
@@ -25,18 +21,11 @@ class PcLifecycle
     @releaser = releaser || method(:wait_for_port_release)
     @verifier = verifier || method(:daemon_status)
     @sleep_fn = sleep_fn  || ->(s) { sleep(s) }
-    # `wait_until_unloaded` below is exercised through its real
-    # implementation in tests (unlike wait_for_port / wait_for_port_release,
-    # which are always fully replaced by waiter:/releaser:), so its wall
-    # clock has to be fakeable too, or a test that forces the timeout path
-    # would burn UNLOAD_WAIT_S of real time and CPU to prove it.
     @clock    = clock_fn  || -> { Time.now }
   end
 
   def up
-    # launchd does not create the parent of StandardOutPath. Without this the
-    # job fails to spawn at all, and the timeout below points the operator at a
-    # log file that was never created.
+    # launchd does not create StandardOutPath's parent.
     FileUtils.mkdir_p(@c[:logdir])
     vm = File.join(@c[:vm_app], "Contents", "MacOS", "picoruby")
     unless File.exist?(vm)
@@ -76,33 +65,24 @@ class PcLifecycle
     [LaunchAgent.sidecar_label(@c[:ns]), LaunchAgent.daemon_label(@c[:ns])].each do |label|
       @runner.call("launchctl", "bootout", domain(label))
       path = File.join(@dir, "#{label}.plist")
-      # Remove the definition too: a plist left behind is loaded again at the
-      # next login, so "down" would silently undo itself.
+      # A plist left behind loads again at the next login.
       File.unlink(path) if File.exist?(path)
     end
   end
 
   private
 
-  # Always bootout then bootstrap, never kickstart. launchd caches a job's
-  # definition when it is bootstrapped; `kickstart -k` restarts the process from
-  # that cached copy and never rereads the plist. Reusing a loaded job would
-  # restart yesterday's configuration.
+  # bootout then bootstrap, never kickstart: kickstart reuses the cached plist.
   def start(job, port)
     label = job["Label"]
     @runner.call("launchctl", "bootout", domain(label))
-    # bootout returns before launchd has finished unloading the service, and
-    # bootstrapping while the domain still holds the label fails with
-    # "Bootstrap failed: 5: Input/output error". `print` here confirms absence
-    # only; it never decides whether to reuse a loaded job.
+    # bootout returns before the label leaves the domain; bootstrapping too
+    # early fails with "Bootstrap failed: 5".
     unless wait_until_unloaded(label)
       raise Error, "#{label} was still loaded #{UNLOAD_WAIT_S}s after bootout " \
                    "(`launchctl print #{domain(label)}`)"
     end
-    # A port still held once our own job is gone belongs to something launchd
-    # does not manage. Refuse: otherwise the new job dies on EADDRINUSE and the
-    # port check passes against the squatter, reporting success for a process we
-    # did not start.
+    # A port still held after bootout belongs to something launchd does not manage.
     holder = @releaser.call(port, RELEASE_WAIT_S)
     if holder
       raise Error, "port #{port} is still held #{RELEASE_WAIT_S}s after booting out #{label}, " \
@@ -110,9 +90,7 @@ class PcLifecycle
                    "If the pid below is the job that was just booted out, it is still shutting " \
                    "down — rerun pc:up.\n#{holder}"
     end
-    # Write the definition only once we know it can be bootstrapped: a plist
-    # left in ~/Library/LaunchAgents by a failed `up` is loaded at the next
-    # login, starting a backend that never came up successfully.
+    # Write the plist only once bootstrap can succeed; a leftover loads at next login.
     path = LaunchAgent.write(job, dir: @dir)
     out, ok = @runner.call("launchctl", "bootstrap", "gui/#{Process.uid}", path)
     unless ok
@@ -154,8 +132,7 @@ class PcLifecycle
     end
   end
 
-  # nil once nothing listens on the port; otherwise lsof's description of who
-  # still does, so the operator is handed a PID rather than "it didn't work".
+  # nil once nothing listens; otherwise lsof's line for who still does.
   def wait_for_port_release(port, timeout_s)
     deadline = Time.now + timeout_s
     loop do
@@ -171,9 +148,7 @@ class PcLifecycle
     require "drb"
     require "timeout"
     DRb.start_service
-    # A daemon can accept TCP and never answer DRb. Without
-    # this bound, `rake pc:up` hangs with no output and no way to tell that from
-    # a slow BLE connect.
+    # A wedged daemon accepts TCP and never answers DRb.
     Timeout.timeout(STATUS_WAIT_S) do
       DRb::DRbObject.new_with_uri("druby://127.0.0.1:#{port}").status
     end

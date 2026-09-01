@@ -1,31 +1,19 @@
-# CRuby orchestrator for the PicoRuby-native test suites. All three run on the
-# same host picoruby VM (R2P2-ESP32's own picoruby, MRUBY_CONFIG=picoruby-test):
-#   device — app/application.rb classes (prism-extracted, `< BLE` excluded) + test/device
-#   pc     — pc/stackchan-pico/app/ble_client.rb classes (prism-extracted; BLE is stubbed) + test/pc
-#   shared — mrbgems/picoruby-stackchan-shared mrblib + its own test dir
-# Each suite lists (a) what the CRuby side must load so Picotest::Runner can
-# ENUMERATE test classes, and (b) the files embedded into every generated VM
-# script (Runner's load_files), in load order.
+# CRuby orchestrator for the picotest suites (device / pc / shared), all on
+# R2P2-ESP32's own host picoruby VM. Each suite lists what CRuby loads to
+# enumerate test classes and what is embedded into the VM script, in order.
 
 module PicotestHarness
   REPO_ROOT     = File.expand_path("../..", __dir__) # test/picotest -> repo root
-  # Must be the vendored R2P2-ESP32's own picoruby (same VM the device firmware
-  # runs), not an independent upstream checkout — an unrelated checkout's
-  # host-VM quirks silently diverge from device behavior and break the suite.
+  # The vendored R2P2-ESP32's picoruby: the same VM the device runs.
   PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby")
   PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
-  # picoruby-scservo is fetched by R2P2-ESP32's build_config as a build-time
-  # mrbgem (from GitHub), not vendored here as a repo tree, so it has to be
-  # located rather than required. Preference order: explicit override, the
-  # author's sibling clone layout, the copy the firmware build already fetched.
+  # picoruby-scservo is fetched at firmware-build time; locate it.
   SCSERVO_SIBLING  = File.expand_path("../picoruby-scservo/mrblib/scservo.rb", REPO_ROOT)
   SCSERVO_VENDORED = File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
                                 "picoruby", "build", "repos", "esp32-picoruby", "picoruby-scservo",
                                 "mrblib", "scservo.rb")
   SCSERVO_RB = ENV["SCSERVO_RB"] || [SCSERVO_SIBLING, SCSERVO_VENDORED].find { |path| File.exist?(path) }
   unless SCSERVO_RB && File.exist?(SCSERVO_RB)
-    # Report the path that actually failed: an override pointing nowhere is the
-    # case worth naming, and listing the fallbacks instead hides it.
     searched = ENV["SCSERVO_RB"] ? [ENV["SCSERVO_RB"]] : [SCSERVO_SIBLING, SCSERVO_VENDORED]
     abort("scservo.rb not found; searched:\n  " + searched.join("\n  ") +
           "\nSet SCSERVO_RB to point at picoruby-scservo's mrblib/scservo.rb.")
@@ -39,11 +27,7 @@ module PicotestHarness
   DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
-  # Loadable anywhere: its DRb and TCPSocket patches are guarded on those
-  # constants, which the host VM does not have, leaving the SocketReadRetry
-  # policy the suite exercises.
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
-  # Same order as the boot_daemon*.rb load lists: namespace root first.
   SHARED_MRBLIB = %w[
     stackchan/ble/errors.rb
     stackchan/ble/face_table.rb
@@ -103,13 +87,9 @@ module PicotestHarness
     $LOAD_PATH.unshift File.join(REPO_ROOT, "lib")
     $LOAD_PATH.unshift File.join(REPO_ROOT, "test")
     require "ruby_class_extract"
-    # PICOTEST_VM: run the suites on another picoruby (e.g. vendor/R2P2-darwin/build/host/bin/picoruby
-    # to re-check the pc suite on the Mac lineage). Default: the R2P2-ESP32 host VM.
+    # PICOTEST_VM= runs the suites on another picoruby.
     ENV["RUBY"] = ENV["PICOTEST_VM"] || PICORUBY_VM
-    # picotest runs each test class from a generated /tmp driver script, so
-    # __FILE__ inside a test resolves to /tmp rather than to the file on disk.
-    # A test that needs a repo-relative fixture (spec/golden) reads this; the
-    # spawned VM inherits the environment.
+    # Tests run from a generated /tmp script, so repo-relative fixtures use this.
     ENV["STACKCHAN_REPO_ROOT"] = REPO_ROOT
 
     names = suite ? [suite] : SUITES.keys

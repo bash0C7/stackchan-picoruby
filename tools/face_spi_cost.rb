@@ -1,34 +1,18 @@
 #!/usr/bin/env ruby
-# What each face asks of the SPI bus, counted on the host with no device attached.
-#
-# This counts calls. It does not predict latency, and the call count is not what
-# sets it: on a CoreS3, composing a face offscreen took a redraw from 207-428
-# SPI#write calls down to 10 and moved the BLE `face` verb by 7-9%. The time goes
-# into PicoRuby executing the geometry, not into the transfer. See "Latency and
-# remaining headroom" in the README.
-#
-# Use it to compare one geometry or driver change against another without
-# touching the robot, and measure latency itself with tools/face_profile.zsh.
-#
-#   ruby tools/face_spi_cost.rb
-#
-# ILI9342_MRBLIB overrides where the driver is read from (see below for the
-# default resolution order).
+# Counts what each face asks of the SPI bus, on the host with no device. Call
+# count does not predict latency (geometry execution dominates); use it to
+# compare driver/geometry changes and measure latency with face_profile.zsh.
+#   ruby tools/face_spi_cost.rb   (ILI9342_MRBLIB= overrides the driver path)
 require "rbconfig"
 
 ROOT = File.expand_path("..", __dir__)
-# picoruby-ili9342 is fetched by R2P2-ESP32's build_config as a build-time
-# mrbgem (from GitHub), not vendored here as a repo tree, so it has to be
-# located rather than required — same resolution order as SCSERVO_RB in
-# test/picotest/harness.rb: explicit override, sibling clone, build fetch copy.
+# picoruby-ili9342 is fetched at firmware-build time; locate it.
 ILI9342_SIBLING  = File.expand_path("../picoruby-ili9342/mrblib/ili9342.rb", ROOT)
 ILI9342_VENDORED = File.join(ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
                               "picoruby", "build", "repos", "esp32-picoruby", "picoruby-ili9342",
                               "mrblib", "ili9342.rb")
 DRIVER = ENV["ILI9342_MRBLIB"] || [ILI9342_SIBLING, ILI9342_VENDORED].find { |path| File.exist?(path) }
 unless DRIVER && File.exist?(DRIVER)
-  # Name the path that actually failed; an override pointing nowhere is the case
-  # worth reporting, and listing the fallbacks instead hides it.
   searched = ENV["ILI9342_MRBLIB"] ? [ENV["ILI9342_MRBLIB"]] : [ILI9342_SIBLING, ILI9342_VENDORED]
   abort "ili9342.rb not found; searched:\n  " + searched.join("\n  ") +
         "\nSet ILI9342_MRBLIB to point at picoruby-ili9342's mrblib/ili9342.rb."

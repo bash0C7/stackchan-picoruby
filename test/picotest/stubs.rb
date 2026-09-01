@@ -2,9 +2,7 @@
 # application classes. Loaded into BOTH the CRuby orchestrator (for test-class
 # enumeration) and the target VM (first load_files entry).
 
-# SCServo's read-timeout deadline logic uses Machine.uptime_us / delay_ms.
-# A deterministic monotonic counter makes timeouts resolve instantly instead
-# of sleeping real wall-clock on the VM.
+# Deterministic monotonic clock so SCServo timeouts resolve instantly.
 module Machine
   @offset_us = 0
   def self.uptime_us = @offset_us

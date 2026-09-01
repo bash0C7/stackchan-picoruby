@@ -1,11 +1,8 @@
 # Host boot for the PicoRuby daemon using the FakeBleClient (no real device).
 #   picoruby boot_daemon.rb <repo-root> [port]
-# On the deployment VM (shared gem compiled in) the gem `load`s are unnecessary
-# and the real BLE client replaces FakeBleClient.
 root = ARGV[0] || "."
 port = (ARGV[1] || "8787").to_i
-# On a deployment VM the shared gem is compiled in (Stackchan already defined);
-# only load the mrblib when running on a plain VM without it baked in.
+# Skip the mrblib loads when the shared gem is compiled into the VM.
 unless Object.const_defined?(:Stackchan)
   [
     "stackchan/ble/errors.rb",

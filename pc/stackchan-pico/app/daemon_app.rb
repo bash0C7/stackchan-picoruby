@@ -1,24 +1,11 @@
-# StackChan PC-side daemon, PicoRuby port of pc/stackchan/lib/stackchan/daemon.rb.
-#
-# Concurrency model differs from the CRuby original because PicoRuby has no
-# Mutex/Queue/Thread — only cooperative Tasks (switch only at yield points:
-# sleep / blocking I/O / Task.pass):
-#   - drb server accept loop  : DRb.thread (a Task)
-#   - keepalive               : a Task issuing idempotent <read:pos>
-#   - BLE mutual exclusion     : a cooperative spinlock on @ble_busy (no Mutex);
-#                                set/clear straddles no yield point, so it is atomic
-#   - touch event channel      : a plain Array drained by subscribe_touch (no Queue)
-#
-# Voice (say audio) and AI (chat) stay in a CRuby sidecar reached over dRuby
-# (sub-project #4); this daemon owns BLE device control only. `say` here emits
-# only the on-LCD subtitle frame; `chat` is wired in #4.
+# StackChan PC-side daemon. PicoRuby has no Mutex/Queue/Thread, only
+# cooperative Tasks: the drb accept loop and keepalive are Tasks, BLE exclusion
+# is a spin on @ble_busy (no yield between test and set), touch events are an
+# Array. Voice and AI live in the CRuby sidecar over dRuby; this owns BLE only.
 
 module Stackchan
-  # Stackchan::BLE::{Error,TimeoutError,DeviceError,ConnectionError} come from the shared gem (mrblib/stackchan/ble/errors.rb).
 
-  # Thin verb-friendly wrapper over a BLE client's #send (builds frames via the
-  # shared SendBuilder, waits ACK, captures the detail frame). Port of
-  # pc/stackchan/lib/stackchan/display.rb.
+  # Verb-friendly wrapper over a BLE client's #send (SendBuilder → ACK → detail).
   class Display
     def initialize(ble)
       @ble = ble
@@ -54,28 +41,16 @@ module Stackchan
     KEEPALIVE_INTERVAL_S = 7
     TOUCH_ZONE_LABELS = { 0 => "頭のうしろ", 1 => "右側", 2 => "左側" }
 
-    # Played instead of a real chat reply when sidecar.respond returns nil
-    # (Apple Intelligence timeout or any other respond failure -- the two
-    # aren't distinguishable from here). Synthesized once at #start via the
-    # TTS-only path (no Apple Intelligence involved), so a stuck respond()
-    # later never adds a second sidecar dependency to the fallback itself.
+    # Played when sidecar.respond returns nil; synthesized once at #start.
     FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
 
-    # Phase1 half-duplex audio protocol (port of Stackchan::Voice::Streamer).
-    # Device sleeps T = n*1000/8000 + 3000ms starting right after <A:N>, so the
-    # PC must wait READY_WAIT_S before blasting (lets the device heartbeat pick
-    # up the announce) and then n/8000 + 2.0s after the blast (play + margin)
-    # before sending anything else over the link.
+    # Half-duplex audio: the device sleeps n*1000/8000 + 3000 ms after <A:N>;
+    # wait READY_WAIT_S before blasting, then n/8000 + 2 s after.
     READY_WAIT_S = 1.5
 
-    # Write Without Response has no flow control at the ATT layer, and the
-    # darwin BLE port exposes no can-send-now signal, so an unpaced blast
-    # outruns the radio and CoreBluetooth silently discards the overflow.
-    # Measured: every clip, whatever its length, reached the device as exactly
-    # 11340 bytes (63 chunks of 180) and played truncated. The device's own
-    # receive window is n*1000/8000 + 3000ms, so the blast has to stay at or
-    # above ~8KB/s to fit inside it; 180 bytes per 20ms is 9KB/s, the fastest
-    # pace that still leaves the window room to spare.
+    # Write Without Response has no flow control and the port has no can-send
+    # signal; an unpaced blast is silently truncated. 180 bytes / 20 ms = 9 KB/s
+    # stays inside the device's receive window.
     CHUNK_PACE_S = 0.02
 
     def initialize(ble:, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788")
@@ -113,7 +88,6 @@ module Stackchan
       self
     end
 
-    # Keep the VM alive on the drb accept loop until stop.
     def join
       @server_task.join
     end
@@ -125,7 +99,6 @@ module Stackchan
       begin
         @ble.disconnect
       rescue StandardError
-        # already gone
       end
       true
     end
@@ -148,10 +121,7 @@ module Stackchan
       "OK face=#{name}"
     end
 
-    # opts hash, NOT keyword args: picoruby-drb collapses a caller's keyword
-    # syntax into a trailing positional Hash, and mruby does not auto-convert a
-    # positional Hash back into required keywords (it raises ArgumentError). So
-    # every multi-field drb-facing verb takes a single Hash.
+    # opts Hash, not kwargs: picoruby-drb collapses kwargs into a positional Hash.
     def led(opts)
       with_ble { @display.led(side: opts[:side], color: opts[:color], mode: opts[:mode]) }
       record(:led)
@@ -180,9 +150,6 @@ module Stackchan
       "OK selftest"
     end
 
-    # say: TTS runs in the CRuby sidecar (say/afconvert -> mu-law); the daemon
-    # gets the bytes over dRuby, pushes the on-LCD subtitle, then streams the
-    # audio over BLE. The sidecar call (network, no BLE) stays OUTSIDE with_ble.
     def say(text, gain = nil, rate = nil)
       log "[checkpoint] synth_start"
       ulaw = sidecar.synthesize(text, gain, rate)
@@ -198,9 +165,7 @@ module Stackchan
       "OK say bytes=#{ulaw.bytesize}"
     end
 
-    # chat: AI reply text comes from the sidecar (FM); the daemon frames it to
-    # the LCD and optionally speaks it. opts Hash (drb cannot carry kwargs):
-    # { speak: true/false, touch_zone: N }.
+    # opts: { speak: true/false, touch_zone: N }
     def chat(text, opts = {})
       opts ||= {}
       speak = opts.key?(:speak) ? opts[:speak] : true
@@ -221,9 +186,7 @@ module Stackchan
       "OK raw"
     end
 
-    # Sample the servo raw position N times (median) for calibration. Each
-    # <read:pos> returns a <yaw_raw:N,pitch_raw:M> detail frame. Raises if the
-    # device reports "unknown" (operator manual calibration needed).
+    # Median of N <read:pos> reads; raises on "unknown".
     def sample_pose(samples = 3)
       n = samples || 3
       readings = []
@@ -247,20 +210,13 @@ module Stackchan
       TOUCH_ZONE_LABELS[zone]
     end
 
-    # Returns the next buffered touch event Hash (e.g. {type: :touch, zone: 1})
-    # or nil if none pending. The CLI polls this in a loop — picoruby-drb cannot
-    # relay a remote block (it Marshals the Proc, which fails), so the CRuby
-    # `subscribe_touch { |e| ... }` yield-back model is not available. Polling
-    # also keeps each drb call short, so the single server task stays free for
-    # other verbs between polls.
+    # Polled by the CLI: picoruby-drb cannot relay a block.
     def poll_touch
       @touch_events.shift   # Array-as-queue; shift/push straddle no yield point
     end
 
     private
 
-    # Lazy dRuby client to the CRuby AI/voice sidecar. picoruby-drb opens a
-    # fresh socket per call, so a dropped sidecar just fails the next call.
     def sidecar
       @sidecar ||= DRb::DRbObject.new_with_uri(@sidecar_uri)
     end
@@ -279,12 +235,6 @@ module Stackchan
       ctx
     end
 
-    # Stream a mu-law clip over BLE using the Phase1 half-duplex protocol
-    # (port of Stackchan::Voice::Streamer#stream_halfduplex): announce -> wait
-    # for the device to enter receive mode -> blast -> wait for the device's
-    # <A:done> completion notification (see StackchanCentral#await_audio_done
-    # for why an active wait replaced the original fixed-sleep estimate).
-    # Caller already holds the BLE link (invoked inside with_ble).
     def stream_audio(ulaw)
       n = ulaw.bytesize
       @ble.write_without_ack("<A:#{n}>\n")
@@ -314,11 +264,7 @@ module Stackchan
       extras.each { |k, v| @robot_state[k] = v }
     end
 
-    # Cooperative BLE exclusion (no Mutex on PicoRuby). Tasks switch only at
-    # yield points, so spinning with Task.pass until the flag clears, then
-    # setting it, is race-free: there is no yield between the while-test exit
-    # and the assignment. Lazy reconnect on a dropped link mirrors the CRuby
-    # daemon's with_ble.
+    # Cooperative exclusion: no yield between the spin exit and the assignment.
     def with_ble
       Task.pass while @ble_busy
       @ble_busy = true
@@ -351,8 +297,7 @@ module Stackchan
       end
     end
 
-    # Idempotent <read:pos> on an interval to defeat Mac CoreBluetooth's
-    # ~15-20s idle disconnect. Skips if a verb currently holds the BLE link.
+    # Idempotent <read:pos> to defeat the Mac's ~15-20 s idle disconnect.
     def start_keepalive
       Task.new(name: "keepalive") do
         while @running
