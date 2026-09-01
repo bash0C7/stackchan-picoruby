@@ -471,41 +471,30 @@ module StackchanApp
         display.batch(FACE_BAND_X, FACE_BAND_Y, FACE_BAND_W, FACE_BAND_H, BACKGROUND_COLOR) { draw_features(display) }
       end
 
-      # Clear the small bounding box around each eye to BACKGROUND_COLOR,
-      # without touching the mouth or wider background. Used to wipe the
-      # previous eye shape (open ellipse or closed line) before redrawing.
-      def clear_eye_region(display)
-        display.draw_rect(EYE_LEFT_CX  - EYE_REGION_HALF_W, EYE_LEFT_CY  - EYE_REGION_HALF_H,
-                          EYE_REGION_HALF_W * 2, EYE_REGION_HALF_H * 2,
-                          BACKGROUND_COLOR, fill: true)
-        display.draw_rect(EYE_RIGHT_CX - EYE_REGION_HALF_W, EYE_RIGHT_CY - EYE_REGION_HALF_H,
-                          EYE_REGION_HALF_W * 2, EYE_REGION_HALF_H * 2,
-                          BACKGROUND_COLOR, fill: true)
-      end
-
-      # Update only the eye region (clear + redraw eyes), keeping the mouth
-      # and overall background untouched. Used for blink restore.
+      # Update only the eye region (blink restore), keeping the mouth and
+      # overall background untouched. Batches into one transaction instead of
+      # the old clear_eye_region + draw_eyes pair (see BLINK_BAND_* for why
+      # that pair was expensive).
       def redraw_eyes_open(display)
-        clear_eye_region(display)
-        draw_eyes(display)
+        display.batch(BLINK_BAND_X, BLINK_BAND_Y, BLINK_BAND_W, BLINK_BAND_H, BACKGROUND_COLOR) { draw_eyes(display) }
       end
 
       # Eye-only update that closes the eyes (horizontal line), used for blink
-      # animation. Mirrors redraw_eyes_open but draws closed-eye geometry. Does
-      # NOT fill background — preserves whatever mouth / other face state is
-      # already on screen.
+      # animation. Mirrors redraw_eyes_open but draws closed-eye geometry;
+      # mouth and overall background outside BLINK_BAND stay untouched.
       def redraw_eyes_closed(display)
-        clear_eye_region(display)
-        display.draw_line(
-          EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
-          EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
-          EYE_COLOR
-        )
-        display.draw_line(
-          EYE_RIGHT_CX - CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
-          EYE_RIGHT_CX + CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
-          EYE_COLOR
-        )
+        display.batch(BLINK_BAND_X, BLINK_BAND_Y, BLINK_BAND_W, BLINK_BAND_H, BACKGROUND_COLOR) do
+          display.draw_line(
+            EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+            EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
+            EYE_COLOR
+          )
+          display.draw_line(
+            EYE_RIGHT_CX - CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+            EYE_RIGHT_CX + CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
+            EYE_COLOR
+          )
+        end
       end
     end
 
@@ -564,6 +553,21 @@ module StackchanApp
     # either shape cleanly.
     EYE_REGION_HALF_W = 6
     EYE_REGION_HALF_H = 6
+
+    # Union of both eyes' regions — the single rectangle redraw_eyes_open and
+    # redraw_eyes_closed hand to `batch`. Driving the real driver with a
+    # counting SPI measured redraw_eyes_open at 180 SPI#write calls (two rect
+    # clears plus two filled ellipses, each a 14-span fill) and
+    # redraw_eyes_closed at 24; at 0.85ms per call (R^2 = 0.991) that is
+    # 153ms to reopen the eyes and 20ms to close them. Reopening alone runs
+    # almost as long as BLINK_CLOSED_MS (150) itself, so a blink lasted
+    # roughly twice its configured duration and the run loop stalled ~173ms
+    # every 5s. Computed with min/max rather than assumed, since neither eye
+    # is reliably the leftmost and they need not share a centre line.
+    BLINK_BAND_X = [EYE_LEFT_CX - EYE_REGION_HALF_W, EYE_RIGHT_CX - EYE_REGION_HALF_W].min
+    BLINK_BAND_Y = [EYE_LEFT_CY - EYE_REGION_HALF_H, EYE_RIGHT_CY - EYE_REGION_HALF_H].min
+    BLINK_BAND_W = [EYE_LEFT_CX + EYE_REGION_HALF_W, EYE_RIGHT_CX + EYE_REGION_HALF_W].max - BLINK_BAND_X
+    BLINK_BAND_H = [EYE_LEFT_CY + EYE_REGION_HALF_H, EYE_RIGHT_CY + EYE_REGION_HALF_H].max - BLINK_BAND_Y
 
     # Closed eye for blink animation. Draws a short horizontal line where
     # the eye normally sits, giving the impression of a closed lid.

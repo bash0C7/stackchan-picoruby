@@ -61,18 +61,20 @@ class BaseRedrawEyesClosedTest < Picotest::Test
     base.redraw_eyes_closed(@display)
     # No full-screen fill
     assert_false(@display.calls.any? { |c| c[0] == :fill })
-    # clear_eye_region's draw_rect calls (2: one per eye region) + 2 draw_line eyes
-    rect_calls = @display.calls.select { |c| c[0] == :draw_rect }
-    line_calls = @display.calls.select { |c| c[0] == :draw_line }
-    assert_equal 2, rect_calls.length
+    # One batch call over BLINK_BAND (replaces the old clear_eye_region
+    # draw_rect pair) + 2 draw_line eyes
+    batch_calls = @display.calls.select { |c| c[0] == :batch }
+    line_calls  = @display.calls.select { |c| c[0] == :draw_line }
+    assert_equal 1, batch_calls.length
     assert_equal 2, line_calls.length
   end
 end
 
-# The differential path only works if the two bands it clears actually cover
-# everything any face draws. If a face reached outside them, switching away
-# from it would leave part of the old expression on the panel — and no test
-# that only checks draw call order would notice.
+# The differential paths only work if the bands they batch into actually
+# cover everything the relevant primitives draw. If a face (or a blink)
+# reached outside its band, switching away from it would leave part of the
+# old expression on the panel — and no test that only checks draw call order
+# would notice.
 class FaceFeatureBandsTest < Picotest::Test
   FACES = [
     StackchanApp::Face::Neutral, StackchanApp::Face::Smile,
@@ -132,6 +134,55 @@ class FaceFeatureBandsTest < Picotest::Test
         b = box(call)
         assert_true(b[0] >= fx && b[1] >= fy && b[2] <= fx + fw - 1 && b[3] <= fy + fh - 1)
       end
+    end
+  end
+
+  # BLINK_BAND_* only pays off if a blink never has to touch anything outside
+  # it: draw_eyes must stay fully inside it, and everything else a face draws
+  # must be fully inside or fully outside — a primitive straddling its edge
+  # would get half-erased the next time a blink repaints only the band.
+  def test_every_face_never_straddles_the_blink_band
+    f = StackchanApp::Face
+    bx, by, bw, bh = f::BLINK_BAND_X, f::BLINK_BAND_Y, f::BLINK_BAND_W, f::BLINK_BAND_H
+    bx1 = bx + bw - 1
+    by1 = by + bh - 1
+    FACES.each do |face_class|
+      eyes = FakeDisplay.new
+      face_class.new.draw_eyes(eyes)
+      eyes.calls.each do |call|
+        b = box(call)
+        assert_true(b[0] >= bx && b[1] >= by && b[2] <= bx1 && b[3] <= by1)
+      end
+
+      features = FakeDisplay.new
+      face_class.new.draw_features(features)
+      features.calls.each do |call|
+        b = box(call)
+        inside  = b[0] >= bx && b[1] >= by && b[2] <= bx1 && b[3] <= by1
+        outside = b[2] < bx || b[0] > bx1 || b[3] < by || b[1] > by1
+        assert_true(inside || outside)
+      end
+    end
+  end
+
+  # redraw_eyes_open/_closed batch BLINK_BAND instead of the old
+  # clear_eye_region + draw pair (see BLINK_BAND_*'s comment for the
+  # SPI#write-count measurement that motivated it).
+  def test_every_face_redraw_eyes_open_and_closed_batch_the_blink_band
+    f = StackchanApp::Face
+    blink = [f::BLINK_BAND_X, f::BLINK_BAND_Y, f::BLINK_BAND_W, f::BLINK_BAND_H]
+    FACES.each do |face_class|
+      open_display = FakeDisplay.new
+      face_class.new.redraw_eyes_open(open_display)
+      open_batches = open_display.calls.select { |c| c[0] == :batch }
+      assert_equal 1, open_batches.length
+      assert_equal blink, open_batches[0].last[0, 4]
+
+      closed_display = FakeDisplay.new
+      face_class.new.redraw_eyes_closed(closed_display)
+      closed_batches = closed_display.calls.select { |c| c[0] == :batch }
+      assert_equal 1, closed_batches.length
+      assert_equal blink, closed_batches[0].last[0, 4]
     end
   end
 end
