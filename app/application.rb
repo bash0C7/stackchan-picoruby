@@ -465,12 +465,12 @@ module StackchanApp
       end
 
       # Repaint over a panel that already shows a face: batch the union band
-      # (FACE_BAND_*) into one panel transaction instead of the 207-428
-      # SPI#write calls each feature span used to cost separately (see
-      # FACE_BAND_* for the measurement). The batch buffer starts pre-filled
-      # with BACKGROUND_COLOR, so no explicit clear is needed before painting
-      # into it. Same result as `draw` when a face is already on screen, at
-      # about a tenth of the pixels and a fraction of the transactions.
+      # (FACE_BAND_*) into one panel transaction instead of the two separate
+      # clear-then-draw transactions the eye and mouth bands used to cost.
+      # The batch buffer starts pre-filled with BACKGROUND_COLOR, so no
+      # explicit clear is needed before painting into it. Same result as
+      # `draw` when a face is already on screen, at about a tenth of the
+      # pixels and a fraction of the transactions.
       def redraw(display)
         display.batch(FACE_BAND_X, FACE_BAND_Y, FACE_BAND_W, FACE_BAND_H, BACKGROUND_COLOR) { draw_features(display) }
       end
