@@ -23,8 +23,8 @@ The CoreS3 is flashed from exactly those revisions, with `app/application.rb`
 compiled into `/home/app.mrb` in the littlefs storage partition. Every revision
 above is pushed, so this state is reproducible from a fresh clone.
 
-Tests are green: picotest device 269 / pc 79 / shared 28 (5 skips, all
-long-standing), plus the CRuby host suites.
+Tests are green: picotest device 269 / pc 79 / shared 28, plus the CRuby host
+suites (`rake test:host`, macOS only because of `plutil`).
 
 ## Next
 
@@ -34,7 +34,7 @@ timeout, the ~45 s first `<A:done>` after a long idle, and `Daemon#stop` never
 reaching its reply.
 
 Face redraw latency is **not** on the list. Two ways to cut it are written up in
-the README under "Latency and remaining headroom", with measurements and costs;
+the README under "Latency", with measurements and costs;
 the decision is to leave both alone for now.
 
 ## Where things are written

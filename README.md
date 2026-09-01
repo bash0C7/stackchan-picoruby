@@ -80,7 +80,7 @@ pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
                            See pc/stackchan-pico/README.md.
 pc/stackchan/              CRuby support library for the AI/voice sidecar
                            only (Apple Foundation Model + say/afconvert
-                           cannot run under PicoRuby); no CLI here anymore.
+                           cannot run under PicoRuby).
 pc/sidecar/                The CRuby sidecar process, bridged to the
                            PicoRuby daemon over picoruby-drb.
 
@@ -157,10 +157,9 @@ bundle exec rake test                  # picotest: device / pc / shared suites
 bundle exec rake test:host             # CRuby-only tools and the class extractor
 ```
 
-`rake test` reads the sources of two mrbgems that are fetched from GitHub at
-firmware-build time rather than vendored here — `picoruby-scservo` and
-`picoruby-ili9342`. It finds them in the firmware build tree, so run a device
-build once first, or point `SCSERVO_RB` and `ILI9342_MRBLIB` at your own clones.
+`rake test` reads the source of `picoruby-scservo`, which is fetched from GitHub at
+firmware-build time rather than vendored here. It finds it in the firmware build tree, so run a device
+build once first, or point `SCSERVO_RB` at your own clone of `picoruby-scservo`.
 
 A firmware build overwrites the host picoruby VM with a non-picotest
 configuration, so `picotest:build` has to run again after one; the symptom of
@@ -168,10 +167,9 @@ forgetting is `uninitialized constant Picotest`.
 
 ### Optional
 
-`bash0C7/rb-corebluetooth-mac` gives a Bash-callable BLE central, used by the
-`stackchan-ble-control` CLI for smoke tests. It needs `bundle install && bundle
-exec rake compile` in its own checkout to build the Swift dylib before first use,
-and again after any Ruby ABI change.
+`bash0C7/rb-corebluetooth-mac` gives a Bash-callable BLE central for ad-hoc
+BLE debugging. It needs `bundle install && bundle exec rake compile` in its own
+checkout before first use, and again after any Ruby ABI change.
 
 ## Quickstart (macOS side)
 
@@ -276,88 +274,38 @@ its 1.8 V digital rail (AXP2101 ALDO1) powered at cold-boot. The I2S link uses
 BCLK on GPIO34, WS on GPIO33, and data-out on GPIO13 with no MCLK. Volume is
 controlled by the macOS-side `--gain` parameter (default 0.1).
 
-## Latency and remaining headroom
+## Latency
 
 A `face` command over BLE takes 0.42 s (neutral) to 0.68 s (joy), median of
-eight rounds on a CoreS3. The `led` verb travels the same BLE path and draws
-nothing; it takes 0.18 s, and that is the floor. The remaining 0.24-0.50 s is
-the LCD repaint, and it scales with how many drawing primitives a face is made
-of rather than with how many pixels it covers.
+eight rounds. `led` travels the same path and draws nothing: 0.18 s, the
+floor. The rest is the LCD repaint, and it scales with how many drawing
+primitives a face is made of, not with pixels or `SPI#write` calls (cutting
+those from ~400 to 10 is worth 7-9%).
 
-Numbers drift 15-25% between sessions, so compare runs taken in the same
-session and treat a figure quoted from an older one as a rough guide only.
-`ROUNDS=8 tools/face_profile.zsh` produces the table; `ruby
-tools/face_spi_cost.rb` counts a face's SPI calls on the host with no device
-attached.
+Numbers drift 15-25% between sessions; only compare runs from the same
+session. `ROUNDS=8 tools/face_profile.zsh` produces the table,
+`ruby tools/face_spi_cost.rb` counts a face's SPI calls on the host.
 
-All three forms below were measured on the same device in one session, so they
-are comparable with each other; medians of eight rounds, seconds.
+| face | seconds |
+|---|---|
+| neutral / surprised | 0.42 |
+| smile | 0.52 |
+| sad | 0.55 |
+| angry | 0.57 |
+| joy | 0.68 |
+| `led` (floor) | 0.18 |
 
-| face | per-primitive (shipped) | offscreen, one 20 KB buffer | offscreen, per-row buffers |
-|---|---|---|---|
-| neutral | 0.42 | 0.50 | 0.39 |
-| surprised | 0.42 | 0.45 | 0.38 |
-| smile | 0.52 | 0.61 | 0.50 |
-| sad | 0.55 | 0.62 | 0.49 |
-| angry | 0.57 | 0.64 | 0.51 |
-| joy | 0.68 | 0.78 | 0.62 |
-| `led` (floor) | 0.18 | 0.20 | 0.18 |
+The large win left is pre-rendering each face's 136x74 band to RGB565 once
+(about 141 KB for all seven, fine in PSRAM) and blitting it, which removes
+the geometry entirely. An offscreen-compose variant exists in git history
+(`8a2fced` in `bash0C7/picoruby-ili9342`, `d4ae838` / `ceff876` here) and was
+reverted as not worth its size. Two device-only constraints for either:
 
-The middle column is the same offscreen idea with the whole rectangle held in
-one String; it loses to doing nothing at all, for the `String#[]=` reason in the
-constraints below.
-
-The repaint is PicoRuby executing the geometry — the Bresenham and ellipse
-loops that decide which spans to fill. Both options below attack that, and
-neither is applied: the device runs the straightforward per-primitive form.
-
-### Option: pre-render each face's band
-
-Faces are static, so the geometry recomputes, on every change, a byte string
-that is always the same. Rendering each face's band once into RGB565 and
-blitting the stored copy removes the geometry entirely, leaving the 0.18 s
-floor plus one transfer. This is the whole 0.24-0.50 s, so it is the larger
-win by far.
-
-The band is 136x74 px — 20 128 bytes per face, about 141 KB for all seven.
-That fits the 8 MB PSRAM comfortably, but the bytes have to come from
-somewhere: either generated on the host and baked into the image, or drawn
-once on the device and cached on first use. Which of the two is the open
-question, and nothing has been built.
-
-### Option: compose the redraw offscreen
-
-Collecting a redraw into an offscreen buffer and blitting it in one
-transaction takes a face from 207-428 `SPI#write` calls down to 10. Measured,
-that is worth 7-9%: 0.39 s neutral and 0.62 s joy, against 0.42 s and 0.68 s
-for the per-primitive form in the same session. Real, but small — the panel
-transfer is not where the time goes, so removing almost all of it moves little.
-
-This was built and then reverted, so it can be recovered rather than rewritten:
-the driver side is `8a2fced` in `bash0C7/picoruby-ili9342` (reverted by
-`25e29b4`), the application side is `d4ae838` and `ceff876` here (reverted by
-`c17a3c2`). Reverting those reverts restores a working, tested implementation.
-
-It was dropped on cost, not on correctness. It grows the driver from 345 to 446
-lines, and both constraints in the next section are hazards it introduced —
-one of them as a boot loop. Weigh that against 7-9% before restoring it; if the
-pre-rendered band above is built instead, this becomes redundant.
-
-### Constraints to know before trying either
-
-- The FreeRTOS task that runs the mruby VM has an 8 KB stack
-  (`PICORB_TASK_STACK_SIZE`, `components/picoruby-esp32/picoruby-esp32.c`). One
-  nested VM execution costs about 3.1 KB — `mrb_vm_exec`'s Xtensa prologue is
-  `entry a1, 0xb50`, 2896 bytes. A construct that yields a block from C, such as
-  `Array.new(n) { ... }` or `String#dup`, therefore adds a whole frame, and from
-  inside a drawing path that overflows the stack. The symptom is a boot loop
-  reporting `stack overflow in task picoruby_task`, roughly 5 s after
-  advertising starts, which is the first blink.
-- mruby's `String#[]=` copies in proportion to the size of the string it splices
-  into, not the size of the slice (`str_replace_partial` in `src/string.c`).
-  Splicing rows into a single 20 KB buffer costs about 2.5 ms per primitive at
-  PSRAM speed; per-row strings avoid it. This is invisible on a host, where the
-  buffer fits in L1.
+- The mruby VM task has an 8 KB stack; a construct that yields a block from
+  C (`Array.new(n) { }`, `String#dup`) nests the VM and costs ~3.1 KB. Inside
+  a drawing path that is a boot loop (`stack overflow in task picoruby_task`).
+- `String#[]=` copies in proportion to the receiver, not the slice. Splicing
+  rows into one 20 KB buffer costs ~2.5 ms each; per-row strings avoid it.
 
 ## Hardware
 
@@ -410,7 +358,7 @@ Adds on top of upstream:
 
 - `sdkconfigs/cores3`: CoreS3 SoC overlay (Quad PSRAM 8MB, 16MB Flash,
   USB-Serial-JTAG console).
-- `sdkconfigs/bt_btstack`: BLE enablement with the ROM coex hook disabled, which
+- `sdkconfigs/bt_nimble`: BLE enablement with the ROM coex hook disabled, which
   avoids a `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with
   IDF v5.4 and ESP32-S3.
 - `build_config/xtensa-esp-picoruby.rb` (on the `stackchan-integration` branch):
@@ -438,8 +386,8 @@ onto upstream picoruby/picoruby's `master`:
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 
-A macOS CoreBluetooth binding for Ruby, used for BLE dev/debug tooling
-(e.g. `repro/flood_rx.rb`). The operational PC-side BLE transport is the
+A macOS CoreBluetooth binding for Ruby, used for BLE dev/debug tooling.
+The operational PC-side BLE transport is the
 native `picoruby-ble` darwin port used by `pc/stackchan-pico`.
 
 ## License

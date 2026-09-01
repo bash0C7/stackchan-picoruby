@@ -1,29 +1,10 @@
 ---
 name: stackchan-device-crash-analyze
-description: Parse a /tmp/stackchan-picoruby-debug/boot.log (or LOG=...) for Guru Meditation Error register dumps and resolve PC / backtrace addresses to symbols via xtensa-esp32s3-elf-addr2line against the local R2P2-ESP32.elf. Subagent (haiku) summarizes addr2line output. No slash alias — claude/AI driven.
+description: Resolve Guru Meditation Error PC / backtrace addresses from a boot log (LOG=, default /tmp/stackchan-picoruby-debug/boot.log) to symbols with xtensa-esp32s3-elf-addr2line.
 ---
 
-# stackchan-device-crash-analyze
+Run in a haiku subagent (60000ms timeout): read `$LOG`, extract PC, EXCVADDR, and Backtrace addresses (also try each with bit 31 cleared: `0x82xxxxxx` → `0x42xxxxxx`), then
 
-## Mode
+    source ~/esp/esp-idf/export.sh && xtensa-esp32s3-elf-addr2line -pfiaC -e vendor/R2P2-ESP32/build/R2P2-ESP32.elf <addresses>
 
-Subagent (haiku), 60000ms timeout.
-
-## Action
-
-Dispatch:
-
-> Read $LOG (default /tmp/stackchan-picoruby-debug/boot.log). Extract any `Guru Meditation Error` PC, EXCVADDR, A0/A1/.., and Backtrace addresses. For each address, also try the variant with bit 31 cleared (`0x82xxxxxx` → `0x42xxxxxx`). Run xtensa-esp32s3-elf-addr2line against vendor/R2P2-ESP32/build/R2P2-ESP32.elf, from the repo root:
->
->     source ~/esp/esp-idf/export.sh && xtensa-esp32s3-elf-addr2line -pfiaC -e vendor/R2P2-ESP32/build/R2P2-ESP32.elf <addresses>
->
-> Write the analysis to `/tmp/stackchan-picoruby-debug/crash-analyze.log` and also report under 250 words. Categorize each resolved function (mruby / BTstack / esp-idf / FreeRTOS / app).
-
-## Required env
-
-- `LOG` — path to boot log (default `/tmp/stackchan-picoruby-debug/boot.log`)
-
-## Pass / fail signal
-
-This skill always succeeds; its output is the analysis. The "failure" mode
-is "no panic in log" — then the skill reports "no Guru Meditation found".
+Write the result to `/tmp/stackchan-picoruby-debug/crash-analyze.log` and report each resolved frame tagged mruby / NimBLE / esp-idf / FreeRTOS / app. No panic in the log is a valid result: say so.

@@ -1,26 +1,10 @@
 ---
 name: stackchan-device-face-verify
-description: Two-leg face verification — host golden-SHA assert + device BLE write/ACK (~30 s total). Use after HITL approval to lock geometry against regression.
+description: Verify one face both ways — host golden dump assert and device BLE write + ACK (~30 s). FACE= env.
 ---
 
-# stackchan-device-face-verify
+Run in a haiku subagent (300000ms timeout), reporting the two `[face_verify]` PASS lines verbatim:
 
-## Mode
+    FACE=$FACE bundle exec rake r2p2:face_verify 2>&1 | tee /tmp/stackchan-picoruby-debug/face-verify-$FACE.log
 
-Subagent (haiku), 300000ms timeout.
-
-## Action
-
-Dispatch:
-
-> Run `bundle exec rake r2p2:face_verify FACE=$FACE` foreground with 300000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/face-verify-$FACE.log`. Report exit code and the two PASS lines (`[face_verify] host golden SHA PASS for face=...` and `[face_verify] PASS ...`) verbatim. Under 150 words.
-
-## Required env
-
-- `FACE` — name of registered face (e.g. sad, angry)
-
-## Pass / fail signal
-
-- Both PASS lines present and exit 0 → fully verified.
-- `host golden SHA FAIL` → geometry drift on host; re-register golden if intentional.
-- Host PASS but BLE leg fails → device payload mismatch; redeploy with `stackchan-device-deploy-app`.
+Host golden FAIL = geometry drift; re-register with `rake face:register_golden FACE=$FACE` only if the change is intended. Host PASS but device leg FAIL = stale payload; `stackchan-device-deploy-app`.

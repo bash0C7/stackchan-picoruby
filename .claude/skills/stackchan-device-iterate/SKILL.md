@@ -1,27 +1,11 @@
 ---
 name: stackchan-device-iterate
-description: Full dev iteration cycle — upload application, reset, capture boot log, auto-analyze panic if any (~50 s). Use for the standard "I changed application.rb, did it work?" loop.
+description: The standard "I changed application.rb, did it work?" loop — upload, reset, capture boot, analyze any panic (~50 s).
 ---
 
-# stackchan-device-iterate
+1. `stackchan-device-upload-app` with `SRC=app/application.rb` (or the given SRC)
+2. `stackchan-device-reset`
+3. `stackchan-device-capture-boot` with `SECONDS=25`
+4. Panic in the log → `stackchan-device-crash-analyze`
 
-## Mode
-
-Chain.
-
-## Action
-
-1. Invoke `stackchan-device-upload-app` with `SRC=$SRC`.
-2. Invoke `stackchan-device-reset`.
-3. Invoke `stackchan-device-capture-boot` with `SECONDS=25`.
-4. If panic in log → invoke `stackchan-device-crash-analyze`.
-5. Report combined: upload OK, reset OK, boot markers found, panic Y/N + analysis.
-
-## Required env
-
-- `SRC` (optional, defaults to application.rb)
-
-## Escalation
-
-- Upload fail → `stackchan-device-cold-recovery`
-- Persistent panic → debug session, not another iteration
+Report: upload ok / reset ok / boot markers found / panic and its analysis. An upload failure goes to `stackchan-device-cold-recovery`; a repeating panic is a debugging task, not another iteration.

@@ -1,24 +1,10 @@
 ---
 name: stackchan-device-boot-verify
-description: Reset and capture boot log; if a panic dump is detected, automatically resolve crash addresses via crash-analyze. Use to confirm cold-boot completes after deploy.
+description: Reset, capture the boot log, and analyze any panic. Use to confirm cold-boot completes after a deploy.
 ---
 
-# stackchan-device-boot-verify
+1. `stackchan-device-reset`
+2. `stackchan-device-capture-boot` with `SECONDS=25`
+3. `Guru Meditation Error` in the log → `stackchan-device-crash-analyze`; otherwise report whether `[application] LCD + LED cold-boot done` and `HCI WORKING — advertising` appeared.
 
-## Mode
-
-Chain — subagent for reset, main for capture, subagent again for analyze.
-
-## Action
-
-1. Invoke `stackchan-device-reset`.
-2. Invoke `stackchan-device-capture-boot` with `SECONDS=25 LOG=/tmp/stackchan-picoruby-debug/boot.log`.
-3. Inspect `/tmp/stackchan-picoruby-debug/boot.log` for `Guru Meditation Error`:
-   - Present → invoke `stackchan-device-crash-analyze` with `LOG=/tmp/stackchan-picoruby-debug/boot.log`. Report the analysis.
-   - Absent → check for `[application] LCD + LED cold-boot done` and `HCI WORKING — advertising`. Report success markers found.
-
-## Pass / fail signal
-
-- `[application] LCD + LED cold-boot done` + no panic → cold-boot completed.
-- `Guru Meditation Error` → analysis follows.
-- Neither marker nor panic → device output truncated or hung; consider increasing SECONDS.
+Neither marker nor a panic means the capture was too short or the device hung; retry with a longer `SECONDS`.
