@@ -414,18 +414,6 @@ module StackchanApp
     MOUTH_BAND_Y = MOUTH_CY - MOUTH_MAX_RISE - FEATURE_MARGIN
     MOUTH_BAND_H = (MOUTH_CY + SURPRISED_MOUTH_HALF_H + FEATURE_MARGIN) - MOUTH_BAND_Y
 
-    # Union of EYE_BAND and MOUTH_BAND — one rectangle `redraw` hands to
-    # `batch` as a single panel transaction. Device measurement (BLE face
-    # verb, 6 faces x 8 rounds): latency = 0.199s + 0.0051s per panel
-    # transaction (R^2 = 0.990), cost per transaction, not per pixel — so
-    # merging the eye and mouth clears into one transaction is what pays for
-    # itself, not shrinking the pixel count. Computed with min/max rather
-    # than assumed, since neither band is reliably the wider or taller one.
-    FACE_BAND_X = [EYE_BAND_X, MOUTH_BAND_X].min
-    FACE_BAND_Y = [EYE_BAND_Y, MOUTH_BAND_Y].min
-    FACE_BAND_W = [EYE_BAND_X + EYE_BAND_W, MOUTH_BAND_X + MOUTH_BAND_W].max - FACE_BAND_X
-    FACE_BAND_H = [EYE_BAND_Y + EYE_BAND_H, MOUTH_BAND_Y + MOUTH_BAND_H].max - FACE_BAND_Y
-
 
     class Base
       DELTA_Y = 0
@@ -460,15 +448,15 @@ module StackchanApp
         draw_mouth(display)
       end
 
-      # Repaint over a panel that already shows a face: batch the union band
-      # (FACE_BAND_*) into one panel transaction instead of the two separate
-      # clear-then-draw transactions the eye and mouth bands used to cost.
-      # The batch buffer starts pre-filled with BACKGROUND_COLOR, so no
-      # explicit clear is needed before painting into it. Same result as
-      # `draw` when a face is already on screen, at about a tenth of the
-      # pixels and a fraction of the transactions.
+      # Repaint over a panel that already shows a face: clear only the bands a
+      # face can paint, then draw this one. Same result as `draw` when a face is
+      # already on screen, at about a tenth of the pixels.
       def redraw(display)
-        display.batch(FACE_BAND_X, FACE_BAND_Y, FACE_BAND_W, FACE_BAND_H, BACKGROUND_COLOR) { draw_features(display) }
+        display.draw_rect(EYE_BAND_X, EYE_BAND_Y, EYE_BAND_W, EYE_BAND_H,
+                          BACKGROUND_COLOR, fill: true)
+        display.draw_rect(MOUTH_BAND_X, MOUTH_BAND_Y, MOUTH_BAND_W, MOUTH_BAND_H,
+                          BACKGROUND_COLOR, fill: true)
+        draw_features(display)
       end
 
       # Clear the small bounding box around each eye to BACKGROUND_COLOR,

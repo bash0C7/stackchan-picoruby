@@ -115,23 +115,10 @@ class FaceFeatureBandsTest < Picotest::Test
     end
   end
 
-  # redraw now sends the eye and mouth bands as one panel transaction
-  # (FACE_BAND_*, their union) instead of clearing each separately, so this
-  # replaces the old two-clear assertion: one batch over the union rect, and
-  # everything painted after it still lands inside that rect.
-  def test_redraw_batches_the_union_band_and_paints_inside_it
-    f = StackchanApp::Face
-    fx, fy, fw, fh = f::FACE_BAND_X, f::FACE_BAND_Y, f::FACE_BAND_W, f::FACE_BAND_H
-    FACES.each do |face_class|
-      display = FakeDisplay.new
-      face_class.new.redraw(display)
-      batch_calls = display.calls.select { |c| c[0] == :batch }
-      assert_equal 1, batch_calls.length
-      assert_equal [fx, fy, fw, fh], batch_calls[0].last[0, 4]
-      display.calls[1..-1].each do |call|
-        b = box(call)
-        assert_true(b[0] >= fx && b[1] >= fy && b[2] <= fx + fw - 1 && b[3] <= fy + fh - 1)
-      end
-    end
+  def test_redraw_clears_both_bands_before_painting
+    display = FakeDisplay.new
+    StackchanApp::Face::Angry.new.redraw(display)
+    cleared = display.calls[0, 2].map { |c| c.last[0, 4] }
+    assert_equal bands, cleared
   end
 end

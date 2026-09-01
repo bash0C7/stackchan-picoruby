@@ -32,14 +32,6 @@ class FakeDisplay
     nil
   end
 
-  # Mirrors the real driver: record the batch call itself, then yield so the
-  # primitives the block draws are recorded right after it, in order.
-  def batch(x, y, w, h, bg_rgb565)
-    @calls << [:batch, [x, y, w, h, bg_rgb565]]
-    yield
-    nil
-  end
-
   def draw_text(x, y, text, font: "go16", scale: 1, fg: 0xFFFF, bg: 0x0000)
     @calls << [:draw_text, [x, y, text, { font: font, scale: scale, fg: fg, bg: bg }]]
     nil
