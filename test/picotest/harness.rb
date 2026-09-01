@@ -24,7 +24,11 @@ module PicotestHarness
                                 "mrblib", "scservo.rb")
   SCSERVO_RB = ENV["SCSERVO_RB"] || [SCSERVO_SIBLING, SCSERVO_VENDORED].find { |path| File.exist?(path) }
   unless SCSERVO_RB && File.exist?(SCSERVO_RB)
-    abort("SCSERVO_RB not found (set the env var); searched:\n  #{SCSERVO_SIBLING}\n  #{SCSERVO_VENDORED}")
+    # Report the path that actually failed: an override pointing nowhere is the
+    # case worth naming, and listing the fallbacks instead hides it.
+    searched = ENV["SCSERVO_RB"] ? [ENV["SCSERVO_RB"]] : [SCSERVO_SIBLING, SCSERVO_VENDORED]
+    abort("scservo.rb not found; searched:\n  " + searched.join("\n  ") +
+          "\nSet SCSERVO_RB to point at picoruby-scservo's mrblib/scservo.rb.")
   end
 
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")

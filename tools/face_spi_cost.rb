@@ -26,7 +26,13 @@ ILI9342_VENDORED = File.join(ROOT, "vendor", "R2P2-ESP32", "components", "picoru
                               "picoruby", "build", "repos", "esp32-picoruby", "picoruby-ili9342",
                               "mrblib", "ili9342.rb")
 DRIVER = ENV["ILI9342_MRBLIB"] || [ILI9342_SIBLING, ILI9342_VENDORED].find { |path| File.exist?(path) }
-abort "driver not found (set ILI9342_MRBLIB); searched:\n  #{ILI9342_SIBLING}\n  #{ILI9342_VENDORED}" unless DRIVER && File.exist?(DRIVER)
+unless DRIVER && File.exist?(DRIVER)
+  # Name the path that actually failed; an override pointing nowhere is the case
+  # worth reporting, and listing the fallbacks instead hides it.
+  searched = ENV["ILI9342_MRBLIB"] ? [ENV["ILI9342_MRBLIB"]] : [ILI9342_SIBLING, ILI9342_VENDORED]
+  abort "ili9342.rb not found; searched:\n  " + searched.join("\n  ") +
+        "\nSet ILI9342_MRBLIB to point at picoruby-ili9342's mrblib/ili9342.rb."
+end
 
 $LOAD_PATH.unshift File.join(ROOT, "lib")
 
