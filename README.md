@@ -174,6 +174,16 @@ pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-p
 | Camera (GC0308) | no | deferred |
 | NFC | no | deferred |
 
+## Known issues
+
+- An ACK timeout is not retried. A dropped frame surfaces as a failed CLI
+  command rather than being resent once.
+- `<A:done>` can take about 45 s to arrive on the first `say` after a long idle
+  (observed after ten hours), against a fraction of a second when warm.
+- `Daemon#stop` never reaches its reply, so `stackchan stop` hangs. Stop the
+  backends with `bundle exec rake pc:down` instead; `tools/latency_baseline.zsh`
+  recovers by re-running `rake pc:up`.
+
 ## Audio path
 
 macOS synthesizes speech with `say`, converts 8 kHz mono PCM to G.711 mu-law,
@@ -205,6 +215,23 @@ session and treat a figure quoted from an older one as a rough guide only.
 `ROUNDS=8 tools/face_profile.zsh` produces the table; `ruby
 tools/face_spi_cost.rb` counts a face's SPI calls on the host with no device
 attached.
+
+All three forms below were measured on the same device in one session, so they
+are comparable with each other; medians of eight rounds, seconds.
+
+| face | per-primitive (shipped) | offscreen, one 20 KB buffer | offscreen, per-row buffers |
+|---|---|---|---|
+| neutral | 0.42 | 0.50 | 0.39 |
+| surprised | 0.42 | 0.45 | 0.38 |
+| smile | 0.52 | 0.61 | 0.50 |
+| sad | 0.55 | 0.62 | 0.49 |
+| angry | 0.57 | 0.64 | 0.51 |
+| joy | 0.68 | 0.78 | 0.62 |
+| `led` (floor) | 0.18 | 0.20 | 0.18 |
+
+The middle column is the same offscreen idea with the whole rectangle held in
+one String; it loses to doing nothing at all, for the `String#[]=` reason in the
+constraints below.
 
 The repaint is PicoRuby executing the geometry — the Bresenham and ellipse
 loops that decide which spans to fill. Both options below attack that, and

@@ -87,6 +87,21 @@ PC連携アバターパターン：
 再送出は必ず `rescue Foo => e` … `raise e` と書く。再現: `begin; raise "x"; rescue => e; raise; end` を
 両 VM で走らせてメッセージを見る。
 
+実機でしか出ない制約が 2 つある。どちらもホストでは再現しないので、host test が緑でも残る。
+
+- **device の Ruby から C 経由でブロックを yield する構文を描画・BLE の深い経路で使わない**。
+  mruby VM を回す FreeRTOS タスクのスタックは 8 KB (`PICORB_TASK_STACK_SIZE`、
+  `components/picoruby-esp32/picoruby-esp32.c`)。`mrb_vm_exec` の Xtensa プロローグは
+  `entry a1, 0xb50` = 2896 バイトで、1 段ネストするだけで約 3.1 KB 積む。`Array.new(n) { ... }`
+  や `String#dup` は C から `mrb_yield` を呼ぶのでこれに該当する。同じことは `while` ループと
+  C 実装メソッド (`String#*`、`Array#<<`) で書けばネストしない。症状は
+  `stack overflow in task picoruby_task` のブートループで、advertising の約 5 秒後 (初回 blink)
+  に出る。フレーム幅は `xtensa-esp32s3-elf-objdump -d <elf> --disassemble=<関数>` の `entry` で測れる
+- **`String#[]=` は差し込む先の文字列全長に比例する**、slice の大きさではない
+  (`str_replace_partial`、mruby の `src/string.c`)。20 KB のバッファに 1 行ずつ差し込むと
+  PSRAM 速度で 1 回あたり約 2.5 ms かかる。行ごとに別の String を持てば避けられる。
+  ホストではバッファが L1 に収まるため完全に見えない
+
 1. `chiebukuro-mcp` の Ruby/PicoRuby ナレッジDB (`chiebukuro_query_ruby_knowledge` / `chiebukuro_semantic_search_ruby_knowledge`)
 2. 答えが無い・根拠が必要なら `/Users/bash/dev/src/github.com/picoruby/picoruby` を Explore subagent で調査
 3. 仕様確認できないまま「禁止メソッド」前提で書かない
@@ -131,7 +146,7 @@ Anchor recal: `stackchan calibrate [--samples N] [--format ruby|json|env]` (5-po
 - **`rb-corebluetooth-mac` の native 拡張は使用前にビルド必須**。`cd ../rb-corebluetooth-mac && bundle install && bundle exec rake compile` で Swift dylib + Ruby `.bundle` を生成。未ビルドだと CLI が `Library not loaded: @rpath/libCoreBluetoothMac.dylib` で落ちる。Ruby ABI 切替時は再 compile 必要
 - **BLEのevent drainは「`pop`がeventを返したかに関わらず、毎tick必ず`_event_popped`を呼ぶ」で書く**。ESP32 portではNimBLEのwrq/evqが`_event_popped`の中でしかRubyに上がらず、darwin portもSwift FIFOを`_event_popped`で1 packetずつ移すため、`pop`がeventを返した時だけ`_event_popped`を呼ぶ形（gemの`BLE#start`の形）では1 s heartbeatまで何も届かない。実装はdevice側が`StackChanApp#run`（`StackchanApp::LinkLoop#tick`: `@event_queue.pop(timeout_ms: 20)`→無条件`_event_popped`、`app/application.rb`）、PC側が`StackchanRadio#pop_and_dispatch`（無条件`_event_popped`→`@event_queue.pop(timeout_ms: 0)`、`pc/stackchan-pico/app/ble_client.rb`）。`BLE#start`のoverrideは書かない（`@event_queue.pop`を呼ばないoverrideはevq drainが止まり`advertise()`すら効かなくなる）。`pop_packet` / `pop_heartbeat` / `BLE::POLLING_UNIT_MS`は存在しないAPI。
 - **macOS 側 CoreBluetooth は TCC 経由でしか許可されない**。`build/host/bin/picoruby` の直接 fork/exec は署名済み・許可済みでも TCC `SIGABRT` で落ちるので、シェルから起動するなら `open -a` で `~/Applications/StackchanPico.app` (`rake pc:app_bundle` が生成、`NSBluetoothAlwaysUsageDescription` 入り Info.plist) を叩くしかない。`macos:build` の度に `rake pc:app_bundle` を再実行 (ad-hoc 署名がバイナリの exact bytes に紐づくため)。ただしこれは**シェルからの fork/exec の話**で、launchd 経由には当てはまらない (2026-08-31 spike で確認: LaunchAgent の `ProgramArguments` に bundle 内バイナリを直接指定して `launchctl bootstrap` すると CoreBluetooth が動く。launchd が責任プロセスになると bundle ID の Bluetooth 許可がそのまま効く)。`rake pc:up` はこの経路を使い、LaunchAgent の `ProgramArguments` に bundle 内バイナリを直接指定する。
-- **レイテンシ計測**: `tools/latency_baseline.zsh`（wrapper込みwall clock、`LOG=`で出力先）→ `ruby tools/latency_summary.rb <log>`でverbごとの中央値 / p90 / failures。device側は1コマンドごとに`[t] rx=<us> ack=<us> d=<us>`（serial）、Mac側はdaemon.logに`[t] <frame> ack=<ms>ms[ detail=<ms>ms]`（timeout時は`ack=timeout` / `detail=timeout`）。現状値と内訳はvault `02_dev_docs/stackchan-picoruby/review/2026-08-30-latency-investigation.md` §6。face別の内訳は`ROUNDS=8 tools/face_profile.zsh`（labelにface名を残すので`latency_summary.rb`がface単位で集計する）。
+- **レイテンシ計測**: `tools/latency_baseline.zsh`（wrapper込みwall clock、`LOG=`で出力先）→ `ruby tools/latency_summary.rb <log>`でverbごとの中央値 / p90 / failures。device側は1コマンドごとに`[t] rx=<us> ack=<us> d=<us>`（serial）、Mac側はdaemon.logに`[t] <frame> ack=<ms>ms[ detail=<ms>ms]`（timeout時は`ack=timeout` / `detail=timeout`）。現状値と内訳はvault `02_dev_docs/stackchan-picoruby/review/2026-08-30-latency-investigation.md` §6。face別の内訳は`ROUNDS=8 tools/face_profile.zsh`（labelにface名を残すので`latency_summary.rb`がface単位で集計する）。**セッションを跨いだ数値を比較しない** — 同じコードでもセッション間で 15〜25% ぶれる。速くなった/遅くなったの判定は必ず同一セッション内で取り直した 2 点で行う。
 - **LCD描画のコストを`SPI#write`の回数で説明しない**。呼び出しを428回から10回に落としても所要時間は7〜9%しか動かない(実測)。支配項はPicoRubyがBresenham/楕円のループを解釈実行する時間で、表情ごとの差もprimitive数に比例する。面積でもバイト数でもない。詳細と残る高速化余地はREADMEの「Latency and remaining headroom」
 - **描画コストの計測にdevice側の`puts`を使わない**。`ruby tools/face_spi_cost.rb`が実ドライバをカウンタ付きSPIで空回しし、face別の`SPI#write`回数・RAMWR数・バイト数をホストだけで出す(latency予測は当たらないので回数の比較にだけ使う)。device側に一時ログを足すとboot loopに入り、USB抜き差しでしか復旧できない
 
