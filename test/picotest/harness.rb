@@ -95,6 +95,11 @@ module PicotestHarness
     # PICOTEST_VM: run the suites on another picoruby (e.g. vendor/R2P2-darwin/build/host/bin/picoruby
     # to re-check the pc suite on the Mac lineage). Default: the R2P2-ESP32 host VM.
     ENV["RUBY"] = ENV["PICOTEST_VM"] || PICORUBY_VM
+    # picotest runs each test class from a generated /tmp driver script, so
+    # __FILE__ inside a test resolves to /tmp rather than to the file on disk.
+    # A test that needs a repo-relative fixture (spec/golden) reads this; the
+    # spawned VM inherits the environment.
+    ENV["STACKCHAN_REPO_ROOT"] = REPO_ROOT
 
     names = suite ? [suite] : SUITES.keys
     errors = 0
