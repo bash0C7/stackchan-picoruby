@@ -1,18 +1,23 @@
 #!/bin/zsh
 zmodload zsh/datetime
 # Baseline wall-clock measurement of stackchan CLI verbs (end-to-end, includes wrapper overhead).
-# On failure (ACK timeout etc.) the link is torn down and re-established before the next sample.
+# On failure (ACK timeout etc.) the backends are rebuilt with `rake pc:up` before the next sample.
 cd "$(dirname "$0")/.." || exit 2
 S=pc/stackchan-pico/bin/stackchan
 LOG=${LOG:-/tmp/stackchan-picoruby-debug/baseline.log}
 : > $LOG
+# `stackchan stop` never replies: Daemon#stop calls DRb.stop_service, which
+# terminates the very Task the method is running in, so the lines after it and
+# the reply itself are unreachable — and the TCP transport has no read timeout,
+# so one recovery here would hang the whole run. `rake pc:up` is the
+# deterministic rebuild instead: it boots both launchd jobs out, waits for
+# launchd to release them, bootstraps them again, and only returns once the
+# daemon answers status with ble_connected. Nothing is left to retry after it.
 recover() {
-  $S stop >/dev/null 2>&1; sleep 4
-  for k in 1 2 3; do
-    out=$($S connect 2>&1); if [[ "$out" == *connected.* ]]; then echo "recovered (try $k)" | tee -a $LOG; return 0; fi
-    sleep 3
-  done
-  echo "RECOVERY FAILED" | tee -a $LOG; return 1
+  if bundle exec rake pc:up >>$LOG 2>&1; then
+    echo "recovered (rake pc:up)" | tee -a $LOG; return 0
+  fi
+  echo "RECOVERY FAILED (rake pc:up — see $LOG)" | tee -a $LOG; return 1
 }
 run() {
   local label="$1"; shift
