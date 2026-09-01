@@ -202,32 +202,47 @@ of rather than with how many pixels it covers.
 
 Numbers drift 15-25% between sessions, so compare runs taken in the same
 session and treat a figure quoted from an older one as a rough guide only.
-`ROUNDS=8 tools/face_profile.zsh` produces the table.
+`ROUNDS=8 tools/face_profile.zsh` produces the table; `ruby
+tools/face_spi_cost.rb` counts a face's SPI calls on the host with no device
+attached.
 
-### What does not help
+The repaint is PicoRuby executing the geometry — the Bresenham and ellipse
+loops that decide which spans to fill. Both options below attack that, and
+neither is applied: the device runs the straightforward per-primitive form.
 
-Cutting the number of `SPI#write` calls. Composing a face offscreen and blitting
-it in one transaction takes a redraw from 207-428 calls down to 10 and buys
-7-9% — 0.39 s neutral and 0.62 s joy, against 0.42 s and 0.68 s for the
-per-primitive form measured the same session. The panel transfer is not what
-the time is spent on. That experiment lives in the git history of
-`bash0C7/picoruby-ili9342` (`8a2fced`, reverted in `25e29b4`) and in
-`tools/face_spi_cost.rb`, which counts the calls on the host.
+### Option: pre-render each face's band
 
-### What is left
+Faces are static, so the geometry recomputes, on every change, a byte string
+that is always the same. Rendering each face's band once into RGB565 and
+blitting the stored copy removes the geometry entirely, leaving the 0.18 s
+floor plus one transfer. This is the whole 0.24-0.50 s, so it is the larger
+win by far.
 
-The cost is PicoRuby executing the geometry: the Bresenham and ellipse loops
-that decide which spans to fill. Faces are static, so this recomputes, on every
-change, a byte string that is always the same. Rendering each face's band once
-into RGB565 and blitting the stored copy removes all of it and leaves the
-0.18 s floor plus one transfer.
+The band is 136x74 px — 20 128 bytes per face, about 141 KB for all seven.
+That fits the 8 MB PSRAM comfortably, but the bytes have to come from
+somewhere: either generated on the host and baked into the image, or drawn
+once on the device and cached on first use. Which of the two is the open
+question, and nothing has been built.
 
-The band is 136x74 px — 20 128 bytes per face, about 141 KB for all seven. That
-fits the 8 MB PSRAM comfortably, but the bytes have to come from somewhere:
-either generated on the host and baked into the image, or drawn once on the
-device and cached on first use. Which of the two is the open question.
+### Option: compose the redraw offscreen
 
-### Constraints to know before trying
+Collecting a redraw into an offscreen buffer and blitting it in one
+transaction takes a face from 207-428 `SPI#write` calls down to 10. Measured,
+that is worth 7-9%: 0.39 s neutral and 0.62 s joy, against 0.42 s and 0.68 s
+for the per-primitive form in the same session. Real, but small — the panel
+transfer is not where the time goes, so removing almost all of it moves little.
+
+This was built and then reverted, so it can be recovered rather than rewritten:
+the driver side is `8a2fced` in `bash0C7/picoruby-ili9342` (reverted by
+`25e29b4`), the application side is `d4ae838` and `ceff876` here (reverted by
+`c17a3c2`). Reverting those reverts restores a working, tested implementation.
+
+It was dropped on cost, not on correctness. It grows the driver from 345 to 446
+lines, and both constraints in the next section are hazards it introduced —
+one of them as a boot loop. Weigh that against 7-9% before restoring it; if the
+pre-rendered band above is built instead, this becomes redundant.
+
+### Constraints to know before trying either
 
 - The FreeRTOS task that runs the mruby VM has an 8 KB stack
   (`PICORB_TASK_STACK_SIZE`, `components/picoruby-esp32/picoruby-esp32.c`). One
