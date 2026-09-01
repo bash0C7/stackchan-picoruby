@@ -1,20 +1,14 @@
 #!/usr/bin/env ruby
-# What each face costs the LCD, measured on the host with no device attached.
+# What each face asks of the SPI bus, counted on the host with no device attached.
 #
-# On a CoreS3 on 2026-09-01, six faces x eight rounds over the BLE `face` verb
-# fit this law:
+# This counts calls. It does not predict latency, and the call count is not what
+# sets it: on a CoreS3, composing a face offscreen took a redraw from 207-428
+# SPI#write calls down to 10 and moved the BLE `face` verb by 7-9%. The time goes
+# into PicoRuby executing the geometry, not into the transfer. See "Latency and
+# remaining headroom" in the README.
 #
-#     latency = 0.181 s + 0.853 ms * (number of SPI#write calls)   R^2 = 0.991
-#
-# The intercept lands on the independently measured 0.175 s floor (the `led`
-# verb: same BLE path, no LCD work). Fitting against RAMWR transactions instead
-# gives a similar R^2 but a 0.199 s intercept — it cannot see the extra chunk
-# writes a large fill carries. Fitting against bytes sent explains nothing
-# (R^2 = 0.118): a call costs the same whatever it carries.
-#
-# So the number below, not the pixel count, is what a face costs. This script
-# drives the real ILI9342 driver with a counting SPI so that number can be
-# checked after a geometry or driver change without touching the robot.
+# Use it to compare one geometry or driver change against another without
+# touching the robot, and measure latency itself with tools/face_profile.zsh.
 #
 #   ruby tools/face_spi_cost.rb
 #
@@ -30,8 +24,6 @@ abort "driver not found: #{DRIVER} (set ILI9342_MRBLIB)" unless File.exist?(DRIV
 
 $LOAD_PATH.unshift File.join(ROOT, "lib")
 
-MS_PER_CALL = 0.853
-FLOOR_S     = 0.181
 RAMWR       = 0x2C
 
 class CountingPin
@@ -115,10 +107,7 @@ rows << ["neutral", "draw (cold boot)", *measure(F::Neutral) { |f, d| f.draw(d) 
 rows << ["neutral", "blink close", *measure(F::Neutral) { |f, d| f.redraw_eyes_closed(d) }]
 rows << ["neutral", "blink open",  *measure(F::Neutral) { |f, d| f.redraw_eyes_open(d) }]
 
-puts format("%-10s %-18s %8s %8s %9s %12s", "face", "path", "calls", "frames", "bytes", "predicted")
+puts format("%-10s %-18s %8s %8s %9s", "face", "path", "calls", "frames", "bytes")
 rows.each do |name, path, calls, frames, bytes|
-  puts format("%-10s %-18s %8d %8d %9d %9.3f s", name, path, calls, frames, bytes,
-              FLOOR_S + calls * MS_PER_CALL / 1000.0)
+  puts format("%-10s %-18s %8d %8d %9d", name, path, calls, frames, bytes)
 end
-puts
-puts "predicted = #{FLOOR_S} s floor + #{MS_PER_CALL} ms per SPI#write call"

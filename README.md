@@ -192,6 +192,57 @@ its 1.8 V digital rail (AXP2101 ALDO1) powered at cold-boot. The I2S link uses
 BCLK on GPIO34, WS on GPIO33, and data-out on GPIO13 with no MCLK. Volume is
 controlled by the macOS-side `--gain` parameter (default 0.1).
 
+## Latency and remaining headroom
+
+A `face` command over BLE takes 0.42 s (neutral) to 0.68 s (joy), median of
+eight rounds on a CoreS3. The `led` verb travels the same BLE path and draws
+nothing; it takes 0.18 s, and that is the floor. The remaining 0.24-0.50 s is
+the LCD repaint, and it scales with how many drawing primitives a face is made
+of rather than with how many pixels it covers.
+
+Numbers drift 15-25% between sessions, so compare runs taken in the same
+session and treat a figure quoted from an older one as a rough guide only.
+`ROUNDS=8 tools/face_profile.zsh` produces the table.
+
+### What does not help
+
+Cutting the number of `SPI#write` calls. Composing a face offscreen and blitting
+it in one transaction takes a redraw from 207-428 calls down to 10 and buys
+7-9% — 0.39 s neutral and 0.62 s joy, against 0.42 s and 0.68 s for the
+per-primitive form measured the same session. The panel transfer is not what
+the time is spent on. That experiment lives in the git history of
+`bash0C7/picoruby-ili9342` (`8a2fced`, reverted in `25e29b4`) and in
+`tools/face_spi_cost.rb`, which counts the calls on the host.
+
+### What is left
+
+The cost is PicoRuby executing the geometry: the Bresenham and ellipse loops
+that decide which spans to fill. Faces are static, so this recomputes, on every
+change, a byte string that is always the same. Rendering each face's band once
+into RGB565 and blitting the stored copy removes all of it and leaves the
+0.18 s floor plus one transfer.
+
+The band is 136x74 px — 20 128 bytes per face, about 141 KB for all seven. That
+fits the 8 MB PSRAM comfortably, but the bytes have to come from somewhere:
+either generated on the host and baked into the image, or drawn once on the
+device and cached on first use. Which of the two is the open question.
+
+### Constraints to know before trying
+
+- The FreeRTOS task that runs the mruby VM has an 8 KB stack
+  (`PICORB_TASK_STACK_SIZE`, `components/picoruby-esp32/picoruby-esp32.c`). One
+  nested VM execution costs about 3.1 KB — `mrb_vm_exec`'s Xtensa prologue is
+  `entry a1, 0xb50`, 2896 bytes. A construct that yields a block from C, such as
+  `Array.new(n) { ... }` or `String#dup`, therefore adds a whole frame, and from
+  inside a drawing path that overflows the stack. The symptom is a boot loop
+  reporting `stack overflow in task picoruby_task`, roughly 5 s after
+  advertising starts, which is the first blink.
+- mruby's `String#[]=` copies in proportion to the size of the string it splices
+  into, not the size of the slice (`str_replace_partial` in `src/string.c`).
+  Splicing rows into a single 20 KB buffer costs about 2.5 ms per primitive at
+  PSRAM speed; per-row strings avoid it. This is invisible on a host, where the
+  buffer fits in L1.
+
 ## Hardware
 
 [M5Stack StackChan AI Desktop Robot (Switch Science 11129)](https://www.switch-science.com/products/11129):
