@@ -1,6 +1,5 @@
 # Picotest suite for the shared layer. Runs on the host picoruby VM.
-# Literal expectations (CRuby-independent); the repro/shared-parity probe is the
-# separate CRuby<->PicoRuby cross-check.
+# Literal expectations, independent of CRuby.
 class StackchanSharedTest < Picotest::Test
   FC = Stackchan::BLE::FrameCodec
   H  = Stackchan::BLE::HsbToRgb
