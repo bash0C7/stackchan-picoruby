@@ -414,17 +414,13 @@ module StackchanApp
     MOUTH_BAND_Y = MOUTH_CY - MOUTH_MAX_RISE - FEATURE_MARGIN
     MOUTH_BAND_H = (MOUTH_CY + SURPRISED_MOUTH_HALF_H + FEATURE_MARGIN) - MOUTH_BAND_Y
 
-    # Union of EYE_BAND and MOUTH_BAND — the single rectangle `redraw` hands
-    # to `batch`. A face costs what its features cost in SPI#write calls, not
-    # in pixels: measured with a counting SPI against the real driver, redraw
-    # ran 207 to 428 calls (14 per filled eye, up to 19 per half of a diagonal
-    # mouth, 9 per brow), and at 0.85ms per call (R^2 = 0.991) that accounts
-    # for the whole 0.35-0.54s the BLE face verb measured above its 0.175s
-    # floor. Batching lands every one of those spans in the offscreen buffer,
-    # so any face now costs ten calls: dropping the two clears is worth one of
-    # the calls saved, capturing the features is worth all the rest. Computed
-    # with min/max rather than assumed, since neither band is reliably the
-    # wider or taller one.
+    # Union of EYE_BAND and MOUTH_BAND — one rectangle `redraw` hands to
+    # `batch` as a single panel transaction. Device measurement (BLE face
+    # verb, 6 faces x 8 rounds): latency = 0.199s + 0.0051s per panel
+    # transaction (R^2 = 0.990), cost per transaction, not per pixel — so
+    # merging the eye and mouth clears into one transaction is what pays for
+    # itself, not shrinking the pixel count. Computed with min/max rather
+    # than assumed, since neither band is reliably the wider or taller one.
     FACE_BAND_X = [EYE_BAND_X, MOUTH_BAND_X].min
     FACE_BAND_Y = [EYE_BAND_Y, MOUTH_BAND_Y].min
     FACE_BAND_W = [EYE_BAND_X + EYE_BAND_W, MOUTH_BAND_X + MOUTH_BAND_W].max - FACE_BAND_X
