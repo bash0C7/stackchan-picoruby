@@ -29,11 +29,17 @@ suites (`rake test:host`, macOS only because of `plutil`).
 
 ## Next
 
-Wire `picoruby-aw88298` (now a C gem) into the firmware: add
-`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`
-to R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb`, then `r2p2:setup`,
-`build_flash`, and redeploy the app. Until then the device build lacks
-`require 'aw88298'`.
+Two C gems wait for a firmware build:
+
+1. `picoruby-aw88298`: add
+   `conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`
+   to R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb`. Until then the device
+   build lacks `require 'aw88298'`.
+2. `picoruby-ili9342` branch `claude/c-drawing-primitives` (drawing primitives
+   in C): merge into `stackchan-integration` or point the build_config at it.
+
+Then `r2p2:setup`, `build_flash`, redeploy the app, and measure with
+`ROUNDS=8 tools/face_profile.zsh` against the table in the README.
 
 Subproject C, BLE reliability — the three defects listed under "Known issues"
 in the README. In rough order of how often they bite: no retry on an ACK

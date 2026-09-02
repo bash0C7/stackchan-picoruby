@@ -288,8 +288,7 @@ primitives a face is made of, not with pixels or `SPI#write` calls (cutting
 those from ~400 to 10 is worth 7-9%).
 
 Numbers drift 15-25% between sessions; only compare runs from the same
-session. `ROUNDS=8 tools/face_profile.zsh` produces the table,
-`ruby tools/face_spi_cost.rb` counts a face's SPI calls on the host.
+session. `ROUNDS=8 tools/face_profile.zsh` produces the table.
 
 | face | seconds |
 |---|---|
@@ -300,11 +299,10 @@ session. `ROUNDS=8 tools/face_profile.zsh` produces the table,
 | joy | 0.68 |
 | `led` (floor) | 0.18 |
 
-The large win left is pre-rendering each face's 136x74 band to RGB565 once
-(about 141 KB for all seven, fine in PSRAM) and blitting it, which removes
-the geometry entirely. An offscreen-compose variant exists in git history
-(`8a2fced` in `bash0C7/picoruby-ili9342`, `d4ae838` / `ceff876` here) and was
-reverted as not worth its size. Two device-only constraints for either:
+`picoruby-ili9342` branch `claude/c-drawing-primitives` moves the fill / line /
+ellipse primitives to C (one call per shape, 4 KB pixel Strings), which is
+where this time goes; the table above is the pure-Ruby driver. Two device-only
+constraints for any further work on the draw path:
 
 - The mruby VM task has an 8 KB stack; a construct that yields a block from
   C (`Array.new(n) { }`, `String#dup`) nests the VM and costs ~3.1 KB. Inside
@@ -347,7 +345,7 @@ and build_configs each time.
 | [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `stackchan-integration` (moving ref) | LCD driver | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `stackchan-integration` (moving ref; C primitives on `claude/c-drawing-primitives`) | LCD driver | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
 | [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
