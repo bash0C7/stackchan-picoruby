@@ -281,34 +281,47 @@ controlled by the macOS-side `--gain` parameter (default 0.1).
 
 ## Latency
 
-A `face` command over BLE takes 0.42 s (neutral) to 0.68 s (joy), median of
-eight rounds. `led` travels the same path and draws nothing: 0.18 s, the
-floor. The rest is the LCD repaint, and it scales with how many drawing
-primitives a face is made of, not with pixels or `SPI#write` calls (cutting
-those from ~400 to 10 is worth 7-9%).
+A `face` command over BLE takes 0.16 s (neutral) to 0.21 s (joy), median of
+eight rounds. `led` travels the same path and draws nothing: 0.18 s. The faces
+sit at that floor, so the LCD repaint no longer stands out above the BLE round
+trip.
 
 Numbers drift 15-25% between sessions; only compare runs from the same
 session. `ROUNDS=8 tools/face_profile.zsh` produces the table.
 
-| face | seconds |
-|---|---|
-| neutral / surprised | 0.42 |
-| smile | 0.52 |
-| sad | 0.55 |
-| angry | 0.57 |
-| joy | 0.68 |
-| `led` (floor) | 0.18 |
+| face | seconds | with the primitives in Ruby |
+|---|---|---|
+| neutral | 0.16 | 0.42 |
+| surprised | 0.16 | 0.42 |
+| angry | 0.17 | 0.55 |
+| smile | 0.18 | 0.56 |
+| sad | 0.18 | 0.52 |
+| joy | 0.21 | 0.67 |
+| `led` (floor) | 0.18 | 0.19 |
 
-`picoruby-ili9342` branch `claude/c-drawing-primitives` moves the fill / line /
-ellipse primitives to C (one call per shape, 4 KB pixel Strings), which is
-where this time goes; the table above is the pure-Ruby driver. Two device-only
-constraints for any further work on the draw path:
+Both columns are medians of the same eight-round run, measured in one session
+either side of the firmware change, so they are comparable. The device-side
+ACK in the daemon log moved the same way: 344-624 ms down to 100-164 ms.
+
+What went away is the time PicoRuby spent interpreting Bresenham and
+midpoint-ellipse loops. `picoruby-ili9342` issues the address window, RAMWR
+and pixel stream from C, one call per shape. Neither pixel count nor
+`SPI#write` count ever explained the cost (cutting the calls from ~400 to 10
+was worth 7-9%); primitive count did.
+
+Two device-only constraints bind anything that goes back onto the draw path in
+Ruby:
 
 - The mruby VM task has an 8 KB stack; a construct that yields a block from
   C (`Array.new(n) { }`, `String#dup`) nests the VM and costs ~3.1 KB. Inside
   a drawing path that is a boot loop (`stack overflow in task picoruby_task`).
 - `String#[]=` copies in proportion to the receiver, not the slice. Splicing
   rows into one 20 KB buffer costs ~2.5 ms each; per-row strings avoid it.
+
+A third constraint binds the C side: `picoruby-spi`'s ESP32 port creates the
+bus with `max_transfer_sz` left at 0 and DMA on, so `esp_driver_spi` allocates
+a single DMA descriptor and rejects any transfer over 4092 bytes. The driver's
+pixel chunk is 1024 pixels (2048 bytes) to stay under it.
 
 ## Hardware
 
@@ -345,7 +358,7 @@ and build_configs each time.
 | [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `stackchan-integration` (moving ref; C primitives on `claude/c-drawing-primitives`) | LCD driver | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `claude/c-drawing-primitives` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
 | [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |

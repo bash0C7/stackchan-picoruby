@@ -53,6 +53,10 @@ system I2C (SDA=12 / SCL=11) で:
 
 `application.rb` の PY32 init 区間の `puts` (`# REQUIRED FOR PY32 COLD-BOOT` マーカー) は削除禁止。bytecode layout 依存の crash を抑えている。
 
+SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus を `max_transfer_sz`
+未指定 + DMA 有効で作るので、esp_driver_spi が DMA descriptor 1 個分で頭打ちにする。超えると
+`IOError: SPI write failed` になる。host の fake では再現しない。
+
 ## BLE プロトコル
 
 - yaw: `<YL:0..100>` / `<YR:0..100>` (排他、YL 優先)、pitch: `<PU:0..100>` (上のみ)、timing: `<T:ms>` か `<V:speed>` のどちらか。
