@@ -28,10 +28,8 @@ Confirmed on the device: cold boot reaches `HCI WORKING — advertising` with no
 panic, the six faces the CLI exposes all draw, `say` plays through the C
 decode, torque / servo / selftest answer with real positions, and the
 `BLE_FAKE=1` path runs. Face redraw now sits at the BLE floor — the README
-table has the numbers.
-
-**Nobody has looked at the faces yet.** That the drawing is visually unchanged
-is the one claim about this firmware with no evidence behind it.
+table has the numbers. The faces and the LEDs have been looked at, driven by
+head touch, and render as they did before the primitives moved to C.
 
 Tests are green: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 /
 aw88298 14, skip 0, plus the five CRuby host files (`rake test:host`, macOS
@@ -39,9 +37,7 @@ only because of `plutil`).
 
 ## Next
 
-1. Look at the six faces against how they used to render, and at `closed`
-   after a reset.
-2. The R2P2-ESP32 fork's `stackchan-integration` carries `bd348c0`, which
+1. The R2P2-ESP32 fork's `stackchan-integration` carries `bd348c0`, which
    moves the picoruby submodule to the lineage rebased onto upstream master
    (`568b4b88`). **That lineage does not boot on this board.** The firmware
    builds and flashes cleanly, then the picoruby task overflows its 8 KB
@@ -53,7 +49,7 @@ only because of `plutil`).
    are written against, so it is a decision, not a tweak. Until then the
    branch above is where the working build_config lives; `stackchan-integration`
    is untouched.
-3. Subproject C, BLE reliability — the defects under "Known issues" in the
+2. Subproject C, BLE reliability — the defects under "Known issues" in the
    README: no retry on an ACK timeout, the ~45 s first `<A:done>` after a long
    idle, and `Daemon#stop` never reaching its reply. The daemon also died once
    with SIGPIPE right after a `selftest` and launchd restarted it; that is not
