@@ -15,10 +15,10 @@ module Stackchan::Voice
   class Tts
     class SynthError < StandardError; end
 
-    # The 1W speaker distorts on peaks well before the digital path does: `say`
-    # output reaches only about 23000 of full scale and nothing clips through
-    # afconvert or the mu-law encode, yet 0.1 is audibly broken up. Tune per run
-    # with --gain.
+    # The 1W speaker breaks up on peaks well before the digital path does:
+    # `say` output reaches only about 19900 of full scale and nothing clips
+    # through afconvert or the mu-law encode, so audible distortion is the
+    # speaker being overdriven, not the codec. Tune per run with --gain.
     DEFAULT_GAIN = 0.05
 
     def initialize(voice: nil, gain: DEFAULT_GAIN, rate: nil)

@@ -841,7 +841,7 @@ end
 
 # Speaker: AW88298 over system I2C + I2S TX on GPIO13. Optional; failure keeps @speaker=nil.
 # The rate has to match what the PC encodes (Stackchan::Voice::Tts::SAMPLE_RATE).
-SPEAKER_SAMPLE_RATE = 16000
+SPEAKER_SAMPLE_RATE = 8000
 @speaker = nil
 begin
   speaker_i2s = I2S.new(sample_rate: SPEAKER_SAMPLE_RATE)

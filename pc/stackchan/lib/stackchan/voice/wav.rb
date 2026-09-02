@@ -10,7 +10,7 @@ module Stackchan::Voice
     # an I2S channel clocked at its own SPEAKER_SAMPLE_RATE, so a mismatch is
     # heard as the wrong pitch rather than reported as an error. Changing this
     # means changing app/application.rb's SPEAKER_SAMPLE_RATE in the same step.
-    SAMPLE_RATE = 16000
+    SAMPLE_RATE = 8000
 
     Format = Struct.new(:audio_format, :channels, :sample_rate, :bits_per_sample)
 
