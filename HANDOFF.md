@@ -37,18 +37,21 @@ only because of `plutil`).
 
 ## Next
 
-1. The R2P2-ESP32 fork's `stackchan-integration` carries `bd348c0`, which
-   moves the picoruby submodule to the lineage rebased onto upstream master
-   (`568b4b88`). **That lineage does not boot on this board.** The firmware
-   builds and flashes cleanly, then the picoruby task overflows its 8 KB
-   stack immediately after `main_task: Returned from app_main()` and the
-   board reboots in a loop. Erasing the storage partition so `/home/app.mrb`
-   does not exist changes nothing, so it is the lineage's own startup, not
-   the application. `PICORB_TASK_STACK_SIZE` is `1024 * 8` on both lineages.
-   Raising it would also move the budget the draw-path and BLE constraints
-   are written against, so it is a decision, not a tweak. Until then the
-   branch above is where the working build_config lives; `stackchan-integration`
-   is untouched.
+1. The R2P2-ESP32 fork has two branches that differ by exactly one thing: the
+   picoruby submodule pointer. `c-primitives-verified` holds `7258676`, which
+   boots; `stackchan-integration` holds `568b4b88`, the lineage rebased onto
+   upstream master, which does not. Everything else — the build_config, the gem
+   refs — is identical, so switching is a one-line submodule bump whenever the
+   lineage is ready. Keep it that way: land shared changes on both.
+
+   What `568b4b88` does: the firmware builds and flashes cleanly, then the
+   picoruby task overflows its 8 KB stack immediately after `main_task:
+   Returned from app_main()` and the board reboots in a loop. Erasing the
+   storage partition so `/home/app.mrb` does not exist changes nothing, so it
+   is the lineage's own startup, not the application.
+   `PICORB_TASK_STACK_SIZE` is `1024 * 8` on both. Raising it would also move
+   the budget the draw-path and BLE constraints are written against, so it is
+   a decision, not a tweak.
 2. Subproject C, BLE reliability — the defects under "Known issues" in the
    README: no retry on an ACK timeout, the ~45 s first `<A:done>` after a long
    idle, and `Daemon#stop` never reaching its reply. The daemon also died once
