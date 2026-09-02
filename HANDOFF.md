@@ -29,6 +29,12 @@ suites (`rake test:host`, macOS only because of `plutil`).
 
 ## Next
 
+Wire `picoruby-aw88298` (now a C gem) into the firmware: add
+`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`
+to R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb`, then `r2p2:setup`,
+`build_flash`, and redeploy the app. Until then the device build lacks
+`require 'aw88298'`.
+
 Subproject C, BLE reliability — the three defects listed under "Known issues"
 in the README. In rough order of how often they bite: no retry on an ACK
 timeout, the ~45 s first `<A:done>` after a long idle, and `Daemon#stop` never

@@ -19,8 +19,11 @@ module PicotestHarness
           "\nSet SCSERVO_RB to point at picoruby-scservo's mrblib/scservo.rb.")
   end
 
-# Driver gems are bundled into app.mrb by the Rakefile; the device suite needs them too.
-DEVICE_GEMS = %w[stackchan-led si12t aw88298].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
+# Pure-Ruby driver gems are bundled into app.mrb by the Rakefile; the device suite
+# embeds them the same way. picoruby-aw88298 is a C gem compiled into the host VM
+# (build_config/picoruby-test.rb) and reached with `require`, as on the device.
+DEVICE_GEMS = %w[stackchan-led si12t].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
+C_GEMS = %w[aw88298]
 DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb")].sort }
 
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
@@ -48,6 +51,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   SUITES = {
     "device" => {
       dir: File.join(REPO_ROOT, "test", "device"),
+      require_name: "aw88298",
       cruby: lambda {
         load DEVICE_STUBS_RB
         DEVICE_GEM_MRBLIB.each { |f| load f }
@@ -83,15 +87,23 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       load_files: lambda { SHARED_MRBLIB },
     },
 }
-DEVICE_GEMS.each do |gem|
-  mrblib = Dir[File.join(gem, "mrblib", "*.rb")].sort
-  SUITES[File.basename(gem).sub("picoruby-", "")] = {
-    dir: File.join(gem, "test"),
-    cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f }; mrblib.each { |f| load f } },
-    load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES, *mrblib] },
-  }
-end
-SUITES.freeze
+  DEVICE_GEMS.each do |gem|
+    mrblib = Dir[File.join(gem, "mrblib", "*.rb")].sort
+    SUITES[File.basename(gem).sub("picoruby-", "")] = {
+      dir: File.join(gem, "test"),
+      cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f }; mrblib.each { |f| load f } },
+      load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES, *mrblib] },
+    }
+  end
+  C_GEMS.each do |name|
+    SUITES[name] = {
+      dir: File.join(REPO_ROOT, "mrbgems", "picoruby-#{name}", "test"),
+      require_name: name,
+      cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f } },
+      load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES] },
+    }
+  end
+  SUITES.freeze
 
   module_function
 
@@ -115,7 +127,7 @@ SUITES.freeze
       errors += Picotest::Runner.new(
         s[:dir],
         filter: filter,
-        require_name: nil,
+        require_name: s[:require_name],
         load_path: nil,
         load_files: s[:load_files].call,
       ).run

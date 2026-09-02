@@ -1,28 +1,9 @@
-# AW88298 class-D amp over I2C + I2S sample out (picoruby-i2s), with mu-law decode.
+# AW88298 class-D amp over I2C + I2S sample out (picoruby-i2s).
+# AW88298.ulaw_decode (G.711 mu-law -> 16-bit PCM) is implemented in C.
 class AW88298
-  ULAW_BIAS    = 0x84
   AW88298_ADDR = 0x36
   # M5Unified rate table for AW88298 reg 0x06 (M5Unified.cpp:_speaker_enabled_cb_cores3).
   AW_RATE_TBL  = [4, 5, 6, 8, 10, 11, 15, 20, 22, 44]
-
-  # ITU G.711: one 8-bit mu-law code -> signed 16-bit linear sample.
-  def self.ulaw_byte_to_linear(byte)
-    u = (~byte) & 0xFF
-    t = ((u & 0x0F) << 3) + ULAW_BIAS
-    t = t << ((u & 0x70) >> 4)
-    (u & 0x80) != 0 ? (ULAW_BIAS - t) : (t - ULAW_BIAS)
-  end
-
-  # Decode a mu-law byte string to a little-endian signed-16 PCM byte string.
-  def self.ulaw_decode(ulaw)
-    out = ""
-    ulaw.each_byte do |b|
-      v = ulaw_byte_to_linear(b) & 0xFFFF
-      out << (v & 0xFF).chr
-      out << ((v >> 8) & 0xFF).chr
-    end
-    out
-  end
 
   # AW88298 reg 0x06 value for a sample rate (M5Unified formula).
   def self.aw88298_reg06(sample_rate)

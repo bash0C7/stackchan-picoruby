@@ -86,7 +86,8 @@ namespace :picotest do
   desc "Force-build the host picoruby test VM (MRUBY_CONFIG=picoruby-test). Run after a picoruby update or a firmware build."
   task :build do
     abort "picoruby tree not found: #{PICORUBY_ROOT}\n  set PICORUBY_ROOT, or run `rake vendor:setup`." unless File.directory?(PICORUBY_ROOT)
-    Dir.chdir(PICORUBY_ROOT) { sh "MRUBY_CONFIG=picoruby-test rake all" }
+    config = File.expand_path('build_config/picoruby-test.rb', __dir__)
+    Dir.chdir(PICORUBY_ROOT) { sh "MRUBY_CONFIG=#{config} rake all" }
   end
 
   task :ensure_vm do
@@ -138,9 +139,9 @@ def src_from_env(task)
   path
 end
 
-# Driver gems live under mrbgems/ but are not in the firmware build_config, so
+# Pure-Ruby driver gems live under mrbgems/ but are not in the firmware build_config, so
 # their mrblib is prepended to the application source before picorbc.
-DEVICE_GEM_SOURCES = %w[stackchan-led si12t aw88298].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/*.rb", __dir__)].sort }
+DEVICE_GEM_SOURCES = %w[stackchan-led si12t].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/*.rb", __dir__)].sort }
 
 def bundle_app_source(src)
   out = File.expand_path("tmp/build/#{File.basename(src, '.rb')}.bundled.rb", __dir__)

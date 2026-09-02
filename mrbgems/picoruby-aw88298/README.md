@@ -1,6 +1,7 @@
 # picoruby-aw88298
 
 AW88298 class-D amplifier over I2C (0x36) with mu-law playback over I2S.
+`AW88298.ulaw_decode` is C (`src/mruby/aw88298.c`); the rest is `mrblib/aw88298.rb`.
 
 ## Usage
 

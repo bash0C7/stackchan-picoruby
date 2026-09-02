@@ -31,7 +31,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 ## 構成
 
 - Firmware (`build_flash` が必要): LCD / PY32 / servo / `StackchanProtocol::FrameParser` の gem。R2P2-ESP32 の build_config が GitHub から fetch する。
-- Driver gems (`mrbgems/picoruby-{stackchan-led,si12t,aw88298}`): この repo 内の mrbgem。firmware には入れず、Rakefile が `app.mrb` compile 時に application.rb の前に連結する。firmware 側に移す時は build_config に足して連結を外す。
+- Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。pure-Ruby の `stackchan-led` / `si12t` は Rakefile が `app.mrb` compile 時に application.rb の前に連結する。C を含む `aw88298` は firmware の build_config (`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`) に入れて `build_flash` する。C gem の形は upstream と同じ `src/<gem>.c` → `src/mruby/<gem>.c`。
 - Application (`app/application.rb`、`upload_appmrb` で deploy): 顔・dispatcher・BLE・cold-boot。1 ファイルのまま維持する。テストは prism で class 本体だけ抽出する (`lib/ruby_class_extract.rb`) ので、class body の top-level に `< BLE` 以外の device-only 参照を置かない。
 - PC (`pc/stackchan-pico`): PicoRuby の CLI `stackchan <verb>` + launchd daemon (BLE central)。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
 - 核心は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink は装飾。
@@ -78,10 +78,10 @@ system I2C (SDA=12 / SCL=11) で:
 bundle exec rake test                 # picotest: device / pc / shared + 各 driver gem (host picoruby VM)
 SUITE=pc FILTER=stackchan_central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
-bundle exec rake picotest:build       # host VM 再 build。firmware build の後は必ず (症状: uninitialized constant Picotest)
+bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb、C gem 込み)。firmware build の後は必ず (症状: uninitialized constant Picotest)
 ```
 
-- device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + 抽出した application class + scservo source を VM に注入する (`test/picotest/harness.rb`)。
+- device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + 抽出した application class + scservo source を VM に注入する (`test/picotest/harness.rb`)。C gem は host VM に compile されているので `require` で届く。
 - pc suite は `ble_client.rb` を同様に抽出し、`test/pc/stubs.rb` の `BLE` stub と `test/pc/fake_radio.rb` で回す。`PICOTEST_VM=` で別 VM。
 - face geometry golden は `spec/golden/face_<name>.dump`。更新は `rake face:register_golden FACE=<name>`。
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
