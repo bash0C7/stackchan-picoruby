@@ -2,10 +2,16 @@
 
 module Stackchan::Voice
   # Minimal RIFF/WAVE reader: extracts the PCM `data` chunk and the format.
-  # We only need the data bytes (afconvert is told the exact format: 8 kHz mono
+  # We only need the data bytes (afconvert is told the exact format: mono
   # LEI16), but we validate the fmt chunk so a wrong afconvert invocation fails
   # loudly instead of streaming garbage to the speaker.
   module Wav
+    # The audio format the device expects. It hands the decoded PCM straight to
+    # an I2S channel clocked at its own SPEAKER_SAMPLE_RATE, so a mismatch is
+    # heard as the wrong pitch rather than reported as an error. Changing this
+    # means changing app/application.rb's SPEAKER_SAMPLE_RATE in the same step.
+    SAMPLE_RATE = 16000
+
     Format = Struct.new(:audio_format, :channels, :sample_rate, :bits_per_sample)
 
     class FormatError < StandardError; end
@@ -42,9 +48,9 @@ module Stackchan::Voice
 
     # Validate the format is exactly 8 kHz mono 16-bit PCM (afconvert
     # LEI16@8000 -c 1). Raises FormatError otherwise.
-    def self.expect_8k_mono_s16!(fmt)
+    def self.expect_mono_s16!(fmt)
       unless fmt.audio_format == 1 && fmt.channels == 1 &&
-             fmt.sample_rate == 8000 && fmt.bits_per_sample == 16
+             fmt.sample_rate == SAMPLE_RATE && fmt.bits_per_sample == 16
         raise FormatError,
               "expected 8kHz mono PCM16, got fmt=#{fmt.audio_format} " \
               "ch=#{fmt.channels} rate=#{fmt.sample_rate} bits=#{fmt.bits_per_sample}"

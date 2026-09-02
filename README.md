@@ -195,7 +195,7 @@ pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy
 pc/stackchan-pico/bin/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 pc/stackchan-pico/bin/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 pc/stackchan-pico/bin/stackchan torque on                # off lets you move the head by hand
-pc/stackchan-pico/bin/stackchan say "ぼくスタックチャンだよ" --gain 0.1  # speaks + shows subtitle on LCD (first 19 chars)
+pc/stackchan-pico/bin/stackchan say "ぼくスタックチャンだよ"   # speaks + shows subtitle on LCD (first 19 chars)
 pc/stackchan-pico/bin/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
 pc/stackchan-pico/bin/stackchan touch listen             # stream `<touch:N>` events as the head sensor fires
 pc/stackchan-pico/bin/stackchan demo                     # scripted intro: speak + face + servo + LED cycling
@@ -263,7 +263,7 @@ pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-p
 
 ## Audio path
 
-macOS synthesizes speech with `say`, converts 8 kHz mono PCM to G.711 mu-law,
+macOS synthesizes speech with `say`, converts 16 kHz mono PCM to G.711 mu-law,
 and streams it over BLE using a half-duplex receive-then-play protocol.
 
 The PC side sends `<A:N>` (N = mu-law byte count), waits 1.5 s for the device
@@ -274,10 +274,19 @@ static during this window), drains the receive queue, and plays the buffer. The
 phase separation prevents the btstack FreeRTOS thread and the PicoRuby main
 task from racing on the mruby heap.
 
+That window is sized from an assumed 8000 bytes/s blast, while the PC paces at a
+nominal 9000 bytes/s and measures slower than that. Long clips can therefore
+outrun the window and lose their tail; where the ceiling actually falls has not
+been characterised. It is a byte count, so raising the sample rate halves the
+utterance length it corresponds to.
+
 The AW88298 Class-D amplifier requires its boost rail (SY7088, via AW9523) and
 its 1.8 V digital rail (AXP2101 ALDO1) powered at cold-boot. The I2S link uses
 BCLK on GPIO34, WS on GPIO33, and data-out on GPIO13 with no MCLK. Volume is
-controlled by the macOS-side `--gain` parameter (default 0.1).
+controlled by the macOS-side `--gain` parameter (default 0.05). Nothing clips
+digitally at any gain — `say` peaks around 23000 of full scale and neither the
+resample nor the mu-law encode reaches the rails — so audible break-up means the
+speaker is being overdriven, and the fix is amplitude, not the codec.
 
 ## Latency
 
