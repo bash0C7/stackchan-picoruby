@@ -133,12 +133,10 @@ if Object.const_defined?(:BLE)
     attr_accessor :on_unsolicited
     attr_reader   :last_detail_frame
 
-    def initialize(name_prefix: "StackChan", radio: nil, sleep_fn: nil, clock_fn: nil, log_fn: nil)
+    def initialize(name_prefix: "StackChan", radio: nil, log_fn: nil)
       @name_prefix        = name_prefix
       @radio              = radio || StackchanRadio.new(name_prefix: name_prefix)
       @radio.on_notification = method(:handle_notification)
-      @sleep_fn           = sleep_fn || ->(ms) { sleep_ms(ms) }
-      @clock_fn           = clock_fn || -> { Machine.board_millis }
       @log_fn             = log_fn   || ->(line) { $stderr.write(line + "\n"); $stderr.flush }
       @rx_handle          = nil
       @tx_handle          = nil
@@ -221,7 +219,7 @@ if Object.const_defined?(:BLE)
           return self
         end
         raise Stackchan::BLE::TimeoutError, "<A:done> timeout" if i >= polls
-        @sleep_fn.call(POLLING_UNIT_MS)
+        sleep_ms(POLLING_UNIT_MS)
         i += 1
       end
     end
@@ -260,7 +258,7 @@ if Object.const_defined?(:BLE)
     def settle(ms)
       polls_for(ms).times do
         drain
-        @sleep_fn.call(POLLING_UNIT_MS)
+        sleep_ms(POLLING_UNIT_MS)
       end
     end
 
@@ -282,20 +280,20 @@ if Object.const_defined?(:BLE)
     def write_and_await_ack(frame)
       @last_detail_frame = nil
       @inbox.clear
-      t0 = @clock_fn.call
+      t0 = Machine.board_millis
       write_rx(frame)
       first = await_inbox
       unless first
         @log_fn.call("[t] #{frame.chomp} ack=timeout")
         raise Stackchan::BLE::TimeoutError, "ACK timeout for #{frame.inspect}"
       end
-      t_ack = @clock_fn.call
+      t_ack = Machine.board_millis
       status = NusResolver.classify(first)
       if status == :ack
         t_detail = nil
         if servo_or_read?(frame)
           @last_detail_frame = await_inbox
-          t_detail = @last_detail_frame ? @clock_fn.call : :timeout
+          t_detail = @last_detail_frame ? Machine.board_millis : :timeout
           # Log raw bytes if the detail await returns a bare ACK byte (seen once, unexplained).
           if @last_detail_frame && NusResolver.classify(@last_detail_frame) == :ack
             $stderr.write("[ble_client] anomaly: detail-frame slot got an ACK-like byte #{@last_detail_frame.inspect} for #{frame.inspect}\n")
@@ -329,7 +327,7 @@ if Object.const_defined?(:BLE)
         drain
         return @inbox.shift unless @inbox.empty?
         return nil if i >= polls
-        @sleep_fn.call(POLLING_UNIT_MS)
+        sleep_ms(POLLING_UNIT_MS)
         i += 1
       end
     end

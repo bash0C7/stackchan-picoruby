@@ -17,21 +17,19 @@ class LaunchAgentTest < Test::Unit::TestCase
                             stub: false, logdir: LOGDIR, **over)
   end
 
-  def test_daemon_job_runs_the_bundle_binary_with_the_real_boot_script
+  def test_daemon_job_runs_the_bundle_binary_with_the_boot_script
     job = daemon
     assert_equal "com.bash0c7.stackchan-daemon", job["Label"]
     assert_equal ["#{VM_APP}/Contents/MacOS/picoruby",
-                  "#{ROOT}/pc/stackchan-pico/app/boot_daemon_real.rb",
+                  "#{ROOT}/pc/stackchan-pico/app/boot_daemon.rb",
                   ROOT, "8787", "StackChan"], job["ProgramArguments"]
     assert_equal "#{LOGDIR}/daemon.log", job["StandardOutPath"]
     assert_equal "#{LOGDIR}/daemon.log", job["StandardErrorPath"]
   end
 
-  # boot_daemon.rb takes only <root> <port> -- passing a prefix would shift args.
-  def test_fake_ble_daemon_uses_the_fake_boot_script_and_drops_the_prefix
+  def test_fake_ble_daemon_passes_fake_instead_of_a_prefix
     job = daemon(ble_fake: true)
-    assert_equal "#{ROOT}/pc/stackchan-pico/app/boot_daemon.rb", job["ProgramArguments"][1]
-    assert_equal [ROOT, "8787"], job["ProgramArguments"][2..]
+    assert_equal [ROOT, "8787", "fake"], job["ProgramArguments"][2..]
   end
 
   # Supervision: restart on abnormal exit only. A daemon that exits 0 because
@@ -73,7 +71,7 @@ class LaunchAgentTest < Test::Unit::TestCase
     path = LaunchAgent.write(daemon(ns: "it"), dir: dir)
     assert_equal File.join(dir, "com.bash0c7.stackchan-it-daemon.plist"), path
     assert system("plutil", "-lint", path, out: File::NULL)
-    assert_match(/boot_daemon_real\.rb/, File.read(path))
+    assert_match(/boot_daemon\.rb/, File.read(path))
     assert_false File.exist?("#{path}.json")
   ensure
     FileUtils.rm_rf(dir)

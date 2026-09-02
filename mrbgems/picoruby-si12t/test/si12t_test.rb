@@ -1,6 +1,3 @@
-# Si12T is inlined in app/application.rb; the picotest harness extracts it via
-# prism AST and loads it (plus FakeI2C from test/fake_i2c.rb) onto the host
-# picoruby VM. I2C hardware access is stubbed with FakeI2C.
 class Si12TTest < Picotest::Test
   def setup
     @i2c = FakeI2C.new

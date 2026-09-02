@@ -19,6 +19,10 @@ module PicotestHarness
           "\nSet SCSERVO_RB to point at picoruby-scservo's mrblib/scservo.rb.")
   end
 
+# Driver gems are bundled into app.mrb by the Rakefile; the device suite needs them too.
+DEVICE_GEMS = %w[stackchan-led si12t aw88298].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
+DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb")].sort }
+
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")
   CLI_APP_RB          = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "cli_app.rb")
@@ -46,12 +50,13 @@ module PicotestHarness
       dir: File.join(REPO_ROOT, "test", "device"),
       cruby: lambda {
         load DEVICE_STUBS_RB
+        DEVICE_GEM_MRBLIB.each { |f| load f }
         RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE])
         require "face_golden_hash"
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(APPLICATION_RB, EXTRACTED_APP_RB, exclude_superclasses: %w[BLE])
-        [DEVICE_STUBS_RB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {
@@ -77,7 +82,16 @@ module PicotestHarness
       cruby: lambda { SHARED_MRBLIB.each { |f| require f } },
       load_files: lambda { SHARED_MRBLIB },
     },
-  }.freeze
+}
+DEVICE_GEMS.each do |gem|
+  mrblib = Dir[File.join(gem, "mrblib", "*.rb")].sort
+  SUITES[File.basename(gem).sub("picoruby-", "")] = {
+    dir: File.join(gem, "test"),
+    cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f }; mrblib.each { |f| load f } },
+    load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES, *mrblib] },
+  }
+end
+SUITES.freeze
 
   module_function
 

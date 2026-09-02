@@ -138,6 +138,17 @@ def src_from_env(task)
   path
 end
 
+# Driver gems live under mrbgems/ but are not in the firmware build_config, so
+# their mrblib is prepended to the application source before picorbc.
+DEVICE_GEM_SOURCES = %w[stackchan-led si12t aw88298].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/*.rb", __dir__)].sort }
+
+def bundle_app_source(src)
+  out = File.expand_path("tmp/build/#{File.basename(src, '.rb')}.bundled.rb", __dir__)
+  mkdir_p File.dirname(out)
+  File.write(out, (DEVICE_GEM_SOURCES + [src]).map { |f| File.read(f) }.join("\n"))
+  out
+end
+
 def compile_mrb(src, out)
   picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/mrbc"
   abort "mrbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
@@ -148,9 +159,9 @@ def compile_mrb(src, out)
   puts "[mrbc] #{src} -> #{out} (#{File.size(out)} bytes)"
 end
 
-def upload_mrb_via_picomodem(src:, dst:, port:)
+def upload_mrb_via_picomodem(src:, dst:, port:, bundle: false)
   mrb = File.expand_path("tmp/build/#{File.basename(src, File.extname(src))}.mrb", __dir__)
-  compile_mrb(src, mrb)
+  compile_mrb(bundle ? bundle_app_source(src) : src, mrb)
   Deploy::Picomodem.upload(src: mrb, dst: dst, port: port)
 end
 
@@ -315,7 +326,7 @@ namespace :r2p2 do
   desc 'host-compile SRC=path/to/app.rb and upload as autostart payload /home/app.mrb'
   task :upload_appmrb do
     ensure_no_concurrent_monitor
-    upload_mrb_via_picomodem(src: src_from_env('r2p2:upload_appmrb'), dst: '/home/app.mrb', port: espport)
+    upload_mrb_via_picomodem(src: src_from_env('r2p2:upload_appmrb'), dst: '/home/app.mrb', port: espport, bundle: true)
   end
 
   # R2P2-ESP32 rebuilds the littlefs image from storage/home/ on every build
@@ -327,7 +338,7 @@ namespace :r2p2 do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     src = src_from_env('r2p2:build_flash_appmrb')
-    compile_mrb(src, "#{R2P2_ROOT}/storage/home/app.mrb")
+    compile_mrb(bundle_app_source(src), "#{R2P2_ROOT}/storage/home/app.mrb")
     in_r2p2 r2p2_build_cmd('picoruby:build', 'flash', port: espport)
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src)} flashed"
   end

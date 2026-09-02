@@ -70,10 +70,14 @@ clone or vendoring needed for those.
 All StackChan business logic lives in a single autostart payload:
 
 ```
-app/application.rb   Face rendering, the WS2812 LED ring driver, the Si12T
-                     head-touch poll with on-device face + LED feedback, the
-                     command dispatcher, the BLE peripheral, audio receive,
-                     and the cold-boot init sequence.
+app/application.rb   Face rendering, head-touch reactions, the command
+                     dispatcher, the BLE peripheral, audio receive, and the
+                     cold-boot init sequence.
+mrbgems/             picoruby-stackchan-led (WS2812 ring), picoruby-si12t
+                     (head touch), picoruby-aw88298 (amp + mu-law), and
+                     picoruby-stackchan-shared (frame codec, used by the PC
+                     side too). The three device drivers are prepended to
+                     application.rb by the Rakefile before compiling app.mrb.
 
 pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
                            PicoRuby — CLI + launchd-managed daemon + BLE central.
@@ -347,8 +351,8 @@ and build_configs each time.
 | [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
 
-The WS2812 LED ring driver (`picoruby-stackchan-led`) is not a separate repo
-dependency — it is inlined into this repo's `app/application.rb`.
+The WS2812, Si12T, and AW88298 drivers are mrbgems in this repo's `mrbgems/`
+and are bundled into `app.mrb` at compile time rather than into the firmware.
 
 ## Related repositories
 

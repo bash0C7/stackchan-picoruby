@@ -30,8 +30,9 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 
 ## 構成
 
-- Firmware (mrbgems、`build_flash` が必要): hardware driver + `StackchanProtocol::FrameParser`。
-- Application (`app/application.rb`、`upload_appmrb` で deploy): StackChan の全 business logic。monolithic のまま維持し、split しない。テストは prism で class 本体だけ抽出する (`lib/ruby_class_extract.rb`) ので、class body の top-level に `< BLE` 以外の device-only 参照を置かない。
+- Firmware (`build_flash` が必要): LCD / PY32 / servo / `StackchanProtocol::FrameParser` の gem。R2P2-ESP32 の build_config が GitHub から fetch する。
+- Driver gems (`mrbgems/picoruby-{stackchan-led,si12t,aw88298}`): この repo 内の mrbgem。firmware には入れず、Rakefile が `app.mrb` compile 時に application.rb の前に連結する。firmware 側に移す時は build_config に足して連結を外す。
+- Application (`app/application.rb`、`upload_appmrb` で deploy): 顔・dispatcher・BLE・cold-boot。1 ファイルのまま維持する。テストは prism で class 本体だけ抽出する (`lib/ruby_class_extract.rb`) ので、class body の top-level に `< BLE` 以外の device-only 参照を置かない。
 - PC (`pc/stackchan-pico`): PicoRuby の CLI `stackchan <verb>` + launchd daemon (BLE central)。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
 - 核心は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink は装飾。
 
@@ -74,7 +75,7 @@ system I2C (SDA=12 / SCL=11) で:
 ## テスト
 
 ```
-bundle exec rake test                 # picotest: device / pc / shared (host picoruby VM)
+bundle exec rake test                 # picotest: device / pc / shared + 各 driver gem (host picoruby VM)
 SUITE=pc FILTER=stackchan_central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
 bundle exec rake picotest:build       # host VM 再 build。firmware build の後は必ず (症状: uninitialized constant Picotest)

@@ -1,7 +1,8 @@
-# Host boot for the PicoRuby daemon using the FakeBleClient (no real device).
-#   picoruby boot_daemon.rb <repo-root> [port]
+# Daemon boot.  picoruby boot_daemon.rb <repo-root> [port] [name-prefix|fake]
+# "fake" runs FakeBleClient (no radio) instead of the real BLE central.
 root = ARGV[0] || "."
 port = (ARGV[1] || "8787").to_i
+name_prefix = ARGV[2] || "StackChan"
 # Skip the mrblib loads when the shared gem is compiled into the VM.
 unless Object.const_defined?(:Stackchan)
   [
@@ -18,9 +19,21 @@ require "drb"
 load "#{root}/pc/stackchan-pico/app/drb_eintr_retry.rb"
 load "#{root}/pc/stackchan-pico/app/calib.rb"
 load "#{root}/pc/stackchan-pico/app/daemon_app.rb"
-load "#{root}/pc/stackchan-pico/app/fake_ble.rb"
 
-ble = FakeBleClient.new
+if name_prefix == "fake"
+  load "#{root}/pc/stackchan-pico/app/fake_ble.rb"
+  ble = FakeBleClient.new
+else
+  load "#{root}/pc/stackchan-pico/app/ble_client.rb"
+  ble = StackchanCentral.new(name_prefix: name_prefix)
+end
+
 daemon = Stackchan::Daemon.new(ble: ble, port: port)
-daemon.start
-daemon.join
+begin
+  daemon.start
+  daemon.join
+rescue => e
+  # PicoRuby's uncaught-exception handling prints nothing and exits 0.
+  $stderr.write("[stackchand] FATAL #{e.class}: #{e.message}\n")
+  $stderr.flush
+end

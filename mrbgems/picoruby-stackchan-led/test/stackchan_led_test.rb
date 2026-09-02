@@ -1,7 +1,3 @@
-# StackchanLed and StackchanLed::Animator are inlined into app/application.rb
-# (extracted from the now-archived picoruby-stackchan-led mrbgem). The picotest
-# harness extracts and loads the inlined StackchanLed classes, so they are
-# available here as plain host classes. PY32 hardware access is stubbed with FakePy32.
 class StackchanLedTest < Picotest::Test
   def setup
     @py32 = FakePy32.new

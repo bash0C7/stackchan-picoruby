@@ -23,7 +23,8 @@ The CoreS3 is flashed from exactly those revisions, with `app/application.rb`
 compiled into `/home/app.mrb` in the littlefs storage partition. Every revision
 above is pushed, so this state is reproducible from a fresh clone.
 
-Tests are green: picotest device 269 / pc 79 / shared 28, plus the CRuby host
+Tests are green: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 /
+aw88298 14, plus the CRuby host
 suites (`rake test:host`, macOS only because of `plutil`).
 
 ## Next

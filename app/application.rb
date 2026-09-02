@@ -1,6 +1,7 @@
 # StackChan autostart payload (/home/app.mrb):
 #   [1] escape hatch → [2] cold-boot init → [3] BLE NUS peripheral → [4] run loop
 
+#   Driver gems under mrbgems/ (stackchan-led, si12t, aw88298) are bundled in by the Rakefile at compile time.
 require 'spi'
 require 'gpio'
 require 'i2c'
@@ -12,327 +13,6 @@ require 'stackchan-protocol'
 require 'scservo'
 require 'ble'
 require 'i2s'
-
-# 12-pixel WS2812 ring via PY32IOExpander; each half has an Animator.
-class StackchanLed
-  PIXEL_COUNT  = 12
-  LED_DATA_PIN = 13
-
-  LEFT_RANGE  = (0..5)
-  RIGHT_RANGE = (6..11)
-
-  class Animator
-    BLINK_HALF_PERIOD_MS = 500
-    BREATHING_LUT = [0, 5, 20, 45, 70, 90, 100, 90, 70, 45, 20, 5].freeze
-    BREATHING_STEP_MS = 250
-
-    def initialize(led, pixel_range:)
-      @led = led
-      @pixel_range = pixel_range
-      @r = 0
-      @g = 0
-      @b = 0
-      @mode = :off
-      @phase_start_ms = nil
-    end
-
-    def set(r, g, b, mode)
-      @r = r
-      @g = g
-      @b = b
-      @mode = mode
-      @phase_start_ms = nil
-      @last_applied = nil
-      apply_immediately
-    end
-
-    # apply_color is three I2C transactions on the bus the touch sensor shares,
-    # so write only when the colour changes.
-    def tick(now_ms)
-      return unless dynamic?
-      @phase_start_ms ||= now_ms
-      elapsed = now_ms - @phase_start_ms
-      case @mode
-      when :blink
-        on = (elapsed / BLINK_HALF_PERIOD_MS) % 2 == 0
-        apply_color_if_changed(on ? @r : 0, on ? @g : 0, on ? @b : 0)
-      when :breathing
-        ratio = BREATHING_LUT[(elapsed / BREATHING_STEP_MS) % BREATHING_LUT.size]
-        apply_color_if_changed(@r * ratio / 100, @g * ratio / 100, @b * ratio / 100)
-      end
-    end
-
-    private
-
-    def dynamic?
-      @mode == :blink || @mode == :breathing
-    end
-
-    def apply_immediately
-      case @mode
-      when :solid then apply_color(@r, @g, @b)
-      when :off   then apply_color(0, 0, 0)
-      end
-    end
-
-    def apply_color(r, g, b)
-      @led.fill_range(@pixel_range.first, @pixel_range.last, r, g, b)
-      @led.show
-    end
-
-    def apply_color_if_changed(r, g, b)
-      rgb = [r, g, b]
-      return if @last_applied == rgb
-      @last_applied = rgb
-      apply_color(r, g, b)
-    end
-  end
-
-  def initialize(py32)
-    @py32 = py32
-    @brightness = 100
-    @buffer = Array.new(PIXEL_COUNT) { [0, 0, 0] }
-    @py32.set_direction(LED_DATA_PIN, true)
-    @py32.set_pull_mode(LED_DATA_PIN, true)
-    @py32.set_drive_mode(LED_DATA_PIN, false)
-    @py32.set_led_count(PIXEL_COUNT)
-    show
-  end
-
-  def fill(r, g, b)
-    @buffer = Array.new(PIXEL_COUNT) { [r, g, b] }
-    self
-  end
-
-  def set_rgb(i, r, g, b)
-    @buffer[i] = [r, g, b]
-    self
-  end
-
-  def fill_range(start_idx, end_idx, r, g, b)
-    i = start_idx
-    while i <= end_idx
-      @buffer[i] = [r, g, b]
-      i += 1
-    end
-    self
-  end
-
-  def fill_left(r, g, b)
-    fill_range(LEFT_RANGE.first, LEFT_RANGE.last, r, g, b)
-  end
-
-  def fill_right(r, g, b)
-    fill_range(RIGHT_RANGE.first, RIGHT_RANGE.last, r, g, b)
-  end
-
-  def clear
-    fill(0, 0, 0)
-  end
-
-  def brightness=(v)
-    @brightness = clamp(v, 0, 100)
-    self
-  end
-
-  def show
-    pixels = @buffer.map { |rgb| apply_brightness(rgb[0], rgb[1], rgb[2]) }
-    @py32.write_led_ram(pixels)
-    @py32.refresh_leds
-    self
-  end
-
-  def animate_side(side, r, g, b, mode)
-    case side
-    when :both
-      left_animator.set(r, g, b, mode)
-      right_animator.set(r, g, b, mode)
-    when :left
-      left_animator.set(r, g, b, mode)
-    when :right
-      right_animator.set(r, g, b, mode)
-    else
-      raise ArgumentError, "unknown side: #{side.inspect}"
-    end
-    self
-  end
-
-  # One-shot pulse: solid color now, off after duration_ms.
-  def flash_side(side, r, g, b, duration_ms = 300)
-    animate_side(side, r, g, b, :solid)
-    @flash_until ||= { left: nil, right: nil }
-    end_ms = (Machine.uptime_us / 1000) + duration_ms
-    case side
-    when :both
-      @flash_until[:left]  = end_ms
-      @flash_until[:right] = end_ms
-    when :left
-      @flash_until[:left] = end_ms
-    when :right
-      @flash_until[:right] = end_ms
-    end
-    self
-  end
-
-  def tick(now_ms)
-    left_animator.tick(now_ms)
-    right_animator.tick(now_ms)
-    return unless @flash_until
-    if @flash_until[:left] && now_ms >= @flash_until[:left]
-      @flash_until[:left] = nil
-      animate_side(:left, 0, 0, 0, :off)
-    end
-    if @flash_until[:right] && now_ms >= @flash_until[:right]
-      @flash_until[:right] = nil
-      animate_side(:right, 0, 0, 0, :off)
-    end
-  end
-
-  private
-
-  def left_animator
-    @left_animator ||= Animator.new(self, pixel_range: LEFT_RANGE)
-  end
-
-  def right_animator
-    @right_animator ||= Animator.new(self, pixel_range: RIGHT_RANGE)
-  end
-
-  def apply_brightness(r, g, b)
-    [r * @brightness / 100, g * @brightness / 100, b * @brightness / 100]
-  end
-
-  def clamp(v, lo, hi)
-    v < lo ? lo : (v > hi ? hi : v)
-  end
-end
-
-# Si12T 3-zone head touch, I2C 0x68 on the system bus.
-# OUTPUT1 (0x10): 2 bits per zone, 0..3 (NONE/LOW/MID/HIGH).
-class Si12T
-  ADDR        = 0x68
-  REG_CTRL1   = 0x08
-  REG_CTRL2   = 0x09
-  REG_OUTPUT1 = 0x10
-  ENABLE_REGS = (0x0A..0x0F)
-  SENS_REGS   = (0x02..0x06)
-  ZONE_COUNT  = 3
-
-  def initialize(i2c)
-    @i2c          = i2c
-    @prev_touched = false
-    init_sensor
-  end
-
-  def init_sensor
-    ENABLE_REGS.each { |r| @i2c.write(ADDR, r, 0x00) }
-    @i2c.write(ADDR, REG_CTRL2, 0x0F)   # S/W reset + sleep enable
-    @i2c.write(ADDR, REG_CTRL2, 0x07)
-    @i2c.write(ADDR, REG_CTRL1, 0x22)   # auto mode, FTC, response 4(2+2)
-    SENS_REGS.each { |r| @i2c.write(ADDR, r, 0x33) }  # TYPE_LOW / LEVEL_3
-  end
-
-  # [z0, z1, z2] intensities 0..3; [0,0,0] on a failed/empty read.
-  def read_zones
-    raw  = @i2c.read(ADDR, 1, REG_OUTPUT1)
-    byte = raw && raw.bytes[0]
-    return [0, 0, 0] unless byte
-    z = []
-    i = 0
-    while i < ZONE_COUNT
-      z << ((byte >> (2 * i)) & 0x03)
-      i += 1
-    end
-    z
-  end
-
-  # Rising-edge: returns the active zone index ONCE on touch onset (highest
-  # intensity; lowest index on a tie), nil while held and until release.
-  def poll
-    zones   = read_zones
-    touched = zones.any? { |v| v > 0 }
-    if touched && !@prev_touched
-      @prev_touched = true
-      best_i = 0
-      best_v = -1
-      i = 0
-      while i < zones.size
-        if zones[i] > best_v
-          best_v = zones[i]
-          best_i = i
-        end
-        i += 1
-      end
-      return best_i
-    end
-    @prev_touched = touched
-    nil
-  end
-end
-
-# Speaker: AW88298 amp over system I2C + I2S sample out (picoruby-i2s).
-class Speaker
-  ULAW_BIAS    = 0x84
-  AW88298_ADDR = 0x36
-  # M5Unified rate table for AW88298 reg 0x06 (M5Unified.cpp:_speaker_enabled_cb_cores3).
-  AW_RATE_TBL  = [4, 5, 6, 8, 10, 11, 15, 20, 22, 44]
-
-  # ITU G.711: one 8-bit mu-law code -> signed 16-bit linear sample.
-  def self.ulaw_byte_to_linear(byte)
-    u = (~byte) & 0xFF
-    t = ((u & 0x0F) << 3) + ULAW_BIAS
-    t = t << ((u & 0x70) >> 4)
-    (u & 0x80) != 0 ? (ULAW_BIAS - t) : (t - ULAW_BIAS)
-  end
-
-  # Decode a mu-law byte string to a little-endian signed-16 PCM byte string.
-  def self.ulaw_decode(ulaw)
-    out = ""
-    ulaw.each_byte do |b|
-      v = ulaw_byte_to_linear(b) & 0xFFFF
-      out << (v & 0xFF).chr
-      out << ((v >> 8) & 0xFF).chr
-    end
-    out
-  end
-
-  # AW88298 reg 0x06 value for a sample rate (M5Unified formula).
-  def self.aw88298_reg06(sample_rate)
-    rate = (sample_rate + 1102) / 2205
-    idx = 0
-    while rate > AW_RATE_TBL[idx]
-      idx += 1
-      break if idx >= AW_RATE_TBL.length
-    end
-    idx = AW_RATE_TBL.length - 1 if idx >= AW_RATE_TBL.length
-    idx | 0x14C0
-  end
-
-  # Ordered AW88298 init writes as [reg, hi, lo] (16-bit big-endian) triples.
-  def self.aw88298_init_writes(sample_rate)
-    [[0x61, 0x0673], [0x04, 0x4040], [0x05, 0x0008],
-     [0x06, aw88298_reg06(sample_rate)], [0x0C, 0x0064]].map do |reg, val|
-      [reg, (val >> 8) & 0xFF, val & 0xFF]
-    end
-  end
-
-  def initialize(i2c:, i2s:)
-    @i2c = i2c
-    @i2s = i2s
-  end
-  attr_reader :i2c, :i2s
-
-  # Power the amp over I2C.
-  def init_amp(sample_rate)
-    self.class.aw88298_init_writes(sample_rate).each do |reg, hi, lo|
-      @i2c.write(AW88298_ADDR, reg, hi, lo)
-    end
-  end
-
-  def play_ulaw(ulaw)
-    @i2s.write(self.class.ulaw_decode(ulaw))
-  end
-end
 
 # [1] Escape hatch: time to reach the shell and rm /home/app.mrb if this build crash-loops.
 sleep_ms 5000
@@ -830,7 +510,6 @@ end
 module StackchanApp
   # Half-duplex audio receiver. On <A:N>: notify <A:ready>, block T ms,
   # drain the accumulated bytes, play. Non-audio frames are yielded to the block.
-  # delay_fn / notify_fn / drain_fn are injectable for picotest.
   class AudioReceiver
     # 200ms of silence overwrites all I2S DMA circular descriptors so the last
     # audio frame does not replay at EOF.
@@ -840,10 +519,9 @@ module StackchanApp
     # if a whole clip is waited out in one call.
     DRAIN_STEP_MS = 50
 
-    def initialize(speaker:, parser:, delay_fn: nil)
-      @speaker  = speaker
-      @parser   = parser
-      @delay_fn = delay_fn
+    def initialize(speaker:, parser:)
+      @speaker = speaker
+      @parser  = parser
     end
 
     def consume(rx_data, notify_fn: nil, drain_fn: nil, pump_fn: nil)
@@ -875,11 +553,7 @@ module StackchanApp
       while waited < t
         step = t - waited
         step = DRAIN_STEP_MS if step > DRAIN_STEP_MS
-        if @delay_fn
-          @delay_fn.call(step)
-        else
-          Machine.delay_ms(step)
-        end
+        Machine.delay_ms(step)
         waited += step
         pump_fn.call if pump_fn
         next unless drain_fn
@@ -1168,7 +842,7 @@ SPEAKER_SAMPLE_RATE = 8000
 @speaker = nil
 begin
   speaker_i2s = I2S.new(sample_rate: SPEAKER_SAMPLE_RATE)
-  @speaker = Speaker.new(i2c: i2c, i2s: speaker_i2s)
+  @speaker = AW88298.new(i2c: i2c, i2s: speaker_i2s)
   @speaker.init_amp(SPEAKER_SAMPLE_RATE)
   puts "[boot] speaker init OK (AW88298 @ 0x36 + I2S @ #{SPEAKER_SAMPLE_RATE}Hz)"
 rescue => e
