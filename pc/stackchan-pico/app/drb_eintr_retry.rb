@@ -1,44 +1,15 @@
-# App-level robustness patches for the PicoRuby socket / drb stack. The gems
-# themselves are upstream picoruby and stay untouched.
-#
-# Both patches close the same gap: the POSIX socket port hands every failing
-# syscall to Ruby with errno discarded, and neither connect nor read is
-# retried, so one transient interruption looks exactly like a dead peer.
-#
-#   connect  SocketError "... Interrupted system call" — a signal (e.g. the
-#            scheduler's SIGALRM tick, or SIGCHLD from an unrelated child)
-#            landing mid-connect. picoruby-drb opens a fresh socket per remote
-#            call, so every call is exposed.
-#   read     RuntimeError "read failed" — ports/posix/tcp_socket.c returns -1
-#            for every recv() error and src/mruby/tcp_socket.c raises that one
-#            message. Observed live 2026-08-31 as a relayed server-side error
-#            ("RuntimeError: RuntimeError: read failed"): the daemon failed to
-#            read a request it therefore never dispatched, stayed healthy, and
-#            served the next call, but the CLI has no resilience and a
-#            long-running loop (touch listen, demo) died on it.
-#
-# A recv() that fails consumes no bytes, so re-issuing the same readpartial is
-# lossless — unlike a retry one layer up, which would re-read from the middle
-# of a message. A peer that is genuinely gone fails again and the error
-# surfaces as before, after a bounded wait.
-#
-# Loaded by every boot script (boot_cli / boot_daemon / boot_daemon_real /
-# boot_daemon_touchtest), each of which requires "drb" first. Both patches are
-# guarded on the constants they extend so this file also loads on a VM that has
-# neither (the picotest host VM), leaving SocketReadRetry testable on its own.
+# Retry patches for the PicoRuby socket / drb stack: the POSIX port discards
+# errno, so an interrupted connect (SocketError "Interrupted system call") or a
+# failed recv (RuntimeError "read failed") looks like a dead peer. A failed recv
+# consumes nothing, so re-issuing readpartial is lossless. Both patches are
+# guarded on the constants they extend so the file also loads on the test VM.
 
 module SocketReadRetry
   MESSAGE     = "read failed"
   MAX_RETRIES = 3
   BACKOFF_MS  = 5
 
-  # Runs the block, replaying it on the errno-less read failure above.
-  # sleep_fn / warn_fn are injection points for the tests; unset, the backoff
-  # is a real sleep and the warning goes to stderr (the daemon's stderr is
-  # daemon.log, so a retry that fires leaves a trace to correlate against).
-  # `raise e`, never a bare `raise`: PicoRuby does not re-raise $! from inside a
-  # rescue the way CRuby does — it raises a fresh RuntimeError with an empty
-  # message, which would erase the very error the caller needs to read.
+  # `raise e`, never bare `raise`: PicoRuby does not re-raise $!.
   def self.call(sleep_fn: nil, warn_fn: nil)
     retries = 0
     begin

@@ -1,6 +1,6 @@
 # The CLI attaches to launchd-managed backends; it never starts them. So a
 # missing daemon must fail immediately with the command that fixes it, not
-# poll for 15 seconds waiting for an auto-spawn that no longer happens.
+# poll for an auto-spawn.
 class CliAttachTest < Picotest::Test
   def test_attach_returns_the_proxy_when_the_daemon_answers
     tries = 0

@@ -1,9 +1,4 @@
-# LaunchAgent job definitions for the StackChan PC-side backends.
-#
-# Pure data: every value comes from an argument, never from the ambient
-# environment. An ambient STACKCHAN_SIDECAR_STUB leaking into a spawned
-# sidecar is what silently muted `say` for 8 days (2026-08-23..08-31), so the
-# stub flag reaches a job only when the caller asks for it here.
+# LaunchAgent job definitions. Pure data: nothing is read from the ambient environment.
 require "json"
 require "fileutils"
 
@@ -18,21 +13,15 @@ module LaunchAgent
     ns ? "#{LABEL_PREFIX}-#{ns}-sidecar" : "#{LABEL_PREFIX}-sidecar"
   end
 
-  # The daemon runs the binary inside the signed app bundle. launchd is an
-  # acceptable responsible process for TCC, so CoreBluetooth works without
-  # `open -a` (spike 2026-08-31); a plain shell fork/exec still does not.
+  # launchd is an acceptable responsible process for TCC; a shell fork/exec is not.
   def self.daemon_job(root:, vm_app:, port:, prefix:, ble_fake:, logdir:, ns: nil)
-    boot = ble_fake ? "boot_daemon.rb" : "boot_daemon_real.rb"
     args = [File.join(vm_app, "Contents", "MacOS", "picoruby"),
-            File.join(root, "pc", "stackchan-pico", "app", boot),
-            root, port.to_s]
-    args << prefix unless ble_fake   # boot_daemon.rb takes only <root> <port>
+            File.join(root, "pc", "stackchan-pico", "app", "boot_daemon.rb"),
+            root, port.to_s, ble_fake ? "fake" : prefix]
     job(daemon_label(ns), args, logdir, "daemon")
   end
 
-  # launchd does not run a login shell, so `bundle exec` is unavailable and an
-  # rbenv shim would not resolve: the caller passes an absolute ruby
-  # (RbConfig.ruby) and bundler is entered through RUBYOPT instead.
+  # launchd runs no login shell: absolute ruby + RUBYOPT instead of bundle exec.
   def self.sidecar_job(root:, ruby:, port:, stub:, logdir:, ns: nil)
     env = {
       "BUNDLE_GEMFILE" => File.join(root, "pc", "stackchan", "Gemfile"),
@@ -57,8 +46,7 @@ module LaunchAgent
     }
   end
 
-  # plutil does the XML escaping, so a path containing plist metacharacters
-  # cannot corrupt the file.
+  # plutil does the XML escaping.
   def self.write(job, dir:)
     FileUtils.mkdir_p(dir)
     path = File.join(dir, "#{job['Label']}.plist")

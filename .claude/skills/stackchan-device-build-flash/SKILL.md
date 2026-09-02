@@ -1,32 +1,12 @@
 ---
 name: stackchan-device-build-flash
-description: Build R2P2-ESP32 firmware and flash CoreS3 in one step (~5-10 min). Use when mrbgem layout, sdkconfig, picogem_init.c, or any firmware-side code changed. Always runs in a haiku subagent with a 600000ms timeout to keep verbose make logs out of main context.
+description: Build R2P2-ESP32 firmware and flash CoreS3 in one step (~5-10 min). Use when mrbgems, sdkconfig, or any firmware-side code changed.
 ---
 
-# stackchan-device-build-flash
+Run in a haiku subagent (foreground, 600000ms timeout), reporting exit code and the last 30 lines:
 
-## Mode
+    bundle exec rake r2p2:build_flash 2>&1 | tee /tmp/stackchan-picoruby-debug/build-flash.log
 
-Subagent (haiku), foreground, 600000ms (10 min) timeout.
-
-Rationale: rake-compiler make logs and Test::Unit dot progress are extremely
-verbose and would dilute main context. Subagent returns only pass/fail + the
-final ~30 lines.
-
-## Action
-
-Dispatch a general-purpose haiku subagent with this prompt:
-
-> Run `bundle exec rake r2p2:build_flash` in the foreground with a 600000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/build-flash.log`. Do not modify any code. Report exit code and the final 30 lines of output. Under 200 words.
-
-## Pass / fail signal
-
-- Exit 0 + `Hash of data verified` line in tail → success.
-- Exit non-zero or `IRAM segment overflowed` / `link failed` / `picogem regen mismatch` → failure.
-- `[monitor guard] idf_monitor.py is running` → human has `rake r2p2:monitor` open; Ctrl+] then retry.
-
-## Escalation
-
-If FAIL with link error or symbol-missing, the mrbgem layout changed without
-`picogem_init.c` regen. Run `stackchan-device-setup` instead (full host
-picoruby rebuild + setup).
+- Exit 0 + `Hash of data verified` = flashed. The storage partition is wiped by flash, so deploy the app next (`stackchan-device-cold-recovery`).
+- `IRAM segment overflowed` / link error / undefined symbol = grep the symbol in the source tree first; if absent it is a stale object, if the gem layout changed run `stackchan-device-setup`.
+- `[monitor guard] idf_monitor.py is running` = a human has `rake r2p2:monitor` open; Ctrl+] then retry.

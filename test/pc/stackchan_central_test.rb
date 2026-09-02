@@ -15,20 +15,17 @@ class StackchanCentralTest < Picotest::Test
     StackchanCentral.new(
       name_prefix: "StackChan",
       radio: radio,
-      sleep_fn: ->(ms) { @sleeps << ms; @now += ms },
-      clock_fn: -> { @now },
       log_fn: ->(line) { @logs << line },
     )
   end
 
   def setup
-    @sleeps = []
+    FakeClock.reset(1000)
     @logs = []
-    @now = 1000
     @radio = FakeRadio.new(services: nus_services)
     @central = build_central(@radio)
     @central.connect
-    @sleeps.clear
+    FakeClock.sleeps.clear
     @logs.clear
   end
 
@@ -40,11 +37,11 @@ class StackchanCentralTest < Picotest::Test
 
   def test_connect_subscribes_tx_and_settles_200ms
     radio = FakeRadio.new(services: nus_services)
-    sleeps_before = @sleeps.size
+    sleeps_before = FakeClock.sleeps.size
     build_central(radio).connect
     assert_equal [[CCCD, "\x01\x00"]], radio.descriptor_writes
     total = 0
-    @sleeps[sleeps_before, @sleeps.size].each { |ms| total += ms }
+    FakeClock.sleeps[sleeps_before, FakeClock.sleeps.size].each { |ms| total += ms }
     assert_equal StackchanCentral::SUBSCRIBE_SETTLE_MS, total
     assert_equal 1, radio.connect_and_discover_calls
   end
@@ -70,22 +67,22 @@ class StackchanCentralTest < Picotest::Test
     @radio.schedule_notification(TX, ".\n", after_polls: 1)
     @central.raw_send("<F:2>\n")
     assert_equal [[RX, "<F:2>\n"]], @radio.writes
-    assert_equal [], @sleeps
+    assert_equal [], FakeClock.sleeps
     assert_equal ["[t] <F:2> ack=0ms"], @logs
   end
 
   def test_raw_send_polls_every_20ms_until_the_ack_arrives
     @radio.schedule_notification(TX, ".\n", after_polls: 3)
     @central.raw_send("<F:2>\n")
-    assert_equal [20, 20], @sleeps
+    assert_equal [20, 20], FakeClock.sleeps
     assert_equal ["[t] <F:2> ack=40ms"], @logs
   end
 
   def test_ack_timeout_after_3000ms_of_polling
     assert_raise(Stackchan::BLE::TimeoutError) { @central.raw_send("<F:2>\n") }
-    assert_equal ack_timeout_polls, @sleeps.size
+    assert_equal ack_timeout_polls, FakeClock.sleeps.size
     total = 0
-    @sleeps.each { |ms| total += ms }
+    FakeClock.sleeps.each { |ms| total += ms }
     assert_equal StackchanCentral::ACK_TIMEOUT_MS, total
     assert_equal ["[t] <F:2> ack=timeout"], @logs
   end
@@ -100,7 +97,7 @@ class StackchanCentralTest < Picotest::Test
     @radio.schedule_notification(TX, "<YL_actual:0,PU_actual:0>\n", after_polls: 5)
     @central.raw_send("<YL:0,PU:0,T:300>\n")
     assert_equal "<YL_actual:0,PU_actual:0>\n", @central.last_detail_frame
-    assert_equal [20, 20], @sleeps
+    assert_equal [20, 20], FakeClock.sleeps
     assert_equal ["[t] <YL:0,PU:0,T:300> ack=0ms detail=40ms"], @logs
   end
 
@@ -108,7 +105,7 @@ class StackchanCentralTest < Picotest::Test
     @radio.schedule_notification(TX, ".\n", after_polls: 1)   # ACK arrives, detail never does
     @central.raw_send("<YL:0,PU:0,T:300>\n")
     assert_nil @central.last_detail_frame
-    assert_equal ack_timeout_polls, @sleeps.size
+    assert_equal ack_timeout_polls, FakeClock.sleeps.size
     assert_equal ["[t] <YL:0,PU:0,T:300> ack=0ms detail=timeout"], @logs
   end
 
@@ -126,7 +123,7 @@ class StackchanCentralTest < Picotest::Test
     @radio.schedule_notification(TX, ".\n", after_polls: 2)
     @central.raw_send("<F:2>\n")
     assert_equal ["<touch:1>\n"], got
-    assert_equal [], @sleeps
+    assert_equal [], FakeClock.sleeps
   end
 
   def test_drain_consumes_a_burst_in_one_poll_step
@@ -137,7 +134,7 @@ class StackchanCentralTest < Picotest::Test
     @radio.schedule_notification(TX, ".\n", after_polls: 1)
     @central.raw_send("<F:2>\n")
     assert_equal ["<touch:0>\n", "<touch:2>\n"], got
-    assert_equal [], @sleeps
+    assert_equal [], FakeClock.sleeps
   end
 
   def test_send_awaits_one_ack_per_builder_frame
@@ -150,7 +147,7 @@ class StackchanCentralTest < Picotest::Test
   def test_write_without_ack_writes_rx_and_waits_for_nothing
     @central.write_without_ack("abc")
     assert_equal [[RX, "abc"]], @radio.writes
-    assert_equal [], @sleeps
+    assert_equal [], FakeClock.sleeps
     assert_equal [], @logs
   end
 
@@ -165,11 +162,11 @@ class StackchanCentralTest < Picotest::Test
   def test_await_audio_done_returns_when_the_frame_arrives
     @radio.schedule_notification(TX, "<A:done>\n", after_polls: 3)
     assert_equal @central, @central.await_audio_done(240)
-    assert_equal [20, 20], @sleeps
+    assert_equal [20, 20], FakeClock.sleeps
   end
 
   def test_await_audio_done_times_out_after_the_budget
     assert_raise(Stackchan::BLE::TimeoutError) { @central.await_audio_done(240) }
-    assert_equal 30_000 / StackchanCentral::POLLING_UNIT_MS, @sleeps.size
+    assert_equal 30_000 / StackchanCentral::POLLING_UNIT_MS, FakeClock.sleeps.size
   end
 end

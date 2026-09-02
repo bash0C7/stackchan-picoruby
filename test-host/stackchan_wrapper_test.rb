@@ -40,7 +40,7 @@ class StackchanWrapperTest < Test::Unit::TestCase
     refute_match(/run_with_watchdog/, argv.join(" "))
   end
 
-  # Everything that used to guess about resident processes is gone. The guard is
+  # The wrapper must not probe resident processes. The guard is
   # structural rather than a list of banned identifiers: the wrapper's contract
   # is "some assignments, then one exec", so a probe reintroduced under any new
   # name breaks this, while a name grep would wave it through.

@@ -1,35 +1,30 @@
-# CRuby orchestrator for the PicoRuby-native test suites. All three run on the
-# same host picoruby VM (R2P2-ESP32's own picoruby, MRUBY_CONFIG=picoruby-test):
-#   device — app/application.rb classes (prism-extracted, `< BLE` excluded) + test/device
-#   pc     — pc/stackchan-pico/app/ble_client.rb classes (prism-extracted; BLE is stubbed) + test/pc
-#   shared — mrbgems/picoruby-stackchan-shared mrblib + its own test dir
-# Each suite lists (a) what the CRuby side must load so Picotest::Runner can
-# ENUMERATE test classes, and (b) the files embedded into every generated VM
-# script (Runner's load_files), in load order.
+# CRuby orchestrator for the picotest suites (device / pc / shared), all on
+# R2P2-ESP32's own host picoruby VM. Each suite lists what CRuby loads to
+# enumerate test classes and what is embedded into the VM script, in order.
 
 module PicotestHarness
   REPO_ROOT     = File.expand_path("../..", __dir__) # test/picotest -> repo root
-  # Must be the vendored R2P2-ESP32's own picoruby (same VM the device firmware
-  # runs), not an independent upstream checkout — an unrelated checkout's
-  # host-VM quirks silently diverge from device behavior and break the suite.
+  # The vendored R2P2-ESP32's picoruby: the same VM the device runs.
   PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby")
   PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
-  # picoruby-scservo is fetched by R2P2-ESP32's build_config as a build-time
-  # mrbgem (from GitHub), not vendored here as a repo tree, so it has to be
-  # located rather than required. Preference order: explicit override, the
-  # author's sibling clone layout, the copy the firmware build already fetched.
+  # picoruby-scservo is fetched at firmware-build time; locate it.
   SCSERVO_SIBLING  = File.expand_path("../picoruby-scservo/mrblib/scservo.rb", REPO_ROOT)
   SCSERVO_VENDORED = File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
                                 "picoruby", "build", "repos", "esp32-picoruby", "picoruby-scservo",
                                 "mrblib", "scservo.rb")
   SCSERVO_RB = ENV["SCSERVO_RB"] || [SCSERVO_SIBLING, SCSERVO_VENDORED].find { |path| File.exist?(path) }
   unless SCSERVO_RB && File.exist?(SCSERVO_RB)
-    # Report the path that actually failed: an override pointing nowhere is the
-    # case worth naming, and listing the fallbacks instead hides it.
     searched = ENV["SCSERVO_RB"] ? [ENV["SCSERVO_RB"]] : [SCSERVO_SIBLING, SCSERVO_VENDORED]
     abort("scservo.rb not found; searched:\n  " + searched.join("\n  ") +
           "\nSet SCSERVO_RB to point at picoruby-scservo's mrblib/scservo.rb.")
   end
+
+# Pure-Ruby driver gems are bundled into app.mrb by the Rakefile; the device suite
+# embeds them the same way. picoruby-aw88298 is a C gem compiled into the host VM
+# (build_config/picoruby-test.rb) and reached with `require`, as on the device.
+DEVICE_GEMS = %w[stackchan-led si12t].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
+C_GEMS = %w[aw88298]
+DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb")].sort }
 
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")
@@ -39,13 +34,8 @@ module PicotestHarness
   DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
-  # Loadable anywhere: its DRb and TCPSocket patches are guarded on those
-  # constants, which the host VM does not have, leaving the SocketReadRetry
-  # policy the suite exercises.
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
-  # Same order as the boot_daemon*.rb load lists: namespace root first.
   SHARED_MRBLIB = %w[
-    stackchan.rb
     stackchan/ble/errors.rb
     stackchan/ble/face_table.rb
     stackchan/ble/led_color_table.rb
@@ -61,14 +51,16 @@ module PicotestHarness
   SUITES = {
     "device" => {
       dir: File.join(REPO_ROOT, "test", "device"),
+      require_name: "aw88298",
       cruby: lambda {
         load DEVICE_STUBS_RB
+        DEVICE_GEM_MRBLIB.each { |f| load f }
         RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE])
         require "face_golden_hash"
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(APPLICATION_RB, EXTRACTED_APP_RB, exclude_superclasses: %w[BLE])
-        [DEVICE_STUBS_RB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {
@@ -94,7 +86,24 @@ module PicotestHarness
       cruby: lambda { SHARED_MRBLIB.each { |f| require f } },
       load_files: lambda { SHARED_MRBLIB },
     },
-  }.freeze
+}
+  DEVICE_GEMS.each do |gem|
+    mrblib = Dir[File.join(gem, "mrblib", "*.rb")].sort
+    SUITES[File.basename(gem).sub("picoruby-", "")] = {
+      dir: File.join(gem, "test"),
+      cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f }; mrblib.each { |f| load f } },
+      load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES, *mrblib] },
+    }
+  end
+  C_GEMS.each do |name|
+    SUITES[name] = {
+      dir: File.join(REPO_ROOT, "mrbgems", "picoruby-#{name}", "test"),
+      require_name: name,
+      cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f } },
+      load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES] },
+    }
+  end
+  SUITES.freeze
 
   module_function
 
@@ -104,13 +113,9 @@ module PicotestHarness
     $LOAD_PATH.unshift File.join(REPO_ROOT, "lib")
     $LOAD_PATH.unshift File.join(REPO_ROOT, "test")
     require "ruby_class_extract"
-    # PICOTEST_VM: run the suites on another picoruby (e.g. vendor/R2P2-darwin/build/host/bin/picoruby
-    # to re-check the pc suite on the Mac lineage). Default: the R2P2-ESP32 host VM.
+    # PICOTEST_VM= runs the suites on another picoruby.
     ENV["RUBY"] = ENV["PICOTEST_VM"] || PICORUBY_VM
-    # picotest runs each test class from a generated /tmp driver script, so
-    # __FILE__ inside a test resolves to /tmp rather than to the file on disk.
-    # A test that needs a repo-relative fixture (spec/golden) reads this; the
-    # spawned VM inherits the environment.
+    # Tests run from a generated /tmp script, so repo-relative fixtures use this.
     ENV["STACKCHAN_REPO_ROOT"] = REPO_ROOT
 
     names = suite ? [suite] : SUITES.keys
@@ -122,7 +127,7 @@ module PicotestHarness
       errors += Picotest::Runner.new(
         s[:dir],
         filter: filter,
-        require_name: nil,
+        require_name: s[:require_name],
         load_path: nil,
         load_files: s[:load_files].call,
       ).run

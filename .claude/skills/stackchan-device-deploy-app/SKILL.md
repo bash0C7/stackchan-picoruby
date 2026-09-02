@@ -1,27 +1,9 @@
 ---
 name: stackchan-device-deploy-app
-description: Upload application .mrb and reset the device (upload-app + reset, ~20 s). Use during dev iteration when application.rb changed and the device should adopt the new payload.
+description: Upload application.rb as the autostart payload and reset (~20 s). Use when application.rb changed and the device should run it.
 ---
 
-# stackchan-device-deploy-app
+1. `stackchan-device-upload-app` with `SRC=app/application.rb` (or the given SRC)
+2. `stackchan-device-reset`
 
-## Mode
-
-Chain — invokes `stackchan-device-upload-app` then `stackchan-device-reset`
-in sequence.
-
-## Action
-
-1. Invoke `stackchan-device-upload-app` with `SRC=$SRC` (default
-   `app/application.rb`).
-2. On success, invoke `stackchan-device-reset`.
-3. Report combined status.
-
-## Required env
-
-- `SRC` (optional, defaults to application.rb)
-
-## Pass / fail signal
-
-- Upload PASS + reset PASS → deploy complete. Cold-boot should begin.
-- Upload `/home/app.mrb started but never returned` → escalate to `stackchan-device-cold-recovery`.
+Upload reporting `/home/app.mrb started but never returned` → `stackchan-device-cold-recovery`.

@@ -1,14 +1,8 @@
-# app/application.rb — Phase 3 production dispatcher.
-#
-# Flow:
-#   [1] 5s escape hatch (sleep_ms 5000) — crash-loop recovery window
-#   [2] cold-boot init (AXP2101 → AW9523 → ILI9342 → PY32 → LED → Face::Neutral)
-#   [3] BLE NUS service + Dispatcher + FrameParser + AckSink
-#   [4] peri.run — StackChanApp#run, infinite 20 ms tick loop (StackchanApp::LinkLoop)
-#
-# Upload: rake r2p2:upload_mrb SRC=app/application.rb
-# Smoke:  rake r2p2:ble_control_smoke COLOR=red MODE=blink FACE=joy SIDE=both
+# StackChan autostart payload (/home/app.mrb):
+#   [1] escape hatch → [2] cold-boot init → [3] BLE NUS peripheral → [4] run loop
 
+#   Pure-Ruby driver gems (stackchan-led, si12t) are bundled in by the Rakefile at compile time;
+#   aw88298 is a C gem compiled into the firmware.
 require 'spi'
 require 'gpio'
 require 'i2c'
@@ -20,348 +14,11 @@ require 'stackchan-protocol'
 require 'scservo'
 require 'ble'
 require 'i2s'
+require 'aw88298'
 
-# === StackchanLed (inlined from picoruby-stackchan-led sibling mrbgem) ===
-# 12-pixel WS2812 ring driven via PY32IOExpander. Left/right halves
-# (LEFT_RANGE / RIGHT_RANGE) each have an Animator for blink/breathing.
-class StackchanLed
-  PIXEL_COUNT  = 12
-  LED_DATA_PIN = 13
-
-  LEFT_RANGE  = (0..5)
-  RIGHT_RANGE = (6..11)
-
-  class Animator
-    BLINK_HALF_PERIOD_MS = 500
-    BREATHING_LUT = [0, 5, 20, 45, 70, 90, 100, 90, 70, 45, 20, 5].freeze
-    BREATHING_STEP_MS = 250
-
-    def initialize(led, pixel_range:)
-      @led = led
-      @pixel_range = pixel_range
-      @r = 0
-      @g = 0
-      @b = 0
-      @mode = :off
-      @phase_start_ms = nil
-    end
-
-    def set(r, g, b, mode)
-      @r = r
-      @g = g
-      @b = b
-      @mode = mode
-      @phase_start_ms = nil
-      @last_applied = nil
-      apply_immediately
-    end
-
-    # Called every LED_PERIOD_MS by the Ticker. Each apply_color is three PY32
-    # I2C transactions (~4 ms) on the bus the touch sensor shares, so only
-    # write when the animated colour actually changes.
-    def tick(now_ms)
-      return unless dynamic?
-      @phase_start_ms ||= now_ms
-      elapsed = now_ms - @phase_start_ms
-      case @mode
-      when :blink
-        on = (elapsed / BLINK_HALF_PERIOD_MS) % 2 == 0
-        apply_color_if_changed(on ? @r : 0, on ? @g : 0, on ? @b : 0)
-      when :breathing
-        ratio = BREATHING_LUT[(elapsed / BREATHING_STEP_MS) % BREATHING_LUT.size]
-        apply_color_if_changed(@r * ratio / 100, @g * ratio / 100, @b * ratio / 100)
-      end
-    end
-
-    private
-
-    def dynamic?
-      @mode == :blink || @mode == :breathing
-    end
-
-    def apply_immediately
-      case @mode
-      when :solid then apply_color(@r, @g, @b)
-      when :off   then apply_color(0, 0, 0)
-      end
-    end
-
-    def apply_color(r, g, b)
-      @led.fill_range(@pixel_range.first, @pixel_range.last, r, g, b)
-      @led.show
-    end
-
-    def apply_color_if_changed(r, g, b)
-      rgb = [r, g, b]
-      return if @last_applied == rgb
-      @last_applied = rgb
-      apply_color(r, g, b)
-    end
-  end
-
-  def initialize(py32)
-    @py32 = py32
-    @brightness = 100
-    @buffer = Array.new(PIXEL_COUNT) { [0, 0, 0] }
-    @py32.set_direction(LED_DATA_PIN, true)
-    @py32.set_pull_mode(LED_DATA_PIN, true)
-    @py32.set_drive_mode(LED_DATA_PIN, false)
-    @py32.set_led_count(PIXEL_COUNT)
-    show
-  end
-
-  def fill(r, g, b)
-    @buffer = Array.new(PIXEL_COUNT) { [r, g, b] }
-    self
-  end
-
-  def set_rgb(i, r, g, b)
-    @buffer[i] = [r, g, b]
-    self
-  end
-
-  def fill_range(start_idx, end_idx, r, g, b)
-    i = start_idx
-    while i <= end_idx
-      @buffer[i] = [r, g, b]
-      i += 1
-    end
-    self
-  end
-
-  def fill_left(r, g, b)
-    fill_range(LEFT_RANGE.first, LEFT_RANGE.last, r, g, b)
-  end
-
-  def fill_right(r, g, b)
-    fill_range(RIGHT_RANGE.first, RIGHT_RANGE.last, r, g, b)
-  end
-
-  def clear
-    fill(0, 0, 0)
-  end
-
-  def brightness=(v)
-    @brightness = clamp(v, 0, 100)
-    self
-  end
-
-  def show
-    pixels = @buffer.map { |rgb| apply_brightness(rgb[0], rgb[1], rgb[2]) }
-    @py32.write_led_ram(pixels)
-    @py32.refresh_leds
-    self
-  end
-
-  def animate_side(side, r, g, b, mode)
-    case side
-    when :both
-      left_animator.set(r, g, b, mode)
-      right_animator.set(r, g, b, mode)
-    when :left
-      left_animator.set(r, g, b, mode)
-    when :right
-      right_animator.set(r, g, b, mode)
-    else
-      raise ArgumentError, "unknown side: #{side.inspect}"
-    end
-    self
-  end
-
-  # One-shot bright pulse: solid color now, auto-decay to off after duration_ms.
-  # Used by Dispatcher#react_to_touch so each tap visibly flashes the zone's
-  # LED side regardless of whether the zone changed (same-zone retap still
-  # shows an off→on transition because flash_until is overwritten each call).
-  def flash_side(side, r, g, b, duration_ms = 300)
-    animate_side(side, r, g, b, :solid)
-    @flash_until ||= { left: nil, right: nil }
-    end_ms = (Machine.uptime_us / 1000) + duration_ms
-    case side
-    when :both
-      @flash_until[:left]  = end_ms
-      @flash_until[:right] = end_ms
-    when :left
-      @flash_until[:left] = end_ms
-    when :right
-      @flash_until[:right] = end_ms
-    end
-    self
-  end
-
-  def tick(now_ms)
-    left_animator.tick(now_ms)
-    right_animator.tick(now_ms)
-    return unless @flash_until
-    if @flash_until[:left] && now_ms >= @flash_until[:left]
-      @flash_until[:left] = nil
-      animate_side(:left, 0, 0, 0, :off)
-    end
-    if @flash_until[:right] && now_ms >= @flash_until[:right]
-      @flash_until[:right] = nil
-      animate_side(:right, 0, 0, 0, :off)
-    end
-  end
-
-  private
-
-  def left_animator
-    @left_animator ||= Animator.new(self, pixel_range: LEFT_RANGE)
-  end
-
-  def right_animator
-    @right_animator ||= Animator.new(self, pixel_range: RIGHT_RANGE)
-  end
-
-  def apply_brightness(r, g, b)
-    [r * @brightness / 100, g * @brightness / 100, b * @brightness / 100]
-  end
-
-  def clamp(v, lo, hi)
-    v < lo ? lo : (v > hi ? hi : v)
-  end
-end
-
-# === Si12T 3-zone capacitive head-touch driver (inlined, pure Ruby) ===
-# I2C 0x68 on the system bus (SDA=12/SCL=11), distinct from the BMI270 IMU at
-# 0x69. Reuses the cold-boot I2C instance (injected) — no second bus, no C.
-# Register init verified against m5stack/StackChan firmware Si12T.cpp.
-# OUTPUT1 (0x10): 2 bits per zone, value 0..3 (NONE/LOW/MID/HIGH).
-class Si12T
-  ADDR        = 0x68
-  REG_CTRL1   = 0x08
-  REG_CTRL2   = 0x09
-  REG_OUTPUT1 = 0x10
-  ENABLE_REGS = (0x0A..0x0F)
-  SENS_REGS   = (0x02..0x06)
-  ZONE_COUNT  = 3
-
-  def initialize(i2c)
-    @i2c          = i2c
-    @prev_touched = false
-    init_sensor
-  end
-
-  def init_sensor
-    ENABLE_REGS.each { |r| @i2c.write(ADDR, r, 0x00) }
-    @i2c.write(ADDR, REG_CTRL2, 0x0F)   # S/W reset + sleep enable
-    @i2c.write(ADDR, REG_CTRL2, 0x07)
-    @i2c.write(ADDR, REG_CTRL1, 0x22)   # auto mode, FTC, response 4(2+2)
-    SENS_REGS.each { |r| @i2c.write(ADDR, r, 0x33) }  # TYPE_LOW / LEVEL_3
-  end
-
-  # [z0, z1, z2] intensities 0..3; [0,0,0] on a failed/empty read.
-  def read_zones
-    raw  = @i2c.read(ADDR, 1, REG_OUTPUT1)
-    byte = raw && raw.bytes[0]
-    return [0, 0, 0] unless byte
-    z = []
-    i = 0
-    while i < ZONE_COUNT
-      z << ((byte >> (2 * i)) & 0x03)
-      i += 1
-    end
-    z
-  end
-
-  # Rising-edge: returns the active zone index ONCE on touch onset (highest
-  # intensity; lowest index on a tie), nil while held and until release.
-  def poll
-    zones   = read_zones
-    touched = zones.any? { |v| v > 0 }
-    if touched && !@prev_touched
-      @prev_touched = true
-      best_i = 0
-      best_v = -1
-      i = 0
-      while i < zones.size
-        if zones[i] > best_v
-          best_v = zones[i]
-          best_i = i
-        end
-        i += 1
-      end
-      return best_i
-    end
-    @prev_touched = touched
-    nil
-  end
-end
-
-# StackChan speaker: AW88298 amp (over the system I2C bus) + I2S sample out
-# (via the standalone picoruby-i2s gem's I2S class). Pure-Ruby orchestration here;
-# only the generic I2S TX is C. mu-law decode + amp-register builder are host-tested.
-class Speaker
-  ULAW_BIAS    = 0x84
-  AW88298_ADDR = 0x36
-  # M5Unified rate table for AW88298 reg 0x06 (M5Unified.cpp:_speaker_enabled_cb_cores3).
-  AW_RATE_TBL  = [4, 5, 6, 8, 10, 11, 15, 20, 22, 44]
-
-  # ITU G.711: one 8-bit mu-law code -> signed 16-bit linear sample.
-  def self.ulaw_byte_to_linear(byte)
-    u = (~byte) & 0xFF
-    t = ((u & 0x0F) << 3) + ULAW_BIAS
-    t = t << ((u & 0x70) >> 4)
-    (u & 0x80) != 0 ? (ULAW_BIAS - t) : (t - ULAW_BIAS)
-  end
-
-  # Decode a mu-law byte string to a little-endian signed-16 PCM byte string.
-  def self.ulaw_decode(ulaw)
-    out = ""
-    ulaw.each_byte do |b|
-      v = ulaw_byte_to_linear(b) & 0xFFFF
-      out << (v & 0xFF).chr
-      out << ((v >> 8) & 0xFF).chr
-    end
-    out
-  end
-
-  # AW88298 reg 0x06 value for a sample rate (M5Unified formula).
-  def self.aw88298_reg06(sample_rate)
-    rate = (sample_rate + 1102) / 2205
-    idx = 0
-    while rate > AW_RATE_TBL[idx]
-      idx += 1
-      break if idx >= AW_RATE_TBL.length
-    end
-    idx = AW_RATE_TBL.length - 1 if idx >= AW_RATE_TBL.length
-    idx | 0x14C0
-  end
-
-  # Ordered AW88298 init writes as [reg, hi, lo] (16-bit big-endian) triples.
-  def self.aw88298_init_writes(sample_rate)
-    [[0x61, 0x0673], [0x04, 0x4040], [0x05, 0x0008],
-     [0x06, aw88298_reg06(sample_rate)], [0x0C, 0x0064]].map do |reg, val|
-      [reg, (val >> 8) & 0xFF, val & 0xFF]
-    end
-  end
-
-  def initialize(i2c:, i2s:)
-    @i2c = i2c
-    @i2s = i2s
-  end
-  attr_reader :i2c, :i2s
-
-  # Power/enable the amp over I2C (AW9523 ResetAw88298 hardware reset is done at cold-boot).
-  def init_amp(sample_rate)
-    self.class.aw88298_init_writes(sample_rate).each do |reg, hi, lo|
-      @i2c.write(AW88298_ADDR, reg, hi, lo)
-    end
-  end
-
-  # Decode a mu-law clip and push it to the I2S TX.
-  def play_ulaw(ulaw)
-    @i2s.write(self.class.ulaw_decode(ulaw))
-  end
-end
-
-# [1] 5-second escape hatch. If a previous app.mrb crash-loops the device,
-# this window lets a human reach the R2P2 shell and `rm /home/app.mrb` to
-# recover. Phase 2 used 2s which was borderline — Phase 3 raises it to 5s.
+# [1] Escape hatch: time to reach the shell and rm /home/app.mrb if this build crash-loops.
 sleep_ms 5000
 
-# ================================
-# === StackchanApp::Face module ==
-# ================================
 module StackchanApp
   module Face
     # Geometry derived from the M5Stack official StackChan reference photo.
@@ -388,22 +45,16 @@ module StackchanApp
     MOUTH_CY         = 140
     MOUTH_HALF_WIDTH = 25
 
-    # Surprised mouth — vertical filled rectangle (open mouth).
     SURPRISED_MOUTH_HALF_W = 6
     SURPRISED_MOUTH_HALF_H = 12
 
-    # Angry brow geometry — V-shaped chevrons above each eye, inner ends drop.
     BROW_OFFSET_Y    = 18   # baseline 18px above eye centerline
     BROW_HALF_LENGTH = 16   # horizontal extent each side of eye cx
     BROW_INNER_DROP  = 8    # inner end of brow drops 8px relative to outer end
 
-    # Bounding boxes of everything a face can paint. Every face sits on the same
-    # black field, so changing expression only has to repaint these two bands:
-    # refilling all 320x200 pushes ~64000 pixels to move ~5600 of them, and that
-    # fill is the bulk of what a face command costs.
+    # Every face paints inside these two bands, so an expression change
+    # repaints ~5600 px instead of the whole field.
     FEATURE_MARGIN = 2
-    # Joy raises the mouth corners 18px and Sad drops them 8, while Surprised's
-    # open mouth reaches SURPRISED_MOUTH_HALF_H below centre — deeper than Sad.
     MOUTH_MAX_RISE = 18
     EYE_BAND_X   = EYE_LEFT_CX - BROW_HALF_LENGTH - FEATURE_MARGIN
     EYE_BAND_W   = (EYE_RIGHT_CX + BROW_HALF_LENGTH + FEATURE_MARGIN) - EYE_BAND_X
@@ -434,23 +85,19 @@ module StackchanApp
         display.draw_line(cx,     cy,       right_x, corner_y, MOUTH_COLOR)
       end
 
-      # Full repaint. Used at cold boot, when nothing is known about what is
-      # already on the panel.
+      # Full repaint (cold boot).
       def draw(display)
         display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
         draw_features(display)
       end
 
-      # What this face paints on top of the black field. Subclasses extend this
-      # rather than `draw`, so the full and differential paths stay in step.
+      # What this face paints on the black field; subclasses extend this, not draw.
       def draw_features(display)
         draw_eyes(display)
         draw_mouth(display)
       end
 
-      # Repaint over a panel that already shows a face: clear only the bands a
-      # face can paint, then draw this one. Same result as `draw` when a face is
-      # already on screen, at about a tenth of the pixels.
+      # Repaint over an existing face: clear only the bands, then paint.
       def redraw(display)
         display.draw_rect(EYE_BAND_X, EYE_BAND_Y, EYE_BAND_W, EYE_BAND_H,
                           BACKGROUND_COLOR, fill: true)
@@ -459,9 +106,6 @@ module StackchanApp
         draw_features(display)
       end
 
-      # Clear the small bounding box around each eye to BACKGROUND_COLOR,
-      # without touching the mouth or wider background. Used to wipe the
-      # previous eye shape (open ellipse or closed line) before redrawing.
       def clear_eye_region(display)
         display.draw_rect(EYE_LEFT_CX  - EYE_REGION_HALF_W, EYE_LEFT_CY  - EYE_REGION_HALF_H,
                           EYE_REGION_HALF_W * 2, EYE_REGION_HALF_H * 2,
@@ -471,17 +115,12 @@ module StackchanApp
                           BACKGROUND_COLOR, fill: true)
       end
 
-      # Update only the eye region (clear + redraw eyes), keeping the mouth
-      # and overall background untouched. Used for blink restore.
       def redraw_eyes_open(display)
         clear_eye_region(display)
         draw_eyes(display)
       end
 
-      # Eye-only update that closes the eyes (horizontal line), used for blink
-      # animation. Mirrors redraw_eyes_open but draws closed-eye geometry. Does
-      # NOT fill background — preserves whatever mouth / other face state is
-      # already on screen.
+      # Eye-only closed-eye update for blink; leaves the mouth alone.
       def redraw_eyes_closed(display)
         clear_eye_region(display)
         display.draw_line(
@@ -518,13 +157,11 @@ module StackchanApp
 
       def draw_features(display)
         super
-        # Left brow: outer end up, inner end down (V-slant toward bridge of nose).
         display.draw_line(
           EYE_LEFT_CX - BROW_HALF_LENGTH, EYE_LEFT_CY - BROW_OFFSET_Y,
           EYE_LEFT_CX + BROW_HALF_LENGTH, EYE_LEFT_CY - BROW_OFFSET_Y + BROW_INNER_DROP,
           EYE_COLOR
         )
-        # Right brow: mirror — inner end down, outer end up.
         display.draw_line(
           EYE_RIGHT_CX - BROW_HALF_LENGTH, EYE_RIGHT_CY - BROW_OFFSET_Y + BROW_INNER_DROP,
           EYE_RIGHT_CX + BROW_HALF_LENGTH, EYE_RIGHT_CY - BROW_OFFSET_Y,
@@ -546,15 +183,10 @@ module StackchanApp
       end
     end
 
-    # Eye-region bounding box for eye-only updates (blink animation).
-    # Large enough to cover both the open ellipse (EYE_RX/RY) and the closed
-    # horizontal line (CLOSED_EYE_HALF_W), so clearing this region wipes
-    # either shape cleanly.
+    # Eye box for eye-only updates; covers both the open ellipse and the closed line.
     EYE_REGION_HALF_W = 6
     EYE_REGION_HALF_H = 6
 
-    # Closed eye for blink animation. Draws a short horizontal line where
-    # the eye normally sits, giving the impression of a closed lid.
     CLOSED_EYE_HALF_W = 4
 
     class Closed < Base
@@ -571,9 +203,7 @@ module StackchanApp
         )
       end
 
-      # Closed eyes only, no mouth — the torque-off idle face is intentionally
-      # mouthless. For blink animation use Base#redraw_eyes_closed instead
-      # (eye-only, no flicker).
+      # Torque-off idle face: closed eyes, no mouth.
       def draw_features(display)
         draw_eyes(display)
       end
@@ -581,18 +211,12 @@ module StackchanApp
   end
 
   class Head
-    # Raw servo position range per axis for 90° from forward, measured via
-    # the 5-pose HITL calibration (stackchan-ble-control calibrate, 2026-05-25).
-    # YAW_RANGE_RAW=300 → 90° = 300 raw units (≈0.3°/unit at head output):
-    #   forward=482, LEFT MAX(90°)=182 (-300), RIGHT MAX(90°)=783 (+301).
-    # PITCH_RANGE_RAW=296 → 90° up = 296 raw units; pitch-down not supported:
-    #   forward=633, UP MAX(90°)=929 (+296).
+    # Raw units per 90° from forward, from `stackchan calibrate`:
+    #   yaw forward=482, left max=182, right max=783; pitch forward=633, up max=929.
     YAW_RANGE_RAW   = 300
     PITCH_RANGE_RAW = 296
 
-    # Forward (zero) positions measured by HITL calibration 2026-05-25.
-    # Supersede the old factory-firmware guess (460/620): operator aligned
-    # the head to forward by hand, then read raw servo position.
+    # Forward (zero) raw positions, read after the operator aligns the head by hand.
     SERVO_YAW_ZERO   = 482
     SERVO_PITCH_ZERO = 633
 
@@ -601,29 +225,21 @@ module StackchanApp
       @pitch = pitch_servo
     end
 
-    # Apply pre-computed raw positions. Dispatcher does the YL/YR/PU →
-    # signed raw conversion; Head only writes what it's told.
     def apply(yaw_raw: nil, pitch_raw: nil, time_ms: 0, velocity: 0)
       @yaw.write_pos(yaw_raw, time_ms: time_ms, speed: velocity)     if yaw_raw
       @pitch.write_pos(pitch_raw, time_ms: time_ms, speed: velocity) if pitch_raw
     end
 
-    # Enable/disable torque on both servos. No-op for absent servos.
     def enable_torque(on)
       @yaw.enable_torque(on)   if @yaw
       @pitch.enable_torque(on) if @pitch
     end
 
-    # Returns raw positions keyed by axis. nil for missing/unreachable servos.
-    # Note: symbol keys. Dispatcher's emit_servo_detail rewrite (Task 11) will
-    # read these symbol keys; the old string-keyed format ("Y_actual" /
-    # "P_actual") is removed.
     def read_actual
       { yaw: (@yaw && @yaw.read_pos), pitch: (@pitch && @pitch.read_pos) }
     end
 
-    # Cold-boot bring-up self-test: nudge yaw ±10 raw and return to center.
-    # Unchanged from Task 9 — copied here as part of the Head class rewrite.
+    # <selftest:run>: nudge yaw ±10 raw and return to center (UART round-trip check).
     def selftest
       return false if @yaw.nil?
       y0 = SERVO_YAW_ZERO
@@ -636,9 +252,6 @@ module StackchanApp
   end
 end
 
-# ====================================
-# === StackchanApp::Dispatcher class ==
-# ====================================
 module StackchanApp
   class Dispatcher
     ERROR_FRAME = "?\n"
@@ -653,19 +266,14 @@ module StackchanApp
       "5" => Face::Angry,
     }.freeze
 
-    # Touch zone → face for immediate on-device feedback (no PC round-trip).
-    # Used by StackChanApp's heartbeat touch-poll; this Dispatcher draws the
-    # face directly on the LCD the instant Si12T fires a rising edge.
+    # Touch zone → face, drawn on-device the instant Si12T fires.
     TOUCH_FACE_TABLE = {
       0 => Face::Surprised,
       1 => Face::Angry,
       2 => Face::Sad,
     }.freeze
 
-    # Touch zone → LED [side, r, g, b]. Each tap flashes the zone-coded side
-    # in a zone-coded color so the human can identify which zone fired by
-    # color/position. Side is :both/:left/:right matching StackchanLed; color
-    # values are 0..255 raw (no brightness scaling beyond @brightness).
+    # Touch zone → LED [side, r, g, b].
     TOUCH_LED_TABLE = {
       0 => [:both,  0, 60, 0],
       1 => [:right, 60, 0, 0],
@@ -706,9 +314,7 @@ module StackchanApp
     end
 
     def handle(frame)
-      # Legacy raw Y/P keys are retired (2026-05-21 direction-key migration).
-      # Reject outright so old PC clients see the migration via ERROR ACK
-      # rather than getting silently dropped.
+      # Raw Y/P keys are not part of the protocol.
       if frame.key?("Y") || frame.key?("P")
         @stdout.write(ERROR_FRAME)
         return
@@ -735,10 +341,7 @@ module StackchanApp
       @stdout.write(ERROR_FRAME)
     end
 
-    # Called from StackChanApp's heartbeat right after the touch sensor
-    # fires a rising edge. Picks a face by zone, draws it immediately, and
-    # updates current_face_class so the next blink redraw uses it. The
-    # whole path is local SPI to the LCD — no BLE round-trip, no PC.
+    # Touch reaction: draw the zone's face locally (no PC round-trip).
     def react_to_touch(zone)
       face_class = TOUCH_FACE_TABLE[zone] || Face::Surprised
       @current_face_class = face_class
@@ -764,7 +367,6 @@ module StackchanApp
       text = frame["text"]
       return false unless text
       text = text[0, SUBTITLE_MAX_CHARS]
-      # Clear the band, then draw. draw_rect args: (x, y, w, h, color, fill:)
       @display.draw_rect(0, SUBTITLE_BAND_Y, 320, SUBTITLE_BAND_HEIGHT,
                          SUBTITLE_BG, fill: true)
       @display.draw_text(SUBTITLE_MARGIN_X, SUBTITLE_TEXT_Y, text,
@@ -837,9 +439,8 @@ module StackchanApp
       yaw_raw   = nil
       pitch_raw = nil
 
-      # Direction confirmed by HITL 2026-05-25: raw BELOW the forward zero is
-      # StackChan's left (cal LEFT MAX = 182), raw ABOVE is its right
-      # (RIGHT MAX = 783). So YL ("StackChan's left") subtracts, YR adds.
+      # Raw below the forward zero is StackChan's left, above is its right:
+      # YL subtracts, YR adds.
       if frame.key?("YL")
         mag = frame["YL"].to_i
         return false unless mag >= 0 && mag <= 100
@@ -867,14 +468,9 @@ module StackchanApp
       true
     end
 
-    # Reports the pose AT COMMAND RECEIPT, not after the move: handle calls
-    # @head.apply (which only commands the move) and lands here immediately, so
-    # a <T:600> command reads the servo while it is still leaving the old pose.
-    # Deliberate (2026-08-31): waiting out T before answering would delay the
-    # ACK by T and stall LinkLoop for that long, rebuilding the latency Phase 1
-    # removed. The detail's operational job is the `unknown` signal (operator
-    # calibration needed), which does not depend on when the read happens; a
-    # post-move pose comes from a separate <read:pos> once the move is done.
+    # Reports the pose at command receipt, not after the move: waiting out T
+    # would stall LinkLoop. Its job is the `unknown` signal; a post-move pose
+    # comes from <read:pos>.
     def emit_servo_detail(_frame)
       if @head.nil?
         @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")
@@ -887,8 +483,6 @@ module StackchanApp
       yaw_part = if yaw_raw.nil?
         "YL_actual:unknown"
       else
-        # Mirror handle_head: above the zero is StackChan's right (YR),
-        # below is its left (YL).
         delta = yaw_raw - Head::SERVO_YAW_ZERO
         if delta >= 0
           mag = delta * 100 / Head::YAW_RANGE_RAW
@@ -911,49 +505,27 @@ module StackchanApp
     end
 
     def log_error(e)
-      # No-op for now; on-device logging would go here.
     end
   end
 end
 
-# ==========================================
-# === StackchanApp::AudioReceiver class ====
-# ==========================================
 module StackchanApp
-  # Mac->device lo-fi audio receiver — half-duplex phase-separated design.
-  #
-  # On <A:N>: sends <A:ready> via notify_fn, blocks main_task for T ms via
-  # delay_fn (defaults to Machine.delay_ms), then drains all accumulated BLE
-  # bytes from drain_fn and plays them. Non-audio frames are yielded to the block.
-  #
-  # T = n*1000/8000 + 3000ms  (BLE throughput ~8KB/s + margin; see
-  # receive_t_ms below for the exact breakdown). T covers only the pre-play
-  # wait (announce settle + blast + margin) -- the subsequent I2S playback
-  # itself takes a further ~n*1000/8000 ms, which callers waiting on the PC
-  # side must budget for separately (see Stackchan::Voice::Streamer /
-  # pc/stackchan-pico's stream_audio).
-  # delay_fn/notify_fn/drain_fn are injectable for picotest.
+  # Half-duplex audio receiver. On <A:N>: notify <A:ready>, block T ms,
+  # drain the accumulated bytes, play. Non-audio frames are yielded to the block.
   class AudioReceiver
     # 200ms of silence overwrites all I2S DMA circular descriptors so the last
     # audio frame does not replay at EOF.
     SILENCE_TAIL = ("\x00" * 3200)
 
-    # The wait for a clip is split into steps of this length. The ESP32 port
-    # holds inbound writes in a bounded queue and only hands them to Ruby while
-    # the BLE poll runs, so waiting out a whole clip in one call overflows it:
-    # measured on hardware as "write queue full (depth=32), dropping" during a
-    # 27KB clip, which silently loses audio the peer already sent. 50ms holds
-    # ~400 bytes at the ~8KB/s this link sustains -- two of the port's slots.
+    # Wait in short steps: the ESP32 port's inbound queue (depth 32) overflows
+    # if a whole clip is waited out in one call.
     DRAIN_STEP_MS = 50
 
-    def initialize(speaker:, parser:, delay_fn: nil)
-      @speaker  = speaker
-      @parser   = parser
-      @delay_fn = delay_fn
+    def initialize(speaker:, parser:)
+      @speaker = speaker
+      @parser  = parser
     end
 
-    # Consume one RX chunk. Returns 1 if a clip was played, 0 otherwise.
-    # Non-audio frames are yielded to the block.
     def consume(rx_data, notify_fn: nil, drain_fn: nil, pump_fn: nil)
       @parser.feed(rx_data).each do |frame|
         if frame.key?("A")
@@ -973,25 +545,17 @@ module StackchanApp
     private
 
     def receive_t_ms(n)
-      # T must cover: PC READY_WAIT_S (1500ms) + blast time (n/8000s) + margin (1500ms).
-      # 3000ms base gives 1500ms after blast even if BLE throughput dips to ~6KB/s.
+      # PC READY_WAIT 1500 ms + blast (n/8000 s) + 1500 ms margin.
       (n * 1000 / 8000) + 3000
     end
 
-    # Wait out t ms in DRAIN_STEP_MS steps, pumping the BLE port and collecting
-    # everything it hands over on each step. Splitting the wait is what keeps
-    # the port's inbound queue from overflowing; see DRAIN_STEP_MS.
     def wait_and_drain(t, drain_fn, pump_fn)
       buf = ""
       waited = 0
       while waited < t
         step = t - waited
         step = DRAIN_STEP_MS if step > DRAIN_STEP_MS
-        if @delay_fn
-          @delay_fn.call(step)
-        else
-          Machine.delay_ms(step)
-        end
+        Machine.delay_ms(step)
         waited += step
         pump_fn.call if pump_fn
         next unless drain_fn
@@ -1011,9 +575,7 @@ module StackchanApp
 end
 
 module StackchanApp
-  # Periodic work that used to ride on the 1 s BLE heartbeat: head-touch poll,
-  # LED animation, liveness blink. Pure: the caller passes now_ms, nothing here
-  # reads Machine or sleeps, so the run loop never stalls on it.
+  # Periodic work (touch poll, LED animation, blink). Pure: caller passes now_ms.
   class Ticker
     TOUCH_PERIOD_MS = 50
     LED_PERIOD_MS   = 50
@@ -1050,9 +612,6 @@ module StackchanApp
       last.nil? || now_ms - last >= period
     end
 
-    # Rising edge -> immediate on-device face/LED reaction, then one
-    # <touch:N> for the PC (meaningful only while a central is subscribed;
-    # the notify sink drops it otherwise).
     def poll_touch
       return unless @touch
       zone = @touch.poll
@@ -1063,8 +622,6 @@ module StackchanApp
       puts "[application] touch poll error: #{e.class}: #{e.message}"
     end
 
-    # Liveness blink: eyes closed for BLINK_CLOSED_MS every BLINK_PERIOD_MS,
-    # as a two-state machine so the loop keeps serving BLE while closed.
     def blink(now_ms)
       @blink_at ||= now_ms
       if @closed_at
@@ -1080,15 +637,9 @@ module StackchanApp
     end
   end
 
-  # One tick of the BLE peripheral's run loop, plus the notify gate. BLE is
-  # reached only through `port`, so this runs on the host picotest VM.
-  #
-  # Why event_popped on EVERY tick: on the ESP32 port, NimBLE's host task only
-  # fills ring buffers; inbound writes and events reach Ruby exclusively inside
-  # BLE#_event_popped. BLE#start calls that only after the queue already
-  # yielded an event, and the only thing that wakes the queue on its own is
-  # the 1 s heartbeat — that was the 1 s command latency. This loop wakes on
-  # its own every TICK_MS and drains regardless.
+  # One tick of the peripheral run loop. `event_popped` runs on EVERY tick: on
+  # the ESP32 port inbound writes reach Ruby only inside BLE#_event_popped, and
+  # BLE#start would call it only after the 1 s heartbeat.
   class LinkLoop
     TICK_MS = 20   # ESP32 VM tick is 10 ms: a pop with no event returns after 2 ticks
 
@@ -1120,8 +671,6 @@ module StackchanApp
       @ticker.tick(@clock.call / 1000)
     end
 
-    # Non-blocking variant for callers already waiting on something else
-    # (AudioReceiver's pump_fn): keeps the port's queues moving.
     def pump
       @port.event_popped
       event = @port.pop_event(timeout_ms: 0)
@@ -1174,9 +723,8 @@ module StackchanApp
   end
 end
 
-# [2] cold-boot init — pinch-perfect copy of app.rb's init block (Phase 2
-# bring-up smoke v13-aw9523-p0). Order is critical; see CLAUDE.md
-# "CoreS3 cold-boot 初期化シーケンス" section for the why behind each I2C write.
+# [2] cold-boot init. Order is critical; see CLAUDE.md "cold-boot 初期化"
+# for the why behind each I2C write.
 I2C_SDA_PIN  = 12
 I2C_SCL_PIN  = 11
 AXP2101_ADDR = 0x34
@@ -1234,11 +782,9 @@ if ver_bytes && ver_bytes.length > 0
   puts sprintf("[application] PY32 REG_VERSION = 0x%02X", ver_bytes.bytes[0])
 end
 
-# NOTE: The puts statements in this block are REQUIRED to prevent a
-# LoadProhibited crash at PY32 init region. See memory entry
-# `project-py32-init-puts-required` — empirically each puts shifts the
-# crash position one line later; with 5 puts the boot completes. Treat
-# these as production boot markers, NOT removable debug logs.
+# REQUIRED FOR PY32 COLD-BOOT: the puts in this block prevent a
+# LoadProhibited crash in the PY32 init region (bytecode-layout dependent;
+# removing one shifts the crash a line later). Not debug logs.
 puts "[boot] step:py32-init-begin"
 py32 = PY32IOExpander.new(i2c)
 puts "[boot] step:py32-instance"
@@ -1268,8 +814,7 @@ led.brightness = 100
 puts "[boot] step:led-show-ok"
 StackchanApp::Face::Closed.new.draw(display)
 puts "[application] LCD cold-boot done (torque-OFF idle)"
-# Si12T head-touch — reuse the already-open system I2C instance (no 2nd bus).
-# Low-risk per spec; failure must not block face/LED/BLE, so keep @touch=nil.
+# Head touch reuses the system I2C. Optional; failure keeps @touch=nil.
 @touch = nil
 begin
   @touch = Si12T.new(i2c)
@@ -1278,24 +823,14 @@ rescue => e
   puts "[boot] si12t init failed: #{e.class}: #{e.message}"
 end
 
-# Servo bring-up — torque is intentionally left OFF so the operator can
-# physically align the head before sending <torque:on>. Failure must NOT
-# block face/LED — keep @head=nil so Dispatcher can emit the "unknown"
-# detail signal while Phase A features stay live.
+# Servos: torque stays OFF until <torque:on>. Optional; failure keeps @head=nil.
 @head = nil
 begin
-  # Pin mapping: per StackChan/firmware/main/hal/hal_servo.cpp:169
-  #   _scs_bus.begin(UART_NUM_1, 1000000, /*tx_pin=*/6, /*rx_pin=*/7)
-  # so the ESP32 transmits on GPIO 6 (to the servo bus' RX) and receives on
-  # GPIO 7 (from the servo bus' TX). Earlier picoruby app had these swapped,
-  # which produced perfectly silent RX (no echo, no servo response).
+  # ESP32 TX on GPIO 6, RX on GPIO 7 (StackChan hal_servo.cpp); swapped pins give silent RX.
   servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 6, rxd_pin: 7, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
-  # SCS EEPROM default is torque ON, so we must explicitly disable to honor
-  # the cold-boot torque-OFF design (operator physically aligns then sends
-  # <torque:on>). Plan §Task 14 assumed default-OFF — Task 15 HITL revealed
-  # the EEPROM-default state.
+  # SCS EEPROM default is torque ON; cold boot wants it OFF.
   yaw_servo.enable_torque(false)
   pitch_servo.enable_torque(false)
   @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
@@ -1304,81 +839,25 @@ rescue => e
   puts "[boot] servo init failed: #{e.class}: #{e.message}"
 end
 
-# Diagnostic: bypass SCServo wrapper, send raw SCS PING packets via UART
-# and hex-dump whatever bytes arrive on RX. Purpose: distinguish
-#   (a) servo UART TX dead          -> raw=<empty>
-#   (b) half-duplex echo            -> raw begins FF FF <id> 02 01 <~cksum>
-#                                       (= the PING packet we just sent)
-#   (c) servo responds correctly    -> raw begins FF FF <id> 02 00 <~cksum>
-#                                       (= status packet ERR=0)
-#   (d) wrong baud / framing        -> raw is garbage with no FF FF
-if servo_uart
-  [1, 2].each do |servo_id|
-    servo_uart.clear_rx_buffer
-    sum = servo_id + 2 + 1
-    cksum = (~sum) & 0xFF
-    pkt = [0xFF, 0xFF, servo_id, 2, 1, cksum]
-    servo_uart.write(pkt.pack('C*'))
-    servo_uart.flush
-    Machine.delay_ms(80)
-    raw = servo_uart.readpartial(64)
-    if raw && !raw.empty?
-      hex = ""
-      raw.bytes.each { |b| hex << sprintf("%02X ", b) }
-      puts "[diag id=#{servo_id}] PING tx=FF FF #{sprintf("%02X", servo_id)} 02 01 #{sprintf("%02X", cksum)} raw_rx=#{hex.strip}"
-    else
-      puts "[diag id=#{servo_id}] PING raw_rx=<empty>"
-    end
-  end
-end
-
-# Diagnostic: capture raw RX bytes from a single read_pos request so we can
-# analyze why read_pos returns nil. Expected layouts:
-#   echo only        : raw begins FF FF <id> 04 38 02 <cksum> ...  (= our READ pkt)
-#   no echo, response: raw begins FF FF <id> 04 00 <pos_l> <pos_h> <cksum>
-#   wrong register   : response uses different LEN / data byte count
-#   silent failure   : raw=<empty>
-if @head
-  [yaw_servo, pitch_servo].each do |s|
-    sid = s.instance_variable_get(:@id)
-    puts "[diag read_pos_raw id=#{sid}] #{s.read_pos_raw_debug}"
-  end
-end
-
-# Speaker — AW88298 amp (system I2C bus) + I2S TX @ 8 kHz (picoruby-i2s, SoC
-# GPIO13 DOUT; Spike A proved no WS2812 contention). Audio is decoration, so a
-# failure must NOT block face/LED/BLE — keep @speaker=nil and the app stays live.
+# Speaker: AW88298 over system I2C + I2S TX on GPIO13. Optional; failure keeps @speaker=nil.
+# The rate has to match what the PC encodes (Stackchan::Voice::Tts::SAMPLE_RATE).
 SPEAKER_SAMPLE_RATE = 8000
 @speaker = nil
 begin
   speaker_i2s = I2S.new(sample_rate: SPEAKER_SAMPLE_RATE)
-  @speaker = Speaker.new(i2c: i2c, i2s: speaker_i2s)
+  @speaker = AW88298.new(i2c: i2c, i2s: speaker_i2s)
   @speaker.init_amp(SPEAKER_SAMPLE_RATE)
   puts "[boot] speaker init OK (AW88298 @ 0x36 + I2S @ #{SPEAKER_SAMPLE_RATE}Hz)"
 rescue => e
   puts "[boot] speaker init failed: #{e.class}: #{e.message}"
 end
 
-# Cold-boot self-test removed 2026-05-21 — protocol now exposes
-# <selftest:run> for on-demand UART round-trip check, and the cold-boot
-# face/servo state (Face::Closed + torque OFF) is itself the idle indicator
-# that operators read for "alive vs. wedged" at a glance.
-
-# cold-boot block (AXP2101/AW9523/SPI/ILI9342/PY32/LED/Face::Closed.draw) は
-# 同期 I2C/SPI op で CPU を占有し、BTstack run_loop の FreeRTOS task を starve させる。
-# yield せず BLE.new に入ると gap_advertisements_enable(1) は呼ばれても RF emit
-# されない (silent fail、device-side log だけ HCI WORKING 出る)。
-# sleep_ms で control を yield して BTstack task に initialization を完了させる。
-# 2026-05-17 bisect: cold-boot 削除 variant HIT / cold-boot + sleep_ms 3000 variant HIT / sleep 無し MISS。
+# The cold-boot block above is synchronous I2C/SPI and starves the NimBLE
+# host task. Without this yield BLE.new/start looks fine in the log but
+# nothing is emitted over RF.
 sleep_ms 3000
 
-# [3] BLE NUS service. UUID / property masks copied from Phase 2 ble_smoke.rb
-# (deleted in this Phase 3 PR; structure lives in application.rb now).
-#
-# Thin adapter: GATT database, advertising, the four `port` methods LinkLoop
-# needs, and the run loop. All per-tick logic (drain order, notify gate, ACK
-# stamps) is in StackchanApp::LinkLoop; periodic work is in StackchanApp::Ticker.
-# Both are host-tested; only what is left here needs the device.
+# [3] BLE NUS peripheral. Per-tick logic lives in LinkLoop, periodic work in Ticker.
 class StackChanApp < BLE
   AD_TYPE_FLAGS = 0x01
   AD_TYPE_COMPLETE_LOCAL_NAME = 0x09
@@ -1430,15 +909,12 @@ class StackChanApp < BLE
     puts "[application] initialize: super returned"
   end
 
-  # AckSink contract: Dispatcher calls write(frame_string) with one complete
-  # newline-terminated frame. LinkLoop notifies it immediately, or drops it
-  # while no central is subscribed.
+  # AckSink: one newline-terminated frame; dropped while no central is subscribed.
   def write(frame)
     @link.write(frame)
   end
 
-  # --- LinkLoop port: thin bridge to BLE's event queue / value store ---
-  # (BLE#notify takes one argument and must not be shadowed, hence the names.)
+  # LinkLoop port. (BLE#notify takes one argument and must not be shadowed.)
 
   def pop_event(timeout_ms:)
     @event_queue.pop(timeout_ms: timeout_ms)
@@ -1457,9 +933,7 @@ class StackChanApp < BLE
     notify(handle)
   end
 
-  # Own run loop instead of BLE#start (see LinkLoop for why). Never returns;
-  # the controller stays up and connections persist. Mirrors start's setup and
-  # its ensure (mrblib/ble.rb).
+  # Own run loop instead of BLE#start; mirrors start's setup and ensure (mrblib/ble.rb).
   def run
     @event_queue.clear
     _event_queue_cleared
@@ -1506,34 +980,24 @@ class StackChanApp < BLE
     when HCI_EVENT_DISCONNECTION_COMPLETE
       puts "[application] disconnected"
       @link.disconnected
-      # Re-enable advertising so a central can reconnect; nothing else
-      # re-advertises after a disconnect with the infinite run loop.
+      # Re-advertise so a central can reconnect.
       advertise(@adv_data)
     end
   end
 
-  # Route one RX chunk through the audio receiver: it accumulates raw mu-law
-  # after a <A:N> control frame and plays (blocking) on completion, and yields
-  # every non-audio frame back here for the dispatcher. Blocking playback during
-  # the poll is fine — the Mac is idle by then and a sentence plays in ~1-3s
-  # (< the ~15-20s idle-disconnect window). One <A:done> ACK per clip.
+  # Audio frames go to the receiver (blocking playback); everything else to the dispatcher.
   def consume_rx(rx_data)
     done = @audio.consume(
       rx_data,
       notify_fn: ->(msg) { write(msg) },
       drain_fn:  -> { pop_write_value(@rx_handle) },
-      # Keeps the ESP32 port's inbound queue draining every DRAIN_STEP_MS while
-      # the audio wait blocks the run loop; a disconnect arriving during
-      # playback is still dispatched through on_packet.
       pump_fn:   -> { @link.pump }
     ) { |frame| @dispatcher.handle(frame) }
     done.times { write("<A:done>\n") }
   end
 end
 
-# [4] Run the peripheral forever. StackChanApp#run is our own loop (a 20 ms
-# tick that drains NimBLE's queues every time), not BLE#start — see
-# StackchanApp::LinkLoop. An active central connection is never force-dropped.
+# [4] Run forever. StackChanApp#run is our own 20 ms tick loop, not BLE#start.
 puts "[application] BLE peripheral starting (infinite advertise)"
 peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch, speaker: @speaker)
 peri.debug = true

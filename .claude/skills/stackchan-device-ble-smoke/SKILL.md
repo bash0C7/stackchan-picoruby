@@ -1,34 +1,10 @@
 ---
 name: stackchan-device-ble-smoke
-description: Send a single BLE NUS combo frame (face + LED) to the device and assert ACK via Mac CoreBluetooth (~20-40 s). Claude-driven HITL step, no human slash alias.
+description: Deploy application.rb, then send one face + LED frame over BLE from the Mac and assert the ACK (~20-40 s). FACE=, COLOR=, MODE=, SIDE= env.
 ---
 
-# stackchan-device-ble-smoke
+Run in a haiku subagent (300000ms timeout), reporting the `[smoke]` line verbatim:
 
-## Mode
+    FACE=$FACE COLOR=$COLOR MODE=$MODE SIDE=$SIDE bundle exec rake r2p2:ble_control_smoke 2>&1 | tee /tmp/stackchan-picoruby-debug/ble-smoke-$FACE.log
 
-Subagent (haiku), 300000ms timeout.
-
-## Action
-
-Dispatch:
-
-> Run `FACE=$FACE COLOR=$COLOR MODE=$MODE SIDE=$SIDE bundle exec rake r2p2:ble_control_smoke` foreground with 300000ms timeout from the repo root. Tee stdout+stderr into `/tmp/stackchan-picoruby-debug/ble-smoke-$FACE.log`. Do not modify code. Report exit code and any `[smoke] PASS` / `[smoke] FAIL` line verbatim. Under 150 words.
-
-## Required env
-
-- `FACE` (neutral/smile/joy/surprised/sad/angry)
-- `COLOR` (e.g. red, blue, white)
-- `MODE` (solid / breathing / blink)
-- `SIDE` (left / right / both)
-
-## Pass / fail signal
-
-- `[smoke] PASS — face=<F> LED=<C> <M> (side=<S>)` → success. ACK received.
-- Non-zero exit → connection / discovery / write / ACK failure. Check
-  `[smoke] FAIL ...` line.
-
-## Escalation
-
-ACK failure usually means autostart payload mismatch (different Dispatcher
-in app.mrb than the FACE_INDICES sent). Re-run with `stackchan-device-deploy-app`.
+`[smoke] PASS` = ACK received. A non-zero exit is a connect / discovery / write / ACK failure. Never run a serial monitor at the same time; opening the port resets the device.

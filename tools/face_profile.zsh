@@ -7,9 +7,6 @@ zmodload zsh/datetime
 # them equally.
 #
 #   ROUNDS=8 tools/face_profile.zsh          # -> /tmp/stackchan-picoruby-debug/face-profile.log
-#
-# Pair it with tools/face_spi_cost.rb, which predicts these numbers from the
-# host with no device attached.
 cd "$(dirname "$0")/.." || exit 2
 S=pc/stackchan-pico/bin/stackchan
 LOG=${LOG:-/tmp/stackchan-picoruby-debug/face-profile.log}

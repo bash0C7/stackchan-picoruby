@@ -84,3 +84,27 @@ class FakeDaemonProxy
     { ble_connected: true }
   end
 end
+
+# Fake clock for the pc suite: sleep_ms advances Machine.board_millis and is recorded.
+module FakeClock
+  @now = 0
+  @sleeps = []
+  def self.now = @now
+  def self.sleeps = @sleeps
+  def self.reset(now)
+    @now = now
+    @sleeps = []
+  end
+  def self.sleep(ms)
+    @sleeps << ms
+    @now += ms
+  end
+end
+
+module Machine
+  def self.board_millis = FakeClock.now
+end
+
+def sleep_ms(ms)
+  FakeClock.sleep(ms)
+end

@@ -25,9 +25,6 @@ class HeadTest < Picotest::Test
     assert_equal [[500, 0, 0]], @pitch.writes
   end
 
-  def test_apply_with_T_overrides_V
-    skip "obsolete: T/V protocol logic moved to Dispatcher frame parsing in Task 10"
-  end
 
   def test_apply_with_V_only_uses_velocity
     @head.apply(yaw_raw: 100, velocity: 50)
@@ -39,21 +36,9 @@ class HeadTest < Picotest::Test
     assert_equal [[100, 0, 0]], @yaw.writes
   end
 
-  def test_apply_clamps_yaw_above_max
-    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
-  end
 
-  def test_apply_clamps_yaw_below_min
-    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
-  end
 
-  def test_apply_clamps_pitch_above_max
-    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
-  end
 
-  def test_apply_clamps_pitch_below_min
-    skip "obsolete: clamp moved to Dispatcher#handle_head in Task 10"
-  end
 
   def test_read_actual_returns_both_axes
     @yaw.next_read   = 123

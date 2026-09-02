@@ -10,19 +10,19 @@ class AudioReceiverTest < Picotest::Test
   end
 
   def make_speaker
-    Speaker.new(i2c: FakeI2C.new, i2s: I2S.new(sample_rate: 8000))
+    AW88298.new(i2c: FakeI2C.new, i2s: I2S.new(sample_rate: 8000))
   end
 
   def test_audio_frame_sends_ready_sleeps_drains_plays
     spk = make_speaker
     notifies = []
-    delays = []
+    delays = Machine.delays
+    delays.clear
     drain_queue = ["\x01\x02\x03\x04\x05\x06"]
 
     rx = StackchanApp::AudioReceiver.new(
       speaker: spk,
       parser: FakeParser.new([{"A" => "6"}]),
-      delay_fn: ->(ms) { delays << ms }
     )
     done = rx.consume(
       "<A:6>\n",
@@ -40,13 +40,13 @@ class AudioReceiverTest < Picotest::Test
   end
 
   def test_t_ms_scales_with_byte_count
-    delays = []
+    delays = Machine.delays
+    delays.clear
     drain_queue = []
 
     rx = StackchanApp::AudioReceiver.new(
       speaker: make_speaker,
       parser: FakeParser.new([{"A" => "8000"}]),
-      delay_fn: ->(ms) { delays << ms }
     )
     rx.consume(
       "<A:8000>\n",
@@ -66,7 +66,6 @@ class AudioReceiverTest < Picotest::Test
     rx = StackchanApp::AudioReceiver.new(
       speaker: spk,
       parser: FakeParser.new([{"A" => "3"}]),
-      delay_fn: ->(ms) {}
     )
     rx.consume(
       "<A:3>\n",
@@ -74,7 +73,7 @@ class AudioReceiverTest < Picotest::Test
       drain_fn:  -> { drain_queue.shift }
     )
 
-    expected = Speaker.ulaw_decode("\x10\x20\x30")
+    expected = AW88298.ulaw_decode("\x10\x20\x30")
     assert_equal expected, spk.i2s.written.byteslice(0, 6)
   end
 
@@ -96,12 +95,12 @@ class AudioReceiverTest < Picotest::Test
   end
 
   def test_no_speaker_skips_audio
-    delays = []
+    delays = Machine.delays
+    delays.clear
 
     rx = StackchanApp::AudioReceiver.new(
       speaker: nil,
       parser: FakeParser.new([{"A" => "6"}]),
-      delay_fn: ->(ms) { delays << ms }
     )
     done = rx.consume(
       "<A:6>\n",
@@ -114,12 +113,12 @@ class AudioReceiverTest < Picotest::Test
   end
 
   def test_zero_length_audio_ignored
-    delays = []
+    delays = Machine.delays
+    delays.clear
 
     rx = StackchanApp::AudioReceiver.new(
       speaker: make_speaker,
       parser: FakeParser.new([{"A" => "0"}]),
-      delay_fn: ->(ms) { delays << ms }
     )
     done = rx.consume(
       "<A:0>\n",
@@ -138,7 +137,8 @@ class AudioReceiverTest < Picotest::Test
   # whatever it handed over.
   def test_wait_is_split_and_pumps_the_port_between_steps
     spk = make_speaker
-    delays = []
+    delays = Machine.delays
+    delays.clear
     pumps = 0
     # Bytes only become visible after a pump, which is what the port does.
     arrivals = ["\x01\x02", "\x03\x04", "\x05\x06"]
@@ -147,7 +147,6 @@ class AudioReceiverTest < Picotest::Test
     rx = StackchanApp::AudioReceiver.new(
       speaker: spk,
       parser: FakeParser.new([{"A" => "6"}]),
-      delay_fn: ->(ms) { delays << ms }
     )
     rx.consume(
       "<A:6>\n",
@@ -174,7 +173,6 @@ class AudioReceiverTest < Picotest::Test
     rx = StackchanApp::AudioReceiver.new(
       speaker: spk,
       parser: FakeParser.new([{"A" => "6"}]),
-      delay_fn: ->(ms) {}
     )
     rx.consume(
       "<A:6>\n",
