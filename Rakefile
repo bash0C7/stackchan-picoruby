@@ -4,7 +4,10 @@ require_relative "lib/deploy/picomodem"
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
 # fork or branch swap needs no edit here.
 R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP32.git"
-R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "stackchan-integration"
+# c-primitives-verified, not stackchan-integration: the latter's picoruby submodule
+# is on the lineage rebased onto upstream master, which overflows the picoruby task
+# stack during its own startup and boot-loops. See HANDOFF.
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "c-primitives-verified"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"

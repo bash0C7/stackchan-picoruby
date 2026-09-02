@@ -47,7 +47,7 @@ the `picoruby-stackchan-protocol` gem. Audio is sent as a length-prefixed
 into `vendor/` (gitignored, never hand-placed):
 
 ```
-vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch stackchan-integration.
+vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch c-primitives-verified.
                       Device firmware build tree; its own picoruby submodule
                       (branch stackchan-integration, derived from the
                       upstream-PR-track picoruby-ble-esp32-port) carries the
@@ -303,6 +303,10 @@ Both columns are medians of the same eight-round run, measured in one session
 either side of the firmware change, so they are comparable. The device-side
 ACK in the daemon log moved the same way: 344-624 ms down to 100-164 ms.
 
+A rebuild from the same sources, measured later in that session, gave 0.17-0.21 s
+against a 0.19 s floor: the ordering across faces is stable, individual faces move
+by about 0.02 s between runs.
+
 What went away is the time PicoRuby spent interpreting Bresenham and
 midpoint-ellipse loops. `picoruby-ili9342` issues the address window, RAMWR
 and pixel stream from C, one call per shape. Neither pixel count nor
@@ -354,7 +358,7 @@ and build_configs each time.
 
 | Repo | Ref | Role | Pinned by |
 |---|---|---|---|
-| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `stackchan-integration` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`) |
+| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `c-primitives-verified` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`) |
 | [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
@@ -379,11 +383,12 @@ Adds on top of upstream:
 - `sdkconfigs/bt_nimble`: BLE enablement with the ROM coex hook disabled, which
   avoids a `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with
   IDF v5.4 and ESP32-S3.
-- `build_config/xtensa-esp-picoruby.rb` (on the `stackchan-integration` branch):
+- `build_config/xtensa-esp-picoruby.rb` (on the `c-primitives-verified` branch):
   wires the 4 standalone driver gems above plus `picoruby-ble` /
   `picoruby-ble-uart` / `picoruby-i2s`.
-- Points its `components/picoruby-esp32/picoruby` submodule at the picoruby
-  fork's `stackchan-integration` branch below.
+- Points its `components/picoruby-esp32/picoruby` submodule at `7258676` on the
+  picoruby fork's `stackchan-integration` branch below. The branch head has moved
+  past that commit onto a lineage that boot-loops on this board; see HANDOFF.
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby)
 

@@ -16,7 +16,7 @@ playback.
 | Piece | Revision |
 |---|---|
 | `stackchan-picoruby` | branch `claude/picoruby-prompt-simplify-dmbyo6` (PR #9) |
-| firmware tree `vendor/R2P2-ESP32` | `stackchan-integration` @ `fba53e6` — **local only**, see "Next" |
+| firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `fae4d74` |
 | picoruby submodule under it | `bash0C7/picoruby` `stackchan-integration` @ `7258676` |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `claude/c-drawing-primitives` @ `067d47f` (PR #1) |
 | speaker gem | `mrbgems/picoruby-aw88298` in this repo, fetched by the build_config |
@@ -41,14 +41,18 @@ only because of `plutil`).
 
 1. Look at the six faces against how they used to render, and at `closed`
    after a reset.
-2. Decide what to do with `origin/stackchan-integration` on the R2P2-ESP32
-   fork. It carries `bd348c0`, which moves the picoruby submodule to the
-   lineage rebased onto upstream master (`568b4b88`) and records that the
-   ESP32 build is unverified there. The build_config commit sitting locally is
-   on top of `a5312fb` instead, so that the firmware under test differed from
-   the working one only by the two PRs. Pushing means either taking that
-   submodule bump and re-verifying the firmware on it, or keeping the two
-   apart deliberately.
+2. The R2P2-ESP32 fork's `stackchan-integration` carries `bd348c0`, which
+   moves the picoruby submodule to the lineage rebased onto upstream master
+   (`568b4b88`). **That lineage does not boot on this board.** The firmware
+   builds and flashes cleanly, then the picoruby task overflows its 8 KB
+   stack immediately after `main_task: Returned from app_main()` and the
+   board reboots in a loop. Erasing the storage partition so `/home/app.mrb`
+   does not exist changes nothing, so it is the lineage's own startup, not
+   the application. `PICORB_TASK_STACK_SIZE` is `1024 * 8` on both lineages.
+   Raising it would also move the budget the draw-path and BLE constraints
+   are written against, so it is a decision, not a tweak. Until then the
+   branch above is where the working build_config lives; `stackchan-integration`
+   is untouched.
 3. Subproject C, BLE reliability — the defects under "Known issues" in the
    README: no retry on an ACK timeout, the ~45 s first `<A:done>` after a long
    idle, and `Daemon#stop` never reaching its reply. The daemon also died once
