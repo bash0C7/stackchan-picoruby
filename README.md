@@ -371,7 +371,7 @@ and build_configs each time.
 | [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `claude/c-drawing-primitives` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
 | [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |

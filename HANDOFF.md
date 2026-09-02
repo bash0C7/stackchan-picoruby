@@ -15,10 +15,10 @@ playback.
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | branch `claude/picoruby-prompt-simplify-dmbyo6` (PR #9) |
-| firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `fae4d74` |
+| `stackchan-picoruby` | `main` |
+| firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `bash0C7/picoruby` `stackchan-integration` @ `7258676` |
-| LCD driver gem | `bash0C7/picoruby-ili9342` `claude/c-drawing-primitives` @ `067d47f` (PR #1) |
+| LCD driver gem | `bash0C7/picoruby-ili9342` `main` |
 | speaker gem | `mrbgems/picoruby-aw88298` in this repo, fetched by the build_config |
 
 The CoreS3 is flashed from exactly those revisions, with `app/application.rb`
