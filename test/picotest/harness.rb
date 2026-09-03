@@ -6,7 +6,7 @@ module PicotestHarness
   REPO_ROOT     = File.expand_path("../..", __dir__) # test/picotest -> repo root
   # The vendored R2P2-ESP32's picoruby: the same VM the device runs.
   PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby")
-  PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
+  PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host-picotest", "bin", "picoruby")
   # picoruby-scservo is fetched at firmware-build time; locate it.
   SCSERVO_SIBLING  = File.expand_path("../picoruby-scservo/mrblib/scservo.rb", REPO_ROOT)
   SCSERVO_VENDORED = File.join(REPO_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",

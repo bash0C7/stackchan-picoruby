@@ -40,7 +40,7 @@ end
 # The host picotest VM is R2P2-ESP32's own picoruby submodule: the same build
 # the device runs, so host-VM quirks match device behavior.
 PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(R2P2_ROOT, "components", "picoruby-esp32", "picoruby")
-PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host", "bin", "picoruby")
+PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host-picotest", "bin", "picoruby")
 
 desc "Run all PicoRuby-native suites (alias of picotest:run)"
 task :test => "picotest:run"

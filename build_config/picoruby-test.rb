@@ -1,6 +1,6 @@
 # Host picotest VM: upstream picoruby-test.rb plus the C gems of this repo.
 # Used by `rake picotest:build` through MRUBY_CONFIG=<this file>.
-MRuby::Build.new do |conf|
+MRuby::Build.new("host-picotest") do |conf|
   conf.toolchain :gcc
 
   conf.cc.defines << "PICORB_PLATFORM_POSIX"
