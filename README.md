@@ -410,17 +410,20 @@ are named rather than failed — untracked leftovers from switching lineages, an
 a file a committed patch is applied to at build time, which a fresh clone
 reproduces on its own.
 
-It runs in three places, all in `--pins-only` mode except the last. `.githooks/pre-push`
-is git's own hook, pointed at by `core.hooksPath` in this checkout and in every
-vendored tree — `rake vendor:install_hooks` sets that, `vendor:uninstall_hooks`
-takes it back — so a push is checked whether it comes from a terminal, an IDE, a
-rake task or Claude. `tools/hooks/pre_push_guard.sh`, wired in
-`.claude/settings.json`, covers the same ground one layer up, where it can refuse
-before the command is even spawned. Publishing a pin is itself a push, so that
-one command gets through by saying so: `STACKCHAN_DEPS_GUARD=off git -C … push …`,
-which stands both of them down. And `.github/workflows/deps.yml` clones the
-firmware tree from nothing on a schedule and runs the whole script, which catches
-a ref that rots while nobody is looking.
+It runs in two places. Before a push, `tools/hooks/pre_push_guard.sh` — wired in
+`.claude/settings.json` — runs it in `--pins-only` mode and refuses the push if a
+pin would not survive. Publishing a pin is itself a push, so that one command
+gets through by saying so: `STACKCHAN_DEPS_GUARD=off git -C … push …`. And
+`.github/workflows/deps.yml` clones the firmware tree from nothing on every push
+and weekly, running the whole script, which catches a ref that rots while nobody
+is looking.
+
+`.github/workflows/firmware.yml` answers the larger question the dependency
+check cannot: it builds the firmware in `espressif/idf:v5.4.2` from a fresh
+clone and runs both suites, so "it works on another machine" is measured rather
+than assumed. It does not flash and there is no CoreS3 on a runner, so the bench
+is still the only thing that can say whether the robot moves. A full esp-idf
+build is tens of minutes, so it runs weekly and on demand rather than per push.
 
 `test-host/deps_guard_test.rb` builds git fixtures that are broken in each of
 those ways and asserts the guard says so.

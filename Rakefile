@@ -16,27 +16,7 @@ R2P2_DARWIN_ROOT = File.expand_path("vendor/R2P2-darwin", __dir__)
 
 namespace :vendor do
   desc "Fetch both vendored build trees (R2P2-ESP32, R2P2-darwin)"
-  task setup: ["vendor:r2p2_esp32:setup", "vendor:r2p2_darwin:setup", "vendor:install_hooks"]
-
-  # Every tree a push can leave from: this checkout, the two build trees, and the
-  # picoruby each of them builds. `git config` is per clone and cannot be
-  # committed, so this is the one step that has to be run rather than cloned.
-  def hookable_trees
-    [__dir__, R2P2_ROOT, File.join(R2P2_ROOT, "components", "picoruby-esp32", "picoruby"),
-     R2P2_DARWIN_ROOT, File.join(R2P2_DARWIN_ROOT, "vendor", "picoruby")]
-      .select { |dir| File.exist?(File.join(dir, ".git")) }
-  end
-
-  desc "point every tree's git hooks at .githooks, so a push is checked whatever runs it"
-  task :install_hooks do
-    hooks = File.expand_path(".githooks", __dir__)
-    hookable_trees.each { |dir| sh "git", "-C", dir, "config", "core.hooksPath", hooks }
-  end
-
-  desc "undo vendor:install_hooks (git's own default hook path comes back)"
-  task :uninstall_hooks do
-    hookable_trees.each { |dir| sh "git", "-C", dir, "config", "--unset", "core.hooksPath" }
-  end
+  task setup: ["vendor:r2p2_esp32:setup", "vendor:r2p2_darwin:setup"]
 
   namespace :r2p2_esp32 do
     desc "Clone R2P2_ESP32_REPO@R2P2_ESP32_REF into vendor/R2P2-ESP32 (skip if present)"
@@ -129,8 +109,21 @@ namespace :picotest do
   end
 end
 
-ESP_IDF_EXPORT = File.expand_path('~/esp/esp-idf/export.sh')
-ESP_PYTHON = File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
+# esp-idf installs itself wherever it was unpacked and names its venv after the
+# IDF and Python versions it was built with, so both differ per machine — the
+# Espressif container puts them under /opt/esp. Find the venv rather than
+# spelling one. Highest version wins, compared as numbers: a machine with both
+# idf5.4_py3.9 and idf5.4_py3.14 has to get 3.14, and strings sort it the other
+# way. Either path can also be named outright.
+def newest_esp_python
+  Dir[File.expand_path('~/.espressif/python_env/idf*_py*_env/bin/python'),
+      '/opt/esp/python_env/idf*_py*_env/bin/python']
+    .max_by { |p| File.basename(File.dirname(File.dirname(p))).scan(/\d+/).map(&:to_i) }
+end
+
+ESP_IDF_EXPORT = ENV['ESP_IDF_EXPORT'] || File.expand_path('~/esp/esp-idf/export.sh')
+ESP_PYTHON = ENV['ESP_PYTHON'] || newest_esp_python ||
+             File.expand_path('~/.espressif/python_env/idf5.4_py3.14_env/bin/python')
 
 SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble'
 PICORUBY_BUILD_DIR = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby"

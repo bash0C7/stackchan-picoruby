@@ -12,11 +12,10 @@ require 'json'
 # by hand, which is what the guard reads; the one case that would fall through to
 # a fetch is pointed at a dead proxy so it fails at once.
 class DepsGuardTest < Test::Unit::TestCase
-  ROOT     = File.expand_path("..", __dir__)
-  GUARD    = File.join(ROOT, "tools", "check_deps_pushed.sh")
-  HOOK     = File.join(ROOT, "tools", "hooks", "pre_push_guard.sh")
-  PRE_PUSH = File.join(ROOT, ".githooks", "pre-push")
-  DIR      = "/tmp/stackchan_deps_guard_test_#{Process.pid}"
+  ROOT  = File.expand_path("..", __dir__)
+  GUARD = File.join(ROOT, "tools", "check_deps_pushed.sh")
+  HOOK  = File.join(ROOT, "tools", "hooks", "pre_push_guard.sh")
+  DIR   = "/tmp/stackchan_deps_guard_test_#{Process.pid}"
 
   # http.proxy pointing at a closed port turns any fetch this guard attempts into
   # an immediate refusal, so a test never waits on github.com.
@@ -377,37 +376,6 @@ class DepsGuardTest < Test::Unit::TestCase
 
   # A blocked tool call shows the hook's stderr and nothing else, so a refusal
   # that says nothing there tells whoever hit it only that something went wrong.
-  # --- the git hook underneath it -----------------------------------------
-
-  # core.hooksPath points every tree at one .githooks, so the hook has to find
-  # the guard from its own location rather than from where git is pushing.
-  def run_pre_push(env = {})
-    dir = File.join(DIR, "prepush")
-    FileUtils.mkdir_p(File.join(dir, ".githooks"))
-    FileUtils.mkdir_p(File.join(dir, "tools"))
-    FileUtils.cp(PRE_PUSH, File.join(dir, ".githooks"))
-    ran = File.join(dir, "ran")
-    FileUtils.rm_f(ran)
-    stub = File.join(dir, "tools", "check_deps_pushed.sh")
-    File.write(stub, "#!/bin/sh\ntouch #{ran}\necho 'the pin is unpublished'\nexit 2\n")
-    File.chmod(0o755, stub)
-
-    _, _, status = Open3.capture3(env, File.join(dir, ".githooks", "pre-push"))
-    { ran: File.exist?(ran), code: status.exitstatus }
-  end
-
-  def test_the_git_hook_refuses_a_push_whatever_ran_it
-    result = run_pre_push
-    assert_true result[:ran]
-    assert_equal 2, result[:code]
-  end
-
-  def test_the_git_hook_stands_down_for_the_push_that_publishes_a_pin
-    result = run_pre_push("STACKCHAN_DEPS_GUARD" => "off")
-    assert_false result[:ran]
-    assert_equal 0, result[:code]
-  end
-
   def test_a_refusal_says_on_stderr_which_dependency_is_missing
     result = run_hook("git push origin main", verdict: 2)
     assert_equal 2, result[:code]

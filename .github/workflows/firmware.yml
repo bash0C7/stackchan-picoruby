@@ -1,0 +1,68 @@
+name: firmware builds from nothing
+
+# The dependency check proves every piece can be fetched. It cannot prove they
+# compile together, and until this job existed nobody had ever built this
+# firmware anywhere but the one Mac it was written on — so "it works on another
+# machine" was an assumption, not a measurement.
+#
+# It does not flash and there is no CoreS3 here, so a green run means the tree
+# compiles and its own suites pass on a machine that is not that Mac. Whether the
+# robot then moves is still something only the bench can say.
+#
+# Deliberately not on every push: a full esp-idf build is tens of minutes, and
+# the cheap check in deps.yml already runs on each one.
+
+on:
+  schedule:
+    - cron: "41 21 * * 1"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The version this firmware is actually built with; `git describe` in the
+    # esp-idf on the development machine says v5.4.2.
+    container: espressif/idf:v5.4.2
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ruby
+        run: |
+          apt-get update -qq
+          # ruby-dev and a compiler because the Gemfile has a native gem.
+          apt-get install -y -qq ruby-full ruby-dev build-essential
+          ruby -v
+
+      - name: Install the gems the Rakefile needs
+        run: |
+          gem install bundler --no-document
+          bundle install --jobs 4
+
+      - name: Fetch the firmware tree at the ref the Rakefile pins
+        run: bundle exec rake vendor:r2p2_esp32:setup
+
+      - name: Set the target and generate sdkconfig from the CoreS3 fragments
+        env:
+          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
+        run: bundle exec rake r2p2:setup
+
+      - name: Build the firmware
+        env:
+          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
+        run: bundle exec rake r2p2:build
+
+      - name: Report what was produced
+        run: |
+          find vendor/R2P2-ESP32/build -maxdepth 1 -name '*.bin' -exec ls -l {} +
+
+      # A firmware build leaves the host picotest VM built for the wrong target,
+      # so it is rebuilt here rather than reused.
+      - name: Rebuild the host VM and run the PicoRuby suites
+        run: |
+          bundle exec rake picotest:build
+          bundle exec rake test
+
+      - name: Run the CRuby host tests
+        run: bundle exec rake test:host

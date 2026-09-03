@@ -26,7 +26,7 @@ the README has the table. Speech is 8 kHz mu-law at gain 0.05 — nothing clips
 digitally at any gain, so audible break-up is the 1 W speaker being overdriven.
 
 Tests: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 / aw88298 14,
-skip 0, plus six CRuby host files, 53 tests.
+skip 0, plus six CRuby host files, 51 tests.
 
 The reproducibility guard works. `git push` runs `tools/check_deps_pushed.sh
 --pins-only` through `tools/hooks/pre_push_guard.sh`, and a push whose pins would
@@ -37,15 +37,10 @@ the push was refused naming it; the remote was restored and the push went
 through. `test-host/deps_guard_test.rb` builds git fixtures broken in each way
 the guard has been wrong and asserts it says so, without touching the network.
 
-Prevention sits in two layers. `.githooks/pre-push` is git's own hook, and
-`core.hooksPath` points this checkout and every vendored tree at it, so a push
-is checked whether it comes from a terminal, an IDE, a rake task or Claude;
-`rake vendor:install_hooks` sets that and `vendor:uninstall_hooks` takes it
-back. The Claude Code hook covers the same ground where it can refuse before
-the command is spawned. `STACKCHAN_DEPS_GUARD=off` stands both down, which the
-one push that publishes a pin needs. Both were watched refusing a real push
-with a leaf submodule pointed at a directory on this disk, the git one with the
-Claude hook moved aside so it had to stand on its own.
+Prevention is the Claude Code hook and nothing under it: a git `core.hooksPath`
+layer was built and taken back out, because it has to be configured per clone
+and Claude is what does the pushing here. `STACKCHAN_DEPS_GUARD=off` stands it
+down, which the one push that publishes a pin needs.
 
 The full run walks 19 pins, 6 refs, 5 gem clones and 30 branches across 21
 repositories in six seconds. Detection is `.github/workflows/deps.yml`, which
@@ -56,11 +51,21 @@ fool. It cannot build, so a gem whose API drifted still passes it.
 
 ## Next
 
-### 1. What prevention still does not reach
+### 1. Watch the first firmware build that is not on this Mac
 
-`core.hooksPath` is per clone and cannot be committed, so a checkout where
-`rake vendor:install_hooks` has not run is unguarded. That is the honest
-ceiling of this approach.
+`.github/workflows/firmware.yml` builds in `espressif/idf:v5.4.2` — the version
+`git describe` reports in the esp-idf this machine builds with — from a fresh
+clone, then runs both suites. Until it has gone green once, "it works on another
+machine" is still an assumption. It runs weekly and on demand, not per push,
+because a full esp-idf build is tens of minutes.
+
+Reaching it needed the Rakefile to stop spelling one machine's paths:
+`ESP_IDF_EXPORT` and `ESP_PYTHON` are now overridable, and the venv is found by
+version rather than named — this machine has idf5.4_py3.9, py3.12 and py3.14
+installed, and a string sort would have picked 3.9.
+
+A green run still says nothing about whether the robot moves. Only the bench
+says that.
 
 Branch protection is settled and small: **main and master only.** The refs this
 build depends on are mostly long-lived integration branches
