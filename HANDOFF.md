@@ -15,7 +15,7 @@ playback.
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main`, **not yet on `origin/main`, which is still at `03f8ee4`** |
+| `stackchan-picoruby` | `main` @ `058d9a4`, pushed |
 | firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `7258676` (on GitHub as `stackchan-integration-verified`) |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
@@ -48,21 +48,15 @@ with a leaf submodule pointed at a directory on this disk, the git one with the
 Claude hook moved aside so it had to stand on its own.
 
 The full run walks 19 pins, 6 refs, 5 gem clones and 30 branches across 21
-repositories in six seconds.
+repositories in six seconds. Detection is `.github/workflows/deps.yml`, which
+runs the whole script from an empty runner on every push, on pull requests and
+weekly; it resolves all 19 nested pins from nothing and answers "every
+dependency is reachable from GitHub", which is the one judge local state cannot
+fool. It cannot build, so a gem whose API drifted still passes it.
 
 ## Next
 
-### 1. Push, then let CI say whether it holds up
-
-Nothing above is on GitHub yet. `.github/workflows/deps.yml` runs the same
-script from an empty runner, which is the only part of the guard that has not
-been exercised against the new code — a fresh clone with every nested submodule
-resolved is too large to reproduce here. Everything it depends on was checked
-locally instead: both ref extractions from the Rakefile return the right values,
-both refs exist on GitHub, all 20 submodule URLs name github.com, and a depth-1
-clone gives the `refs/remotes/origin/<branch>` the unpushed-commit check reads.
-
-### 2. What prevention still does not reach
+### 1. What prevention still does not reach
 
 `core.hooksPath` is per clone and cannot be committed, so a checkout where
 `rake vendor:install_hooks` has not run is unguarded. That is the honest
@@ -82,7 +76,7 @@ so a branch force-pushed away on GitHub reads as published until CI's fresh clon
 disagrees; and `STACKCHAN_DEPS_GUARD=off` is one string away for whoever finds
 the guard inconvenient.
 
-### 3. Subproject C, BLE reliability
+### 2. Subproject C, BLE reliability
 
 The defects under "Known issues" in the README: no retry on an ACK timeout, the
 ~45 s first `<A:done>` after a long idle, and `Daemon#stop` never reaching its
