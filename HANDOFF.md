@@ -15,7 +15,7 @@ playback.
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main` @ `d4e6b64`, **three commits ahead of `origin/main` (`03f8ee4`)** |
+| `stackchan-picoruby` | `main`, **not yet on `origin/main`, which is still at `03f8ee4`** |
 | firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `7258676` (on GitHub as `stackchan-integration-verified`) |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
