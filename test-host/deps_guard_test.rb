@@ -18,12 +18,19 @@ class DepsGuardTest < Test::Unit::TestCase
   DIR   = "/tmp/stackchan_deps_guard_test_#{Process.pid}"
 
   # http.proxy pointing at a closed port turns any fetch this guard attempts into
-  # an immediate refusal, so a test never waits on github.com.
+  # an immediate refusal, so a test never waits on github.com. The identity is
+  # here rather than configured per repository because `git submodule add` makes
+  # clones this file never touches, and a container has no global one to fall
+  # back on — which is how CI found this and a developer machine never would.
   OFFLINE = {
     "GIT_TERMINAL_PROMPT" => "0",
     "GIT_CONFIG_COUNT" => "1",
     "GIT_CONFIG_KEY_0" => "http.proxy",
     "GIT_CONFIG_VALUE_0" => "http://127.0.0.1:1",
+    "GIT_AUTHOR_NAME" => "deps guard test",
+    "GIT_AUTHOR_EMAIL" => "t@example.invalid",
+    "GIT_COMMITTER_NAME" => "deps guard test",
+    "GIT_COMMITTER_EMAIL" => "t@example.invalid",
   }.freeze
 
   def setup
@@ -44,7 +51,7 @@ class DepsGuardTest < Test::Unit::TestCase
 
   def new_repo(path)
     FileUtils.mkdir_p(path)
-    Open3.capture3("git", "init", "-q", "-b", "main", path)
+    Open3.capture3(OFFLINE, "git", "init", "-q", "-b", "main", path)
     git(path, "config", "user.email", "t@example.invalid")
     git(path, "config", "user.name", "t")
     commit(path, "one")
@@ -97,7 +104,7 @@ class DepsGuardTest < Test::Unit::TestCase
     repo!(sub)
     disk = File.join(DIR, "dev", "src", "github.com", "someone", File.basename(sub))
     FileUtils.mkdir_p(File.dirname(disk))
-    Open3.capture3("git", "clone", "-q", "--bare", sub, disk)
+    Open3.capture3(OFFLINE, "git", "clone", "-q", "--bare", sub, disk)
     git(sub, "remote", "set-url", "origin", disk)
   end
 
@@ -217,7 +224,7 @@ class DepsGuardTest < Test::Unit::TestCase
     clone = File.join(root, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
                       "picoruby", "build", "repos", "esp32-picoruby", File.basename(source))
     FileUtils.mkdir_p(File.dirname(clone))
-    Open3.capture3("git", "clone", "-q", source, clone)
+    Open3.capture3(OFFLINE, "git", "clone", "-q", source, clone)
     git(clone, "checkout", "-q", at)
     clone
   end
