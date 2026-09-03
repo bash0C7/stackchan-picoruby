@@ -182,6 +182,70 @@ class DepsGuardTest < Test::Unit::TestCase
     assert_match(/is not checked out/, out)
   end
 
+  # Switching a lineage means checking the submodule out somewhere else and
+  # building before the pointer is committed, which is this project's routine
+  # operation and the state in which what is built here is nobody else's build.
+  def test_a_submodule_sitting_off_its_pin_fails
+    root = new_tree("offpin")
+    sub = add_submodule(File.join(root, "vendor", "R2P2-ESP32"), new_repo(File.join(DIR, "src", "picoruby")), "picoruby")
+    publish(sub)
+    pinned = git(sub, "rev-parse", "HEAD").strip
+    moved = commit(sub, "somewhere else")
+    git(sub, "update-ref", "refs/remotes/origin/main", moved) # published, just not pinned
+
+    out, code = run_guard(root, "--pins-only")
+    assert_equal 2, code, out
+    assert_match(/checked out at #{moved} but pinned at #{pinned}/, out)
+  end
+
+  # --- the gem clones the build actually compiles --------------------------
+
+  # `conf.gem` clones into build/repos once and never pulls, so the firmware can
+  # be built from a commit the build_config stopped naming. `git:` takes a URL,
+  # which is what lets this run against a repository on disk.
+  def write_build_config(root, body)
+    firmware = File.join(root, "vendor", "R2P2-ESP32")
+    config = File.join(firmware, "components", "picoruby-esp32", "build_config")
+    FileUtils.mkdir_p(config)
+    File.write(File.join(config, "xtensa-esp-picoruby.rb"), body)
+    git(firmware, "add", "-A")
+    git(firmware, "commit", "-q", "-m", "name a gem")
+    publish(firmware)
+  end
+
+  def stage_gem_clone(root, source, at)
+    clone = File.join(root, "vendor", "R2P2-ESP32", "components", "picoruby-esp32",
+                      "picoruby", "build", "repos", "esp32-picoruby", File.basename(source))
+    FileUtils.mkdir_p(File.dirname(clone))
+    Open3.capture3("git", "clone", "-q", source, clone)
+    git(clone, "checkout", "-q", at)
+    clone
+  end
+
+  def test_a_stale_gem_clone_fails_even_though_the_ref_resolves
+    root, = new_full_tree("stalegem")
+    gem = new_repo(File.join(DIR, "src", "picoruby-widget"))
+    old = git(gem, "rev-parse", "HEAD").strip
+    commit(gem, "two")
+    write_build_config(root, "conf.gem git: '#{gem}', branch: 'main'\n")
+    stage_gem_clone(root, gem, old)
+
+    out, code = run_guard(root)
+    assert_equal 2, code, out
+    assert_match(/build\/repos clone is at #{old}/, out)
+  end
+
+  def test_a_gem_clone_at_the_named_commit_passes
+    root, = new_full_tree("freshgem")
+    gem = new_repo(File.join(DIR, "src", "picoruby-widget"))
+    write_build_config(root, "conf.gem git: '#{gem}', branch: 'main'\n")
+    stage_gem_clone(root, gem, git(gem, "rev-parse", "HEAD").strip)
+
+    out, code = run_guard(root)
+    assert_equal 0, code, out
+    assert_match(/its build\/repos clone is at that commit/, out)
+  end
+
   # --- the vendored trees themselves --------------------------------------
 
   # The full run reads the build_config and expects every tree to look published,

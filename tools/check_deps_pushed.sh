@@ -95,7 +95,7 @@ reachable_from_github() { # dir sha
 # be checked out there. `local` is not POSIX but every /bin/sh that runs this
 # (bash on macOS, dash on the runner) has it, and the recursion needs it.
 check_pins() { # dir commit label
-  local dir="$1" commit="$2" label="$3" list sha path sub name
+  local dir="$1" commit="$2" label="$3" list sha path sub name head
   list="$WORK/pins.$(echo "$label" | tr -c 'A-Za-z0-9' '_')"
   if ! git -C "$dir" ls-tree -r "$commit" > "$list.raw" 2>/dev/null; then
     bad "$label pins $commit, which is not in its own object store — cannot read what it pins"
@@ -120,6 +120,14 @@ check_pins() { # dir commit label
       bad "$name pins $sha, which no GitHub ref reaches — push a branch containing it"
       continue
     fi
+    # Switching a lineage means checking a submodule out somewhere else and
+    # building before the pointer is committed. In that window the firmware here
+    # is not the one a clone builds, and `git status` says so only without
+    # --ignore-submodules, which the working-tree section needs. So ask directly.
+    head=$(git -C "$sub" rev-parse HEAD 2>/dev/null || echo '')
+    if [ -n "$head" ] && [ "$head" != "$sha" ]; then
+      bad "$name is checked out at $head but pinned at $sha — commit the pointer or check the pin back out"
+    fi
     check_pins "$sub" "$sha" "$name"
   done < "$list"
 }
@@ -139,19 +147,31 @@ if [ "$PINS_ONLY" = "1" ]; then
 fi
 
 echo "== gem and clone refs still resolve =="
+# The commit a ref stands for on GitHub, in one round trip. A tag is pinned
+# through `branch:` as well — picoruby's GemLoader has no `tag:` — and an
+# annotated one has to be followed to the commit it wraps, which is what a clone
+# would check out. HEAD stands for "whatever the default branch is".
+RESOLVED=""
+remote_sha() { # url ref
+  if [ "$2" = HEAD ]; then
+    git ls-remote "$1" HEAD 2>/dev/null | cut -f1
+    return 0
+  fi
+  git ls-remote "$1" "refs/heads/$2" "refs/tags/$2" "refs/tags/$2^{}" 2>/dev/null > "$WORK/lsr" || : > "$WORK/lsr"
+  awk '$2 ~ /\^\{\}$/ { d = $1 }
+       $2 ~ /^refs\/tags\// && $2 !~ /\^/ { t = $1 }
+       $2 ~ /^refs\/heads\// { h = $1 }
+       END { print (d != "" ? d : (t != "" ? t : h)) }' "$WORK/lsr"
+}
+
 resolves() { # slug-or-url ref label
+  # `github:` gives a slug; `git:` gives whatever git accepts, a path included.
   case "$1" in
-    http*|git@*) url="$1" ;;
+    *://*|git@*|/*) url="$1" ;;
     *) url="https://github.com/$1.git" ;;
   esac
-  # A tag is pinned through `branch:` as well: picoruby's GemLoader has no `tag:`.
-  # HEAD stands for "whatever the default branch is" and lives in neither set.
-  if [ "$2" = HEAD ]; then
-    found=$(git ls-remote "$url" HEAD 2>/dev/null)
-  else
-    found=$(git ls-remote --heads --tags "$url" "$2" 2>/dev/null)
-  fi
-  if [ -n "$found" ]; then
+  RESOLVED=$(remote_sha "$url" "$2")
+  if [ -n "$RESOLVED" ]; then
     note "$3 ok"
   else
     bad "$3 has no branch or tag '$2' — deleted when its pull request merged?"
@@ -163,16 +183,41 @@ resolves() { # slug-or-url ref label
 value_of() { printf '%s' "$2" | sed -n "s/.*$1: *['\"]\([^'\"]*\)['\"].*/\1/p"; }
 
 if [ -f "$BUILD_CONFIG" ]; then
-  grep 'conf\.gem' "$BUILD_CONFIG" | grep 'github:' > "$WORK/gemlines" || true
+  # `github:` and `git:` are both first-class in the loader (load_gems.rb takes
+  # exactly one of git, github, bitbucket, mgem, core, gemdir) and both end in
+  # fromGit!, which names the clone after the last component of the URL.
+  grep 'conf\.gem' "$BUILD_CONFIG" | grep -e 'github:' -e 'git:' > "$WORK/gemlines" || true
   while read -r line; do
     slug=$(value_of github "$line")
+    giturl=$(value_of git "$line")
     ref=$(value_of branch "$line")
+    if [ -n "$slug" ]; then
+      src="$slug"; clone=$(basename "$slug")
+    elif [ -n "$giturl" ]; then
+      src="$giturl"; clone=$(basename "$giturl" .git)
+    else
+      continue
+    fi
     if [ -z "$ref" ]; then
       # No branch: named, so the build follows the default branch wherever it goes.
-      resolves "$slug" HEAD "$slug (default branch)"
+      resolves "$src" HEAD "$src (default branch)"
     else
-      resolves "$slug" "$ref" "$slug $ref"
+      resolves "$src" "$ref" "$src $ref"
     fi
+    # A `conf.gem github:` gem is cloned into build/repos once and never pulled,
+    # so the firmware here can be built from a commit the build_config stopped
+    # naming long ago. CLAUDE.md says to compare by hand and rm -rf on a
+    # mismatch; this is that comparison.
+    [ -n "$RESOLVED" ] || continue
+    for cache in "$R2P2/components/picoruby-esp32/picoruby/build/repos"/*/"$clone"; do
+      [ -e "$cache/.git" ] || continue
+      cached=$(git -C "$cache" rev-parse HEAD 2>/dev/null || echo '')
+      if [ "$cached" = "$RESOLVED" ]; then
+        note "  its build/repos clone is at that commit"
+      else
+        bad "$src's build/repos clone is at $cached, not $RESOLVED — rm -rf it so the build refetches"
+      fi
+    done
   done < "$WORK/gemlines"
 else
   bad "$BUILD_CONFIG is missing, so the firmware's gem refs were not checked"
