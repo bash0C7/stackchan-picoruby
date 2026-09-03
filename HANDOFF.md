@@ -11,11 +11,11 @@ belong here either — see "Where things are written" at the bottom.
 
 The robot works end to end with the drawing primitives and the mu-law decode in
 C: cold boot, BLE link, faces, blink, LEDs, servos, head touch, and audio
-playback. Both pull requests that produced it are merged.
+playback.
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main` @ `72acd8b` |
+| `stackchan-picoruby` | `main` @ `d4e6b64`, **three commits ahead of `origin/main` (`03f8ee4`)** |
 | firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `7258676` (on GitHub as `stackchan-integration-verified`) |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
@@ -24,57 +24,33 @@ playback. Both pull requests that produced it are merged.
 Face redraw is 0.16-0.21 s against a 0.18 s BLE floor, down from 0.42-0.67 s;
 the README has the table. Speech is 8 kHz mu-law at gain 0.05 — nothing clips
 digitally at any gain, so audible break-up is the 1 W speaker being overdriven.
-The faces and LEDs have been looked at and render as they did before.
 
 Tests: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 / aw88298 14,
-skip 0, plus five CRuby host files.
+skip 0, plus six CRuby host files, 48 tests.
 
-A fresh clone of the firmware tree resolves all 19 nested submodules; that was
-measured, not assumed.
+The reproducibility guard works. `git push` runs `tools/check_deps_pushed.sh
+--pins-only` through `tools/hooks/pre_push_guard.sh`, and a push whose pins would
+not survive is refused with the reason on stderr. That was measured, not
+inferred: the hook was watched firing on `git push`, on `git -C <dir> push` and
+on an absolute-path git; a leaf submodule was pointed at a local directory and
+the push was refused naming it; the remote was restored and the push went
+through. `test-host/deps_guard_test.rb` builds git fixtures broken in each way
+the guard has been wrong and asserts it says so, without touching the network.
+
+The full run walks 19 pins, 6 refs and 30 branches across 21 repositories in six
+seconds.
 
 ## Next
 
-### 1. The reproducibility guard does not work. Fix it first.
+### 1. Push, then let CI say whether it holds up
 
-`tools/check_deps_pushed.sh`, `.claude/settings.json` and
-`.github/workflows/deps.yml` were added to stop a dependency from existing only
-on one disk. Reviewed afterwards, and four defects are confirmed by measurement
-on this machine. **Prevention currently does nothing at all.** Fix in this
-order:
-
-1. **The push hook never fires.** `matcher` matches the tool *name* only, and a
-   value containing `(`, `)` or `*` becomes an unanchored regex tested against
-   the literal string `Bash` — so `"Bash(git push*)"` can never match. Command
-   filtering belongs in a separate `if` field on the hook handler
-   (`"if": "Bash(git *)"`). Confirmed against code.claude.com/docs/en/hooks and
-   by a `git push --dry-run` that produced no hook output. Note also that `if`
-   matching is per-subcommand against its own argv, so `git -C <dir> push` does
-   not prefix-match a `git push*` pattern — the pushes that matter here take
-   that form.
-2. **A local path is misclassified as GitHub.** `github_remotes` matches the
-   substring `github.com` anywhere in the URL, and clones on this machine live
-   under `~/dev/src/github.com/...`. Three of the four remotes on the picoruby
-   submodule are local directories and all three are treated as proof of
-   publication. Match the host, not the substring.
-3. **The documented setup cannot produce the Mac-side VM.**
-   `vendor:r2p2_darwin:setup` clones R2P2-darwin only; the `vendor/picoruby`
-   that `pc:vm_build` needs comes from R2P2-darwin's *own* `rake setup` (a plain
-   recursive clone, not a submodule), which nothing here invokes. CI never
-   creates it either, so the check skips it silently — and a check that skips is
-   a check that passes.
-4. **Nested submodule pins are invisible.** `ls-tree -r` stops at each gitlink,
-   so one pin is checked and the ten inside picoruby are not — including
-   `mrbgems/picoruby-mruby/lib/mruby`, which CLAUDE.md names as a drift point.
-
-Lower down, from the same review, unverified here: `$CLAUDE_PROJECT_DIR` does
-not follow into a worktree, so a push from `.worktrees/` validates the main
-checkout instead; the gem-ref `sed` needs `github:` first on the same physical
-line; no `pipefail`, so an uninitialised `vendor/R2P2-ESP32` passes the pin
-section vacuously; `pc/stackchan/Gemfile`'s git-sourced gem is outside the
-model; aw88298 is fetched from `main` while you work on a branch, so the tree
-and the firmware can disagree unnoticed; the toolchain pins live in prose and
-`ESP_PYTHON` hardcodes one venv; CI resolves refs but cannot build, so
-build_config and API drift pass it.
+The three commits above are local. `.github/workflows/deps.yml` runs the same
+script from an empty runner, which is the only part of the guard that has not
+been exercised against the new code — a fresh clone with every nested submodule
+resolved is too large to reproduce here. Everything it depends on was checked
+locally instead: both ref extractions from the Rakefile return the right values,
+both refs exist on GitHub, all 20 submodule URLs name github.com, and a depth-1
+clone gives the `refs/remotes/origin/<branch>` the unpushed-commit check reads.
 
 ### 2. Subproject C, BLE reliability
 
@@ -83,7 +59,25 @@ The defects under "Known issues" in the README: no retry on an ACK timeout, the
 reply. The daemon also died once with SIGPIPE right after a `selftest` and
 launchd restarted it; seen once, so it is not in the README.
 
-### Standing arrangements
+## Known and deliberately left alone
+
+- Both picoruby checkouts carry `mrbgems/picoruby-mruby/lib/estalloc` and
+  `mrbgems/picoruby-r2p2/lib/pico-extras` as untracked directories, left from
+  branches where those paths were submodules. At the pinned commit
+  `picoruby-machine/mrbgem.rake` reads `lib/estalloc` out of its own gem
+  directory and nothing reads either stray, so they change no build. The guard
+  names them on every full run. Deleting inside a vendored tree is destructive
+  and buys only tidiness, so it waits for a decision.
+- `Rakefile` spells one esp-idf python venv,
+  `~/.espressif/python_env/idf5.4_py3.14_env/bin/python`, and the toolchain
+  itself (esp-idf v5.4 at `~/esp/esp-idf`) is pinned in prose. Another machine
+  installing a different Python gets a different directory name and the device
+  tasks fail on it. Making the path discovered rather than spelled cannot be
+  verified without a firmware build, so it is untouched.
+- The push guard is a Claude Code hook, so it covers pushes made through the
+  Bash tool and not one typed into a terminal directly.
+
+## Standing arrangements
 
 - The R2P2-ESP32 fork's two branches differ by exactly one thing, the picoruby
   submodule pointer: `c-primitives-verified` holds `7258676`, which boots;
@@ -95,13 +89,16 @@ launchd restarted it; seen once, so it is not in the README.
 - PR #10 is a draft holding the pre-launchd daemon process-management work and
   the NimBLE port plan. Nothing about it has been reviewed; its own body says
   what to look at.
+- Publishing a pin is itself a push, so the guard would block the one command
+  that fixes it. Prefix that push with `STACKCHAN_DEPS_GUARD=off` and nothing
+  else.
 
 ## Where things are written
 
 Nothing that outlives the current task should be recorded in this file.
 
 - `README.md` — what the robot is and does, how to set it up and run it,
-  capabilities, known issues, and the latency measurements
+  capabilities, known issues, the latency measurements, and how the guard works
 - `CLAUDE.md` — how to work in this repo: build and deploy flow, the device
   skills, and the pitfalls worth knowing before touching hardware
 - this file — only the sections above
