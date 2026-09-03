@@ -396,10 +396,19 @@ remote naming another directory on this disk spells the string while proving
 nothing. It walks every pin, including the ten inside picoruby, and resolves the
 build trees through the main checkout so it answers the same from a worktree.
 
-It also reads the vendored trees themselves. Everything under `vendor/` is a copy
-of someone else's work, so an uncommitted edit there is code no clone can get —
-a worse version of the unpushed pin, since there is no commit at all. Those fail.
-Untracked leftovers from switching lineages are named rather than failed.
+It also reads the vendored trees themselves, because a tree can disagree with its
+own configuration in two more ways. A submodule checked out somewhere other than
+the sha its parent pins means the firmware on the bench is nobody else's build —
+the state you are in mid-way through switching a lineage. And a `conf.gem` clone
+under `build/repos` is fetched once and never pulled, so a ref that resolves on
+GitHub says nothing about the commit the build actually compiles. Both fail.
+
+Uncommitted edits in a vendored tree fail too: everything under `vendor/` is a
+copy of someone else's work, so an edit there is code no clone can get, which is
+a worse version of the unpushed pin since there is no commit at all. Two things
+are named rather than failed — untracked leftovers from switching lineages, and
+a file a committed patch is applied to at build time, which a fresh clone
+reproduces on its own.
 
 It runs in two places. Before every push, `tools/hooks/pre_push_guard.sh` (wired
 in `.claude/settings.json`) runs it in `--pins-only` mode and refuses the push if

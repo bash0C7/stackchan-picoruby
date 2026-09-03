@@ -26,7 +26,7 @@ the README has the table. Speech is 8 kHz mu-law at gain 0.05 — nothing clips
 digitally at any gain, so audible break-up is the 1 W speaker being overdriven.
 
 Tests: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 / aw88298 14,
-skip 0, plus six CRuby host files, 48 tests.
+skip 0, plus six CRuby host files, 51 tests.
 
 The reproducibility guard works. `git push` runs `tools/check_deps_pushed.sh
 --pins-only` through `tools/hooks/pre_push_guard.sh`, and a push whose pins would
@@ -37,8 +37,12 @@ the push was refused naming it; the remote was restored and the push went
 through. `test-host/deps_guard_test.rb` builds git fixtures broken in each way
 the guard has been wrong and asserts it says so, without touching the network.
 
-The full run walks 19 pins, 6 refs and 30 branches across 21 repositories in six
-seconds.
+The full run walks 19 pins, 6 refs, 5 gem clones and 30 branches across 21
+repositories in six seconds, and it is red right now for two true reasons: main
+is unpushed, and the `build/repos` clone of this repo is at `b743d62` while
+`main` is at `03f8ee4`, so a firmware build would compile that older aw88298.
+The subtree happens to be identical, so nothing is wrong on the device; clearing
+the clone is what makes the next build match its own configuration.
 
 ## Next
 
@@ -52,7 +56,31 @@ locally instead: both ref extractions from the Rakefile return the right values,
 both refs exist on GitHub, all 20 submodule URLs name github.com, and a depth-1
 clone gives the `refs/remotes/origin/<branch>` the unpushed-commit check reads.
 
-### 2. Subproject C, BLE reliability
+### 2. Prevention still has one path, not all of them
+
+The guard runs from a Claude Code hook, so it sees pushes made through the Bash
+tool and nothing else — not a terminal, not an IDE, not a rake task that pushes.
+Moving that layer down to git itself would cover them: a `pre-push` committed
+under `.githooks/`, with `rake vendor:setup` pointing `core.hooksPath` at it in
+this checkout and in the vendored trees, since those are where the pushes that
+matter happen. It stays one `git config` per clone away from automatic, which is
+the honest ceiling.
+
+Branch protection is settled and small: **main and master only.** The refs this
+build depends on are mostly long-lived integration branches
+(`c-primitives-verified`, `port-darwin`, `stackchan-integration`) and tags, which
+protection would not cover anyway, and a development branch disappearing when its
+pull request merges is correct behaviour. So those stay detection-only, which is
+what the ref check already does. Nothing is applied on GitHub yet.
+
+Smaller, and known: `--pins-only` checks pins and nothing else, so a rotted gem
+ref or an edited vendored tree passes at push time and is caught only by a full
+run; `reachable_from_github` answers from remote-tracking refs before fetching,
+so a branch force-pushed away on GitHub reads as published until CI's fresh clone
+disagrees; and `STACKCHAN_DEPS_GUARD=off` is one string away for whoever finds
+the guard inconvenient.
+
+### 3. Subproject C, BLE reliability
 
 The defects under "Known issues" in the README: no retry on an ACK timeout, the
 ~45 s first `<A:done>` after a long idle, and `Daemon#stop` never reaching its
@@ -74,8 +102,6 @@ launchd restarted it; seen once, so it is not in the README.
   installing a different Python gets a different directory name and the device
   tasks fail on it. Making the path discovered rather than spelled cannot be
   verified without a firmware build, so it is untouched.
-- The push guard is a Claude Code hook, so it covers pushes made through the
-  Bash tool and not one typed into a terminal directly.
 
 ## Standing arrangements
 
