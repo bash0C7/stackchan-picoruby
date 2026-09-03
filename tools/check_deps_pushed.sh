@@ -256,6 +256,20 @@ while read -r dir; do
       bad "$name branch '$b' has $n commit(s) on no GitHub remote"
     fi
   done < "$WORK/branches"
+
+  # A vendored tree is a copy of someone else's work and nothing more. An edit
+  # sitting in one exists in no commit at all, which is a worse version of the
+  # unpushed-commit problem: the firmware built here would use code no clone can
+  # get. Untracked files are usually leftovers from a lineage switch and are
+  # named rather than failed. --ignore-submodules keeps a dirty submodule from
+  # being reported twice, once here and once as itself.
+  if [ "$dir" != "$ROOT" ]; then
+    git -C "$dir" status --porcelain --ignore-submodules=all > "$WORK/dirt" 2>/dev/null || true
+    edited=$(grep -cv '^??' "$WORK/dirt" || true)
+    stray=$(grep -c '^??' "$WORK/dirt" || true)
+    [ "$edited" = "0" ] || bad "$name has $edited uncommitted change(s), so what is built here is in no commit"
+    [ "$stray" = "0" ] || note "$name has $stray untracked path(s) a fresh clone would not have"
+  fi
 done < "$WORK/repos.uniq"
 
 echo

@@ -396,6 +396,11 @@ remote naming another directory on this disk spells the string while proving
 nothing. It walks every pin, including the ten inside picoruby, and resolves the
 build trees through the main checkout so it answers the same from a worktree.
 
+It also reads the vendored trees themselves. Everything under `vendor/` is a copy
+of someone else's work, so an uncommitted edit there is code no clone can get —
+a worse version of the unpushed pin, since there is no commit at all. Those fail.
+Untracked leftovers from switching lineages are named rather than failed.
+
 It runs in two places. Before every push, `tools/hooks/pre_push_guard.sh` (wired
 in `.claude/settings.json`) runs it in `--pins-only` mode and refuses the push if
 a pin would not survive. Publishing a pin is itself a push, so that one command

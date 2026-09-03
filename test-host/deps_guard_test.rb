@@ -85,7 +85,8 @@ class DepsGuardTest < Test::Unit::TestCase
   def publish(sub, sha = nil)
     repo!(sub)
     sha ||= git(sub, "rev-parse", "HEAD").strip
-    git(sub, "remote", "set-url", "origin", "https://github.com/example/#{File.basename(sub)}.git")
+    verb = git(sub, "remote").split.include?("origin") ? "set-url" : "add"
+    git(sub, "remote", verb, "origin", "https://github.com/example/#{File.basename(sub)}.git")
     git(sub, "update-ref", "refs/remotes/origin/main", sha)
     sha
   end
@@ -179,6 +180,47 @@ class DepsGuardTest < Test::Unit::TestCase
     out, code = run_guard(root, "--pins-only")
     assert_equal 2, code, out
     assert_match(/is not checked out/, out)
+  end
+
+  # --- the vendored trees themselves --------------------------------------
+
+  # The full run reads the build_config and expects every tree to look published,
+  # so it is all set up here and left clean. An empty build_config asks nothing of
+  # the network. The picoruby submodule goes in last and both trees are published
+  # after it, so the only dirt is whatever the test itself makes.
+  def new_full_tree(name)
+    root = new_tree(name)
+    new_repo(root)
+    publish(root)
+    firmware = File.join(root, "vendor", "R2P2-ESP32")
+    config = File.join(firmware, "components", "picoruby-esp32", "build_config")
+    FileUtils.mkdir_p(config)
+    File.write(File.join(config, "xtensa-esp-picoruby.rb"), "# no gems\n")
+    git(firmware, "add", "-A")
+    git(firmware, "commit", "-q", "-m", "build_config")
+    sub = add_submodule(firmware, new_repo(File.join(DIR, "src", "#{name}-picoruby")), "picoruby")
+    publish(sub)
+    publish(firmware)
+    [root, sub]
+  end
+
+  def test_an_edit_that_lives_in_no_commit_fails
+    root, sub = new_full_tree("edited")
+    File.write(File.join(sub, "file.txt"), "patched here and nowhere else\n")
+
+    out, code = run_guard(root)
+    assert_equal 2, code, out
+    assert_match(/picoruby has 1 uncommitted change/, out)
+  end
+
+  def test_leftovers_from_a_lineage_switch_are_named_but_do_not_fail
+    root, sub = new_full_tree("strays")
+    FileUtils.mkdir_p(File.join(sub, "lib", "pico-extras"))
+    File.write(File.join(sub, "lib", "pico-extras", "leftover.txt"), "from another branch\n")
+
+    out, code = run_guard(root)
+    assert_equal 0, code, out
+    assert_match(/picoruby has 1 untracked path/, out)
   end
 
   # --- where the guard looks ----------------------------------------------
