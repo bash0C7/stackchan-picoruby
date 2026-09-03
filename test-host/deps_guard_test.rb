@@ -118,9 +118,17 @@ class DepsGuardTest < Test::Unit::TestCase
     root
   end
 
+  # The guard writes UTF-8 — its messages use em dashes — while a captured string
+  # is tagged with whatever the ambient locale says. A container sets none, so the
+  # bytes arrive tagged US-ASCII and matching a pattern against them raises rather
+  # than failing. Say what the encoding actually is.
+  def utf8(text)
+    text.dup.force_encoding("UTF-8")
+  end
+
   def run_guard(root, *args)
     out, err, status = Open3.capture3(OFFLINE, File.join(root, "tools", "check_deps_pushed.sh"), *args)
-    [out + err, status.exitstatus]
+    [utf8(out + err), status.exitstatus]
   end
 
   # --- the pins ------------------------------------------------------------
@@ -355,7 +363,7 @@ class DepsGuardTest < Test::Unit::TestCase
     payload = { tool_name: "Bash", tool_input: { command: command, description: "d" } }
     _, err, status = Open3.capture3(File.join(dir, "tools", "hooks", "pre_push_guard.sh"),
                                     stdin_data: JSON.generate(payload))
-    { ran: File.exist?(ran), stderr: err, code: status.exitstatus }
+    { ran: File.exist?(ran), stderr: utf8(err), code: status.exitstatus }
   end
 
   def hook_decision(command)
