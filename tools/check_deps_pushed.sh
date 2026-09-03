@@ -183,6 +183,16 @@ resolves() { # slug-or-url ref label
 value_of() { printf '%s' "$2" | sed -n "s/.*$1: *['\"]\([^'\"]*\)['\"].*/\1/p"; }
 
 if [ -f "$BUILD_CONFIG" ]; then
+  # One of the gems lives in this repo and is fetched from a branch, so the
+  # firmware can be built from a different aw88298 than the one sitting here.
+  here=""; remote=""
+  for r in $(github_remotes "$ROOT"); do
+    git -C "$ROOT" fetch --quiet "$r" 2>/dev/null || true
+    here=$(git -C "$ROOT" remote get-url "$r" | sed 's#.*github\.com[:/]##; s#\.git$##')
+    remote="$r"
+    break
+  done
+
   # `github:` and `git:` are both first-class in the loader (load_gems.rb takes
   # exactly one of git, github, bitbucket, mgem, core, gemdir) and both end in
   # fromGit!, which names the clone after the last component of the URL.
@@ -191,6 +201,7 @@ if [ -f "$BUILD_CONFIG" ]; then
     slug=$(value_of github "$line")
     giturl=$(value_of git "$line")
     ref=$(value_of branch "$line")
+    sub=$(value_of path "$line")
     if [ -n "$slug" ]; then
       src="$slug"; clone=$(basename "$slug")
     elif [ -n "$giturl" ]; then
@@ -204,16 +215,39 @@ if [ -f "$BUILD_CONFIG" ]; then
     else
       resolves "$src" "$ref" "$src $ref"
     fi
-    # A `conf.gem github:` gem is cloned into build/repos once and never pulled,
-    # so the firmware here can be built from a commit the build_config stopped
-    # naming long ago. CLAUDE.md says to compare by hand and rm -rf on a
-    # mismatch; this is that comparison.
+    # Working tree against the branch the build fetches from, for the gem that
+    # lives here. Reporting is not failing: on a feature branch the two are
+    # supposed to differ until it lands.
+    if [ -n "$sub" ] && [ -n "$here" ] && [ "$slug" = "$here" ]; then
+      if git -C "$ROOT" diff --quiet "$remote/$ref" -- "$sub" 2>/dev/null; then
+        note "  $sub here matches that branch"
+      else
+        note "  $sub here differs from that branch, which is what the build fetches"
+      fi
+    fi
+
+    # A `conf.gem` gem is cloned into build/repos once and never pulled, so the
+    # firmware here can be built from a commit the build_config stopped naming
+    # long ago.
     [ -n "$RESOLVED" ] || continue
     for cache in "$R2P2/components/picoruby-esp32/picoruby/build/repos"/*/"$clone"; do
       [ -e "$cache/.git" ] || continue
       cached=$(git -C "$cache" rev-parse HEAD 2>/dev/null || echo '')
+      # A `path:` gem takes one subdirectory, so an older clone only matters when
+      # that subdirectory differs. Without this, every push to main would leave
+      # every clone of this repo stale by definition. The subtrees are read here,
+      # in the superproject, because the clone is shallow and holds one commit.
+      same_content=no
       if [ "$cached" = "$RESOLVED" ]; then
-        note "  its build/repos clone is at that commit"
+        same_content=yes
+      elif [ -n "$sub" ] && [ -n "$here" ] && [ "$slug" = "$here" ] &&
+           [ "$(git -C "$ROOT" rev-parse "$cached:$sub" 2>/dev/null || echo a)" = \
+             "$(git -C "$ROOT" rev-parse "$RESOLVED:$sub" 2>/dev/null || echo b)" ]; then
+        note "  its build/repos clone is at $cached, older, but $sub there is identical"
+        same_content=yes
+      fi
+      if [ "$same_content" = yes ]; then
+        [ "$cached" = "$RESOLVED" ] && note "  its build/repos clone is at that commit"
       else
         # The loader clones --depth 1 and returns early ever after, so the old
         # commit is unreachable the moment HEAD moves and a gc would take it.
@@ -229,32 +263,6 @@ if [ -f "$BUILD_CONFIG" ]; then
   done < "$WORK/gemlines"
 else
   bad "$BUILD_CONFIG is missing, so the firmware's gem refs were not checked"
-fi
-
-# One of those gems lives in this repo and is fetched from a branch, so the
-# firmware can be built from a different aw88298 than the one sitting here.
-# Reporting it is not the same as failing: on a feature branch the two are
-# supposed to differ until the branch lands.
-if [ -f "$BUILD_CONFIG" ]; then
-  here=""
-  for r in $(github_remotes "$ROOT"); do
-    git -C "$ROOT" fetch --quiet "$r" 2>/dev/null || true
-    here=$(git -C "$ROOT" remote get-url "$r" | sed 's#.*github\.com[:/]##; s#\.git$##')
-    remote="$r"
-    break
-  done
-  grep 'conf\.gem' "$BUILD_CONFIG" | grep 'path:' > "$WORK/pathgems" || true
-  while read -r line; do
-    slug=$(value_of github "$line")
-    ref=$(value_of branch "$line")
-    sub=$(value_of path "$line")
-    [ -n "$here" ] && [ "$slug" = "$here" ] || continue
-    if git -C "$ROOT" diff --quiet "$remote/$ref" -- "$sub" 2>/dev/null; then
-      note "$sub matches $slug $ref, which is what the firmware build fetches"
-    else
-      note "$sub here differs from $slug $ref, which is what the firmware build fetches"
-    fi
-  done < "$WORK/pathgems"
 fi
 
 # The Mac-side sidecar pins a gem by branch the same way a build_config does.
