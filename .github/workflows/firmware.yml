@@ -60,11 +60,25 @@ jobs:
           find vendor/R2P2-ESP32/build -maxdepth 1 -name '*.bin' -exec ls -l {} +
 
       # A firmware build leaves the host picotest VM built for the wrong target,
-      # so it is rebuilt here rather than reused.
+      # so it is rebuilt here rather than reused. picotest hands each suite to
+      # the VM as a separate process and keeps that process's stderr in
+      # /tmp/<Suite>_error, so a crash says only "exited before emitting result
+      # JSON" unless those files are read back out.
       - name: Rebuild the host VM and run the PicoRuby suites
         run: |
           bundle exec rake picotest:build
-          bundle exec rake test
+          vm=vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host/bin/picoruby
+          echo "== does the VM run at all? =="
+          "$vm" -e 'puts "vm ok"'
+          bundle exec rake test || {
+            status=$?
+            for f in /tmp/*_error; do
+              [ -s "$f" ] || continue
+              echo "=== $f ==="
+              cat "$f"
+            done
+            exit $status
+          }
 
       - name: Run the CRuby host tests
         run: bundle exec rake test:host
