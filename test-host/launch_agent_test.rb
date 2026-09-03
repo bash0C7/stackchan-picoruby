@@ -66,7 +66,11 @@ class LaunchAgentTest < Test::Unit::TestCase
     assert_equal "com.bash0c7.stackchan-it-daemon",  daemon(ns: "it")["Label"]
   end
 
+  # LaunchAgent.write hands the job to plutil, which exists only on macOS. Every
+  # other test here builds the job as data and needs nothing, so this is the one
+  # that has to say what it depends on rather than fail where it is absent.
   def test_write_produces_a_plist_that_plutil_accepts
+    omit "plutil is macOS-only" unless system("which", "plutil", out: File::NULL, err: File::NULL)
     dir = "/tmp/launch_agent_test_#{Process.pid}"
     path = LaunchAgent.write(daemon(ns: "it"), dir: dir)
     assert_equal File.join(dir, "com.bash0c7.stackchan-it-daemon.plist"), path
