@@ -44,7 +44,7 @@ seconds.
 
 ### 1. Push, then let CI say whether it holds up
 
-The three commits above are local. `.github/workflows/deps.yml` runs the same
+Nothing above is on GitHub yet. `.github/workflows/deps.yml` runs the same
 script from an empty runner, which is the only part of the guard that has not
 been exercised against the new code — a fresh clone with every nested submodule
 resolved is too large to reproduce here. Everything it depends on was checked
