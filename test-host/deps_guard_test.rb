@@ -213,6 +213,28 @@ class DepsGuardTest < Test::Unit::TestCase
     assert_match(/picoruby has 1 uncommitted change/, out)
   end
 
+  # picoruby-socket's mrbgem.rake `git apply`s a patch it carries onto the
+  # vendored lwip, so that file is modified on every machine that has ever built.
+  # Failing on it would make the guard permanently red, which is the same as off.
+  def test_a_file_a_committed_patch_targets_is_not_an_edit_made_by_hand
+    root, sub = new_full_tree("patched")
+    FileUtils.mkdir_p(File.join(sub, "patches"))
+    File.write(File.join(sub, "patches", "fix.patch"),
+               "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1,2 @@\n one\n+two\n")
+    git(sub, "add", "-A")
+    git(sub, "commit", "-q", "-m", "carry the patch")
+    publish(sub)
+    publish(File.join(root, "vendor", "R2P2-ESP32"), nil)
+    git(File.join(root, "vendor", "R2P2-ESP32"), "add", "-A")
+    git(File.join(root, "vendor", "R2P2-ESP32"), "commit", "-q", "-m", "move the pin")
+    publish(File.join(root, "vendor", "R2P2-ESP32"))
+    File.write(File.join(sub, "file.txt"), "one\ntwo\n") # what the patch produces
+
+    out, code = run_guard(root)
+    assert_equal 0, code, out
+    assert_match(/a committed patch is applied to at build time/, out)
+  end
+
   def test_leftovers_from_a_lineage_switch_are_named_but_do_not_fail
     root, sub = new_full_tree("strays")
     FileUtils.mkdir_p(File.join(sub, "lib", "pico-extras"))

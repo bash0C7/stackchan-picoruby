@@ -236,6 +236,19 @@ for extra in "$ROOT" "$DARWIN" "$DARWIN/vendor/picoruby"; do
   if [ -e "$extra/.git" ]; then echo "$extra" >> "$WORK/repos"; fi
 done
 sort -u "$WORK/repos" > "$WORK/repos.uniq"
+
+# picoruby-socket's mrbgem.rake `git apply`s a patch it carries onto the vendored
+# lwip, so that file is modified on every machine that has built. Collect what
+# every committed patch targets, so a file a build reproduces is not mistaken for
+# one someone edited by hand.
+: > "$WORK/patched"
+while read -r dir; do
+  git -C "$dir" ls-files '*.patch' 2>/dev/null > "$WORK/patchfiles" || : > "$WORK/patchfiles"
+  while read -r p; do
+    sed -n 's|^+++ b/||p' "$dir/$p" >> "$WORK/patched"
+  done < "$WORK/patchfiles"
+done < "$WORK/repos.uniq"
+
 while read -r dir; do
   if [ "$dir" = "$ROOT" ]; then name=$(basename "$dir"); else name=${dir#"$ROOT"/}; fi
   if [ -z "$(github_remotes "$dir")" ]; then
@@ -258,16 +271,27 @@ while read -r dir; do
   done < "$WORK/branches"
 
   # A vendored tree is a copy of someone else's work and nothing more. An edit
-  # sitting in one exists in no commit at all, which is a worse version of the
-  # unpushed-commit problem: the firmware built here would use code no clone can
-  # get. Untracked files are usually leftovers from a lineage switch and are
-  # named rather than failed. --ignore-submodules keeps a dirty submodule from
-  # being reported twice, once here and once as itself.
+  # made by hand in one exists in no commit at all, which is a worse version of
+  # the unpushed-commit problem: the firmware built here would use code no clone
+  # can get. An edit a build step applied from a patch committed in the tree is
+  # the opposite — a fresh clone builds its way to the same file — so those are
+  # named, as are untracked leftovers from a lineage switch.
+  # --ignore-submodules keeps a dirty submodule from being counted twice, once
+  # here and once as itself.
   if [ "$dir" != "$ROOT" ]; then
     git -C "$dir" status --porcelain --ignore-submodules=all > "$WORK/dirt" 2>/dev/null || true
-    edited=$(grep -cv '^??' "$WORK/dirt" || true)
-    stray=$(grep -c '^??' "$WORK/dirt" || true)
-    [ "$edited" = "0" ] || bad "$name has $edited uncommitted change(s), so what is built here is in no commit"
+    stray=0; expected=0; hand=0
+    while read -r st file _rest; do
+      if [ "$st" = "??" ]; then
+        stray=$((stray + 1))
+      elif grep -qxF "$file" "$WORK/patched"; then
+        expected=$((expected + 1))
+      else
+        hand=$((hand + 1))
+      fi
+    done < "$WORK/dirt"
+    [ "$hand" = "0" ] || bad "$name has $hand uncommitted change(s) no committed patch accounts for"
+    [ "$expected" = "0" ] || note "$name has $expected file(s) a committed patch is applied to at build time"
     [ "$stray" = "0" ] || note "$name has $stray untracked path(s) a fresh clone would not have"
   fi
 done < "$WORK/repos.uniq"
