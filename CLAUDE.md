@@ -101,7 +101,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 
 - `.rb` の直接 upload は禁止。必ず host で picorbc compile した `.mrb` を上げる (on-device compile は codegen stack overflow)。
 - firmware build は必ず clean build (`clean_picoruby_build` 依存を外さない)。undefined symbol が出たら source tree を grep し、無ければ object の陳腐化。
-- `build_config/xtensa-esp-picoruby.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem github:` の gem は `build/repos/` に cache され pull されない。gem を直したら `git -C <その path> log -1` で確認し、違えば `rm -rf` してから build。
+- `build_config/xtensa-esp-picoruby.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem` の gem は `build/repos/` に `--depth 1` で cache され、以後 pull されない。ずれは `tools/check_deps_pushed.sh` が検出し、戻れる形の commit 列 (`git branch keep-<sha>` → `fetch --depth 1` → `checkout --detach`) を出す。`rm -rf` は使わない — shallow clone なので消したら元の commit は戻らない。
 - sdkconfig fragment を編集しても `idf.py build` は再適用しない。`ensure_sdkconfig_fresh` が rake 側で処理する。CoreS3 は `sdkconfigs/cores3` (Quad PSRAM)。BLE-only build は coex を全部 `n` にしないと `coex_schm_lock` で panic する。
 - `idf.py flash` は storage 区画も焼くので `/home/app.mrb` が消える。flash 後は upload し直す。
 - storage erase は `rake r2p2:wipe_storage` を通す (offset は partition table 依存、手打ちしない)。

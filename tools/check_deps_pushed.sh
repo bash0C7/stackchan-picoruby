@@ -215,7 +215,15 @@ if [ -f "$BUILD_CONFIG" ]; then
       if [ "$cached" = "$RESOLVED" ]; then
         note "  its build/repos clone is at that commit"
       else
-        bad "$src's build/repos clone is at $cached, not $RESOLVED — rm -rf it so the build refetches"
+        # The loader clones --depth 1 and returns early ever after, so the old
+        # commit is unreachable the moment HEAD moves and a gc would take it.
+        # Naming it with a branch first makes moving the clone a door that opens
+        # both ways; deleting the clone is the one that does not.
+        keep="keep-$(printf '%.8s' "$cached")"
+        bad "$src's build/repos clone is at $cached, not $RESOLVED"
+        note "    cd ${cache#"$ROOT"/}"
+        note "    forward: git branch $keep $cached && git fetch --depth 1 origin $ref && git checkout --detach FETCH_HEAD"
+        note "    back:    git checkout --detach $keep"
       fi
     done
   done < "$WORK/gemlines"
