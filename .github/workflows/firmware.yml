@@ -28,11 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ruby
+      - name: Install ruby and what the host build links against
         run: |
           apt-get update -qq
-          # ruby-dev and a compiler because the Gemfile has a native gem.
-          apt-get install -y -qq ruby-full ruby-dev build-essential
+          # ruby-dev and a compiler because the Gemfile has a native gem, and
+          # libssl-dev because linking the host mrbc ends in -lm -lssl -lcrypto.
+          # The Espressif image carries the cross toolchain and nothing else.
+          apt-get install -y -qq ruby-full ruby-dev build-essential libssl-dev
           ruby -v
 
       - name: Install the gems the Rakefile needs
