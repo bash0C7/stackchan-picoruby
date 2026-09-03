@@ -82,7 +82,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 bundle exec rake test                 # picotest: device / pc / shared + 各 driver gem (host picoruby VM)
 SUITE=pc FILTER=stackchan_central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
-bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb、C gem 込み)。firmware build の後は必ず (症状: uninitialized constant Picotest)
+bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb、C gem 込み)。picoruby を更新した後に
 ```
 
 - device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + 抽出した application class + scservo source を VM に注入する (`test/picotest/harness.rb`)。C gem は host VM に compile されているので `require` で届く。

@@ -158,7 +158,7 @@ idempotent and recreates the launchd jobs each time.
 ### Tests
 
 ```bash
-bundle exec rake picotest:build        # host picoruby VM from build_config/picoruby-test.rb (also after any firmware build)
+bundle exec rake picotest:build        # host picoruby VM from build_config/picoruby-test.rb
 bundle exec rake test                  # picotest: device / pc / shared suites
 bundle exec rake test:host             # CRuby-only tools and the class extractor
 ```
@@ -167,9 +167,11 @@ bundle exec rake test:host             # CRuby-only tools and the class extracto
 firmware-build time rather than vendored here. It finds it in the firmware build tree, so run a device
 build once first, or point `SCSERVO_RB` at your own clone of `picoruby-scservo`.
 
-A firmware build overwrites the host picoruby VM with a non-picotest
-configuration, so `picotest:build` has to run again after one; the symptom of
-forgetting is `uninitialized constant Picotest`.
+The test VM builds as `host-picotest` and the firmware's own host tools build as
+`host`, so a firmware build cannot reach it. They shared `build/host` until CI
+built both in one job and every suite came up `uninitialized constant Picotest`:
+mruby does not treat MRUBY_CONFIG as a dependency of objects it has already
+built, so whichever config ran last simply kept what the other had left.
 
 ### Optional
 

@@ -26,7 +26,7 @@ the README has the table. Speech is 8 kHz mu-law at gain 0.05 — nothing clips
 digitally at any gain, so audible break-up is the 1 W speaker being overdriven.
 
 Tests: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 / aw88298 14,
-skip 0, plus six CRuby host files, 51 tests.
+skip 0, plus six CRuby host test files, 51 tests (ten of them omitted where plutil is absent).
 
 The reproducibility guard works. `git push` runs `tools/check_deps_pushed.sh
 --pins-only` through `tools/hooks/pre_push_guard.sh`, and a push whose pins would
@@ -47,25 +47,31 @@ repositories in six seconds. Detection is `.github/workflows/deps.yml`, which
 runs the whole script from an empty runner on every push, on pull requests and
 weekly; it resolves all 19 nested pins from nothing and answers "every
 dependency is reachable from GitHub", which is the one judge local state cannot
-fool. It cannot build, so a gem whose API drifted still passes it.
+fool.
+
+**This tree builds on a machine that is not this Mac.** That was an assumption
+and is now a measurement: `.github/workflows/firmware.yml` builds in
+`espressif/idf:v5.4.2` — the version `git describe` reports in the esp-idf here
+— from a fresh clone, and produces a 2.3 MB `R2P2-ESP32.bin` with 45% of the app
+partition free. It then rebuilds the host VM and runs every suite: picotest 376
+with no failures and no crashes, and the CRuby host tests with ten omissions,
+which are the tests that reach plutil. It runs weekly and on demand, not per
+push, because a full esp-idf build is tens of minutes.
+
+Getting it green took nine runs and turned up one real defect, two portability
+bugs in the guard's own fixtures, one undeclared platform dependency, one
+missing package and one place where picotest hides the reason a suite died.
+Reaching it also meant the Rakefile could no longer spell one machine's paths:
+`ESP_IDF_EXPORT` and `ESP_PYTHON` take overrides, and the venv is found by
+version rather than named — this machine has idf5.4_py3.9, py3.12 and py3.14,
+and a string sort picks 3.9.
+
+Nothing above says whether the robot moves. Only the bench says that, and
+neither workflow flashes anything.
 
 ## Next
 
-### 1. Watch the first firmware build that is not on this Mac
-
-`.github/workflows/firmware.yml` builds in `espressif/idf:v5.4.2` — the version
-`git describe` reports in the esp-idf this machine builds with — from a fresh
-clone, then runs both suites. Until it has gone green once, "it works on another
-machine" is still an assumption. It runs weekly and on demand, not per push,
-because a full esp-idf build is tens of minutes.
-
-Reaching it needed the Rakefile to stop spelling one machine's paths:
-`ESP_IDF_EXPORT` and `ESP_PYTHON` are now overridable, and the venv is found by
-version rather than named — this machine has idf5.4_py3.9, py3.12 and py3.14
-installed, and a string sort would have picked 3.9.
-
-A green run still says nothing about whether the robot moves. Only the bench
-says that.
+### 1. What the guard still does not reach
 
 Branch protection is settled and small: **main and master only.** The refs this
 build depends on are mostly long-lived integration branches
