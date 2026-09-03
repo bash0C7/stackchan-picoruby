@@ -1,8 +1,11 @@
 require 'test/unit'
+require 'needs_plutil'
 require 'fileutils'
 require 'pc_lifecycle'
 
 class PcLifecycleTest < Test::Unit::TestCase
+  include NeedsPlutil
+
   DIR     = "/tmp/pc_lifecycle_test_#{Process.pid}"
   APP_DIR = "/tmp/pc_lifecycle_test_app_#{Process.pid}"
   LOGDIR  = "/tmp/pc_lifecycle_test_log_#{Process.pid}"
@@ -61,6 +64,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   def test_up_writes_both_plists_from_the_requested_config
+    needs_plutil
     subject.up
     plist = File.read(File.join(DIR, "com.bash0c7.stackchan-it-sidecar.plist"))
     assert_match(/STACKCHAN_SIDECAR_STUB/, plist)
@@ -68,6 +72,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   def test_up_always_boots_out_before_bootstrapping
+    needs_plutil
     subject.up
     # `print` is a separate concern (the post-bootout unload wait, covered by
     # its own test below) -- filter it out so this assertion keeps saying
@@ -105,6 +110,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   # took a kickstart path it would restart yesterday's plist, and a stub
   # sidecar would keep answering after the caller asked for the real one.
   def test_a_second_up_installs_the_new_configuration
+    needs_plutil
     subject(stub: true).up
     @calls.clear
     subject(stub: false).up
@@ -118,6 +124,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   def test_up_fails_when_a_port_never_comes_up
+    needs_plutil
     @ports_ok = false
     assert_raise(PcLifecycle::Error) { subject.up }
   end
@@ -125,6 +132,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   # "listening" is not "connected": a daemon that answers DRb but has no link
   # must not be reported as a successful bring-up.
   def test_up_fails_when_the_daemon_is_not_ble_connected
+    needs_plutil
     @status = { ble_connected: false }
     assert_raise(PcLifecycle::Error) { subject.up }
   end
@@ -133,6 +141,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   # with a different message than "not connected" -- the operator needs to
   # know the daemon is unresponsive, not merely BLE-less.
   def test_up_fails_when_the_daemon_never_answers_status
+    needs_plutil
     @status = nil
     error = assert_raise(PcLifecycle::Error) { subject.up }
     assert_match(/did not answer status/, error.message)
@@ -163,12 +172,14 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   def test_up_fails_when_bootstrap_itself_fails
+    needs_plutil
     @bootstrap_result = ["bootstrap refused", false]
     error = assert_raise(PcLifecycle::Error) { subject.up }
     assert_match(/bootstrap refused/, error.message)
   end
 
   def test_up_creates_the_log_directory
+    needs_plutil
     FileUtils.rm_rf(LOGDIR)
     subject.up
     assert_true Dir.exist?(LOGDIR)
@@ -181,6 +192,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   def test_down_boots_out_both_jobs_and_removes_the_plists
+    needs_plutil
     subject.up
     @calls.clear
     subject.down

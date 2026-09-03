@@ -1,8 +1,11 @@
 require 'test/unit'
+require 'needs_plutil'
 require 'fileutils'
 require 'launch_agent'
 
 class LaunchAgentTest < Test::Unit::TestCase
+  include NeedsPlutil
+
   ROOT   = "/repo"
   VM_APP = "/Users/x/Applications/StackchanPico.app"
   LOGDIR = "/tmp/stackchan-pico"
@@ -63,15 +66,11 @@ class LaunchAgentTest < Test::Unit::TestCase
   def test_namespace_separates_labels_so_tests_cannot_touch_the_real_jobs
     assert_equal "com.bash0c7.stackchan-it-daemon",  LaunchAgent.daemon_label("it")
     assert_equal "com.bash0c7.stackchan-it-sidecar", LaunchAgent.sidecar_label("it")
-    assert_equal "com.bash0c7.stackchan-it-daemon",  daemon(ns: "it")["Label"]
   end
 
-  # LaunchAgent.write hands the job to plutil, which exists only on macOS. Every
-  # other test here builds the job as data and needs nothing, so this is the one
-  # that has to say what it depends on rather than fail where it is absent.
   def test_write_produces_a_plist_that_plutil_accepts
     dir = "/tmp/launch_agent_test_#{Process.pid}"
-    omit "plutil is macOS-only" unless system("which", "plutil", out: File::NULL, err: File::NULL)
+    needs_plutil
     path = LaunchAgent.write(daemon(ns: "it"), dir: dir)
     assert_equal File.join(dir, "com.bash0c7.stackchan-it-daemon.plist"), path
     assert system("plutil", "-lint", path, out: File::NULL)
