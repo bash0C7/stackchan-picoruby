@@ -15,7 +15,7 @@ playback.
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main` @ `058d9a4`, pushed |
+| `stackchan-picoruby` | `main` @ `3a46e2c`, pushed, both workflows green on it |
 | firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `7258676` (on GitHub as `stackchan-integration-verified`) |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
@@ -26,66 +26,40 @@ the README has the table. Speech is 8 kHz mu-law at gain 0.05 — nothing clips
 digitally at any gain, so audible break-up is the 1 W speaker being overdriven.
 
 Tests: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 / aw88298 14,
-skip 0, plus six CRuby host test files, 53 tests (ten of them omitted where plutil is absent).
+skip 0, plus six CRuby host test files, 53 tests (ten omitted where plutil is
+absent).
 
-The reproducibility guard works. `git push` runs `tools/check_deps_pushed.sh
---pins-only` through `tools/hooks/pre_push_guard.sh`, and a push whose pins would
-not survive is refused with the reason on stderr. That was measured, not
-inferred: the hook was watched firing on `git push`, on `git -C <dir> push` and
-on an absolute-path git; a leaf submodule was pointed at a local directory and
-the push was refused naming it; the remote was restored and the push went
-through. `test-host/deps_guard_test.rb` builds git fixtures broken in each way
-the guard has been wrong and asserts it says so, without touching the network.
+Two workflows answer two questions. `deps.yml` runs `tools/check_deps_pushed.sh`
+from an empty runner on every push and weekly, resolving all 19 nested submodule
+pins from nothing; that is the one judge local state cannot fool. `firmware.yml`
+builds in `espressif/idf:v5.4.2` from a fresh clone, produces a 2.3 MB
+`R2P2-ESP32.bin` with 45% of the app partition free, then rebuilds the host VM
+and runs every suite. It runs weekly and on demand, **not per push**, so after
+changing anything it covers, trigger it: `gh workflow run firmware.yml`.
 
-Prevention is the Claude Code hook and nothing under it: a git `core.hooksPath`
-layer was built and taken back out, because it has to be configured per clone
-and Claude is what does the pushing here. `STACKCHAN_DEPS_GUARD=off` stands it
-down, which the one push that publishes a pin needs.
-
-The full run walks 19 pins, 6 refs, 5 gem clones and 30 branches across 21
-repositories in six seconds. Detection is `.github/workflows/deps.yml`, which
-runs the whole script from an empty runner on every push, on pull requests and
-weekly; it resolves all 19 nested pins from nothing and answers "every
-dependency is reachable from GitHub", which is the one judge local state cannot
-fool.
-
-**This tree builds on a machine that is not this Mac.** That was an assumption
-and is now a measurement: `.github/workflows/firmware.yml` builds in
-`espressif/idf:v5.4.2` — the version `git describe` reports in the esp-idf here
-— from a fresh clone, and produces a 2.3 MB `R2P2-ESP32.bin` with 45% of the app
-partition free. It then rebuilds the host VM and runs every suite: picotest 376
-with no failures and no crashes, and the CRuby host tests with ten omissions,
-which are the tests that reach plutil. It runs weekly and on demand, not per
-push, because a full esp-idf build is tens of minutes.
-
-Getting it green took nine runs and turned up one real defect, two portability
-bugs in the guard's own fixtures, one undeclared platform dependency, one
-missing package and one place where picotest hides the reason a suite died.
-Reaching it also meant the Rakefile could no longer spell one machine's paths:
-`ESP_IDF_EXPORT` and `ESP_PYTHON` take overrides, and the venv is found by
-version rather than named — this machine has idf5.4_py3.9, py3.12 and py3.14,
-and a string sort picks 3.9.
-
-Nothing above says whether the robot moves. Only the bench says that, and
-neither workflow flashes anything.
+Before a push, the Claude Code hook in `.claude/settings.json` runs the guard in
+`--pins-only` mode and refuses a push whose pins would not survive, naming the
+one at fault on stderr. `STACKCHAN_DEPS_GUARD=off` in front of the command
+stands it down, which the push that publishes a pin needs.
 
 ## Next
 
-### 1. What the guard still does not reach
+### 1. The bench
 
-Branch protection is being handled separately. It would be main and master only,
-and the refs this build depends on are mostly long-lived integration branches
-(`c-primitives-verified`, `port-darwin`, `stackchan-integration`) and tags, which
-protection would not cover anyway, and a development branch disappearing when its
-pull request merges is correct behaviour. Those stay detection-only, which is
-what the ref check already does.
+Nothing here says whether the robot moves; neither workflow flashes, and there is
+no CoreS3 on a runner. **No CoreS3 is attached to this Mac either** — there is no
+`/dev/cu.usbmodem*`.
 
-Smaller, and known: `--pins-only` checks pins and nothing else, so a rotted gem
-ref or an edited vendored tree passes at push time and is caught only by a full
-run; `reachable_from_github` answers from remote-tracking refs before fetching,
-so a branch force-pushed away on GitHub reads as published until CI's fresh clone
-disagrees; and `STACKCHAN_DEPS_GUARD=off` is one string away for whoever finds
-the guard inconvenient.
+Nothing that goes into the firmware has moved: `vendor/R2P2-ESP32` is still
+`2f18720` with its picoruby pin at `7258676`, `app/application.rb` and
+`mrbgems/` are untouched, and `bin/mrbc` still resolves. So the device should
+still match this tree and `/stackchan-device-iterate` is the right first step
+rather than a rebuild — but "should" is inference, and the boot log is what
+settles it.
+
+On the Mac side, launchd holds both jobs: `com.bash0c7.stackchan-sidecar` is
+running and `com.bash0c7.stackchan-daemon` is not, so `rake pc:up` comes before
+any `stackchan` verb.
 
 ### 2. Subproject C, BLE reliability
 
@@ -94,12 +68,27 @@ The defects under "Known issues" in the README: no retry on an ACK timeout, the
 reply. The daemon also died once with SIGPIPE right after a `selftest` and
 launchd restarted it; seen once, so it is not in the README.
 
+### 3. What the guard still does not reach
+
+`--pins-only` checks pins and nothing else, so a rotted gem ref or an edited
+vendored tree passes at push time and is caught only by a full run.
+`reachable_from_github` answers from remote-tracking refs before fetching, so a
+branch force-pushed away on GitHub reads as published until CI's fresh clone
+disagrees. And `STACKCHAN_DEPS_GUARD=off` is one string away for whoever finds
+the guard inconvenient.
+
+Branch protection is being handled separately. It would be main and master only,
+and the refs this build depends on are mostly long-lived integration branches
+(`c-primitives-verified`, `port-darwin`, `stackchan-integration`) and tags, which
+protection would not cover anyway. Those stay detection-only, which is what the
+ref check already is.
+
 ## Known and deliberately left alone
 
-- The device tasks still expect esp-idf at `~/esp/esp-idf` unless
-  `ESP_IDF_EXPORT` says otherwise. The version is pinned where a machine reads
-  it — `espressif/idf:v5.4.2` in the firmware workflow — rather than only in
-  prose, and the python venv is found by version instead of named.
+- The device tasks expect esp-idf at `~/esp/esp-idf` unless `ESP_IDF_EXPORT` says
+  otherwise. The version is pinned where a machine reads it —
+  `espressif/idf:v5.4.2` in the firmware workflow — rather than only in prose,
+  and the python venv is found by version instead of named.
 
 ## Standing arrangements
 
