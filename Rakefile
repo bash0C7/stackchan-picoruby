@@ -26,9 +26,13 @@ namespace :vendor do
   end
 
   namespace :r2p2_darwin do
-    desc "Clone R2P2_DARWIN_REPO@R2P2_DARWIN_REF into vendor/R2P2-darwin (skip if present)"
+    desc "Clone R2P2_DARWIN_REPO@R2P2_DARWIN_REF into vendor/R2P2-darwin and fetch its picoruby"
     task :setup do
       sh "git clone --branch #{R2P2_DARWIN_REF} #{R2P2_DARWIN_REPO} #{R2P2_DARWIN_ROOT}" unless Dir.exist?(R2P2_DARWIN_ROOT)
+      # R2P2-darwin keeps picoruby as a plain clone under its own vendor/, not as a
+      # submodule, so cloning R2P2-darwin alone leaves pc:vm_build with nothing to
+      # build. Its `rake setup` is what fetches it, and it is idempotent.
+      sh "rake", "-C", R2P2_DARWIN_ROOT, "setup"
     end
   end
 end

@@ -2,11 +2,11 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash(git push*)",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/check_deps_pushed.sh\" --pins-only"
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/tools/hooks/pre_push_guard.sh\""
           }
         ]
       }

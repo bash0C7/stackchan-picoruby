@@ -114,7 +114,8 @@ either fetched by a rake task or pulled from GitHub at build time.
 git clone https://github.com/bash0C7/stackchan-picoruby.git
 cd stackchan-picoruby
 bundle install
-bundle exec rake vendor:setup          # clone vendor/R2P2-ESP32 and vendor/R2P2-darwin
+bundle exec rake vendor:setup          # clone both build trees and the picoruby
+                                       # each one builds from (several GB, slow)
 ```
 
 ### Device (ESP32-S3)
@@ -380,6 +381,30 @@ The WS2812 and Si12T drivers are mrbgems in this repo's `mrbgems/` bundled
 into `app.mrb` at compile time. `picoruby-aw88298` has a C part, so the
 firmware build_config fetches it from this repo:
 `conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`.
+
+### Staying reproducible
+
+Two of those pins can be satisfied on one disk and nowhere else. A submodule sha
+becomes fetchable only when someone pushes a branch containing it, and committing
+the pointer says nothing about whether that happened; a gem `branch:` disappears
+when its pull request is merged with "delete branch". Either one leaves a tree
+that builds here forever and stops a fresh clone dead.
+
+`tools/check_deps_pushed.sh` asks both questions, counting only URLs whose host is
+github.com — the clones on this machine sit under `~/dev/src/github.com/...`, so a
+remote naming another directory on this disk spells the string while proving
+nothing. It walks every pin, including the ten inside picoruby, and resolves the
+build trees through the main checkout so it answers the same from a worktree.
+
+It runs in two places. Before every push, `tools/hooks/pre_push_guard.sh` (wired
+in `.claude/settings.json`) runs it in `--pins-only` mode and refuses the push if
+a pin would not survive. Publishing a pin is itself a push, so that one command
+gets through by saying so: `STACKCHAN_DEPS_GUARD=off git -C … push …`. And
+`.github/workflows/deps.yml` clones the firmware tree from nothing on a schedule
+and runs the same script, which catches a ref that rots while nobody is looking.
+
+`test-host/deps_guard_test.rb` builds git fixtures that are broken in each of
+those ways and asserts the guard says so.
 
 ## Related repositories
 

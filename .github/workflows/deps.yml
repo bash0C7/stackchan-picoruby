@@ -7,7 +7,10 @@ name: dependencies are fetchable
 #
 # This does not build the firmware — that needs esp-idf and a toolchain — but it
 # fails on both ways the build has actually broken: a submodule pin that was
-# never pushed, and a gem branch deleted when its pull request merged.
+# never pushed, and a gem branch deleted when its pull request merged. The
+# recursive submodule update below is the stronger of the two checks: it resolves
+# every nested pin from an empty runner, which is exactly what a newcomer's first
+# clone does.
 #
 # The checks themselves live in tools/check_deps_pushed.sh, which is also what
 # the push hook runs, so there is one implementation rather than two that drift.
