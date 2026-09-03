@@ -8,14 +8,18 @@ require_relative "ulaw"
 module Stackchan::Voice
   # macOS text-to-speech -> 8 kHz mono mu-law bytes for the device.
   #
-  # Pipeline: `say -o aiff` (natural rate) -> `afconvert` resample to 8 kHz mono
+  # Pipeline: `say -o aiff` (natural rate) -> `afconvert` resample to mono
   # 16-bit PCM WAV -> pure-Ruby G.711 mu-law encode (with gain). afconvert does
   # only the resample; the mu-law encoding stays in Ruby so it round-trips
   # exactly against the device decoder and is host-tested without afconvert.
   class Tts
     class SynthError < StandardError; end
 
-    DEFAULT_GAIN = 0.1   # HITL 2026-06-19: 0.3 was far too loud on the 1W speaker (the bring-up tone was ~0.37 full-scale and painful); tune up per-run with --gain.
+    # The 1W speaker breaks up on peaks well before the digital path does:
+    # `say` output reaches only about 19900 of full scale and nothing clips
+    # through afconvert or the mu-law encode, so audible distortion is the
+    # speaker being overdriven, not the codec. Tune per run with --gain.
+    DEFAULT_GAIN = 0.05
 
     def initialize(voice: nil, gain: DEFAULT_GAIN, rate: nil)
       @voice = voice
@@ -37,7 +41,7 @@ module Stackchan::Voice
         run_say(text, aiff.path)
         run_afconvert(aiff.path, wav.path)
         fmt, data = Wav.parse(File.binread(wav.path))
-        Wav.expect_8k_mono_s16!(fmt)
+        Wav.expect_mono_s16!(fmt)
         data
       ensure
         aiff.close!
@@ -57,8 +61,8 @@ module Stackchan::Voice
     end
 
     def run_afconvert(in_path, out_path)
-      # -f WAVE -d LEI16@8000 -c 1 : WAV container, 8 kHz mono signed-16 LE PCM.
-      cmd = ["afconvert", "-f", "WAVE", "-d", "LEI16@8000", "-c", "1", in_path, out_path]
+      # WAV container, mono signed-16 LE PCM at the device's rate.
+      cmd = ["afconvert", "-f", "WAVE", "-d", "LEI16@#{Wav::SAMPLE_RATE}", "-c", "1", in_path, out_path]
       _out, err, st = Open3.capture3(*cmd)
       raise SynthError, "afconvert failed: #{err.strip}" unless st.success?
     end

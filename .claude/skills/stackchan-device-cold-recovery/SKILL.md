@@ -1,27 +1,10 @@
 ---
 name: stackchan-device-cold-recovery
-description: Standard recovery when device autostart is misbehaving — wipe storage, upload application, reset (~30 s total). Use when an upload reports that /home/app.mrb never returned, autostart loops, or LCD is unexpectedly blank after a deploy attempt.
+description: Wipe storage, upload application, reset (~30 s). Use when autostart misbehaves, an upload reports app.mrb never returned, or the LCD stays blank after a deploy.
 ---
 
-# stackchan-device-cold-recovery
+1. `stackchan-device-wipe`
+2. `stackchan-device-upload-app` with `SRC=app/application.rb` (or the given SRC)
+3. `stackchan-device-reset`
 
-## Mode
-
-Chain.
-
-## Action
-
-1. Invoke `stackchan-device-wipe` (clears /home/app.mrb).
-2. Invoke `stackchan-device-upload-app` with `SRC=$SRC` (default
-   `app/application.rb`).
-3. Invoke `stackchan-device-reset`.
-4. Report final status.
-
-## Required env
-
-- `SRC` (optional, defaults to application.rb)
-
-## Escalation
-
-If still failing after cold-recovery (2 attempts), escalate to
-`stackchan-device-full-rebuild` (the firmware itself may be stale).
+Still failing after two rounds → `stackchan-device-full-rebuild` (the firmware itself may be stale).

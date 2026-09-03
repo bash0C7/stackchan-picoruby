@@ -34,7 +34,7 @@ class DispatcherServoTest < Picotest::Test
     assert_equal [[781, 2000, 0]], @pitch_servo.writes
   end
 
-  # Direction regression guard (HITL 2026-05-25): YR is StackChan's right,
+  # Direction regression guard: YR is StackChan's right,
   # raw ABOVE the forward zero — the opposite sign from YL.
   def test_YR_drives_opposite_sign_from_YL
     @disp.handle({ "YR" => "50", "T" => "1000" })

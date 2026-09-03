@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
-# StackchanSidecar::Service -- the CRuby AI/voice sidecar's DRb-facing
-# object. Extracted from sidecar.rb (the process bootstrap) so it can be
-# exercised directly in tests without starting a DRb server.
+# The sidecar's DRb-facing object.
 require "timeout"
 
 module StackchanSidecar
@@ -12,14 +10,8 @@ module StackchanSidecar
             "ただの相槌や『はい』で済ませず、相手や場の状況に触れた具体的な返事をしてください。"
 
   class Service
-    # respond/synthesize each bound their real work in Timeout.timeout so a
-    # stuck Apple Intelligence call or a stuck say/afconvert TTS pipeline
-    # can't block this method forever -- the PicoRuby daemon's DRb client
-    # read has no yield point of its own (see docs/superpowers/specs/
-    # 2026-08-11-sidecar-call-timeout-design.md), so an unbounded sidecar
-    # response would freeze the whole daemon VM. timeout_s/delay_s are
-    # constructor overrides (not just ENV) so tests can force an exact, fast
-    # timeout without waiting the real default.
+    # Bounded by Timeout.timeout: the daemon's DRb read has no yield point, so
+    # an unbounded reply would freeze the daemon VM.
     DEFAULT_TIMEOUT_S = (ENV["STACKCHAN_SIDECAR_TIMEOUT_S"] || "60").to_i
 
     def initialize(stub: false, delay_s: nil, timeout_s: nil)
@@ -37,13 +29,9 @@ module StackchanSidecar
       "pong"
     end
 
-    # prompt: String, ctx: Hash (symbol keys, no Time -- the PicoRuby daemon
-    # cannot Marshal a Time). Returns the reply text (the daemon frames +
-    # sends), or nil on any failure including a Timeout::Error.
+    # ctx carries no Time (PicoRuby cannot Marshal one). nil on any failure.
     def respond(prompt, ctx = {})
-      # Strings arriving from PicoRuby over Marshal are tagged ASCII-8BIT;
-      # re-tag as UTF-8 at this boundary so interpolation with our literals
-      # doesn't raise Encoding::CompatibilityError.
+      # Strings from PicoRuby arrive ASCII-8BIT; re-tag UTF-8.
       prompt = u8(prompt)
       ctx = normalize_ctx(ctx)
       Timeout.timeout(@timeout_s) do
@@ -60,8 +48,6 @@ module StackchanSidecar
       nil
     end
 
-    # text -> 8 kHz mono mu-law bytes, or nil on any failure including a
-    # Timeout::Error. gain/rate default to the Tts defaults.
     def synthesize(text, gain = nil, rate = nil)
       text = u8(text)
       Timeout.timeout(@timeout_s) do

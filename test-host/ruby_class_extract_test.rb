@@ -92,4 +92,30 @@ class RubyClassExtractTest < Test::Unit::TestCase
     src.unlink
     out.unlink
   end
+
+  # ble_client.rb wraps its radio classes in `if Object.const_defined?(:BLE)`;
+  # the pc suite depends on the walker descending into that guard.
+  def test_classes_inside_if_guard_are_extracted
+    src = Tempfile.new(["guarded", ".rb"])
+    src.write(<<~RUBY)
+      module Pure
+        def self.one = 1
+      end
+      if Object.const_defined?(:BLE)
+        class Radio < BLE
+          def ping; end
+        end
+        class Central
+          def pump; end
+        end
+      end
+    RUBY
+    src.close
+    out = RubyClassExtract.extract_source_from(src.path)
+    assert out.include?("module Pure")
+    assert out.include?("class Radio < BLE")
+    assert out.include?("class Central")
+    refute out.include?("const_defined?"), "the if statement itself is not emitted, only its class bodies"
+    src.unlink
+  end
 end

@@ -1,11 +1,7 @@
-# StackChan CLI, PicoRuby port of pc/stackchan/lib/stackchan/cli.rb.
-# Talks to the daemon over picoruby-drb TCP loopback (the CRuby original used a
-# Unix-socket DRb; picoruby-drb is TCP/WS only).
-#
-# Scope (sub-project #3): device-control verbs. chat (AI) waits on the CRuby
-# sidecar bridge (#4); tui / demo / calibrate are ported later. The CRuby CLI's
-# auto-spawn of the daemon is deferred — here the daemon is started separately;
-# a verb against an unreachable daemon reports "not connected".
+# StackChan CLI. Talks to the daemon over picoruby-drb TCP loopback
+# (picoruby-drb is TCP/WS only). The daemon is a launchd job started by
+# `rake pc:up`; a verb against an unreachable daemon reports
+# NOT_RUNNING_MESSAGE, which names that command.
 module Stackchan
   class CLI
     VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui calibrate].freeze
@@ -18,36 +14,26 @@ module Stackchan
         return 1
       end
       DRb.start_service
-      daemon = attach_or_spawn(host, port, !OBSERVE_ONLY.include?(verb))
+      daemon = attach(host, port)
       if daemon.nil?
-        out "stackchan: not connected. start the daemon, or set STACKCHAN_DAEMON_SPAWN " \
-            "to a shell command that launches it (auto-spawn)."
+        out NOT_RUNNING_MESSAGE
         return OBSERVE_ONLY.include?(verb) ? 0 : 1
       end
       new(daemon).dispatch(verb, args)
     end
 
-    # Attach to a running daemon. Daemon/sidecar process lifecycle (spawning)
-    # is the `stackchan` shell wrapper's job — PicoRuby's `system` cannot
-    # background or redirect, so the CLI itself only attaches. When the wrapper
-    # has just launched the daemon, a non-observe verb polls up to ~15s for it
-    # to accept; observe-only verbs (status) check once. Returns a live
-    # DRbObject or nil.
-    def self.attach_or_spawn(host, port, wait_for_daemon)
-      uri = "druby://#{host}:#{port}"
-      attempts = wait_for_daemon ? 30 : 1
-      tries = 0
-      while tries < attempts
-        d = DRb::DRbObject.new_with_uri(uri)
-        begin
-          d.status   # force a real round-trip
-          return d
-        rescue StandardError
-          tries += 1
-          return nil if tries >= attempts
-          sleep 0.5
-        end
-      end
+    NOT_RUNNING_MESSAGE =
+      "stackchan: backends are not running. Start them with:\n" \
+      "  bundle exec rake pc:up"
+
+    def self.attach(host, port, drb_factory: nil, warn_fn: nil)
+      factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
+      d = factory.call("druby://#{host}:#{port}")
+      d.status   # force a real round-trip
+      d
+    rescue StandardError => e
+      # Broad on purpose: a stopped daemon raises SocketError, not DRbConnError.
+      warn_fn ? warn_fn.call(e) : $stderr.write("stackchan: attach failed: #{e.class}: #{e.message}\n")
       nil
     end
 
@@ -156,9 +142,7 @@ module Stackchan
       end
     end
 
-    # Demo: scripted intro performance (LED/face/servo cycling + say). Port of
-    # Stackchan::Demo. Uses a step count, not a Time deadline (no Time on
-    # PicoRuby), and passes servo poses as positional Hashes (drb has no kwargs).
+    # Step count, not a Time deadline (no Time on PicoRuby).
     DEMO_SPEECH_RATE = 250   # wpm — faster speech => fewer bytes => less BLE timing exposure
     DEMO_INTRO_LINE = "ぼくスタックチャン！"
     DEMO_OUTRO_LINE = "タッチしてみて"
@@ -237,8 +221,7 @@ module Stackchan
       out "  detail: #{detail.inspect}" if detail
     end
 
-    # Calibration: operator-paced 5-pose flow (or --align-only). Port of
-    # Stackchan::Calibrate::Runner. Exit codes: 0 ok, 6 device-unknown, 7 verify-fail.
+    # Exit codes: 0 ok, 6 device-unknown, 7 verify-fail.
     def verb_calibrate(args)
       align_only = delete_flag(args, "--align-only")
       engage     = delete_flag(args, "--engage-torque")

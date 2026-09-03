@@ -6,7 +6,11 @@
 # HITL calibration validates visual correctness once, then the dump locks
 # the geometry for all future regression runs.
 class FaceGoldenTest < Picotest::Test
-  GOLDEN_DIR = File.expand_path("../../spec/golden", File.dirname(__FILE__)) # __dir__ is unavailable on PicoRuby — use File.dirname(__FILE__)
+  # picotest loads this class from a generated /tmp driver, so File.dirname(__FILE__)
+  # points at /tmp, not at the repo, so resolving spec/golden against it yields a
+  # path that does not exist. test/picotest/harness.rb exports the repo root for
+  # exactly this.
+  GOLDEN_DIR = File.join(ENV["STACKCHAN_REPO_ROOT"].to_s, "spec", "golden")
 
   FACE_CASES = FaceGoldenHash::FACE_CASES
 
@@ -16,8 +20,11 @@ class FaceGoldenTest < Picotest::Test
     define_method("test_#{name}_matches_golden") do
       golden_path = File.join(GOLDEN_DIR, "face_#{name}.dump")
       actual = self.class.compute_dump(klass)
+      # Raise rather than skip. A skip makes an unreadable golden indistinguishable
+      # from a passing one, which is how a wrong GOLDEN_DIR reports all seven faces
+      # green while asserting nothing.
       unless File.exist?(golden_path)
-        skip "no golden registered for face_#{name}; run `rake face:register_golden FACE=#{name}`"
+        raise "no golden at #{golden_path}; run `rake face:register_golden FACE=#{name}`"
       end
       expected = File.read(golden_path)
       assert_equal expected, actual

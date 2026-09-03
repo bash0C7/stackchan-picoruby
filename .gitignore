@@ -5,11 +5,14 @@
 /build/
 pc/*/tmp/
 .claude/settings.local.json
-/HANDOFF.md
-/docs/superpowers/
 
 # fetched build trees (rake vendor:setup) — never committed
 /vendor/
+
+# Bundler project-local settings (gems live in vendor/bundle, already ignored)
+/.bundle/
+/pc/stackchan/.bundle/
+/pc/stackchan/vendor/
 
 # git worktree scratch (superpowers subagent-driven-development)
 /.worktrees/
