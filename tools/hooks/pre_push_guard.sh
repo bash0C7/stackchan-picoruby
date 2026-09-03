@@ -11,7 +11,7 @@
 #
 # The match is deliberately loose: it wants a `git ` invocation with a later
 # ` push`, so `git commit -m "... push ..."` runs the check too. A needless run
-# costs three seconds; a missed push costs a tree that builds on one disk only.
+# costs under two seconds; a missed push costs a tree that builds on one disk only.
 #
 # To push the branch that publishes a pin, put STACKCHAN_DEPS_GUARD=off in front
 # of the command: that push is the cure, and the guard would otherwise block it.
