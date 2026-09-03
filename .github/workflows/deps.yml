@@ -1,0 +1,56 @@
+name: dependencies are fetchable
+
+# The firmware is assembled from four repositories plus a submodule pinned by
+# sha. Every one of those references resolves on the machine that created it
+# whether or not it was ever published, so the only honest test is to start
+# from an empty runner and see whether the pieces arrive.
+#
+# This does not build the firmware — that needs esp-idf and a toolchain — but it
+# fails on both ways the build has actually broken: a submodule pin that was
+# never pushed, and a gem branch deleted when its pull request merged.
+#
+# The checks themselves live in tools/check_deps_pushed.sh, which is also what
+# the push hook runs, so there is one implementation rather than two that drift.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A gem ref can rot without anyone touching this repository, so ask again on
+    # a fixed cadence rather than only when something here changes.
+    - cron: "17 21 * * 1"
+  workflow_dispatch:
+
+jobs:
+  fresh-clone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone the firmware tree at the ref the Rakefile pins
+        run: |
+          ref=$(sed -n 's/^R2P2_ESP32_REF *= *ENV\[[^]]*\] *|| *"\([^"]*\)".*/\1/p' Rakefile)
+          test -n "$ref" || { echo "could not read R2P2_ESP32_REF from Rakefile"; exit 1; }
+          echo "firmware tree ref: $ref"
+          git clone --branch "$ref" https://github.com/bash0C7/R2P2-ESP32.git vendor/R2P2-ESP32
+
+      - name: Resolve every submodule it pins
+        run: |
+          # An unpushed pin fails right here, which is the failure this job exists
+          # for: it is invisible on the machine that created it.
+          git -C vendor/R2P2-ESP32 submodule update --init --recursive
+          git -C vendor/R2P2-ESP32 submodule status --recursive | sed 's/^/  /'
+          unresolved=$(git -C vendor/R2P2-ESP32 submodule status --recursive | grep -c '^-' || true)
+          test "$unresolved" = "0" || { echo "$unresolved submodule(s) unresolved"; exit 1; }
+
+      - name: Clone the Mac-side tree at the ref the Rakefile pins
+        run: |
+          ref=$(sed -n 's/^R2P2_DARWIN_REF *= *ENV\[[^]]*\] *|| *"\([^"]*\)".*/\1/p' Rakefile)
+          test -n "$ref" || { echo "could not read R2P2_DARWIN_REF from Rakefile"; exit 1; }
+          git clone --depth 1 --branch "$ref" \
+            https://github.com/bash0C7/R2P2-darwin.git vendor/R2P2-darwin
+          echo "  ok   R2P2-darwin $ref"
+
+      - name: Check every reference against GitHub
+        run: tools/check_deps_pushed.sh
