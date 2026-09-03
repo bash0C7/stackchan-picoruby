@@ -250,6 +250,50 @@ class DepsGuardTest < Test::Unit::TestCase
     assert_match(/build\/repos clone is at #{old}/, out)
   end
 
+  # The gem that lives in this repository is taken one subdirectory at a time, so
+  # a clone left behind by a commit that did not touch that subdirectory builds
+  # the same thing. Without this, every push would leave every clone stale by
+  # definition and the check would be permanently red. `git:` pointing at the
+  # tree itself is what lets a fixture stand where this repository stands.
+  def test_a_clone_older_than_the_branch_passes_when_the_subtree_is_unchanged
+    root, = new_full_tree("subtree-same")
+    FileUtils.mkdir_p(File.join(root, "mrbgems", "picoruby-widget"))
+    File.write(File.join(root, "mrbgems", "picoruby-widget", "widget.c"), "int widget(void);\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "the gem")
+    old = git(root, "rev-parse", "HEAD").strip
+    commit(root, "something else entirely") # moves HEAD, leaves the gem alone
+    publish(root)
+
+    write_build_config(root, "conf.gem git: '#{root}', branch: 'main', path: 'mrbgems/picoruby-widget'\n")
+    stage_gem_clone(root, root, old)
+
+    out, code = run_guard(root)
+    assert_equal 0, code, out
+    assert_match(/older, but mrbgems\/picoruby-widget there is identical/, out)
+  end
+
+  def test_a_clone_older_than_the_branch_fails_when_the_subtree_changed
+    root, = new_full_tree("subtree-moved")
+    FileUtils.mkdir_p(File.join(root, "mrbgems", "picoruby-widget"))
+    File.write(File.join(root, "mrbgems", "picoruby-widget", "widget.c"), "int widget(void);\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "the gem")
+    old = git(root, "rev-parse", "HEAD").strip
+    File.write(File.join(root, "mrbgems", "picoruby-widget", "widget.c"), "int widget(int);\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "change the gem")
+    publish(root)
+
+    write_build_config(root, "conf.gem git: '#{root}', branch: 'main', path: 'mrbgems/picoruby-widget'\n")
+    stage_gem_clone(root, root, old)
+
+    out, code = run_guard(root)
+    assert_equal 2, code, out
+    assert_match(/build\/repos clone is at #{old}/, out)
+    assert_match(/forward: git branch keep-/, out)
+  end
+
   def test_a_gem_clone_at_the_named_commit_passes
     root, = new_full_tree("freshgem")
     gem = new_repo(File.join(DIR, "src", "picoruby-widget"))

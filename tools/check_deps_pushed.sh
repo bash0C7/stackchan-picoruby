@@ -215,10 +215,20 @@ if [ -f "$BUILD_CONFIG" ]; then
     else
       resolves "$src" "$ref" "$src $ref"
     fi
+    # Is this gem this repository? Both comparisons below need to know, and both
+    # read commits only this repository holds — a build/repos clone is shallow
+    # and has one. `github:` names it by slug; `git:` names it by pointing at
+    # this working tree or at its remote.
+    mine=no
+    [ -n "$here" ] && [ "$slug" = "$here" ] && mine=yes
+    [ -n "$giturl" ] && [ "$giturl" = "$ROOT" ] && mine=yes
+    [ -n "$giturl" ] && [ -n "$remote" ] &&
+      [ "$giturl" = "$(git -C "$ROOT" remote get-url "$remote")" ] && mine=yes
+
     # Working tree against the branch the build fetches from, for the gem that
     # lives here. Reporting is not failing: on a feature branch the two are
     # supposed to differ until it lands.
-    if [ -n "$sub" ] && [ -n "$here" ] && [ "$slug" = "$here" ]; then
+    if [ -n "$sub" ] && [ "$mine" = yes ]; then
       if git -C "$ROOT" diff --quiet "$remote/$ref" -- "$sub" 2>/dev/null; then
         note "  $sub here matches that branch"
       else
@@ -235,12 +245,12 @@ if [ -f "$BUILD_CONFIG" ]; then
       cached=$(git -C "$cache" rev-parse HEAD 2>/dev/null || echo '')
       # A `path:` gem takes one subdirectory, so an older clone only matters when
       # that subdirectory differs. Without this, every push to main would leave
-      # every clone of this repo stale by definition. The subtrees are read here,
-      # in the superproject, because the clone is shallow and holds one commit.
+      # every clone of this repo stale by definition. The subtrees are read in
+      # the superproject, which is the only place holding both commits.
       same_content=no
       if [ "$cached" = "$RESOLVED" ]; then
         same_content=yes
-      elif [ -n "$sub" ] && [ -n "$here" ] && [ "$slug" = "$here" ] &&
+      elif [ -n "$sub" ] && [ "$mine" = yes ] &&
            [ "$(git -C "$ROOT" rev-parse "$cached:$sub" 2>/dev/null || echo a)" = \
              "$(git -C "$ROOT" rev-parse "$RESOLVED:$sub" 2>/dev/null || echo b)" ]; then
         note "  its build/repos clone is at $cached, older, but $sub there is identical"

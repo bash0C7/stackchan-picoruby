@@ -26,7 +26,7 @@ the README has the table. Speech is 8 kHz mu-law at gain 0.05 — nothing clips
 digitally at any gain, so audible break-up is the 1 W speaker being overdriven.
 
 Tests: picotest device 194 / pc 79 / shared 28 / led 39 / si12t 22 / aw88298 14,
-skip 0, plus six CRuby host test files, 51 tests (ten of them omitted where plutil is absent).
+skip 0, plus six CRuby host test files, 53 tests (ten of them omitted where plutil is absent).
 
 The reproducibility guard works. `git push` runs `tools/check_deps_pushed.sh
 --pins-only` through `tools/hooks/pre_push_guard.sh`, and a push whose pins would
@@ -73,12 +73,12 @@ neither workflow flashes anything.
 
 ### 1. What the guard still does not reach
 
-Branch protection is settled and small: **main and master only.** The refs this
-build depends on are mostly long-lived integration branches
+Branch protection is being handled separately. It would be main and master only,
+and the refs this build depends on are mostly long-lived integration branches
 (`c-primitives-verified`, `port-darwin`, `stackchan-integration`) and tags, which
 protection would not cover anyway, and a development branch disappearing when its
-pull request merges is correct behaviour. So those stay detection-only, which is
-what the ref check already does. Nothing is applied on GitHub yet.
+pull request merges is correct behaviour. Those stay detection-only, which is
+what the ref check already does.
 
 Smaller, and known: `--pins-only` checks pins and nothing else, so a rotted gem
 ref or an edited vendored tree passes at push time and is caught only by a full
@@ -96,19 +96,10 @@ launchd restarted it; seen once, so it is not in the README.
 
 ## Known and deliberately left alone
 
-- Both picoruby checkouts carry `mrbgems/picoruby-mruby/lib/estalloc` and
-  `mrbgems/picoruby-r2p2/lib/pico-extras` as untracked directories, left from
-  branches where those paths were submodules. At the pinned commit
-  `picoruby-machine/mrbgem.rake` reads `lib/estalloc` out of its own gem
-  directory and nothing reads either stray, so they change no build. The guard
-  names them on every full run. Deleting inside a vendored tree is destructive
-  and buys only tidiness, so it waits for a decision.
-- `Rakefile` spells one esp-idf python venv,
-  `~/.espressif/python_env/idf5.4_py3.14_env/bin/python`, and the toolchain
-  itself (esp-idf v5.4 at `~/esp/esp-idf`) is pinned in prose. Another machine
-  installing a different Python gets a different directory name and the device
-  tasks fail on it. Making the path discovered rather than spelled cannot be
-  verified without a firmware build, so it is untouched.
+- The device tasks still expect esp-idf at `~/esp/esp-idf` unless
+  `ESP_IDF_EXPORT` says otherwise. The version is pinned where a machine reads
+  it — `espressif/idf:v5.4.2` in the firmware workflow — rather than only in
+  prose, and the python venv is found by version instead of named.
 
 ## Standing arrangements
 
