@@ -37,23 +37,24 @@ anything it covers.
 
 ## Next
 
-### 1. The daemon startup race
+### 1. The daemon has no defence against a client hanging up
 
-This is the one defect that actually showed itself. `Daemon#start` primes the
-sidecar between opening the drb port and announcing itself, and a sidecar
-connect that hangs instead of failing fast freezes the daemon VM with the port
-already open, so `rake pc:up` reports a daemon that listens but will not
-answer status. Running `rake pc:up` again clears it. The code says "Known, not
-fixed here"; the fix is to stop doing blocking work after the port is open.
+`rake pc:up` failed about a quarter of the time with "daemon on 8787 is
+listening but did not answer status". The cause is not a slow daemon. Its port
+check connected to the drb port and closed immediately; the daemon, blocked in
+its own startup and running cooperative Tasks, could not service that connection
+until it unblocked, and then wrote to a socket whose peer was gone and died of
+SIGPIPE. Measured at 4 failures in 15 bring-ups, and 0 in 15 once the check asks
+the kernel who is listening instead of connecting.
 
-The BLE link is not on this list. A full pass over every verb — status, face,
-led, torque, servo on both axes, read-back, say, selftest, stop and head touch
-— runs clean, with no ACK timeout and nothing needing a retry. Two entries
-remain in the README under Known issues, and both are honest about what they
-are: there is no retry path in `ble_client.rb` if a frame ever is dropped, and
-the 45 s first `<A:done>` after a long idle rests on one observation that has
-not recurred. Neither has a symptom to chase right now; recreating a long idle
-is what would settle the second.
+What remains is the daemon side of it. Its PicoRuby VM cannot trap SIGPIPE --
+`Signal.list` carries no `PIPE` and every `Signal.trap` form raises
+`SystemStackError` -- so any client that hangs up mid-call can still kill it,
+and launchd restarts it. Closing that means `SO_NOSIGPIPE` or an ignored SIGPIPE
+in picoruby's socket layer, which is upstream work rather than a change here.
+
+This also accounts for the SIGPIPE recorded as a one-off after a `selftest`. It
+was never a one-off.
 
 ### 2. The lineage that will not boot
 
@@ -62,8 +63,11 @@ differ by exactly one line, the picoruby submodule pointer: `7258676`, which
 boots, against `568b4b88`, the lineage rebased onto upstream master, which
 overflows the 8 KB picoruby task stack during its own startup and boot-loops.
 Switching is a one-line bump once that is resolved. Land shared changes on
-both. This boot loop is also what stands between the picoruby-ble ESP32 NimBLE
-port and its hardware end-to-end test; that port's plan is in the vault under
+both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
+already runs — the vendored tree carries `nimble_owner.c`, there is no btstack
+component, and the sdkconfig fragment is `bt_nimble` — and it was driven end to
+end over every verb. What the boot loop blocks is adopting that port rebased
+onto upstream master. Its plan is in the vault under
 `02_dev_docs/picoruby-ble-esp32-port/plans/`.
 
 ### 3. What the dependency guard does not reach

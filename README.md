@@ -268,11 +268,13 @@ touch — completes without a single ACK timeout or retry.
   single observation after ten hours. It has not recurred, and a `say` on a
   warm device answers in seconds, so recreating a long idle is what would
   settle whether this is still real.
-- `rake pc:up` can report that the daemon "is listening but did not answer
-  status". `Daemon#start` primes the sidecar between opening the drb port and
-  announcing itself, and a sidecar TCP connect that hangs instead of failing
-  fast freezes the whole daemon VM with the port already open. Running
-  `rake pc:up` again clears it.
+- A client that opens a connection to the daemon and hangs up can kill it. The
+  daemon writes to a socket whose peer is gone and takes SIGPIPE, and its
+  PicoRuby VM cannot trap that: `Signal.list` carries no `PIPE`, and every
+  `Signal.trap` form raises `SystemStackError`. launchd restarts the process,
+  so the damage is a dropped connection rather than a dead robot. `rake pc:up`
+  no longer triggers it — its port check asks the kernel who is listening
+  instead of connecting — but the daemon still has no defence of its own.
 
 ## Audio path
 

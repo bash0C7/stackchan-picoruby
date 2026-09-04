@@ -1,6 +1,7 @@
 require 'test/unit'
 require 'needs_plutil'
 require 'fileutils'
+require 'socket'
 require 'pc_lifecycle'
 
 class PcLifecycleTest < Test::Unit::TestCase
@@ -122,6 +123,26 @@ class PcLifecycleTest < Test::Unit::TestCase
                   ["bootstrap", "com.bash0c7.stackchan-it-daemon.plist"]],
                  launchctl_verbs.reject { |verb, _| verb == "print" }
   end
+
+# A connect-and-close probe leaves an abandoned connection on the daemon's drb
+# port. The daemon cannot service it while its startup blocks on the sidecar,
+# and when it finally does it writes to a socket whose peer is gone and takes
+# SIGPIPE, which its PicoRuby VM cannot trap. Measured at 4 failures in 15
+# bring-ups with a connecting probe and 0 in 15 without. So the check has to
+# ask the kernel who is listening and never open a connection itself.
+def test_the_port_check_never_opens_a_connection
+  server = TCPServer.new("127.0.0.1", 0)
+  port = server.addr[1]
+  assert_true subject.send(:wait_for_port, port, 5)
+  pending = begin
+              server.accept_nonblock
+            rescue IO::WaitReadable
+              nil
+            end
+  assert_nil pending, "the port check opened a connection to the port it was checking"
+ensure
+  server&.close
+end
 
   def test_up_fails_when_a_port_never_comes_up
     needs_plutil

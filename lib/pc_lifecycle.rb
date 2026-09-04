@@ -108,18 +108,25 @@ class PcLifecycle
     [out, $?.success?]
   end
 
+  # Asks the kernel who is listening rather than connecting. A connect-and-close
+  # probe leaves an abandoned connection on the daemon's drb port, and the daemon
+  # cannot service it while its own startup blocks on the sidecar -- PicoRuby
+  # Tasks are cooperative. When it finally does, it writes to a socket whose peer
+  # is gone and takes SIGPIPE, which its VM cannot trap: Signal.list carries no
+  # PIPE and every Signal.trap form raises SystemStackError. Probing without
+  # connecting is the only place this is fixable from here.
   def wait_for_port(port, timeout_s)
-    require "socket"
     deadline = Time.now + timeout_s
-    while Time.now < deadline
-      begin
-        TCPSocket.new("127.0.0.1", port).close
-        return true
-      rescue StandardError
-        sleep 0.25
-      end
+    loop do
+      return true if port_listening?(port)
+      return false if Time.now >= deadline
+      sleep 0.25
     end
-    false
+  end
+
+  def port_listening?(port)
+    IO.popen(["lsof", "-nP", "-iTCP:#{port}", "-sTCP:LISTEN"],
+             err: [:child, :out], &:read).to_s.include?("LISTEN")
   end
 
   def wait_until_unloaded(label)

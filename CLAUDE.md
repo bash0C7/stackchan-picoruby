@@ -90,6 +90,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 
 - `launchctl kickstart -k` は書き直した plist を読み直さない。launchd は bootstrap 時に定義を in-memory に取り込むので、設定を変えたら必ず `bootout` + `bootstrap`。kickstart 経路を残すと前日の設定で起動して成功と表示する。
 - `bootout` は unload 完了前に返る。ポートが空くのと service 登録が消えるのは別のシグナルで、ポートは数ミリ秒で空くのに登録は残る。`launchctl print` が失敗する (= 不在) まで待ってから bootstrap する。
+- **daemon のポートを接続で確認しない。** `wait_for_port` が connect して即 close すると、見捨てられた接続が drb ポートに残る。daemon は起動中 (sidecar priming) にブロックしており、協調 Task なのでそれを処理できず、後で相手のいないソケットへ書いて SIGPIPE で死ぬ。実測で bring-up 15 回中 4 回失敗、接続しない確認 (lsof) に変えて 15 回中 0 回。PicoRuby VM は SIGPIPE を trap できない (`Signal.list` に `PIPE` が無く、`Signal.trap` はどの形でも `SystemStackError`)。したがって「クライアントが切断すると daemon が死ぬ」性質自体は残っており、塞ぐには picoruby の socket 層で `SO_NOSIGPIPE` が要る。
 - Ruby 4.0 は `drb` を default gem から外した。root の `Gemfile` に `gem 'drb'` が要る。host test は verifier を注入して本物の DRb 経路を通らないので、テストは緑のまま実機で LoadError になる。
 
 ## テスト
