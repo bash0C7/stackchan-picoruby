@@ -92,13 +92,20 @@ module Stackchan
       @server_task.join
     end
 
+    # Runs inside the drb accept Task, which still has to write this method's
+    # reply. Stopping the service here kills that Task before it writes, so the
+    # caller sees the connection close instead of an answer; the teardown goes
+    # to a Task that runs once the reply is out.
     def stop
       @running = false
       @keepalive_task&.terminate
-      DRb.stop_service rescue nil
-      begin
-        @ble.disconnect
-      rescue StandardError
+      @shutdown_task = Task.new(name: "shutdown") do
+        sleep 1
+        begin
+          @ble.disconnect
+        rescue StandardError
+        end
+        DRb.stop_service rescue nil
       end
       true
     end

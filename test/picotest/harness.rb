@@ -29,6 +29,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")
   CLI_APP_RB          = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "cli_app.rb")
+  DAEMON_APP_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "daemon_app.rb")
   DEVICE_STUBS_RB     = File.join(REPO_ROOT, "test", "picotest", "stubs.rb")
   FACE_GOLDEN_HASH_RB = File.join(REPO_ROOT, "test", "face_golden_hash.rb")
   DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
@@ -47,6 +48,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   EXTRACTED_APP_RB = "/tmp/_extracted_application.rb"
   EXTRACTED_PC_RB  = "/tmp/_extracted_ble_client.rb"
   EXTRACTED_CLI_RB = "/tmp/_extracted_cli_app.rb"
+  EXTRACTED_DAEMON_RB = "/tmp/_extracted_daemon_app.rb"
 
   SUITES = {
     "device" => {
@@ -70,13 +72,15 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
         SHARED_MRBLIB.each { |f| require f }
         RubyClassExtract.load_classes_from(BLE_CLIENT_RB)
         RubyClassExtract.load_classes_from(CLI_APP_RB)
+        RubyClassExtract.load_classes_from(DAEMON_APP_RB)
         load PC_DRB_PATCH_RB
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(BLE_CLIENT_RB, EXTRACTED_PC_RB)
         RubyClassExtract.extract_to_file(CLI_APP_RB, EXTRACTED_CLI_RB)
-        files = [PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, PC_DRB_PATCH_RB]
+        RubyClassExtract.extract_to_file(DAEMON_APP_RB, EXTRACTED_DAEMON_RB)
+        files = [PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, PC_DRB_PATCH_RB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files
       },

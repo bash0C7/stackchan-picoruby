@@ -108,3 +108,58 @@ end
 def sleep_ms(ms)
   FakeClock.sleep(ms)
 end
+
+# picoruby-drb is absent from both the CRuby orchestrator and the host VM.
+# Daemon#stop only has to be observed for whether it tore the service down.
+# drb_eintr_retry.rb aliases create_socket when DRb exists, so the stub carries
+# one for that alias to bind to.
+module DRb
+  @stop_service_calls = 0
+  def self.stop_service_calls = @stop_service_calls
+  def self.reset_stop_service_calls
+    @stop_service_calls = 0
+  end
+
+  def self.stop_service
+    @stop_service_calls += 1
+  end
+
+  def self.create_socket(uri)
+    nil
+  end
+end
+
+# The host VM has a real cooperative Task whose body waits for the current task
+# to yield, and picotest does not yield inside a test, so a Task created there
+# stays pending. CRuby has no Task at all; this gives it the same observable
+# behaviour — created, body not yet run.
+unless Object.const_defined?(:Task)
+  class Task
+    attr_reader :name
+
+    def initialize(name: nil, &block)
+      @name = name
+      @block = block
+    end
+
+    def run
+      @block.call
+    end
+
+    def terminate
+    end
+  end
+end
+
+# Daemon#stop reaches only #disconnect on the BLE client.
+class FakeStoppableBle
+  attr_reader :disconnect_calls
+
+  def initialize
+    @disconnect_calls = 0
+  end
+
+  def disconnect
+    @disconnect_calls += 1
+  end
+end

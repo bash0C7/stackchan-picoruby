@@ -260,9 +260,11 @@ pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-p
   command rather than being resent once.
 - `<A:done>` can take about 45 s to arrive on the first `say` after a long idle
   (observed after ten hours), against a fraction of a second when warm.
-- `Daemon#stop` never reaches its reply, so `stackchan stop` hangs. Stop the
-  backends with `bundle exec rake pc:down` instead; `tools/latency_baseline.zsh`
-  recovers by re-running `rake pc:up`.
+- `rake pc:up` can report that the daemon "is listening but did not answer
+  status". `Daemon#start` primes the sidecar between opening the drb port and
+  announcing itself, and a sidecar TCP connect that hangs instead of failing
+  fast freezes the whole daemon VM with the port already open. Running
+  `rake pc:up` again clears it.
 
 ## Audio path
 
