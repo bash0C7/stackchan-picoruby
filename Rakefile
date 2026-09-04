@@ -344,9 +344,17 @@ namespace :r2p2 do
     upload_mrb_via_picomodem(src: src_from_env('r2p2:upload_mrb'), dst: dst, port: espport)
   end
 
+  # /home/app.mrb autostarts and this application never returns, so
+  # main_task.rb never reaches `$shell.start` and picomodem finds no shell to
+  # talk to. main_task.rb offers no escape hatch either -- it loads the payload
+  # unconditionally -- so the payload has to go before the upload rather than
+  # after a guaranteed 25 s wait for a banner that cannot come. Rake runs a task
+  # once per process, so full_rebuild, which already wipes first, does not wipe
+  # twice.
   desc 'host-compile SRC=path/to/app.rb and upload as autostart payload /home/app.mrb'
   task :upload_appmrb do
     ensure_no_concurrent_monitor
+    Rake::Task["r2p2:wipe_storage"].invoke
     upload_mrb_via_picomodem(src: src_from_env('r2p2:upload_appmrb'), dst: '/home/app.mrb', port: espport, bundle: true)
   end
 

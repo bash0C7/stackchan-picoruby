@@ -12,7 +12,7 @@ Run in a haiku subagent (120000ms timeout), reporting exit code and the `DONE_AC
 The task resets the board and waits for the shell banner itself; no settle time or USB replug needed.
 
 - `DONE_ACK ok` = uploaded.
-- `/home/app.mrb started but never returned` = the payload already on the device never hands control back. Retrying is pointless; run `stackchan-device-cold-recovery`.
+- `/home/app.mrb started but never returned` = the payload already on the device never hands control back, so there is no shell. `upload_appmrb` wipes storage first and cannot hit this. `upload_mrb` (DST=) cannot wipe without destroying app.mrb, so on a device running an autostart payload a helper upload needs a wipe, then the helper, then app.mrb again.
 - `does not exist` / `did not come back within` = board not on USB; human replug.
 - `no shell banner and no boot log` = enumerated but silent; cable or power.
 - `picorbc compilation failed` = syntax error in SRC.

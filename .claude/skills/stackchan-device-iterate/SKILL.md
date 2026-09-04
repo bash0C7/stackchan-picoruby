@@ -8,4 +8,4 @@ description: The standard "I changed application.rb, did it work?" loop — uplo
 3. `stackchan-device-capture-boot` with `SECONDS=25`
 4. Panic in the log → `stackchan-device-crash-analyze`
 
-Report: upload ok / reset ok / boot markers found / panic and its analysis. An upload failure goes to `stackchan-device-cold-recovery`; a repeating panic is a debugging task, not another iteration.
+Report: upload ok / reset ok / boot markers found / panic and its analysis. The upload wipes storage itself, so an upload failure is USB, cable or a syntax error rather than something a wipe fixes; a repeating panic is a debugging task, not another iteration.
