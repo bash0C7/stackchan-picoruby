@@ -256,10 +256,18 @@ pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-p
 
 ## Known issues
 
-- An ACK timeout is not retried. A dropped frame surfaces as a failed CLI
-  command rather than being resent once.
-- `<A:done>` can take about 45 s to arrive on the first `say` after a long idle
-  (observed after ten hours), against a fraction of a second when warm.
+The BLE link itself is not one of these. A full pass over every verb — status,
+face, led, torque, servo on both axes, read-back, say, selftest, stop and head
+touch — completes without a single ACK timeout or retry.
+
+- There is no retry path: `ble_client.rb` raises `TimeoutError` on an ACK
+  timeout and the CLI command fails rather than the frame being resent once.
+  This is a gap in the code, not an observed symptom; it has no effect until a
+  frame is actually dropped.
+- `<A:done>` taking about 45 s on the first `say` after a long idle rests on a
+  single observation after ten hours. It has not recurred, and a `say` on a
+  warm device answers in seconds, so recreating a long idle is what would
+  settle whether this is still real.
 - `rake pc:up` can report that the daemon "is listening but did not answer
   status". `Daemon#start` primes the sidecar between opening the drb port and
   announcing itself, and a sidecar TCP connect that hangs instead of failing

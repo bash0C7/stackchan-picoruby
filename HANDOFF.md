@@ -37,22 +37,23 @@ anything it covers.
 
 ## Next
 
-### 1. BLE reliability
+### 1. The daemon startup race
 
-The README's Known issues, in the order they are worth attacking:
+This is the one defect that actually showed itself. `Daemon#start` primes the
+sidecar between opening the drb port and announcing itself, and a sidecar
+connect that hangs instead of failing fast freezes the daemon VM with the port
+already open, so `rake pc:up` reports a daemon that listens but will not
+answer status. Running `rake pc:up` again clears it. The code says "Known, not
+fixed here"; the fix is to stop doing blocking work after the port is open.
 
-- An ACK timeout is not retried. `ble_client.rb` raises `TimeoutError` and the
-  CLI command fails; a dropped frame is never resent.
-- `Daemon#start` primes the sidecar between opening the drb port and announcing
-  itself, so a sidecar connect that hangs freezes the daemon VM with the port
-  already open, and `rake pc:up` reports a daemon that listens but will not
-  answer. Running `rake pc:up` again clears it.
-- `<A:done>` can take about 45 s on the first `say` after a long idle. This is
-  untested rather than doubtful: a `say` on a freshly booted device answers in
-  seconds, which is not the ten-hour-idle condition the entry describes.
-  Recreating that condition is what would settle it.
-- A daemon SIGPIPE was seen once right after a `selftest`, with launchd
-  restarting it. It has not recurred.
+The BLE link is not on this list. A full pass over every verb — status, face,
+led, torque, servo on both axes, read-back, say, selftest, stop and head touch
+— runs clean, with no ACK timeout and nothing needing a retry. Two entries
+remain in the README under Known issues, and both are honest about what they
+are: there is no retry path in `ble_client.rb` if a frame ever is dropped, and
+the 45 s first `<A:done>` after a long idle rests on one observation that has
+not recurred. Neither has a symptom to chase right now; recreating a long idle
+is what would settle the second.
 
 ### 2. The lineage that will not boot
 
