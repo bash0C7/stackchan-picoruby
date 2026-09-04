@@ -13,3 +13,6 @@ pc/*/tmp/
 /.bundle/
 /pc/stackchan/.bundle/
 /pc/stackchan/vendor/
+
+# git worktree scratch (superpowers subagent-driven-development)
+/.worktrees/
