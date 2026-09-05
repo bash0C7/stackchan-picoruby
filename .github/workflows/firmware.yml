@@ -34,7 +34,10 @@ jobs:
           # ruby-dev and a compiler because the Gemfile has a native gem, and
           # libssl-dev because linking the host mrbc ends in -lm -lssl -lcrypto.
           # The Espressif image carries the cross toolchain and nothing else.
-          apt-get install -y -qq ruby-full ruby-dev build-essential libssl-dev
+          # lsof because PcLifecycle#port_listening? shells out to it, and the
+          # test that pins it to never opening a connection is the only place
+          # that regression is caught off the development Mac.
+          apt-get install -y -qq ruby-full ruby-dev build-essential libssl-dev lsof
           ruby -v
 
       - name: Install the gems the Rakefile needs
