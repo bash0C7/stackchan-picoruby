@@ -24,6 +24,10 @@ helper does this.
 | `rake rigor:snapshot` | Rewrite `rigor.baseline.json` from the current diagnostics. |
 | `rake rigor:setup` | Install the tool gemset. Idempotent; the other tasks depend on it. |
 
+rigor needs Ruby 4.0, so `rake test` is gated only where that Ruby exists. `firmware.yml`
+builds inside `espressif/idf:v5.4.2`, whose apt Ruby is 3.2, and calls `rake picotest:run`
+directly for that reason. No CI job runs rigor today.
+
 ## The snapshot
 
 `rigor.baseline.json` freezes the diagnostics that exist today so `rigor:check` reports only

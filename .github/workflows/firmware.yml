@@ -70,7 +70,10 @@ jobs:
           vm=vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host/bin/picoruby
           echo "== does the VM run at all? =="
           "$vm" -e 'puts "vm ok"'
-          bundle exec rake test || {
+          # picotest:run, not test: `rake test` also runs rigor:check, and rigor
+          # needs Ruby 4.0 while this container has the 3.2 that apt ships. The
+          # suites themselves are what this job is here to run.
+          bundle exec rake picotest:run || {
             status=$?
             for f in /tmp/*_error; do
               [ -s "$f" ] || continue
