@@ -1,6 +1,7 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
 require "json"
 require "tempfile"
+require "yaml"
 require_relative "lib/deploy/picomodem"
 
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
@@ -77,8 +78,24 @@ namespace :rigor do
     unbundled { sh RIGOR_ENV, "gem", "install", "rigortype", "-v", RIGOR_VERSION, "--no-document" }
   end
 
+  # `rigor diff` prints only the diff, so the config warnings `rigor check` emits
+  # — including a signature_paths entry that resolves to nothing — never reach
+  # the gate. Without them a checkout that skipped `rake vendor:setup` analyses
+  # every picoruby type as Dynamic and still reports 0 new.
+  task :assert_signatures do
+    config = YAML.load_file(File.expand_path(".rigor.dist.yml", __dir__))
+    missing = (config["signature_paths"] || []).reject { |p| Dir.exist?(File.expand_path(p, __dir__)) }
+    next if missing.empty?
+    abort <<~MSG
+      rigor: #{missing.size} signature_paths entr#{missing.size == 1 ? "y" : "ies"} resolve to nothing:
+      #{missing.map { |p| "  #{p}" }.join("\n")}
+      Those types would silently read Dynamic and the diff would still pass.
+      Run `rake vendor:setup` to fetch the picoruby tree.
+    MSG
+  end
+
   desc "Fail on any diagnostic that is not already in rigor.baseline.json"
-  task check: :setup do
+  task check: [:setup, :assert_signatures] do
     # The committed snapshot holds repo-relative paths so it survives a different
     # checkout; `rigor diff` matches on the raw path string against a live run's
     # absolute ones, so it is fed an absolutized copy.

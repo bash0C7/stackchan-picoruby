@@ -19,7 +19,7 @@ helper does this.
 
 | Task | Does |
 |---|---|
-| `rake rigor:check` | Fail on any diagnostic not in `rigor.baseline.json`. `rake test` depends on it. |
+| `rake rigor:check` | Fail on any diagnostic not in `rigor.baseline.json`. `rake test` depends on it. Aborts first if any `signature_paths` entry resolves to nothing — `rigor diff` prints only the diff, so without that check a tree that skipped `rake vendor:setup` analyses every picoruby type as Dynamic and still reports 0 new. |
 | `rake rigor:all` | Print every current diagnostic, snapshot or not. |
 | `rake rigor:snapshot` | Rewrite `rigor.baseline.json` from the current diagnostics. |
 | `rake rigor:setup` | Install the tool gemset. Idempotent; the other tasks depend on it. |
