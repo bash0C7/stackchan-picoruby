@@ -1,4 +1,6 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
+require "json"
+require "tempfile"
 require_relative "lib/deploy/picomodem"
 
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
@@ -42,8 +44,71 @@ end
 PICORUBY_ROOT = ENV["PICORUBY_ROOT"] || File.join(R2P2_ROOT, "components", "picoruby-esp32", "picoruby")
 PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host-picotest", "bin", "picoruby")
 
-desc "Run all PicoRuby-native suites (alias of picotest:run)"
-task :test => "picotest:run"
+# Rigor is a standalone CLI, not a bundled gem: it wants prism >= 1.0 while this
+# repo is pinned to the prism ~> 0.30 that picoruby vendors, so bundler cannot
+# resolve both. It gets its own gemset under the gitignored vendor/ tree instead.
+RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.3.7"
+RIGOR_ROOT     = File.expand_path("vendor/rigor-tool", __dir__)
+RIGOR_BIN      = File.join(RIGOR_ROOT, "bin", "rigor")
+RIGOR_ENV      = { "GEM_HOME" => RIGOR_ROOT, "GEM_PATH" => RIGOR_ROOT }
+RIGOR_SNAPSHOT = File.expand_path("rigor.baseline.json", __dir__)
+
+# rigor runs on its own gemset, so it must not inherit this Rakefile's bundler
+# environment: BUNDLE_GEMFILE and RUBYOPT=-rbundler/setup survive into the child
+# and make it resolve the project's Gemfile against RIGOR_ROOT, which has none of
+# those gems. Under `bundle exec rake` that aborts with Bundler::GemNotFound.
+def unbundled(&blk)
+  defined?(Bundler) ? Bundler.with_unbundled_env(&blk) : blk.call
+end
+
+# rigor 0.3.7 reports source diagnostics with an absolute path while config-level
+# ones (`.rigor.yml`) stay relative, so the two directions key off whether the
+# repo-relative name is a real file.
+def rigor_relativize(path) = path.delete_prefix("#{__dir__}/")
+def rigor_absolutize(path)
+  absolute = File.join(__dir__, path)
+  File.file?(absolute) ? absolute : path
+end
+
+namespace :rigor do
+  desc "Install rigortype RIGOR_VERSION into vendor/rigor-tool (skip if present)"
+  task :setup do
+    next if File.exist?(RIGOR_BIN)
+    unbundled { sh RIGOR_ENV, "gem", "install", "rigortype", "-v", RIGOR_VERSION, "--no-document" }
+  end
+
+  desc "Fail on any diagnostic that is not already in rigor.baseline.json"
+  task check: :setup do
+    # The committed snapshot holds repo-relative paths so it survives a different
+    # checkout; `rigor diff` matches on the raw path string against a live run's
+    # absolute ones, so it is fed an absolutized copy.
+    absolute = JSON.parse(File.read(RIGOR_SNAPSHOT))
+    absolute["diagnostics"].each { |d| d["path"] = rigor_absolutize(d["path"]) }
+    Tempfile.create(["rigor-baseline", ".json"]) do |f|
+      f.write(JSON.generate(absolute))
+      f.flush
+      unbundled { sh RIGOR_ENV, RIGOR_BIN, "diff", f.path }
+    end
+  end
+
+  desc "Print every current diagnostic, snapshot or not"
+  task all: :setup do
+    unbundled { sh RIGOR_ENV, RIGOR_BIN, "check" }
+  end
+
+  desc "Rewrite rigor.baseline.json from the current diagnostics"
+  task snapshot: :setup do
+    json = unbundled { IO.popen(RIGOR_ENV, [RIGOR_BIN, "check", "--format=json"], &:read) }
+    abort "rigor check produced no JSON" if json.nil? || json.strip.empty?
+    report = JSON.parse(json)
+    report["diagnostics"].each { |d| d["path"] = rigor_relativize(d["path"]) }
+    File.write(RIGOR_SNAPSHOT, JSON.pretty_generate(report) + "\n")
+    puts "wrote #{RIGOR_SNAPSHOT} (#{report["diagnostics"].size} diagnostics)"
+  end
+end
+
+desc "Run all PicoRuby-native suites (alias of picotest:run), gated on rigor"
+task :test => ["rigor:check", "picotest:run"]
 
 namespace :test do
   desc "Run CRuby-only host tests (test-host/*_test.rb)"

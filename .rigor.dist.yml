@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://github.com/rigortype/rigor/raw/master/schemas/rigor-config.schema.json
+#
+# Rigor is a standalone CLI, never a bundled gem — see docs/rigor.md.
+#
+# app/, pc/ and mrbgems/ infer very little until signature_paths points at the
+# picoruby sig/ tree, which lives in the gitignored vendor/ checkout. Until then
+# their device-side collaborators type as Dynamic and most rules stay silent.
+target_ruby: "4.0"
+
+paths:
+  - app
+  - lib
+  - mrbgems
+  - pc
+  - test
+  - test-host
+
+cache:
+  path: .rigor/cache

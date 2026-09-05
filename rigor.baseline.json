@@ -1,0 +1,198 @@
+{
+  "success": false,
+  "error_count": 7,
+  "diagnostics": [
+    {
+      "path": ".rigor.yml",
+      "line": 1,
+      "column": 1,
+      "severity": "info",
+      "rule": "rbs.coverage.missing-gem",
+      "source_family": "builtin",
+      "message": "7 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, ruby-termios, serialport, and 2 more. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
+    },
+    {
+      "path": "app/application.rb",
+      "line": 386,
+      "column": 9,
+      "severity": "warning",
+      "rule": "def.ivar-write-mismatch",
+      "source_family": "builtin",
+      "message": "instance variable `@current_face_class' on StackchanApp::Dispatcher was previously assigned StackchanApp::Face::Neutral; this write assigns StackchanApp::Face::Closed",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-ivar-write-mismatch"
+    },
+    {
+      "path": "lib/deploy/picomodem.rb",
+      "line": 248,
+      "column": 36,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `+' is undefined on NilClass",
+      "method_name": "+",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "lib/deploy/picomodem.rb",
+      "line": 253,
+      "column": 13,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `getbyte' is undefined on NilClass",
+      "method_name": "getbyte",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "lib/deploy/picomodem.rb",
+      "line": 253,
+      "column": 30,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `byteslice' is undefined on NilClass",
+      "method_name": "byteslice",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "lib/deploy/picomodem.rb",
+      "line": 153,
+      "column": 10,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "pc/sidecar/test/test_service.rb",
+      "line": 29,
+      "column": 30,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `bytesize' is undefined on NilClass",
+      "method_name": "bytesize",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "pc/stackchan-pico/app/ble_client.rb",
+      "line": 112,
+      "column": 58,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "pc/stackchan-pico/app/ble_client.rb",
+      "line": 270,
+      "column": 27,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "pc/stackchan-pico/app/fake_ble.rb",
+      "line": 55,
+      "column": 37,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "test/device/ticker_test.rb",
+      "line": 14,
+      "column": 10,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "test/fake_display.rb",
+      "line": 15,
+      "column": 29,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "test/pc/fake_radio.rb",
+      "line": 30,
+      "column": 46,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    },
+    {
+      "path": "test/pc/socket_read_retry_test.rb",
+      "line": 54,
+      "column": 51,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `message' is undefined on NilClass",
+      "method_name": "message",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "test/pc/socket_read_retry_test.rb",
+      "line": 67,
+      "column": 41,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `message' is undefined on NilClass",
+      "method_name": "message",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "test/pc/stackchan_radio_test.rb",
+      "line": 37,
+      "column": 30,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `getbyte' is undefined on NilClass",
+      "method_name": "getbyte",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "test-host/pc_lifecycle_test.rb",
+      "line": 102,
+      "column": 18,
+      "severity": "warning",
+      "rule": "flow.always-truthy-condition",
+      "source_family": "builtin",
+      "message": "condition is always truthy (the surrounding flow proves it folds to a constant)",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+    }
+  ]
+}

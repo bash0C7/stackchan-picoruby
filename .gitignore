@@ -16,3 +16,7 @@ pc/*/tmp/
 
 # git worktree scratch (superpowers subagent-driven-development)
 /.worktrees/
+/.claude/worktrees/
+
+# rigor: analysis cache. The gem itself lives in vendor/rigor-tool, already ignored.
+/.rigor/
