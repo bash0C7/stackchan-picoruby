@@ -1,0 +1,40 @@
+module Stackchan
+  module BLE
+    module FrameCodec
+      type side = :left | :right | :both
+      type led_mode = :solid | :blink | :breathing | :off
+
+      SIDE_TO_CHAR: Hash[side, String]
+      MODE_TO_CHAR: Hash[led_mode, String]
+      ACK_OK: String
+      ACK_ERROR: String
+      TOUCH_RE: Regexp
+
+      def self.encode_face: (face_name: FaceTable::face_name) -> String
+      def self.encode_led: (r: Integer, g: Integer, b: Integer, side: side, mode: led_mode) -> String
+
+      # yaw_left and yaw_right are mutually exclusive; at least one of the three
+      # positions is required. Both are raises, not types.
+      def self.encode_head: (
+        yaw_left: Integer?,
+        yaw_right: Integer?,
+        pitch_up: Integer?,
+        time_ms: Integer?,
+        velocity: Integer?
+      ) -> String
+
+      def self.encode_torque: (on: bool) -> String
+      def self.encode_selftest: () -> String
+      def self.encode_read_pos: () -> String
+      def self.parse_ack: (String frame) -> (:ok | :error)
+
+      # A device-initiated head-touch event, unsolicited.
+      def self.touch_event?: (String frame) -> bool
+
+      # Zone index from "<touch:N>", or nil if not a touch frame.
+      def self.parse_touch: (String frame) -> Integer?
+
+      def self.encode_pairs: (Hash[String, String] pairs) -> String
+    end
+  end
+end

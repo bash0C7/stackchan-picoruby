@@ -1,0 +1,31 @@
+class AW88298
+  interface _Bus
+    def write: (Integer i2c_adrs_7, *(Integer | String | Array[Integer]) outputs) -> Integer
+  end
+
+  interface _Sink
+    def write: (String pcm) -> untyped
+  end
+
+  AW88298_ADDR: Integer
+  AW_RATE_TBL: Array[Integer]
+
+  def self.aw88298_reg06: (Integer sample_rate) -> Integer
+
+  # Ordered init writes as [reg, hi, lo] triples.
+  def self.aw88298_init_writes: (Integer sample_rate) -> Array[Array[Integer]]
+
+  # G.711 mu-law -> 16-bit PCM. Defined in src/mruby/aw88298.c, so there is no
+  # Ruby body to infer this from.
+  def self.ulaw_decode: (String ulaw) -> String
+
+  @i2c: _Bus
+  @i2s: _Sink
+
+  attr_reader i2c: _Bus
+  attr_reader i2s: _Sink
+
+  def initialize: (i2c: _Bus, i2s: _Sink) -> void
+  def init_amp: (Integer sample_rate) -> void
+  def play_ulaw: (String ulaw) -> untyped
+end

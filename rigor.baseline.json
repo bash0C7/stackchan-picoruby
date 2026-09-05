@@ -70,6 +70,18 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
     },
     {
+      "path": "mrbgems/picoruby-stackchan-shared/mrblib/stackchan/ble/send_builder.rb",
+      "line": 39,
+      "column": 11,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `to_frames': declared Array[String], inferred Array[String?]",
+      "method_name": "to_frames",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
       "path": "pc/sidecar/test/test_service.rb",
       "line": 29,
       "column": 30,
@@ -254,16 +266,5 @@
       "evidence_tier": "medium",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
     }
-  ],
-  "stats": {
-    "target_files": 74,
-    "rbs_classes_total": 1131,
-    "rbs_classes_project_sig": 14,
-    "rbs_classes_bundled": 1117,
-    "rbs_attribution_available": true,
-    "gem_walk_classes": 0,
-    "gem_walk_gems": 0,
-    "wall_seconds": 2.18854200001806,
-    "peak_rss_bytes": 214220800
-  }
+  ]
 }

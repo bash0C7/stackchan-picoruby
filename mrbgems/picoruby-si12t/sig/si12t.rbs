@@ -1,0 +1,29 @@
+class Si12T
+  # The bus is injected so the host suite can drive a fake. Declared structurally
+  # rather than as I2C so both satisfy it, and nullable on read because a failed
+  # read is a case #read_zones handles.
+  interface _Bus
+    def write: (Integer i2c_adrs_7, *(Integer | String | Array[Integer]) outputs) -> Integer
+    def read: (Integer i2c_adrs_7, Integer len, *(Integer | String | Array[Integer]) outputs) -> String?
+  end
+
+  ADDR: Integer
+  REG_CTRL1: Integer
+  REG_CTRL2: Integer
+  REG_OUTPUT1: Integer
+  ENABLE_REGS: Range[Integer]
+  SENS_REGS: Range[Integer]
+  ZONE_COUNT: Integer
+
+  @i2c: _Bus
+  @prev_touched: bool
+
+  def initialize: (_Bus i2c) -> void
+  def init_sensor: () -> void
+
+  # [z0, z1, z2] intensities 0..3; [0, 0, 0] on a failed or empty read.
+  def read_zones: () -> Array[Integer]
+
+  # Zone index once on touch onset, nil while held and until release.
+  def poll: () -> Integer?
+end

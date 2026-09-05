@@ -1,0 +1,61 @@
+class StackchanLed
+  type side = :both | :left | :right
+  type mode = :solid | :blink | :breathing | :off
+
+  # The PY32 expander is injected so the host suite can drive a fake.
+  interface _Expander
+    def set_direction: (Integer pin, bool output) -> untyped
+    def set_pull_mode: (Integer pin, bool up) -> untyped
+    def set_drive_mode: (Integer pin, bool open_drain) -> untyped
+    def set_led_count: (Integer count) -> untyped
+    def write_led_ram: (Array[Array[Integer]] pixels) -> untyped
+    def refresh_leds: () -> untyped
+  end
+
+  PIXEL_COUNT: Integer
+  LED_DATA_PIN: Integer
+  LEFT_RANGE: Range[Integer]
+  RIGHT_RANGE: Range[Integer]
+
+  class Animator
+    BLINK_HALF_PERIOD_MS: Integer
+    BREATHING_LUT: Array[Integer]
+    BREATHING_STEP_MS: Integer
+
+    @led: StackchanLed
+    @pixel_range: Range[Integer]
+    @r: Integer
+    @g: Integer
+    @b: Integer
+    @mode: StackchanLed::mode
+    @phase_start_ms: Integer?
+    @last_applied: Array[Integer]?
+
+    def initialize: (StackchanLed led, pixel_range: Range[Integer]) -> void
+    def set: (Integer r, Integer g, Integer b, StackchanLed::mode mode) -> void
+    def tick: (Integer now_ms) -> void
+  end
+
+  @py32: _Expander
+  @brightness: Integer
+  @buffer: Array[Array[Integer]]
+  @flash_until: Hash[Symbol, Integer?]?
+  @left_animator: Animator?
+  @right_animator: Animator?
+
+  def initialize: (_Expander py32) -> void
+  def fill: (Integer r, Integer g, Integer b) -> self
+  def set_rgb: (Integer i, Integer r, Integer g, Integer b) -> self
+  def fill_range: (Integer start_idx, Integer end_idx, Integer r, Integer g, Integer b) -> self
+  def fill_left: (Integer r, Integer g, Integer b) -> self
+  def fill_right: (Integer r, Integer g, Integer b) -> self
+  def clear: () -> self
+  def brightness=: (Integer v) -> self
+  def show: () -> self
+  def animate_side: (side side, Integer r, Integer g, Integer b, mode mode) -> self
+
+  # Solid colour now, off after duration_ms.
+  def flash_side: (side side, Integer r, Integer g, Integer b, ?Integer duration_ms) -> self
+
+  def tick: (Integer now_ms) -> void
+end

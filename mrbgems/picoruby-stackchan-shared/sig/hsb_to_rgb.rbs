@@ -1,0 +1,11 @@
+module Stackchan
+  module BLE
+    module HsbToRgb
+      # 24-bit packed 0xHHSSBB -> [r, g, b], each 0..255.
+      def self.convert: (Integer packed) -> Array[Integer]
+
+      # Numeric#clamp is absent on PicoRuby.
+      def self.clamp_byte: (Float | Integer f) -> Integer
+    end
+  end
+end

@@ -1,0 +1,9 @@
+module Stackchan
+  module BLE
+    module LedColorTable
+      type color_name = :red | :green | :blue | :yellow | :cyan | :magenta | :white | :off
+
+      LED_COLORS: Hash[color_name, Array[Integer]]
+    end
+  end
+end

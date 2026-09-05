@@ -1,0 +1,13 @@
+module Stackchan
+  module AI
+    module FrameText
+      MAX_CHARS: Integer
+
+      # Neutralize chars that collide with the <key:val,...>\n frame protocol.
+      def self.sanitize: (String text) -> String
+
+      # One combo frame: optional face index plus sanitized, truncated subtitle.
+      def self.build: (face_index: Integer?, text: String) -> String
+    end
+  end
+end

@@ -34,7 +34,7 @@ rigor emits absolute paths for source diagnostics and matches `diff` on the raw 
 `rigor:snapshot` strips the repo root before writing and `rigor:check` puts it back into a
 temp copy. The committed file therefore survives a different checkout.
 
-A snapshot entry is not an accepted defect. Of the 22 frozen entries, all 8
+A snapshot entry is not an accepted defect. Of the 23 frozen entries, all 8
 `flow.always-truthy-condition` are false positives from rigor 0.3.7 itself, in three shapes:
 
 - **`String#<<` / `#concat` do not invalidate the tracked literal.** `s = +"a"; s << x` leaves
@@ -47,7 +47,13 @@ A snapshot entry is not an accepted defect. Of the 22 frozen entries, all 8
 - **A variable captured by a Proc keeps its definition-site value** even when the Proc mutates
   it, so a fake clock built from `reads.shift` folds. One entry in `test-host/`.
 
-The other 14 are not false positives.
+The other 15 are not false positives.
+
+**One is `SendBuilder#to_frames` declaring `Array[String]` and inferring `Array[String?]`.**
+`#encode` switches on `cmd[:kind]` with no `else`, so an unrecognised kind returns nil and
+lands in the array. Nothing reaches it today — `#record` is only called from the seven public
+methods — but the signature states an intent the code does not enforce. **Worth fixing; frozen,
+not accepted.**
 
 **Five are the test fakes not honouring the BLE contract**, and they exist in the snapshot
 only because picoruby's own RBS is loaded — nothing host-side could have caught them.
@@ -82,8 +88,21 @@ Two constraints on that list, both learned by hitting them:
   `include IRQ`, declared over in `picoruby-irq`. Loading uart without irq leaves `UART` unbuilt
   and silently Dynamic.
 
-The paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must have run.
-That costs nothing: `rake test` already needs the same tree to build the picotest VM.
+The picoruby paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must
+have run. That costs nothing: `rake test` already needs the same tree to build the picotest VM.
+
+This repo's own four gems carry hand-written `sig/` in the upstream picoruby layout
+(`mrbgems/picoruby-<gem>/sig/*.rbs`), also listed in `signature_paths`. They are hand-written
+rather than generated: `rigor sig-gen` emits only the methods it can fully type and says
+nothing about the rest — 5 of `frame_codec.rb`'s 10 — writes them to a mirrored
+`sig/<source path>.rbs` instead of the gem's own `sig/`, and with `--params=observed` narrows a
+parameter to whatever one call site happened to pass (`def face: (:smile)`). Useful as a
+cross-check, not as the artifact.
+
+Each gem's `sig/` is self-contained. The collaborators the constructors take — the I2C bus,
+the I2S sink, the PY32 expander — are declared as interfaces scoped inside the class
+(`Si12T::_Bus`) rather than as `I2C`, so the host fakes satisfy them structurally and no gem's
+signatures depend on another gem's being loaded.
 
 The LCD, PY32 and servo gems are fetched by the firmware build into `build/repos/`, not
 `vendor/`, so their signatures are not loaded and `ILI9342` still types as Dynamic.

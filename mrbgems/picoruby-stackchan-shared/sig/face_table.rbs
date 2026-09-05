@@ -1,0 +1,9 @@
+module Stackchan
+  module BLE
+    module FaceTable
+      type face_name = :neutral | :smile | :joy | :surprised | :sad | :angry
+
+      FACE_INDICES: Hash[face_name, String]
+    end
+  end
+end

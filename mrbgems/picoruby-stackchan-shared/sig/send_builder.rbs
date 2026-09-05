@@ -1,0 +1,35 @@
+module Stackchan
+  module BLE
+    # Collects commands (one per key, last write wins, first-occurrence order)
+    # and encodes them into frames.
+    class SendBuilder
+      @commands: Hash[untyped, Hash[Symbol, untyped]]
+      @order: Array[untyped]
+
+      def initialize: () -> void
+      def face: (FaceTable::face_name name) -> void
+
+      # form is :rgb or :hsb with a packed Integer value, or a named colour from
+      # LedColorTable with no value.
+      def led: (
+        Symbol form,
+        ?Integer? value,
+        ?side: FrameCodec::side,
+        ?mode: FrameCodec::led_mode
+      ) -> void
+
+      def head: (
+        ?yaw_left: Integer?,
+        ?yaw_right: Integer?,
+        ?pitch_up: Integer?,
+        ?time_ms: Integer?,
+        ?velocity: Integer?
+      ) -> void
+
+      def torque: (on: bool) -> void
+      def selftest: () -> void
+      def read_pos: () -> void
+      def to_frames: () -> Array[String]
+    end
+  end
+end
