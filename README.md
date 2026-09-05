@@ -236,6 +236,35 @@ pc/stackchan-pico/bin/stackchan calibrate --align-only   # daily startup: torque
 pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-pose anchor recal, prints constants
 ```
 
+### Ambient demo (event/booth idle loop)
+
+Two standalone Ruby scripts drive an unattended idle demo against the running
+`stackchan` daemon — deterministic, no AI, no browser:
+
+```bash
+tools/ambient_demo.rb       # random LED colors + occasional face/head moves
+tools/phrase_announcer.rb   # speaks a random fixed phrase every 30s
+```
+
+`ambient_demo.rb` waits for BLE, engages torque, then loops forever:
+LED color/side/mode changes every 4-9s, face flips between smile/joy every
+12-25s, and the head moves to a random yaw/pitch every 30-70s (infrequent on
+purpose so the servos don't wear/overheat). Ctrl-C or `kill` stops it
+gracefully — LEDs off, face neutral, servo centered, torque off.
+
+`phrase_announcer.rb` picks one of five fixed phrases at random and speaks it
+every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
+0.05 was inaudible over room noise, 0.3 clipped the 1W speaker).
+
+Run both in the background and stop them together when done:
+
+```bash
+ruby tools/ambient_demo.rb >> /tmp/stackchan-picoruby-debug/ambient_demo.log 2>&1 &
+ruby tools/phrase_announcer.rb >> /tmp/stackchan-picoruby-debug/phrase_announcer.log 2>&1 &
+# later:
+kill %1 %2
+```
+
 ## Capabilities
 
 | Subsystem | State | Notes |
