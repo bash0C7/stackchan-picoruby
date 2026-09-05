@@ -1,10 +1,6 @@
 # yaml-language-server: $schema=https://github.com/rigortype/rigor/raw/master/schemas/rigor-config.schema.json
 #
 # Rigor is a standalone CLI, never a bundled gem — see docs/rigor.md.
-#
-# app/, pc/ and mrbgems/ infer very little until signature_paths points at the
-# picoruby sig/ tree, which lives in the gitignored vendor/ checkout. Until then
-# their device-side collaborators type as Dynamic and most rules stay silent.
 target_ruby: "4.0"
 
 paths:
@@ -14,6 +10,27 @@ paths:
   - pc
   - test
   - test-host
+
+# picoruby's own RBS for the peripherals the device code names, so calls into
+# them resolve instead of reading Dynamic. These live under the gitignored
+# vendor/ checkout, so `rake vendor:setup` has to have run — which `rake test`
+# already requires, since the picotest VM is built from that same tree.
+#
+# Only the gems actually used, never the whole mrbgems tree: picoruby
+# reimplements parts of the stdlib (picoruby-base64 and friends) and its sig/
+# then redeclares what rbs ships. One such collision raises
+# RBS::DuplicatedDeclarationError and collapses the WHOLE environment to nil —
+# every type reads Dynamic[top] and the run goes quiet rather than clean.
+signature_paths:
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-ble/sig
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-gpio/sig
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-i2c/sig
+  # picoruby's per-gem sig files are not self-contained: uart.rbs does
+  # `include IRQ`, which picoruby-irq declares.
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-irq/sig
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-spi/sig
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-uart/sig
+  - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/sig
 
 cache:
   path: .rigor/cache

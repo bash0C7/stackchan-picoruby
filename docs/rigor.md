@@ -34,7 +34,7 @@ rigor emits absolute paths for source diagnostics and matches `diff` on the raw 
 `rigor:snapshot` strips the repo root before writing and `rigor:check` puts it back into a
 temp copy. The committed file therefore survives a different checkout.
 
-A snapshot entry is not an accepted defect. Of the 17 frozen entries, all 8
+A snapshot entry is not an accepted defect. Of the 22 frozen entries, all 8
 `flow.always-truthy-condition` are false positives from rigor 0.3.7 itself, in three shapes:
 
 - **`String#<<` / `#concat` do not invalidate the tracked literal.** `s = +"a"; s << x` leaves
@@ -47,17 +47,43 @@ A snapshot entry is not an accepted defect. Of the 17 frozen entries, all 8
 - **A variable captured by a Proc keeps its definition-site value** even when the Proc mutates
   it, so a fake clock built from `reads.shift` folds. One entry in `test-host/`.
 
-The other 9 are not false positives. Seven `call.possible-nil-receiver` name receivers that
-really are nullable in RBS — `String#unpack1`, `String#byteslice`, a `synthesize` that returns
-nil on timeout, a `rescue`-assigned local read after the block — and that the code relies on
-being non-nil without saying so. One `def.ivar-write-mismatch` observes, correctly, that
+The other 14 are not false positives.
+
+**Five are the test fakes not honouring the BLE contract**, and they exist in the snapshot
+only because picoruby's own RBS is loaded — nothing host-side could have caught them.
+`test/pc/stubs.rb` returns the value of `@writes << [...]` from three methods that
+`BLE::Central` declares as `-> bool` / `-> Integer` / `-> Integer`, and its
+`Utils.little_endian_to_int16` dereferences an argument picoruby declares as `String | nil`.
+A fake that diverges from the device contract is the failure mode the host suite is
+structurally blind to. **These are worth fixing; they are frozen, not accepted.**
+
+Seven `call.possible-nil-receiver` name receivers that really are nullable in RBS —
+`String#unpack1`, `String#byteslice`, a `synthesize` that returns nil on timeout, a
+`rescue`-assigned local read after the block — and that the code relies on being non-nil
+without saying so. One `def.ivar-write-mismatch` observes, correctly, that
 `@current_face_class` holds more than one `Face` subclass; that is the design, and declaring
 the union would settle it. One is an info about gems with no RBS.
 
-## Not wired up yet
+## Signatures
 
-`signature_paths` is unset, so picoruby's own RBS — 244 files under the gitignored
-`vendor/R2P2-ESP32/.../picoruby/mrbgems/*/sig/` — is not loaded. Until it is, every device-side
-collaborator (`I2C`, `BLE`, `Machine`, the PY32 expander) types as `Dynamic` and most rules stay
-silent on `app/` and `mrbgems/`. Loading it is what would let a picoruby bump surface as a
-`rigor:check` diff instead of a grep.
+`signature_paths` loads picoruby's own RBS for the peripherals `app/` and `mrbgems/` name, so
+`BLE`, `I2C`, `GPIO`, `SPI`, `UART` and `Machine` resolve instead of reading `Dynamic`. This is
+also the mechanism by which a picoruby bump becomes a `rigor:check` diff — a renamed method or a
+changed return type shows up here rather than in a grep.
+
+Two constraints on that list, both learned by hitting them:
+
+- **Never point it at the whole `mrbgems` tree.** picoruby reimplements parts of the stdlib, so
+  `picoruby-base64/sig/base64.rbs` redeclares the `Base64` that rbs ships. One such collision
+  raises `RBS::DuplicatedDeclarationError` and collapses the entire environment to nil —
+  `RBS classes available: 0`, every type reads `Dynamic[top]`, and the run reports EMPTY rather
+  than clean.
+- **The per-gem sig files are not self-contained.** `picoruby-uart/sig/uart.rbs` opens with
+  `include IRQ`, declared over in `picoruby-irq`. Loading uart without irq leaves `UART` unbuilt
+  and silently Dynamic.
+
+The paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must have run.
+That costs nothing: `rake test` already needs the same tree to build the picotest VM.
+
+The LCD, PY32 and servo gems are fetched by the firmware build into `build/repos/`, not
+`vendor/`, so their signatures are not loaded and `ILI9342` still types as Dynamic.

@@ -1,6 +1,6 @@
 {
   "success": false,
-  "error_count": 7,
+  "error_count": 9,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -184,6 +184,66 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
+      "path": "test/pc/stubs.rb",
+      "line": 33,
+      "column": 12,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `getbyte' is undefined on NilClass",
+      "method_name": "getbyte",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "test/pc/stubs.rb",
+      "line": 33,
+      "column": 37,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `getbyte' is undefined on NilClass",
+      "method_name": "getbyte",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "test/pc/stubs.rb",
+      "line": 60,
+      "column": 7,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `connect': declared bool, inferred Array",
+      "method_name": "connect",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "test/pc/stubs.rb",
+      "line": 64,
+      "column": 7,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `write_value_of_characteristic_without_response': declared Integer, inferred Array",
+      "method_name": "write_value_of_characteristic_without_response",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "test/pc/stubs.rb",
+      "line": 68,
+      "column": 7,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `write_characteristic_descriptor_using_descriptor_handle': declared Integer, inferred Array",
+      "method_name": "write_characteristic_descriptor_using_descriptor_handle",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
       "path": "test-host/pc_lifecycle_test.rb",
       "line": 102,
       "column": 18,
@@ -194,5 +254,16 @@
       "evidence_tier": "medium",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
     }
-  ]
+  ],
+  "stats": {
+    "target_files": 74,
+    "rbs_classes_total": 1131,
+    "rbs_classes_project_sig": 14,
+    "rbs_classes_bundled": 1117,
+    "rbs_attribution_available": true,
+    "gem_walk_classes": 0,
+    "gem_walk_gems": 0,
+    "wall_seconds": 2.18854200001806,
+    "peak_rss_bytes": 214220800
+  }
 }
