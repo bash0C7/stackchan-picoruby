@@ -20,7 +20,7 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main`, the only branch, in sync with origin |
+| `stackchan-picoruby` | `main`, five commits ahead of origin and unpushed |
 | firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `7258676` |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
@@ -31,7 +31,14 @@ The device reports App version `2f18720`, so it is running this tree.
 Tests pass: 379 picotest across device, pc, shared and the three driver gems,
 with no failures, crashes or skips, plus the CRuby host tests, where ten cases
 are omitted on machines without `plutil`. Both workflows are green on the tip
-of `main`. `deps.yml` runs on every push; `firmware.yml` runs weekly and on
+of `main`.
+
+`rake test` now runs `rigor:check` first, a host-side type analysis that fails
+on any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
+to have run, and installs its own gemset into `vendor/rigor-tool` on first use.
+Seventeen diagnostics are frozen in the snapshot; eight of them are false
+positives from rigor 0.3.7 and the rest are stated invariants the code does not
+declare. `docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmware.yml` runs weekly and on
 demand, so trigger it with `gh workflow run firmware.yml` after changing
 anything it covers.
 
