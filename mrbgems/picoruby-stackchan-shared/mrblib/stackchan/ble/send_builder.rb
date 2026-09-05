@@ -71,6 +71,8 @@ module Stackchan
           FrameCodec.encode_selftest
         when :read_pos
           FrameCodec.encode_read_pos
+        else
+          raise ArgumentError, "unknown command kind: #{cmd[:kind].inspect}"
         end
       end
 

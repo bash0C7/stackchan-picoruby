@@ -29,7 +29,10 @@ class BLE
   GATT_EVENT_NOTIFICATION = 0xA7
 
   module Utils
+    # picoruby declares this as (String|nil) -> Integer, and the caller feeds it
+    # `byteslice` results, so nil has to mean 0 here too rather than raise.
     def self.little_endian_to_int16(str)
+      return 0 unless str
       (str.getbyte(0) || 0) | ((str.getbyte(1) || 0) << 8)
     end
   end
@@ -57,16 +60,23 @@ class BLE
   def packet_callback(event_packet)
   end
 
+  # The three below return what picoruby's BLE::Central declares — bool, and the
+  # btstack success code — not the value of the `<<` that records the call. A
+  # fake that answers a different type than the device is how a test stays green
+  # over a branch the device would take differently.
   def connect(adv_report)
     @connect_calls << adv_report
+    true
   end
 
   def write_value_of_characteristic_without_response(conn_handle, handle, value)
     @writes << [:write, conn_handle, handle, value]
+    0
   end
 
   def write_characteristic_descriptor_using_descriptor_handle(conn_handle, handle, value)
     @writes << [:descriptor, conn_handle, handle, value]
+    0
   end
 
   private

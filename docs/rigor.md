@@ -34,7 +34,7 @@ rigor emits absolute paths for source diagnostics and matches `diff` on the raw 
 `rigor:snapshot` strips the repo root before writing and `rigor:check` puts it back into a
 temp copy. The committed file therefore survives a different checkout.
 
-A snapshot entry is not an accepted defect. Of the 23 frozen entries, all 8
+A snapshot entry is not an accepted defect. Of the 17 frozen entries, all 8
 `flow.always-truthy-condition` are false positives from rigor 0.3.7 itself, in three shapes:
 
 - **`String#<<` / `#concat` do not invalidate the tracked literal.** `s = +"a"; s << x` leaves
@@ -47,21 +47,7 @@ A snapshot entry is not an accepted defect. Of the 23 frozen entries, all 8
 - **A variable captured by a Proc keeps its definition-site value** even when the Proc mutates
   it, so a fake clock built from `reads.shift` folds. One entry in `test-host/`.
 
-The other 15 are not false positives.
-
-**One is `SendBuilder#to_frames` declaring `Array[String]` and inferring `Array[String?]`.**
-`#encode` switches on `cmd[:kind]` with no `else`, so an unrecognised kind returns nil and
-lands in the array. Nothing reaches it today — `#record` is only called from the seven public
-methods — but the signature states an intent the code does not enforce. **Worth fixing; frozen,
-not accepted.**
-
-**Five are the test fakes not honouring the BLE contract**, and they exist in the snapshot
-only because picoruby's own RBS is loaded — nothing host-side could have caught them.
-`test/pc/stubs.rb` returns the value of `@writes << [...]` from three methods that
-`BLE::Central` declares as `-> bool` / `-> Integer` / `-> Integer`, and its
-`Utils.little_endian_to_int16` dereferences an argument picoruby declares as `String | nil`.
-A fake that diverges from the device contract is the failure mode the host suite is
-structurally blind to. **These are worth fixing; they are frozen, not accepted.**
+The other 9 are not false positives.
 
 Seven `call.possible-nil-receiver` name receivers that really are nullable in RBS —
 `String#unpack1`, `String#byteslice`, a `synthesize` that returns nil on timeout, a
