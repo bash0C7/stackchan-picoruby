@@ -20,7 +20,7 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main`, five commits ahead of origin and unpushed |
+| `stackchan-picoruby` | `main` @ `0a65507`, pushed |
 | firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
 | picoruby submodule under it | `7258676` |
 | LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
