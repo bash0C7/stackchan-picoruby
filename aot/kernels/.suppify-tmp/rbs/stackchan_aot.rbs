@@ -1,5 +1,0 @@
-class Object
-  def ulaw_decode: (String) -> String
-  def glyph_row: (Integer, Integer, Integer, Integer) -> String
-  def glyph16: (Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer) -> String
-end

@@ -1,5 +1,0 @@
-module SuppiExport_stackchan_aot
-  def self.suppi_ulaw_decode: (String) -> String
-  def self.suppi_glyph_row: (Integer, Integer, Integer, Integer) -> String
-  def self.suppi_glyph16: (Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer) -> String
-end
