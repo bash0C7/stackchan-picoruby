@@ -8,4 +8,4 @@ description: Capture device serial output for a fixed duration (default 25 s) to
 
 Never raw `cat /dev/cu.usbmodem*`: the CDC port re-enumerates on reset and the cat goes silent. `capture-with-pty` runs idf_monitor under expect, which survives it.
 
-Look for `[application] LCD + LED cold-boot done`, `HCI WORKING — advertising`, `Guru Meditation Error`, `Rebooting...`. A panic goes to `stackchan-device-crash-analyze`. `[monitor guard]` means another monitor is attached; detach it first.
+Look for `[application] LCD cold-boot done (torque-OFF idle)`, `HCI WORKING — advertising`, `Guru Meditation Error`, `Rebooting...`. A panic goes to `stackchan-device-crash-analyze`. `[monitor guard]` means another monitor is attached; detach it first.
