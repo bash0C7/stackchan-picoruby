@@ -622,3 +622,56 @@ namespace :pc do
     puts "[pc:down] backends stopped"
   end
 end
+
+
+# Device trial (trial/lock.yml): the robot running each arm, built from pinned
+# commits, driven from the Mac, timed in one session. lib/device_trial.rb holds
+# the order and the pass rules; lib/device_trial_ops.rb touches the machine.
+namespace :trial do
+  TRIAL_LOCK = File.expand_path("trial/lock.yml", __dir__)
+  TRIAL_RESULTS = File.expand_path("trial/results", __dir__)
+
+  def trial_session(stamp)
+    require_relative "lib/device_trial"
+    require_relative "lib/device_trial_ops"
+    ops = DeviceTrialOps.new("/tmp/stackchan-picoruby-debug/trial/#{stamp}")
+    DeviceTrial.new(lock: YAML.safe_load(File.read(TRIAL_LOCK)), root: __dir__, ops: ops, stamp: stamp)
+  end
+
+  def write_trial_report(t)
+    mkdir_p TRIAL_RESULTS
+    base = File.join(TRIAL_RESULTS, t.report["stamp"])
+    File.write("#{base}.json", JSON.pretty_generate(t.report))
+    File.write("#{base}.md", t.markdown)
+    puts "[trial] verdict: #{t.report['verdict']} -> #{base}.md"
+  end
+
+  def latest_trial_json
+    Dir[File.join(TRIAL_RESULTS, "*.json")].max or abort "[trial] no report under #{TRIAL_RESULTS}"
+  end
+
+  desc "Run trial/lock.yml on the robot: base then trial arm, each pinned, flashed, booted, driven, timed (~40 min). ESPPORT= optional"
+  task :run do
+    t = trial_session(Time.now.strftime("%Y%m%d-%H%M%S"))
+    t.run
+    write_trial_report(t)
+  end
+
+  desc "iOS / watchOS apps at the locked R2P2-darwin against the trial firmware (needs DEVELOPMENT_TEAM, a paired iPhone + Watch). Appends to the latest report"
+  task :darwin do
+    json = latest_trial_json
+    t = trial_session(File.basename(json, ".json"))
+    t.report.merge!(JSON.parse(File.read(json)))
+    t.run_darwin
+    write_trial_report(t)
+  end
+
+  desc "Ask the questions the latest report left unanswered (it ran without a TTY)"
+  task :answer do
+    json = latest_trial_json
+    t = trial_session(File.basename(json, ".json"))
+    t.report.merge!(JSON.parse(File.read(json)))
+    t.answer
+    write_trial_report(t)
+  end
+end

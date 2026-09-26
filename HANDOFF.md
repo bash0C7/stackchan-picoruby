@@ -60,32 +60,32 @@ green on the host and built into firmware, but have not run on the robot:
   writes the previous chunk to I2S.
 
 R2P2-ESP32 `claude/stackchan-aot-multicore-drb` wires picoruby-drb, the
-kernels and multicore into the firmware; `R2P2_ESP32_REF` defaults to it, so
-an existing `vendor/R2P2-ESP32` has to be switched to that branch, and the
-fetched ili9342 in `build/repos/` moved to `claude/aot-glyph16` (the cache is
-not pulled). It builds with ESP-IDF v5.4.2: the app binary grows 148,240 B
-(42% of the app partition still free) and DIRAM use goes from 150,415 to
-164,295 of 341,760 B. suppify is pinned to its `claude/string-arg-length`
-branch, which keeps 0x00 in String arguments and fixes the runtime-symbol
-collision between two suppify libraries on Linux.
+kernels and multicore into the firmware. It builds with ESP-IDF v5.4.2: the
+app binary grows 148,240 B (42% of the app partition still free) and DIRAM
+use goes from 150,415 to 164,295 of 341,760 B. suppify is pinned to its
+`claude/string-arg-length` branch, which keeps 0x00 in String arguments and
+fixes the runtime-symbol collision between two suppify libraries on Linux.
 
-What only the device can answer:
-- `rake r2p2:full_rebuild SRC=app/application.rb`, then the boot log: the
-  line `[application] dRuby over BLE enabled`, and no panic from the 8 KB VM
-  stack or the task watchdog on core 1.
-- `ble_control_smoke` / `ble_servo_smoke` / `ble_torque_smoke`, then
-  `stackchan remote servo YL=50 PU=30 T=500` — it must print the same detail
-  line the text link gives.
-- `say` with a clip long enough to span several 2046-byte chunks: no gap
-  between chunks.
-- Timings, as two points in one session: `ROUNDS=8 tools/face_profile.zsh`
-  and a `<text:…>` subtitle before and after, and `say` receive-to-done.
-  Host numbers (x86_64, `bench/`): glyph 16x16 44.9 → 8.5 µs; mu-law 4096 B
-  interpreted ~1.9 ms → ~0.29 ms on the pthread multicore port.
+None of it merges before `/stackchan-device-trial` passes on the robot.
+`trial/lock.yml` pins every commit involved — this repo, R2P2-ESP32 and its
+picoruby, each gem mruby caches under `build/repos/`, suppify / spinel /
+picoruby-multicore, R2P2-darwin — for two arms: `base` (main as it is) and
+`trial` (these branches). `rake trial:run` builds each arm with its own
+worktree's tooling, checks the pins before and after the build, checks the
+boot log (markers, App version, no fault), drives torque / face / LED /
+servo / `remote` / `say` from the Mac, times faces, the 19-glyph subtitle,
+servo over text and over dRuby, and `say`, and writes
+`trial/results/<stamp>.{md,json}`. `rake trial:answer` takes the operator's
+answers (servo moved, subtitle intact, audio without gaps), `rake
+trial:darwin` builds and runs the iOS / watchOS apps against the trial
+firmware. The build half of the run (pin, set up, build, pins still hold)
+has been run for both arms in a Linux container; the device half has not.
 
-Once it holds, merge in order: suppify, picoruby-ili9342, this repo (the
-darwin build_configs fetch picoruby-drb-ble from `main`), R2P2-darwin, then
-point R2P2-ESP32's ili9342 back at `main`.
+Host numbers (x86_64, `bench/`): glyph 16x16 44.9 → 8.5 µs; mu-law 4096 B
+interpreted ~1.9 ms → ~0.29 ms on the pthread multicore port.
+
+On `verdict: pass`, merge in order: suppify, picoruby-ili9342, this repo,
+R2P2-darwin, R2P2-ESP32 (with ili9342 back at `main`).
 
 ### 2. The daemon has no defence against a client hanging up
 

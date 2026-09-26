@@ -1,0 +1,45 @@
+# What `rake trial:run` puts on the robot, commit for commit. Every sha is
+# checked out before it is used and checked again after the build; a mismatch
+# stops the run. Change a line here to trial something else.
+#
+# Each arm is one firmware + app on the CoreS3, built with that arm's own
+# stackchan-picoruby tooling (a git worktree at `stackchan-picoruby` under
+# build/trial/<arm>). The PC daemon and CLI come from the same worktree.
+arms:
+  base:
+    stackchan-picoruby: b850f37579aa2002c85ca0aa8a6102725e249ac7   # main
+    R2P2-ESP32: 2f187201589b1fe43c11665aad85e3aabe4813b2           # c-primitives-verified
+    picoruby: 7258676d6177dc4d8eb89fccec2fe0c6c0e4ef0b             # R2P2-ESP32's submodule
+    repos:                                                         # build/repos/esp32-picoruby/<name>
+      picoruby-ili9342: 01a1a025c2f3ce837efe373402e64754e3c12a9a    # main
+      picoruby-py32-io-expander: 407b2c43fbeaace13239be8773d7a06aa3835baf
+      picoruby-stackchan-protocol: 44000e576fce6d98396e68efa89017a42900eec9
+      picoruby-scservo: 2f0ec4a1403adaaf3da1df13478b3562341c159f
+      stackchan-picoruby: b850f37579aa2002c85ca0aa8a6102725e249ac7  # picoruby-aw88298 (C)
+    boot_markers:
+      - "[application] boot"
+      - "[boot] step:led-init-ok"
+      - "[application] BLE peripheral starting"
+  trial:
+    stackchan-picoruby: b16d7fe74a58b0f8f581e39d72bf6b8c6b405872   # claude/ecstatic-allen-s6qki1
+    R2P2-ESP32: 561fd672494850a42af58871b11ae83b44b1b50d           # claude/stackchan-aot-multicore-drb
+    picoruby: 7258676d6177dc4d8eb89fccec2fe0c6c0e4ef0b
+    repos:
+      picoruby-ili9342: 8e6e24f9d2fc6a0848f3d540013474194d816423    # claude/aot-glyph16
+      picoruby-py32-io-expander: 407b2c43fbeaace13239be8773d7a06aa3835baf
+      picoruby-stackchan-protocol: 44000e576fce6d98396e68efa89017a42900eec9
+      picoruby-scservo: 2f0ec4a1403adaaf3da1df13478b3562341c159f
+    aot:                                                           # build/aot/<name> in the worktree
+      suppify: a5449a394c6d6ef31afebdbabd56be563208a83e            # claude/string-arg-length
+      spinel: 4a28d45f01fef4605eedca6d7008771d51306e07
+      picoruby-multicore: 83bd0d6203ebd707e46e0b7779f1c844ecca0187
+    boot_markers:
+      - "[application] boot"
+      - "[boot] step:led-init-ok"
+      - "[application] dRuby over BLE enabled"
+      - "[application] BLE peripheral starting"
+    remote: true
+
+# iOS / watchOS apps, run against the trial arm's firmware.
+darwin:
+  R2P2-darwin: 89df03468c9a999b651367bda4229147ae657c7e             # claude/drb-over-ble

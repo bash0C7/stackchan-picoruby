@@ -113,12 +113,15 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 
 ## ビルド・deploy
 
+- firmware・gem・app・BLE link を変える branch (この repo と、R2P2-ESP32 / picoruby-ili9342 / suppify / R2P2-darwin の対応 branch) は、`trial/lock.yml` に sha を書いて `/stackchan-device-trial` を通し、`trial/results/` の report が `verdict: pass` になるまで merge しない。
+
 | 用途 | 手段 |
 |---|---|
 | app だけ変えた | `/stackchan-device-iterate` (picomodem upload、flash に優しい) |
 | firmware / gem / sdkconfig を変えた | `/stackchan-device-build-flash` → `/stackchan-device-cold-recovery`、または `/stackchan-device-full-rebuild` |
 | 初回・target 切替 | `/stackchan-device-setup` |
 | 復旧 | cold-recovery → full-rebuild → 人手 (USB 抜き差し / download mode) |
+| merge 前の実機実績 | `/stackchan-device-trial` (`trial/lock.yml` の commit を base / trial の 2 arm で実機に載せる) |
 
 - `.rb` の直接 upload は禁止。必ず host で picorbc compile した `.mrb` を上げる (on-device compile は codegen stack overflow)。
 - `main_task.rb` は `/home/app.mrb` を無条件に `load` し、このアプリは戻らないので `$shell.start` に到達しない。抜ける keypress も無い。`upload_appmrb` はこのため先に `wipe_storage` を通す。`upload_mrb` (`DST=`) は app.mrb を壊さずに wipe できないので、autostart 中の device への helper upload は wipe → helper → app.mrb の順になる。
