@@ -91,6 +91,11 @@ class DispatcherServoTest < Picotest::Test
     assert_equal [[781, 0, 0]], @pitch_servo.writes
   end
 
+  def test_servo_frame_with_an_unknown_face_answers_error_and_no_detail
+    @disp.handle({ "F" => "9", "YL" => "50" })
+    assert_equal ["?\n"], @stdout.writes
+  end
+
   def test_dispatcher_without_head_returns_unavailable
     disp = StackchanApp::Dispatcher.new(
       display: @display, led: @led, stdout: @stdout, head: nil

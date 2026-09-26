@@ -320,19 +320,14 @@ module StackchanApp
       return handle_selftest(frame) if frame.key?("selftest")
       return handle_read_pos(frame)  if frame.key?("read")
 
-      attempts = []
-      attempts << handle_face(frame) if frame.key?("F")
-      attempts << handle_led(frame)  if frame.key?("L")
-      attempts << handle_text(frame) if frame.key?("text")
-      servo_present = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
-      if servo_present
-        success = handle_head(frame)
-        @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
-        emit_servo_detail(frame) if success
-      else
-        success = attempts.empty? || attempts.all? { |ok| ok }
-        @stdout.write(success ? ACK_FRAME : ERROR_FRAME)
-      end
+      ok = true
+      ok = handle_face(frame) && ok if frame.key?("F")
+      ok = handle_led(frame)  && ok if frame.key?("L")
+      ok = handle_text(frame) && ok if frame.key?("text")
+      servo = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
+      ok = handle_head(frame) && ok if servo
+      @stdout.write(ok ? ACK_FRAME : ERROR_FRAME)
+      emit_servo_detail(frame) if ok && servo
     rescue => e
       log_error(e)
       @stdout.write(ERROR_FRAME)
@@ -536,10 +531,10 @@ module StackchanApp
       @parser.feed(rx_data).each do |frame|
         if frame.key?("A")
           n = frame["A"].to_i
-          next if @speaker.nil? || n <= 0
+          next if n <= 0
           notify_fn.call("<A:ready>\n") if notify_fn
           ulaw = wait_and_drain(receive_t_ms(n), drain_fn, pump_fn)
-          play(ulaw)
+          play(ulaw) if @speaker
           return 1
         else
           yield frame if block_given?

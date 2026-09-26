@@ -94,22 +94,48 @@ class AudioReceiverTest < Picotest::Test
     assert_equal "1", frames[0]["F"]
   end
 
-  def test_no_speaker_skips_audio
-    delays = Machine.delays
-    delays.clear
+  class BufferParser
+    def initialize
+      @buf = ""
+    end
 
-    rx = StackchanApp::AudioReceiver.new(
-      speaker: nil,
-      parser: FakeParser.new([{"A" => "6"}]),
-    )
+    def feed(data)
+      @buf << data
+      frames = []
+      while (s = @buf.index("<")) && (e = @buf.index(">", s))
+        body = @buf[s + 1, e - s - 1]
+        @buf = @buf[e + 1, @buf.bytesize - e - 1] || ""
+        frame = {}
+        body.split(",").each do |pair|
+          kv = pair.split(":", 2)
+          frame[kv[0]] = kv[1] if kv.size == 2
+        end
+        frames << frame unless frame.empty?
+      end
+      frames
+    end
+  end
+
+  def test_no_speaker_still_readies_and_drains_the_blast_so_none_of_it_is_dispatched
+    blast = "\x01<x:1>\x02<\x03"
+    rx_queue = [blast]
+    notifies = []
+    dispatched = []
+
+    rx = StackchanApp::AudioReceiver.new(speaker: nil, parser: BufferParser.new)
     done = rx.consume(
-      "<A:6>\n",
-      notify_fn: ->(msg) {},
-      drain_fn:  -> { nil }
-    )
+      "<A:#{blast.bytesize}>\n",
+      notify_fn: ->(msg) { notifies << msg },
+      drain_fn:  -> { rx_queue.shift }
+    ) { |f| dispatched << f }
+    while (data = rx_queue.shift)
+      rx.consume(data, notify_fn: ->(msg) {}, drain_fn: -> { nil }) { |f| dispatched << f }
+    end
+    rx.consume("<F:1>\n", notify_fn: ->(msg) {}, drain_fn: -> { nil }) { |f| dispatched << f }
 
-    assert_equal 0, done
-    assert_equal 0, delays.length
+    assert_equal 1, done
+    assert_equal ["<A:ready>\n"], notifies
+    assert_equal [{ "F" => "1" }], dispatched
   end
 
   def test_zero_length_audio_ignored
