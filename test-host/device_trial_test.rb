@@ -164,10 +164,10 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "boot", failed(r, "base")["name"]
   end
 
-  def test_trial_boot_must_announce_drb
-    @ops.on_rake["r2p2:reset_and_capture"] = ->(dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot("base") }
+  def test_a_missing_marker_fails_the_boot
+    @ops.on_rake["r2p2:reset_and_capture"] = ->(dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot(File.basename(dir)).sub("[boot] step:led-init-ok", "") }
     r = trial.run(%w[trial])
-    assert_match(/dRuby over BLE enabled/, failed(r, "trial")["detail"])
+    assert_match(/led-init-ok/, failed(r, "trial")["detail"])
   end
 
   def test_boot_must_come_from_the_locked_firmware

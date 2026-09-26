@@ -50,7 +50,7 @@ unless File.directory?(gem) && File.exist?(stamp) && File.read(stamp).strip == w
               "-o", LIB, "-t", "picoruby", "-d", gems_dir, out: $stderr, chdir: out)
   die "suppify failed" unless ok
   if board == "esp32"
-    ok = system(File.join(ROOT, "tools", "aot", "prepare_mcu.sh"), gem, "esp32", out: $stderr)
+    ok = system(File.join(ROOT, "tools", "aot", "prepare_mcu.sh"), gem, out: $stderr)
     die "prepare_mcu failed" unless ok
   end
   File.write(stamp, "#{want}\n")

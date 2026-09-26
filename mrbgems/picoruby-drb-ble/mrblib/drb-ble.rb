@@ -1,80 +1,58 @@
-# dRuby over BLE. The bytes on the air are exactly DRb's TCP stream (4-byte
-# big-endian length + Marshal per field), cut into chunks no larger than one
-# ATT write / notification. ATT is ordered and reliable within a connection, so
-# no extra envelope is needed.
-#
-# The peripheral runs a non-blocking DRbBle::Responder fed from its own tick;
-# the central talks through DRb::DRbObject with a `drbble://<name>` URI whose
-# link was registered with DRbBle.register.
-begin
-  require 'drb'
-rescue LoadError
-  # No picoruby-drb in this VM: the transport below stays unhooked.
-end
-
+# dRuby over BLE: DRb's TCP byte stream, cut into ATT-sized chunks.
 module DRbBle
-  CHUNK = 180   # darwin exposes no MTU; the NUS writes already use 180 B
+  CHUNK = 180
 
   class Incomplete < StandardError; end
 
-  # Splits data into byteslices of at most size bytes.
   def self.chunks(data, size = CHUNK)
     out = []
     pos = 0
-    len = data.bytesize
-    while pos < len
+    while pos < data.bytesize
       out << data.byteslice(pos, size)
       pos += size
     end
     out
   end
 
-  # socket#read over a String; raises Incomplete when the bytes are not there yet.
-  class BufferReader
+  # socket#read over a String; Incomplete until the bytes are there.
+  class Reader
+    attr_reader :pos
+
     def initialize(buf)
       @buf = buf
       @pos = 0
     end
 
-    attr_reader :pos
-
     def read(n)
       raise Incomplete if @pos + n > @buf.bytesize
-      s = @buf.byteslice(@pos, n)
       @pos += n
-      s
+      @buf.byteslice(@pos - n, n)
     end
   end
 
-  # socket#write into a String.
-  class BufferWriter
+  class Writer
+    attr_reader :out
+
     def initialize
       @out = ""
     end
 
-    attr_reader :out
-
     def write(s)
       @out << s
-      s.bytesize
     end
   end
 
-  # Server side. feed takes whatever one BLE write delivered and returns the
-  # reply bytes of every request it completed ("" when none). Only the method
-  # names in allow can be called: any central in range can write to it.
+  # Peripheral side: feed each BLE write, get back the reply bytes ("" if none).
+  # A request that does not parse, or outgrows MAX_REQUEST, is dropped.
   class Responder
+    MAX_REQUEST = 4096
+
     def initialize(front, allow:)
       @front = front
       @allow = allow
       @buf = ""
     end
 
-    def pending_bytes
-      @buf.bytesize
-    end
-
-    # A central that went away mid-request leaves a partial one behind.
     def reset
       @buf = ""
     end
@@ -83,93 +61,77 @@ module DRbBle
       @buf << bytes
       out = ""
       while true
-        reader = BufferReader.new(@buf)
+        reader = Reader.new(@buf)
         begin
-          req = DRb::DRbMessage.new(reader).recv_request
+          ref, msg, args = DRb::DRbMessage.new(reader).recv_request
         rescue Incomplete
+          reset if @buf.bytesize > MAX_REQUEST
+          break
+        rescue
+          reset
           break
         end
-        @buf = @buf.byteslice(reader.pos, @buf.bytesize - reader.pos) || ""
-        out << reply_for(req[0], req[1], req[2])
+        @buf = @buf.byteslice(reader.pos, @buf.bytesize - reader.pos)
+        out << reply(ref, msg, args)
       end
       out
     end
 
     private
 
-    def reply_for(ref, msg_id, args)
-      writer = BufferWriter.new
-      message = DRb::DRbMessage.new(writer)
-      if !ref.nil?
-        message.send_reply(false, "DRb::DRbError: no object #{ref.inspect}")
-      elsif !@allow.include?(msg_id)
-        message.send_reply(false, "NoMethodError: #{msg_id} is not exposed")
-      else
+    def reply(ref, msg, args)
+      w = Writer.new
+      m = DRb::DRbMessage.new(w)
+      if ref.nil? && @allow.include?(msg)
         begin
-          message.send_reply(true, @front.send(msg_id, *args))
+          m.send_reply(true, @front.send(msg, *args))
         rescue => e
-          message.send_reply(false, "#{e.class}: #{e.message}")
+          m.send_reply(false, "#{e.class}: #{e.message}")
         end
+      else
+        m.send_reply(false, "NoMethodError: #{msg} is not exposed")
       end
-      writer.out
+      w.out
     end
   end
 
-  # Client side: the socket DRb.send_message talks to. Writes are held until
-  # the first read so one request goes out as few chunks as possible.
-  #
-  # link: send_chunk(bytes) / poll -> String or nil (bytes the peer notified)
-  class ClientSocket
+  # Central side: the socket DRb.send_message uses. Writes go out on the first
+  # read. link: send_chunk(bytes) / poll -> String or nil.
+  class Socket
     POLL_MS = 20
 
-    def initialize(link, timeout_ms: 3000, chunk: CHUNK)
+    def initialize(link, timeout_ms)
       @link = link
       @timeout_ms = timeout_ms
-      @chunk = chunk
       @tx = ""
       @rx = ""
     end
 
     def write(s)
       @tx << s
-      s.bytesize
     end
 
     def read(n)
-      flush
+      DRbBle.chunks(@tx).each { |c| @link.send_chunk(c) }
+      @tx = ""
       waited = 0
       while @rx.bytesize < n
         data = @link.poll
         if data
           @rx << data
+        elsif waited >= @timeout_ms
+          raise DRb::DRbConnError, "drbble: no reply in #{@timeout_ms} ms"
         else
-          raise DRb::DRbConnError, "drbble: no reply in #{@timeout_ms} ms" if waited >= @timeout_ms
           sleep_ms POLL_MS
           waited += POLL_MS
         end
       end
       s = @rx.byteslice(0, n)
-      @rx = @rx.byteslice(n, @rx.bytesize - n) || ""
+      @rx = @rx.byteslice(n, @rx.bytesize - n)
       s
     end
 
-    # DRb.send_message closes after every call; the BLE link stays up.
     def close
-      @tx = ""
-      @rx = ""
-    end
-
-    private
-
-    def flush
-      return if @tx.empty?
-      parts = DRbBle.chunks(@tx, @chunk)
-      i = 0
-      while i < parts.length
-        @link.send_chunk(parts[i])
-        i += 1
-      end
-      @tx = ""
     end
   end
 
@@ -179,30 +141,19 @@ module DRbBle
     @links[uri] = [link, timeout_ms]
   end
 
-  def self.unregister(uri)
-    @links.delete(uri)
-  end
-
-  def self.socket_for(uri)
-    entry = @links[uri]
-    raise DRb::DRbBadURI, "drbble: no link registered for #{uri}" unless entry
-    ClientSocket.new(entry[0], timeout_ms: entry[1])
+  def self.socket(uri)
+    link, timeout_ms = @links[uri]
+    raise DRb::DRbBadURI, "drbble: no link registered for #{uri}" unless link
+    Socket.new(link, timeout_ms)
   end
 end
 
-# A device firmware without picoruby-drb still loads this file (app.mrb bundles it).
-if Object.const_defined?(:DRb)
-  module DRb
-    class << self
-      alias_method :_ble_base_create_socket, :create_socket
+module DRb
+  class << self
+    alias_method :_ble_base_create_socket, :create_socket
 
-      def create_socket(uri)
-        if uri.to_s.start_with?("drbble://")
-          DRbBle.socket_for(uri.to_s)
-        else
-          _ble_base_create_socket(uri)
-        end
-      end
+    def create_socket(uri)
+      uri.to_s.start_with?("drbble://") ? DRbBle.socket(uri.to_s) : _ble_base_create_socket(uri)
     end
   end
 end

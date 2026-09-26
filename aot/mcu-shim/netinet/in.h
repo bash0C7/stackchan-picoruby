@@ -1,2 +1,2 @@
-/* mcu_socket.h に集約 (docs/aot-mcu.md) */
+/* 中身は mcu_socket.h */
 #include "../mcu_socket.h"

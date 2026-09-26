@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # suppify が生成した mrbgem (build/aot/picoruby-<name>/) を、MCU (ESP32-S3、xtensa、newlib、32bit) の
 # firmware に載せられるように、機械的・冪等に手当てする。suppify を回し直したら、これも回し直す。
-# 対象 (2 番目の引数か env AOT_MCU_TARGET): esp32 (既定。xtensa) / rp2040 (Pico 2 W の RP2350、Cortex-M33、arm-none-eabi newlib、32bit)。
-# 手当ての中身は両方で同じ (どちらも 32bit の newlib)。対象は mcu-target.txt に残り、tools/aot/syntax_check_mcu.sh が compiler を選ぶのに読む。
 #
-#   tools/aot/prepare_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot [esp32|rp2040]
+#   tools/aot/prepare_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot
 #
-# 手当てと根拠 (aot/README.md に詳細。値は env AOT_MCU_* で上書きできる):
+# 手当て (値は env AOT_MCU_* で上書きできる):
 #  (a) sp_gc.h / sp_alloc.c の無条件 #define の静的表 (REMEMBERED_MAX / PINNED_MAX / ALLOC_NAMES / STR_SHAPE_MAX) を
 #      #ifndef 付きに書き換える。-D が効かず、静的表が合計 350 KB 超あって dram0 が溢れるため。
 #  (b) sp_slab.c を aot/mcu-shim/sp_slab_malloc.c (malloc 版) に差し替える。
@@ -23,10 +21,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-usage="usage: tools/aot/prepare_mcu.sh <generated gem dir> [esp32|rp2040]"
+usage="usage: tools/aot/prepare_mcu.sh <generated gem dir>"
 gem=$(cd "${1:?$usage}" && pwd)
-TARGET=${2:-${AOT_MCU_TARGET:-esp32}}
-case "$TARGET" in esp32|rp2040) ;; *) echo "$usage" >&2; exit 2 ;; esac
 src="$gem/src"
 [ -f "$src/sp_gc.h" ] && [ -f "$src/sp_slab.c" ] || { echo "not a suppify-generated gem: $gem" >&2; exit 2; }
 
@@ -84,7 +80,6 @@ rm -f "$gem/mcu-shim/sp_slab_malloc.c" "$gem/mcu-shim/mcu_stubs.c"
 dflags=""; rakeflags=""
 for d in $defs; do dflags="$dflags -D$d"; rakeflags="$rakeflags << \"-D$d\""; done
 echo "${dflags# } -I$gem/mcu-shim -include $gem/mcu-shim/mcu_compat.h" > "$gem/mcu-flags.txt"
-echo "$TARGET" > "$gem/mcu-target.txt"
 : > "$gem/mcu-excluded.txt"
 for x in $EXCLUDED; do echo "$x" >> "$gem/mcu-excluded.txt"; done
 
@@ -103,4 +98,4 @@ EOF
 )
 BLOCK="$block" perl -0pi -e 's/__MCU_BLOCK__/$ENV{BLOCK}/' "$gem/mrbgem.rake"
 grep -q "aot_prepare_mcu begin" "$gem/mrbgem.rake" || { echo "mrbgem.rake patch failed" >&2; exit 3; }
-echo "prepared: $gem [$TARGET] ($defs)"
+echo "prepared: $gem ($defs)"

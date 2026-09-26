@@ -1,24 +1,17 @@
-# A/B of the AOT kernels (aot/kernels/stackchan_aot.rb) called directly against
-# the interpreted bodies (and a C AW88298.ulaw_decode when the VM has one). Each
-# variant is checked against the interpreted result before it is timed.
+# Interpreted Ruby vs the AOT kernels, on the VM tools/aot_host_vm.sh builds:
 #
-#   build/host-aot/bin/picoruby bench/aot_ab.rb     # VM from tools/aot_host_vm.sh
+#   cat mrbgems/picoruby-aw88298/mrblib/aw88298.rb bench/aot_ab.rb > build/aot_ab.rb
+#   build/host-aot/bin/picoruby build/aot_ab.rb
 #
-# Timings are wall-clock per call, host-only numbers.
-
-def ulaw_sample_rb(b)
-  u = (~b) & 0xFF
-  t = ((u & 0x0F) << 3) + 0x84
-  t = t << ((u & 0x70) >> 4)
-  (u & 0x80) != 0 ? (0x84 - t) : (t - 0x84)
-end
+# Each pair is checked for equal bytes before it is timed. Microseconds per call.
 
 def ulaw_decode_rb(src)
-  n = src.bytesize
-  out = "\0" * (n * 2)
+  out = "\0" * (src.bytesize * 2)
   i = 0
-  while i < n
-    v = ulaw_sample_rb(src.getbyte(i)) & 0xFFFF
+  while i < src.bytesize
+    u = (~src.getbyte(i)) & 0xFF
+    t = (((u & 0x0F) << 3) + 0x84) << ((u & 0x70) >> 4)
+    v = ((u & 0x80) != 0 ? (0x84 - t) : (t - 0x84)) & 0xFFFF
     out.setbyte(i * 2, v & 0xFF)
     out.setbyte(i * 2 + 1, v >> 8)
     i += 1
@@ -26,126 +19,57 @@ def ulaw_decode_rb(src)
   out
 end
 
-# ILI9342#blit_glyph's inner loop as shipped: an Array of bytes per row.
-def glyph_rows_array(spi, w, rows, fg, bg)
-  fg_hi = (fg >> 8) & 0xFF; fg_lo = fg & 0xFF
-  bg_hi = (bg >> 8) & 0xFF; bg_lo = bg & 0xFF
-  row_i = 0
-  while row_i < rows.size
-    row = rows[row_i]
+# ILI9342#blit_glyph without the kernel: an Array of bytes per row.
+def glyph_rb(w, rows, fg, bg)
+  out = []
+  y = 0
+  while y < rows.size
     bytes = []
     bit = w - 1
     while bit >= 0
-      if ((row >> bit) & 1) == 1
-        bytes << fg_hi << fg_lo
-      else
-        bytes << bg_hi << bg_lo
-      end
+      c = ((rows[y] >> bit) & 1) == 1 ? fg : bg
+      bytes << ((c >> 8) & 0xFF) << (c & 0xFF)
       bit -= 1
     end
-    spi.write(bytes)
-    row_i += 1
+    out << bytes
+    y += 1
   end
+  out
 end
 
-def glyph_rows_aot(spi, w, rows, fg, bg)
-  i = 0
-  while i < rows.size
-    spi.write(glyph_row(rows[i], w, fg, bg))
-    i += 1
-  end
-end
-
-def glyph16_aot(spi, w, r, fg, bg)
-  spi.write(glyph16(w, fg, bg, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
-                    r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15]))
-end
-
-# Collects what blit sends, so every variant's bytes can be compared.
-class CaptureSpi
+class Sink
   attr_reader :out
   def initialize; @out = ""; end
-  def write(x)
-    if x.is_a?(String)
-      @out << x
-    else
-      i = 0
-      while i < x.size
-        @out << x[i].chr
-        i += 1
-      end
-    end
-  end
-end
-
-class NullSpi
-  def write(_x); end
-end
-
-def bytes_input(n)
-  s = "\x01" * n
-  i = 0
-  while i < n
-    v = (i * 37) % 256   # every code, 0x00 included
-    s.setbyte(i, v)
-    i += 1
-  end
-  s
+  def write(s); @out << s; end
 end
 
 def time_us(reps)
   t0 = Time.now.to_f
-  i = 0
-  while i < reps
-    yield
-    i += 1
-  end
-  (Time.now.to_f - t0) * 1_000_000 / reps
+  reps.times { yield }
+  ((Time.now.to_f - t0) * 1_000_000 / reps).round(1)
 end
 
-def row(label, us)
-  puts "#{label}\t#{(us * 100).round / 100.0}"
+def report(label, a, b)
+  puts "#{label}\tinterpreted #{a}\tAOT #{b}"
 end
 
-aot = respond_to?(:glyph_row, true)
-c_gem = Object.const_defined?(:AW88298) && AW88298.respond_to?(:ulaw_decode)
-
-[180, 4096].each do |n|
-  src = bytes_input(n)
-  ref = ulaw_decode_rb(src)
-  reps = n == 180 ? 2000 : 200
-  row("ulaw n=#{n} interpreted", time_us(reps / 10) { ulaw_decode_rb(src) })
-  if c_gem
-    raise "C ulaw mismatch" unless AW88298.ulaw_decode(src) == ref
-    row("ulaw n=#{n} C", time_us(reps) { AW88298.ulaw_decode(src) })
-  end
-  if aot
-    raise "AOT ulaw mismatch" unless ulaw_decode(src) == ref
-    row("ulaw n=#{n} AOT", time_us(reps) { ulaw_decode(src) })
-  end
-end
-
-rows = []
+src = "\0" * 4096
 i = 0
-while i < 16
-  rows << ((i * 40503 + 12345) & 0xFFFF)
+while i < src.bytesize
+  src.setbyte(i, (i * 37) % 256)
   i += 1
 end
-fg = 0xFFFF
-bg = 0x0000
-ref = CaptureSpi.new
-glyph_rows_array(ref, 16, rows, fg, bg)
-if aot
-  cap = CaptureSpi.new
-  glyph_rows_aot(cap, 16, rows, fg, bg)
-  raise "AOT glyph_row mismatch" unless cap.out == ref.out
-  cap = CaptureSpi.new
-  glyph16_aot(cap, 16, rows, fg, bg)
-  raise "AOT glyph16 mismatch" unless cap.out == ref.out
-end
-spi = NullSpi.new
-row("glyph 16x16 array (shipped)", time_us(400) { glyph_rows_array(spi, 16, rows, fg, bg) })
-if aot
-  row("glyph 16x16 AOT glyph_row x16", time_us(400) { glyph_rows_aot(spi, 16, rows, fg, bg) })
-  row("glyph 16x16 AOT glyph16 x1", time_us(400) { glyph16_aot(spi, 16, rows, fg, bg) })
-end
+raise "ulaw_decode differs" unless ulaw_decode(src) == ulaw_decode_rb(src)
+report("ulaw_decode 4096 B", time_us(20) { ulaw_decode_rb(src) }, time_us(200) { ulaw_decode(src) })
+
+sink = Sink.new
+AW88298.new(i2c: nil, i2s: sink).play_ulaw(src * 4)
+raise "play_ulaw differs" unless sink.out == ulaw_decode_rb(src * 4)
+spk = AW88298.new(i2c: nil, i2s: Sink.new)
+report("play_ulaw 16384 B (core 1)", time_us(5) { ulaw_decode_rb(src * 4) }, time_us(20) { spk.play_ulaw(src * 4) })
+
+rows = []
+16.times { |y| rows << ((y * 40503 + 12345) & 0xFFFF) }
+flat = glyph_rb(16, rows, 0xFFFF, 0).flatten.pack("C*")
+raise "glyph16 differs" unless glyph16(16, 0xFFFF, 0, *rows) == flat
+report("glyph 16x16", time_us(400) { glyph_rb(16, rows, 0xFFFF, 0) }, time_us(400) { glyph16(16, 0xFFFF, 0, *rows) })

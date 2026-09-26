@@ -24,7 +24,7 @@ module NusResolver
 
   def rx_uuid; nus_uuid(0x00, 0x02); end
   def tx_uuid; nus_uuid(0x00, 0x03); end
-  # dRuby over BLE pair (0x0004 write / 0x0005 notify); absent on firmware without picoruby-drb.
+  # dRuby over BLE pair: 0x0004 write, 0x0005 notify.
   def drb_rx_uuid; nus_uuid(0x00, 0x04); end
   def drb_tx_uuid; nus_uuid(0x00, 0x05); end
 
@@ -172,7 +172,6 @@ if Object.const_defined?(:BLE)
       end
       resolve_handles
       subscribe_tx
-      subscribe_drb
       @connected = true
       self
     end
@@ -239,35 +238,15 @@ if Object.const_defined?(:BLE)
       end
     end
 
-    def drb?
-      !@drb_rx_handle.nil?
-    end
-
-    # A DRbObject for the device's StackchanApp::Remote over the dRuby pair.
+    # A DRbObject for the robot's StackchanApp::Remote.
     def remote
       raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
-      raise Stackchan::BLE::ConnectionError, "device has no dRuby characteristics" unless drb?
-      DRbBle.register(DRB_URI, DrbLink.new(self), timeout_ms: ACK_TIMEOUT_MS)
+      DRbBle.register(DRB_URI, self, timeout_ms: ACK_TIMEOUT_MS)
       DRb::DRbObject.new_with_uri(DRB_URI)
     end
 
-    # DRbBle link port: one ATT write per chunk, paced like the audio blast
-    # (unpaced back-to-back writes are silently truncated on macOS).
-    class DrbLink
-      def initialize(central)
-        @central = central
-      end
-
-      def send_chunk(bytes)
-        @central.write_drb(bytes)
-      end
-
-      def poll
-        @central.take_drb
-      end
-    end
-
-    def write_drb(bytes)
+    # DRbBle link: one paced write per chunk (unpaced writes get cut on macOS).
+    def send_chunk(bytes)
       if @drb_sent_at
         wait = POLLING_UNIT_MS - (Machine.board_millis - @drb_sent_at)
         sleep_ms(wait) if wait > 0
@@ -276,7 +255,7 @@ if Object.const_defined?(:BLE)
       @drb_sent_at = Machine.board_millis
     end
 
-    def take_drb
+    def poll
       drain
       @drb_inbox.shift
     end
@@ -298,25 +277,18 @@ if Object.const_defined?(:BLE)
       @cccd_handle = NusResolver.cccd_handle(tx)
       drb_rx = NusResolver.find_characteristic(services, NusResolver.drb_rx_uuid)
       drb_tx = NusResolver.find_characteristic(services, NusResolver.drb_tx_uuid)
-      return unless drb_rx && drb_tx
+      raise Stackchan::BLE::ConnectionError, "dRuby pair not found" unless drb_rx && drb_tx
       @drb_rx_handle   = drb_rx[:value_handle]
       @drb_tx_handle   = drb_tx[:value_handle]
       @drb_cccd_handle = NusResolver.cccd_handle(drb_tx)
     end
 
-    # Subscribe TX, then drain SUBSCRIBE_SETTLE_MS: there is no central-side
-    # "subscribe complete" event to wait on.
+    # Subscribe both notify characteristics, then drain SUBSCRIBE_SETTLE_MS:
+    # there is no central-side "subscribe complete" event to wait on.
     def subscribe_tx
-      return unless @cccd_handle
-      @radio.write_characteristic_descriptor_using_descriptor_handle(
-        @radio.conn_handle, @cccd_handle, SUBSCRIBE_ENABLE)
-      settle(SUBSCRIBE_SETTLE_MS)
-    end
-
-    def subscribe_drb
-      return unless @drb_cccd_handle
-      @radio.write_characteristic_descriptor_using_descriptor_handle(
-        @radio.conn_handle, @drb_cccd_handle, SUBSCRIBE_ENABLE)
+      [@cccd_handle, @drb_cccd_handle].compact.each do |h|
+        @radio.write_characteristic_descriptor_using_descriptor_handle(@radio.conn_handle, h, SUBSCRIBE_ENABLE)
+      end
       settle(SUBSCRIBE_SETTLE_MS)
     end
 

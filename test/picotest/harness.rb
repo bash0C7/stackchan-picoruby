@@ -30,7 +30,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   DAEMON_APP_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "daemon_app.rb")
   DEVICE_STUBS_RB     = File.join(REPO_ROOT, "test", "picotest", "stubs.rb")
   FACE_GOLDEN_HASH_RB = File.join(REPO_ROOT, "test", "face_golden_hash.rb")
-  DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
+  DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s fake_multicore].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
@@ -45,6 +45,8 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   ].map { |f| File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "mrblib", f) }
   # picoruby-drb is not in the host VM: suites that need it load its mrblib as
   # source (Marshal is compiled in), then the drbble transport gem.
+  # The AOT kernels' Ruby source stands in for the compiled kernels.
+  AOT_KERNELS = Dir[File.join(REPO_ROOT, "aot", "kernels", "*.rb")].sort
   DRB_MRBLIB = %w[drb.rb drb_message.rb drb_object.rb].map { |f| File.join(PICORUBY_ROOT, "mrbgems", "picoruby-drb", "mrblib", f) }
   DRB_BLE_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "mrblib", "*.rb")].sort
   EXTRACTED_APP_RB = "/tmp/_extracted_application.rb"
@@ -63,7 +65,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(APPLICATION_RB, EXTRACTED_APP_RB, exclude_superclasses: %w[BLE])
-        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {
@@ -93,6 +95,11 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       load_files: lambda { SHARED_MRBLIB },
     },
 }
+  SUITES["aot"] = {
+    dir: File.join(REPO_ROOT, "aot", "test"),
+    cruby: lambda {},
+    load_files: lambda { AOT_KERNELS },
+  }
   SUITES["drb-ble"] = {
     dir: File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "test"),
     cruby: lambda {},
@@ -103,7 +110,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
     SUITES[File.basename(gem).sub("picoruby-", "")] = {
       dir: File.join(gem, "test"),
       cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f }; mrblib.each { |f| load f } },
-      load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES, *mrblib] },
+      load_files: lambda { [DEVICE_STUBS_RB, *AOT_KERNELS, *DEVICE_FAKES, *mrblib] },
     }
   end
   SUITES.freeze

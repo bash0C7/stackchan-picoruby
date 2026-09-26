@@ -1,6 +1,5 @@
-# AOT kernels (spinel -> suppify). Plain Ruby: CRuby runs it as is, and the
-# interpreted A/B baseline in bench/aot_ab.rb has the same bodies. Each public
-# top-level def carries its types as inline RBS.
+# Compiled ahead of time by spinel -> suppify. Types are inline RBS on each
+# public def.
 
 private
 
@@ -13,7 +12,7 @@ end
 
 public
 
-# G.711 mu-law -> little-endian signed 16-bit PCM (AW88298.ulaw_decode).
+# G.711 mu-law -> little-endian signed 16-bit PCM.
 #: (String) -> String
 def ulaw_decode(src)
   n = src.bytesize
@@ -28,37 +27,25 @@ def ulaw_decode(src)
   out
 end
 
-# RGB565 big-endian pixels of one glyph row, fg where the bit is set, MSB of the
-# w bits leftmost (ILI9342#blit_glyph's inner loop).
-#: (Integer, Integer, Integer, Integer) -> String
-def glyph_row(row, w, fg, bg)
-  out = "\0".b * (w * 2)
-  fh = (fg >> 8) & 0xFF
-  fl = fg & 0xFF
-  bh = (bg >> 8) & 0xFF
-  bl = bg & 0xFF
-  bit = w - 1
-  j = 0
-  while bit >= 0
-    if ((row >> bit) & 1) == 1
-      out.setbyte(j, fh)
-      out.setbyte(j + 1, fl)
-    else
-      out.setbyte(j, bh)
-      out.setbyte(j + 1, bl)
-    end
-    j += 2
-    bit -= 1
-  end
-  out
-end
-
-# A whole 16-row glyph cell in one call. The rows come as 16 Integers because
-# an Array cannot cross the suppify boundary.
+# One 16-row glyph as RGB565 big-endian pixels: fg where a bit is set, the
+# row's MSB (of w bits) leftmost. Rows come as 16 Integers: an Array cannot
+# cross the suppify boundary.
 #: (Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer) -> String
 def glyph16(w, fg, bg, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15)
-  glyph_row(r0, w, fg, bg) + glyph_row(r1, w, fg, bg) + glyph_row(r2, w, fg, bg) + glyph_row(r3, w, fg, bg) +
-    glyph_row(r4, w, fg, bg) + glyph_row(r5, w, fg, bg) + glyph_row(r6, w, fg, bg) + glyph_row(r7, w, fg, bg) +
-    glyph_row(r8, w, fg, bg) + glyph_row(r9, w, fg, bg) + glyph_row(r10, w, fg, bg) + glyph_row(r11, w, fg, bg) +
-    glyph_row(r12, w, fg, bg) + glyph_row(r13, w, fg, bg) + glyph_row(r14, w, fg, bg) + glyph_row(r15, w, fg, bg)
+  rows = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15]
+  out = "\0".b * (w * 32)
+  j = 0
+  y = 0
+  while y < 16
+    bit = w - 1
+    while bit >= 0
+      c = ((rows[y] >> bit) & 1) == 1 ? fg : bg
+      out.setbyte(j, (c >> 8) & 0xFF)
+      out.setbyte(j + 1, c & 0xFF)
+      j += 2
+      bit -= 1
+    end
+    y += 1
+  end
+  out
 end

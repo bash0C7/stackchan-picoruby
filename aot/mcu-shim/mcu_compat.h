@@ -23,19 +23,4 @@ size_t __freadahead(FILE *);
 #ifndef SA_RESTART
 #define SA_RESTART 0x10000000
 #endif
-/* arm-none-eabi の newlib は clock_gettime / clock_getres / nanosleep を宣言しない (_POSIX_TIMERS が無い)。
- * sp_time.c / sp_sched.c / sp_alloc.c / spinel_rt.h / sp_cold.c が使う。ESP-IDF には宣言があるので arm のときだけ。
- * 実装は mcu_stubs.c の weak stub (arm のときだけ。失敗を返す)。 */
-#ifdef __arm__
-#include <time.h>
-#ifndef CLOCK_REALTIME
-#define CLOCK_REALTIME 0
-#endif
-#ifndef CLOCK_MONOTONIC
-#define CLOCK_MONOTONIC 1
-#endif
-int clock_gettime(clockid_t, struct timespec *);
-int clock_getres(clockid_t, struct timespec *);
-int nanosleep(const struct timespec *, struct timespec *);
-#endif
 #endif

@@ -15,10 +15,7 @@ class AW88298
   # Ordered init writes as [reg, hi, lo] triples.
   def self.aw88298_init_writes: (Integer sample_rate) -> Array[Array[Integer]]
 
-  MULTICORE_CHUNK: Integer
-
-  # G.711 mu-law -> little-endian 16-bit PCM.
-  def self.ulaw_decode: (String ulaw) -> String
+  CHUNK: Integer
 
   @i2c: _Bus
   @i2s: _Sink

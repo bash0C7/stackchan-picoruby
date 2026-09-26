@@ -2,12 +2,18 @@ class StackchanCentralTest < Picotest::Test
   RX   = 0x11
   TX   = 0x14
   CCCD = 0x16
+  DRX  = 0x21
+  DTX  = 0x24
+  DCCCD = 0x26
 
   def nus_services
     [{ characteristics: [
       { uuid128: NusResolver.rx_uuid, value_handle: RX, descriptors: [] },
       { uuid128: NusResolver.tx_uuid, value_handle: TX,
         descriptors: [{ uuid128: NusResolver.cccd_uuid, handle: CCCD }] },
+      { uuid128: NusResolver.drb_rx_uuid, value_handle: DRX, descriptors: [] },
+      { uuid128: NusResolver.drb_tx_uuid, value_handle: DTX,
+        descriptors: [{ uuid128: NusResolver.cccd_uuid, handle: DCCCD }] },
     ] }]
   end
 
@@ -39,7 +45,7 @@ class StackchanCentralTest < Picotest::Test
     radio = FakeRadio.new(services: nus_services)
     sleeps_before = FakeClock.sleeps.size
     build_central(radio).connect
-    assert_equal [[CCCD, "\x01\x00"]], radio.descriptor_writes
+    assert_equal [[CCCD, "\x01\x00"], [DCCCD, "\x01\x00"]], radio.descriptor_writes
     total = 0
     FakeClock.sleeps[sleeps_before, FakeClock.sleeps.size].each { |ms| total += ms }
     assert_equal StackchanCentral::SUBSCRIBE_SETTLE_MS, total

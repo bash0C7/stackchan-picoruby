@@ -1,8 +1,8 @@
 # AOT kernels (spinel → suppify)
 
-`kernels/*.rb` is plain Ruby: CRuby runs it as is, and the interpreted bodies in
-`bench/aot_ab.rb` and `AW88298.ulaw_decode` are the same code. A build compiles
-it ahead of time with [spinel](https://github.com/matz/spinel) and wraps it into
+`kernels/*.rb` is plain Ruby, tested as such by `aot/test` on the host VM (the
+device and aw88298 suites also run it in place of the compiled kernels). A build
+compiles it ahead of time with [spinel](https://github.com/matz/spinel) and wraps it into
 one PicoRuby mrbgem with [suppify](https://github.com/bash0C7/suppify). Types are
 inline RBS (`#:`) on each public top-level `def`; helpers are `private`.
 
@@ -10,7 +10,6 @@ inline RBS (`#:`) on each public top-level `def`; helpers are `private`.
 |---|---|---|
 | `ulaw_decode(String) -> String` | `Multicore.spawn(:ulaw_decode, chunk)` on core 1 | `AW88298#play_ulaw` |
 | `glyph16(w, fg, bg, r0..r15) -> String` | Kernel method, core 0 | `ILI9342#blit_glyph` (16-row glyphs) |
-| `glyph_row(row, w, fg, bg) -> String` | Kernel method, core 0 | bench only |
 
 `ulaw_decode` runs on core 1 so the decode of one chunk overlaps the blocking
 I2S write of the previous one. A kernel reply must fit picoruby-multicore's
@@ -47,10 +46,9 @@ it drops GC roots. Re-check it when a kernel grows.
 ## Benchmarks (host)
 
 ```
-build/host-aot/bin/picoruby bench/aot_ab.rb
-cat mrbgems/picoruby-aw88298/mrblib/aw88298.rb bench/aot_multicore.rb > build/aot_multicore.rb
-build/host-aot/bin/picoruby build/aot_multicore.rb
+cat mrbgems/picoruby-aw88298/mrblib/aw88298.rb bench/aot_ab.rb > build/aot_ab.rb
+build/host-aot/bin/picoruby build/aot_ab.rb
 ```
 
-Both check every variant's bytes against the interpreted body before timing it.
-Numbers are x86_64 host wall-clock; the device has none yet.
+Each pair is checked for equal bytes before it is timed. Host wall-clock only;
+device timings come from `/stackchan-device-trial`.

@@ -1,6 +1,6 @@
-/* sp_slab.c の MCU 向け差し替え (scripts/aot_prepare_mcu.sh が src/sp_slab.c に上書きする)。
+/* sp_slab.c の MCU 向け差し替え (tools/aot/prepare_mcu.sh が src/sp_slab.c に上書きする)。
  * 元の sp_slab.c は mmap / MAP_NORESERVE で 16 GB (32bit でも 512 MB) を予約する size-class slab で、ESP-IDF と
- * arm-none-eabi newlib に mmap は無く、64bit ポインタ前提の static assert (sp_slab_chunk_is_one_line) が 32bit で落ちる。
+ * ESP-IDF の newlib に mmap は無く、64bit ポインタ前提の static assert (sp_slab_chunk_is_one_line) が 32bit で落ちる。
  * spinel が文書化している slab off の経路 (全 block が malloc、sp_slab_on = 0) を、環境変数抜きで固定したもの。
  * slab が無いので sp_slab_owns (base = 0, cap = 0) は常に偽で、collector は object を young / old の LIST で管理する
  * (SP_GC_HEAP_PUSH)。bitmap を触る関数 (mark / is_str / sweep_worker など) は slab の block にだけ呼ばれるので、ここでは

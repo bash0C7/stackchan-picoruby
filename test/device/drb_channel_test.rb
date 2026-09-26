@@ -57,7 +57,7 @@ class DrbChannelTest < Picotest::Test
     @pitch = FakeServo.new
     @display = FakeDisplay.new
     @dispatcher = StackchanApp::Dispatcher.new(
-      display: @display, led: FakeLed.new, stdout: nil,
+      display: @display, led: (@led = FakeLed.new), stdout: nil,
       head: StackchanApp::Head.new(@yaw, @pitch)
     )
     @port = Port.new
@@ -72,10 +72,6 @@ class DrbChannelTest < Picotest::Test
     )
     DRbBle.register("drbble://stackchan", CentralLink.new(@port, @loop), timeout_ms: 200)
     @remote = DRb::DRbObject.new_with_uri("drbble://stackchan")
-  end
-
-  def teardown
-    DRbBle.unregister("drbble://stackchan")
   end
 
   def subscribe
@@ -99,7 +95,7 @@ class DrbChannelTest < Picotest::Test
   end
 
   def test_nothing_is_notified_before_subscribe
-    req = DRbBle::BufferWriter.new
+    req = DRbBle::Writer.new
     DRb::DRbMessage.new(req).send_request(nil, :read_pos, [], nil)
     @port.queue_write(DRX, req.out)
     @loop.tick
@@ -117,8 +113,23 @@ class DrbChannelTest < Picotest::Test
     @port.queue_write(DRX, "\x00\x00")
     @loop.tick
     @loop.disconnected
-    assert_false @channel.notify_enabled?
     subscribe
     assert_equal ["?\n"], @remote.face(9)
+  end
+
+  def test_replies_wait_for_a_new_subscribe_after_a_disconnect
+    subscribe
+    @loop.disconnected
+    req = DRbBle::Writer.new
+    DRb::DRbMessage.new(req).send_request(nil, :read_pos, [], nil)
+    @port.queue_write(DRX, req.out)
+    @loop.tick
+    assert_equal [], @port.notifies.select { |n| n[0] == DTX }
+  end
+
+  def test_servo_and_led_are_command
+    subscribe
+    assert_equal [".\n"], @remote.led({ L: 1, M: "s", S: "B", R: 10, G: 20, B: 30 })
+    assert_equal [[:animate_side, [:both, 10, 20, 30, :solid]]], @led.calls
   end
 end

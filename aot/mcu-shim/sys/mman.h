@@ -1,4 +1,4 @@
-/* mmap 系は ESP-IDF / arm-none-eabi newlib に無い。宣言だけ (sp_fiber.c の Fiber stack、sp_iobuffer.c の IO::Buffer.map 用。入口から到達しなければ --gc-sections で消える)。 */
+/* mmap 系は ESP-IDF の newlib に無い。宣言だけ (sp_fiber.c の Fiber stack、sp_iobuffer.c の IO::Buffer.map 用。入口から到達しなければ --gc-sections で消える)。 */
 #ifndef MCU_SHIM_SYS_MMAN_H
 #define MCU_SHIM_SYS_MMAN_H
 #include <stddef.h>

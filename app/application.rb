@@ -646,21 +646,14 @@ module StackchanApp
     end
   end
 
-  # The dRuby front object. Each call is one text-protocol frame run through the
-  # same Dispatcher, so both links behave identically; it returns the lines the
-  # text link would have notified (e.g. [".\n", "<YL_actual:50,PU_actual:29>\n"]).
+  # dRuby front: each call is one text frame through the Dispatcher and returns
+  # the lines the text link would have sent.
   class Remote
-    EXPOSED = [:command, :face, :servo, :led, :text, :torque, :read_pos]
+    EXPOSED = [:command, :servo, :led, :face, :text, :torque, :read_pos]
 
-    class Lines
-      attr_reader :lines
-
-      def initialize
-        @lines = []
-      end
-
+    class Lines < Array
       def write(s)
-        @lines << s
+        push(s)
       end
     end
 
@@ -668,25 +661,24 @@ module StackchanApp
       @dispatcher = dispatcher
     end
 
-    # frame: the <K:V> pairs as a Hash, e.g. { "YL" => 50, "T" => 500 }.
+    # frame: the <K:V> pairs, e.g. { "YL" => 50, "T" => 500 }
     def command(frame)
-      out = Lines.new
-      @dispatcher.handle_to(stringify(frame), out)
-      out.lines
+      pairs = {}
+      keys = frame.keys
+      i = 0
+      while i < keys.size
+        pairs[keys[i].to_s] = frame[keys[i]].to_s
+        i += 1
+      end
+      lines = Lines.new
+      @dispatcher.handle_to(pairs, lines)
+      lines
     end
+    alias servo command
+    alias led command
 
     def face(id)
       command({ "F" => id })
-    end
-
-    # opts: YL / YR / PU (0..100) and T (ms) or V; String or Symbol keys.
-    def servo(opts)
-      command(opts)
-    end
-
-    # opts: M (s/b/p/o), S (L/R/B), R / G / B.
-    def led(opts)
-      command(opts)
     end
 
     def text(s)
@@ -700,66 +692,37 @@ module StackchanApp
     def read_pos
       command({ "read" => "pos" })
     end
-
-    private
-
-    def stringify(frame)
-      out = {}
-      keys = frame.keys
-      i = 0
-      while i < keys.length
-        out[keys[i].to_s] = frame[keys[i]].to_s
-        i += 1
-      end
-      out
-    end
   end
 
-  # The dRuby characteristic pair next to NUS: writes to rx_handle feed the
-  # Responder, its replies go out as notifications on tx_handle.
+  # The dRuby characteristic pair: writes feed the Responder, replies are notified.
   class DrbChannel
-    CHUNK = 180
-
     def initialize(rx_handle:, tx_handle:, cccd_handle:, responder:)
       @rx_handle   = rx_handle
       @tx_handle   = tx_handle
       @cccd_handle = cccd_handle
       @responder   = responder
-      @notify_enabled = false
-    end
-
-    def notify_enabled?
-      @notify_enabled
+      @notify = false
     end
 
     def service(port)
       cccd = port.take_write(@cccd_handle)
       if cccd
-        @notify_enabled = (cccd == "\x01\x00")
-        @responder.reset unless @notify_enabled
+        @notify = (cccd == "\x01\x00")
+        @responder.reset unless @notify
       end
-      data = port.take_write(@rx_handle)
-      while data
-        reply = @responder.feed(data)
-        send_reply(port, reply) unless reply.empty?
-        data = port.take_write(@rx_handle)
+      while (data = port.take_write(@rx_handle))
+        chunks = DRbBle.chunks(@responder.feed(data))
+        i = 0
+        while @notify && i < chunks.size
+          port.send_notification(@tx_handle, chunks[i])
+          i += 1
+        end
       end
     end
 
     def disconnected
-      @notify_enabled = false
+      @notify = false
       @responder.reset
-    end
-
-    private
-
-    def send_reply(port, reply)
-      return unless @notify_enabled
-      pos = 0
-      while pos < reply.bytesize
-        port.send_notification(@tx_handle, reply.byteslice(pos, CHUNK))
-        pos += CHUNK
-      end
     end
   end
 
@@ -997,7 +960,6 @@ class StackChanApp < BLE
   NUS_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
   NUS_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x02\x00\x40\x6e"
   NUS_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x03\x00\x40\x6e"
-  # dRuby pair in the NUS service (6e400004 / 6e400005), present when the firmware has picoruby-drb.
   DRB_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x04\x00\x40\x6e"
   DRB_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x05\x00\x40\x6e"
 
@@ -1013,7 +975,6 @@ class StackChanApp < BLE
     @touch   = touch
     @speaker = speaker
     @adv_data = build_adv_data
-    @drb_enabled = Object.const_defined?(:DRb) && Object.const_defined?(:DRbBle)
     db = build_gatt_database
     @db = db
     @rx_handle = nus_handle(db, NUS_RX_CHAR_UUID, :value_handle)
@@ -1028,17 +989,13 @@ class StackChanApp < BLE
       display: @display, led: @led, touch: @touch, dispatcher: @dispatcher,
       notify: ->(frame) { write(frame) }
     )
-    drb = nil
-    if @drb_enabled
-      drb = StackchanApp::DrbChannel.new(
-        rx_handle:   nus_handle(db, DRB_RX_CHAR_UUID, :value_handle),
-        tx_handle:   nus_handle(db, DRB_TX_CHAR_UUID, :value_handle),
-        cccd_handle: nus_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
-        responder:   DRbBle::Responder.new(StackchanApp::Remote.new(@dispatcher),
-                                           allow: StackchanApp::Remote::EXPOSED)
-      )
-      puts "[application] dRuby over BLE enabled"
-    end
+    drb = StackchanApp::DrbChannel.new(
+      rx_handle:   nus_handle(db, DRB_RX_CHAR_UUID, :value_handle),
+      tx_handle:   nus_handle(db, DRB_TX_CHAR_UUID, :value_handle),
+      cccd_handle: nus_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
+      responder:   DRbBle::Responder.new(StackchanApp::Remote.new(@dispatcher),
+                                         allow: StackchanApp::Remote::EXPOSED)
+    )
     @link = StackchanApp::LinkLoop.new(
       port: self,
       rx_handle: @rx_handle, tx_handle: @tx_handle, cccd_handle: @tx_cccd_handle,
@@ -1107,11 +1064,9 @@ class StackChanApp < BLE
         s.add_characteristic(NUS_TX_PROPS, NUS_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
           c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
         end
-        if @drb_enabled
-          s.add_characteristic(NUS_RX_PROPS, DRB_RX_CHAR_UUID, NUS_RX_PROPS, "")
-          s.add_characteristic(NUS_TX_PROPS, DRB_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
-            c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
-          end
+        s.add_characteristic(NUS_RX_PROPS, DRB_RX_CHAR_UUID, NUS_RX_PROPS, "")
+        s.add_characteristic(NUS_TX_PROPS, DRB_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
+          c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
         end
       end
     end

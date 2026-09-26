@@ -225,12 +225,11 @@ end
 
 def in_r2p2(cmd)
   abort "vendor/R2P2-ESP32 not found — run `rake vendor:setup` first" unless Dir.exist?(R2P2_ROOT)
-  sh %Q{bash -c '. #{ESP_IDF_EXPORT} && cd #{R2P2_ROOT} && #{cmd}'}
+  sh %Q{bash -c '. #{ESP_IDF_EXPORT} && export #{aot_build_env} && cd #{R2P2_ROOT} && #{cmd}'}
 end
 
 def r2p2_build_cmd(*targets, port: nil)
   env = %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}"}
-  env += " #{aot_build_env}" unless aot_disabled?
   env += " ESPPORT=#{port}" if port
   "#{env} rake #{targets.join(' ')}"
 end
@@ -315,15 +314,10 @@ def deploy_application_and_wait(label)
   sleep wait
 end
 
-# AOT kernels (aot/) and picoruby-multicore go into every firmware build unless
-# STACKCHAN_AOT=0. aot:esp32 generates them; r2p2_build_cmd passes their dirs to
-# R2P2-ESP32's build_config and CMakeLists.txt.
+# AOT kernels (aot/) and picoruby-multicore go into every firmware build:
+# aot:esp32 generates them, in_r2p2 hands their dirs to R2P2-ESP32.
 AOT_ESP32_DIR     = File.expand_path("build/aot/esp32", __dir__)
 AOT_MULTICORE_DIR = File.expand_path("build/aot/picoruby-multicore", __dir__)
-
-def aot_disabled?
-  ENV["STACKCHAN_AOT"] == "0"
-end
 
 def aot_build_env
   gems = [File.join(AOT_ESP32_DIR, "gems", "picoruby-stackchan_aot"), File.join(AOT_ESP32_DIR, "picoruby-kernel_registry")]
@@ -338,7 +332,6 @@ namespace :aot do
 
   desc "Generate the AOT kernel gem + multicore_kernels registry for the firmware (build/aot/esp32)"
   task :esp32 do
-    next if aot_disabled?
     Rake::Task["aot:setup"].invoke
     sh "ruby", File.expand_path("tools/aot/kernels_build.rb", __dir__), "esp32"
   end

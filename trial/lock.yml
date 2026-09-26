@@ -36,7 +36,6 @@ arms:
     boot_markers:
       - "[application] boot"
       - "[boot] step:led-init-ok"
-      - "[application] dRuby over BLE enabled"
       - "[application] BLE peripheral starting"
     remote: true
 

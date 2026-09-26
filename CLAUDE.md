@@ -70,7 +70,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 
 - yaw: `<YL:0..100>` / `<YR:0..100>` (排他、YL 優先)、pitch: `<PU:0..100>` (上のみ)、timing: `<T:ms>` か `<V:speed>` のどちらか。
 - 稀: `<torque:on|off>`、`<selftest:run>`、`<read:pos>` (`calibrate` だけが使う)。
-- dRuby over BLE: NUS service 内の第 2 pair (`6e400004` write / `6e400005` notify) に DRb の TCP stream をそのまま 180 B chunk で流す (`mrbgems/picoruby-drb-ble`)。front は `StackchanApp::Remote` で、各 call は text frame 1 個として同じ `Dispatcher` を通り、text link が notify するはずの行を Array で返す。firmware に `picoruby-drb` が無ければ pair は GATT に出ない。CLI は `stackchan remote servo YL=50 PU=30 T=500`。
+- dRuby over BLE: NUS service 内の第 2 pair (`6e400004` write / `6e400005` notify) に DRb の TCP stream をそのまま 180 B chunk で流す (`mrbgems/picoruby-drb-ble`)。front は `StackchanApp::Remote` で、各 call は text frame 1 個として同じ `Dispatcher` を通り、text link が notify するはずの行を Array で返す。firmware は `picoruby-drb` と `picoruby-multicore` を持つ前提。CLI は `stackchan remote servo YL=50 PU=30 T=500`。
 - cold-boot は torque OFF + `Face::Closed`。操作者が正面に合わせて `<torque:on>`。
 - 位置コマンドの detail `<YL_actual:N,PU_actual:N>` は **受信時点の姿勢** (移動後ではない)。`unknown` = キャリブレーション要。移動後の値が要るなら `<read:pos>` を使うか、次の位置コマンドの detail を読む。CLI の `raw` verb は device の detail を捨てて `OK raw` しか返さないので、`stackchan raw '<read:pos>'` では値が取れない。
 - audio は半二重: `<A:N>` → device `<A:ready>` → `T = N*1000/8000 + 3000 ms` 静止 → RX queue drain → I2S 再生。PC は 1.5 s 待ってから blast、`N/8000 + 2 s` 待つ。
@@ -101,10 +101,10 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 bundle exec rake test                 # picotest: device / pc / shared + 各 driver gem (host picoruby VM)
 SUITE=pc FILTER=stackchan_central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
-bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb、C gem 込み)。picoruby を更新した後に
+bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb)。picoruby を更新した後に
 ```
 
-- device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + 抽出した application class + scservo source を VM に注入する (`test/picotest/harness.rb`)。C gem は host VM に compile されているので `require` で届く。
+- device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + 抽出した application class + scservo source を VM に注入する (`test/picotest/harness.rb`)。picoruby-drb は mrblib を source で、AOT kernel は `aot/kernels` の Ruby を、multicore は `test/fake_multicore.rb` を注入する。
 - pc suite は `ble_client.rb` / `cli_app.rb` / `daemon_app.rb` を同様に抽出し、`test/pc/stubs.rb` の stub と `test/pc/fake_radio.rb` で回す。`PICOTEST_VM=` で別 VM。
 - pc suite は CRuby と host VM の両方で走る。host VM には実物の `Task` があり `DRb` は無い。`Task` を stub するなら `unless Object.const_defined?(:Task)` で囲む。host VM の Task は picotest が yield しない限り body を走らせないので、両方で同じ観測になる。
 - face geometry golden は `spec/golden/face_<name>.dump`。更新は `rake face:register_golden FACE=<name>`。

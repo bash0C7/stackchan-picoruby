@@ -58,21 +58,8 @@ class StackchanCentralDrbTest < Picotest::Test
     FakeClock.reset(1000)
   end
 
-  def teardown
-    DRbBle.unregister(StackchanCentral::DRB_URI)
-  end
-
-  def test_connect_subscribes_both_notify_characteristics
-    radio = DrbRadio.new(services: services)
-    central = build(radio)
-    assert_equal [[CCCD, "\x01\x00"], [DCCCD, "\x01\x00"]], radio.descriptor_writes
-    assert_true central.drb?
-  end
-
-  def test_firmware_without_the_pair_still_connects
-    central = build(FakeRadio.new(services: services(with_drb: false)))
-    assert_false central.drb?
-    assert_raise(Stackchan::BLE::ConnectionError) { central.remote }
+  def test_a_robot_without_the_pair_does_not_connect
+    assert_raise(Stackchan::BLE::ConnectionError) { build(FakeRadio.new(services: services(with_drb: false))) }
   end
 
   def test_remote_call_round_trips
