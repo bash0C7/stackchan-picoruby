@@ -74,11 +74,14 @@ app/application.rb   Face rendering, head-touch reactions, the command
                      dispatcher, the BLE peripheral, audio receive, and the
                      cold-boot init sequence.
 mrbgems/             picoruby-stackchan-led (WS2812 ring), picoruby-si12t
-                     (head touch), picoruby-aw88298 (amp + mu-law decode in C),
-                     and picoruby-stackchan-shared (frame codec, used by the
-                     PC side too). The two pure-Ruby drivers are prepended to
-                     application.rb by the Rakefile before compiling app.mrb;
-                     aw88298 is compiled into the firmware.
+                     (head touch), picoruby-aw88298 (amp + mu-law playback),
+                     picoruby-drb-ble (dRuby over BLE) and
+                     picoruby-stackchan-shared (frame codec, used by the PC
+                     side too). The device-side gems are prepended to
+                     application.rb by the Rakefile before compiling app.mrb.
+aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
+                     firmware: mu-law decode on core 1, glyph expansion on
+                     core 0. See aot/README.md.
 
 pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
                            PicoRuby — CLI + launchd-managed daemon + BLE central.
@@ -420,10 +423,8 @@ and build_configs each time.
 | [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
 
-The WS2812 and Si12T drivers are mrbgems in this repo's `mrbgems/` bundled
-into `app.mrb` at compile time. `picoruby-aw88298` has a C part, so the
-firmware build_config fetches it from this repo:
-`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`.
+The WS2812, Si12T, AW88298 and dRuby-over-BLE gems are mrbgems in this
+repo's `mrbgems/` bundled into `app.mrb` at compile time.
 
 ### Staying reproducible
 

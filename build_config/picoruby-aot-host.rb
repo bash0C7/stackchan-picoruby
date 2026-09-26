@@ -1,6 +1,9 @@
-# Host VM for bench/aot_ab.rb: the picotest defines without PICORB_DEBUG, the
-# C gem, and the suppify gem that tools/aot_host_vm.sh generated from
-# aot/kernels/. Used through MRUBY_CONFIG=<this file>.
+# Host VM for bench/aot_ab.rb and bench/aot_multicore.rb: the picotest defines
+# without PICORB_DEBUG, picoruby-multicore's pthread port, and the gems
+# tools/aot/kernels_build.rb generated for the host (the AOT kernels and their
+# multicore_kernels table). Built by tools/aot_host_vm.sh.
+AOT_BUILD = File.expand_path('../build/aot', __dir__)
+
 MRuby::Build.new("host-aot") do |conf|
   conf.toolchain :gcc
 
@@ -15,6 +18,7 @@ MRuby::Build.new("host-aot") do |conf|
 
   conf.linker.libraries << 'ssl'
   conf.linker.libraries << 'crypto'
+  conf.linker.libraries << 'crypt'   # the spinel runtime's String#crypt
 
   conf.gembox "mruby-posix"
   conf.gembox "minimum"
@@ -22,6 +26,7 @@ MRuby::Build.new("host-aot") do |conf|
   conf.gembox "stdlib"
   conf.gem core: 'picoruby-bin-picoruby'
 
-  conf.gem File.expand_path('../mrbgems/picoruby-aw88298', __dir__)
-  conf.gem File.expand_path('../build/aot/picoruby-stackchan_aot', __dir__)
+  conf.gem gemdir: "#{AOT_BUILD}/picoruby-multicore-host"
+  conf.gem gemdir: "#{AOT_BUILD}/host/gems/picoruby-stackchan_aot"
+  conf.gem gemdir: "#{AOT_BUILD}/host/picoruby-kernel_registry"
 end

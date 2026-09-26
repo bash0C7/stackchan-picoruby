@@ -39,7 +39,8 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 ## 構成
 
 - Firmware (`build_flash` が必要): LCD / PY32 / servo / `StackchanProtocol::FrameParser` の gem。R2P2-ESP32 の build_config が GitHub から fetch する。
-- Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。pure-Ruby の `stackchan-led` / `si12t` は Rakefile が `app.mrb` compile 時に application.rb の前に連結する。C を含む `aw88298` は firmware の build_config (`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`) に入れて `build_flash` する。C gem の形は upstream と同じ `src/<gem>.c` → `src/mruby/<gem>.c`。
+- Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。どれも pure Ruby で、`stackchan-led` / `si12t` / `aw88298` / `drb-ble` は Rakefile が `app.mrb` compile 時に application.rb の前に連結する。
+- AOT kernels (`aot/kernels/*.rb`): spinel → suppify で 1 つの mrbgem にして firmware に入れる Ruby。`ulaw_decode` は picoruby-multicore で core 1、`glyph16` は core 0 から直接呼ぶ。spinel runtime は 1 組で thread-safe でないので、core 1 の kernel 実行中に core 0 で kernel を呼ばない。手順と制約は `aot/README.md`。
 - Application (`app/application.rb`、`upload_appmrb` で deploy): 顔・dispatcher・BLE・cold-boot。1 ファイルのまま維持する。テストは prism で class 本体だけ抽出する (`lib/ruby_class_extract.rb`) ので、class body の top-level に `< BLE` 以外の device-only 参照を置かない。
 - PC (`pc/stackchan-pico`): PicoRuby の CLI `stackchan <verb>` + launchd daemon (BLE central)。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
 - 核心は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink は装飾。

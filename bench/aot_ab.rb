@@ -1,11 +1,10 @@
-# A/B of the AOT kernels (aot/kernels/stackchan_aot.rb) against the interpreted
-# bodies and the C gem, on whichever picoruby runs it. Each variant is checked
-# against the interpreted result before it is timed.
+# A/B of the AOT kernels (aot/kernels/stackchan_aot.rb) called directly against
+# the interpreted bodies (and a C AW88298.ulaw_decode when the VM has one). Each
+# variant is checked against the interpreted result before it is timed.
 #
-#   <picoruby> bench/aot_ab.rb          # interpreted + whatever the VM carries
+#   build/host-aot/bin/picoruby bench/aot_ab.rb     # VM from tools/aot_host_vm.sh
 #
-# The VM from tools/aot_host_vm.sh carries the AOT kernels; the host picotest VM
-# carries AW88298 (C). Timings are wall-clock per call, host-only numbers.
+# Timings are wall-clock per call, host-only numbers.
 
 def ulaw_sample_rb(b)
   u = (~b) & 0xFF

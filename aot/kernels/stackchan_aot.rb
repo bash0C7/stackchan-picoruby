@@ -1,6 +1,6 @@
 # AOT kernels (spinel -> suppify). Plain Ruby: CRuby runs it as is, and the
-# interpreted A/B baseline in bench/aot_ab.rb has the same bodies.
-# Types for suppify are in stackchan_aot.rbs.
+# interpreted A/B baseline in bench/aot_ab.rb has the same bodies. Each public
+# top-level def carries its types as inline RBS.
 
 private
 
@@ -14,6 +14,7 @@ end
 public
 
 # G.711 mu-law -> little-endian signed 16-bit PCM (AW88298.ulaw_decode).
+#: (String) -> String
 def ulaw_decode(src)
   n = src.bytesize
   out = "\0".b * (n * 2)
@@ -29,6 +30,7 @@ end
 
 # RGB565 big-endian pixels of one glyph row, fg where the bit is set, MSB of the
 # w bits leftmost (ILI9342#blit_glyph's inner loop).
+#: (Integer, Integer, Integer, Integer) -> String
 def glyph_row(row, w, fg, bg)
   out = "\0".b * (w * 2)
   fh = (fg >> 8) & 0xFF
@@ -53,6 +55,7 @@ end
 
 # A whole 16-row glyph cell in one call. The rows come as 16 Integers because
 # an Array cannot cross the suppify boundary.
+#: (Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer) -> String
 def glyph16(w, fg, bg, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15)
   glyph_row(r0, w, fg, bg) + glyph_row(r1, w, fg, bg) + glyph_row(r2, w, fg, bg) + glyph_row(r3, w, fg, bg) +
     glyph_row(r4, w, fg, bg) + glyph_row(r5, w, fg, bg) + glyph_row(r6, w, fg, bg) + glyph_row(r7, w, fg, bg) +

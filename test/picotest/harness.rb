@@ -20,10 +20,8 @@ module PicotestHarness
   end
 
 # Pure-Ruby driver gems are bundled into app.mrb by the Rakefile; the device suite
-# embeds them the same way. picoruby-aw88298 is a C gem compiled into the host VM
-# (build_config/picoruby-test.rb) and reached with `require`, as on the device.
-DEVICE_GEMS = %w[stackchan-led si12t].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
-C_GEMS = %w[aw88298]
+# embeds them the same way.
+DEVICE_GEMS = %w[stackchan-led si12t aw88298].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
 DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb")].sort }
 
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
@@ -57,7 +55,6 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   SUITES = {
     "device" => {
       dir: File.join(REPO_ROOT, "test", "device"),
-      require_name: "aw88298",
       cruby: lambda {
         load DEVICE_STUBS_RB
         DEVICE_GEM_MRBLIB.each { |f| load f }
@@ -107,14 +104,6 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       dir: File.join(gem, "test"),
       cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f }; mrblib.each { |f| load f } },
       load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES, *mrblib] },
-    }
-  end
-  C_GEMS.each do |name|
-    SUITES[name] = {
-      dir: File.join(REPO_ROOT, "mrbgems", "picoruby-#{name}", "test"),
-      require_name: name,
-      cruby: lambda { load DEVICE_STUBS_RB; DEVICE_FAKES.each { |f| load f } },
-      load_files: lambda { [DEVICE_STUBS_RB, *DEVICE_FAKES] },
     }
   end
   SUITES.freeze
