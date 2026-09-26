@@ -6,6 +6,12 @@
 # The peripheral runs a non-blocking DRbBle::Responder fed from its own tick;
 # the central talks through DRb::DRbObject with a `drbble://<name>` URI whose
 # link was registered with DRbBle.register.
+begin
+  require 'drb'
+rescue LoadError
+  # No picoruby-drb in this VM: the transport below stays unhooked.
+end
+
 module DRbBle
   CHUNK = 180   # darwin exposes no MTU; the NUS writes already use 180 B
 

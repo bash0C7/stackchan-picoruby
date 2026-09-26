@@ -3,6 +3,12 @@
 # and the ulaw_decode kernel (aot/kernels/stackchan_aot.rb), overlapping each
 # chunk's decode with the previous chunk's blocking I2S write. Without them it
 # decodes here with AW88298.ulaw_decode, the same bytes.
+begin
+  require 'multicore'
+rescue LoadError
+  # No picoruby-multicore in this VM: play_ulaw decodes here.
+end
+
 class AW88298
   AW88298_ADDR = 0x36
   # M5Unified rate table for AW88298 reg 0x06 (M5Unified.cpp:_speaker_enabled_cb_cores3).
