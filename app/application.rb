@@ -49,6 +49,10 @@ module StackchanApp
     BROW_HALF_LENGTH = 16   # horizontal extent each side of eye cx
     BROW_INNER_DROP  = 8    # inner end of brow drops 8px relative to outer end
 
+    EYE_REGION_HALF_W = 6
+    EYE_REGION_HALF_H = 6
+    CLOSED_EYE_HALF_W = 4
+
     # Every face paints inside these two bands, so an expression change
     # repaints ~5600 px instead of the whole field.
     FEATURE_MARGIN = 2
@@ -120,6 +124,10 @@ module StackchanApp
       # Eye-only closed-eye update for blink; leaves the mouth alone.
       def redraw_eyes_closed(display)
         clear_eye_region(display)
+        draw_closed_eyes(display)
+      end
+
+      def draw_closed_eyes(display)
         display.draw_line(
           EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
           EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
@@ -134,7 +142,6 @@ module StackchanApp
     end
 
     class Neutral < Base
-      DELTA_Y = 0
     end
 
     class Smile < Base
@@ -150,8 +157,6 @@ module StackchanApp
     end
 
     class Angry < Base
-      DELTA_Y = 0   # neutral mouth
-
       def draw_features(display)
         super
         display.draw_line(
@@ -180,24 +185,9 @@ module StackchanApp
       end
     end
 
-    # Eye box for eye-only updates; covers both the open ellipse and the closed line.
-    EYE_REGION_HALF_W = 6
-    EYE_REGION_HALF_H = 6
-
-    CLOSED_EYE_HALF_W = 4
-
     class Closed < Base
       def draw_eyes(display)
-        display.draw_line(
-          EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,
-          EYE_LEFT_CX + CLOSED_EYE_HALF_W, EYE_LEFT_CY,
-          EYE_COLOR
-        )
-        display.draw_line(
-          EYE_RIGHT_CX - CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
-          EYE_RIGHT_CX + CLOSED_EYE_HALF_W, EYE_RIGHT_CY,
-          EYE_COLOR
-        )
+        draw_closed_eyes(display)
       end
 
       # Torque-off idle face: closed eyes, no mouth.
@@ -228,23 +218,21 @@ module StackchanApp
     end
 
     def enable_torque(on)
-      @yaw.enable_torque(on)   if @yaw
-      @pitch.enable_torque(on) if @pitch
+      @yaw.enable_torque(on)
+      @pitch.enable_torque(on)
     end
 
     def read_actual
-      { yaw: (@yaw && @yaw.read_pos), pitch: (@pitch && @pitch.read_pos) }
+      { yaw: @yaw.read_pos, pitch: @pitch.read_pos }
     end
 
     # <selftest:run>: nudge yaw ±10 raw and return to center (UART round-trip check).
     def selftest
-      return false if @yaw.nil?
       y0 = SERVO_YAW_ZERO
       [(y0 + 10), (y0 - 10), y0].each do |target|
         @yaw.write_pos(target, time_ms: 50, speed: 0)
         Machine.delay_ms(80)
       end
-      true
     end
   end
 end
@@ -263,18 +251,10 @@ module StackchanApp
       "5" => Face::Angry,
     }.freeze
 
-    # Touch zone → face, drawn on-device the instant Si12T fires.
-    TOUCH_FACE_TABLE = {
-      0 => Face::Surprised,
-      1 => Face::Angry,
-      2 => Face::Sad,
-    }.freeze
-
-    # Touch zone → LED [side, r, g, b].
-    TOUCH_LED_TABLE = {
-      0 => [:both,  0, 60, 0],
-      1 => [:right, 60, 0, 0],
-      2 => [:left,  0, 0, 60],
+    TOUCH_TABLE = {
+      0 => [Face::Surprised, :both,  0, 60, 0],
+      1 => [Face::Angry,     :right, 60, 0, 0],
+      2 => [Face::Sad,       :left,  0, 0, 60],
     }.freeze
 
     MODE_TABLE = {
@@ -291,8 +271,8 @@ module StackchanApp
     }.freeze
 
     # Bottom subtitle band: rows SUBTITLE_BAND_Y..239 of the 320x240 panel.
-    SUBTITLE_BAND_Y      = 200
-    SUBTITLE_BAND_HEIGHT = 40
+    SUBTITLE_BAND_Y      = Face::FACE_REGION_HEIGHT
+    SUBTITLE_BAND_HEIGHT = 240 - SUBTITLE_BAND_Y
     SUBTITLE_FONT        = "go16"   # JIS X 0208 16px gothic
     SUBTITLE_TEXT_Y      = 212      # vertical centering of the 16px glyph in the band
     SUBTITLE_MARGIN_X    = 4
@@ -311,11 +291,6 @@ module StackchanApp
     end
 
     def handle(frame)
-      # Raw Y/P keys are not part of the protocol.
-      if frame.key?("Y") || frame.key?("P")
-        @stdout.write(ERROR_FRAME)
-        return
-      end
       return handle_torque(frame)   if frame.key?("torque")
       return handle_selftest(frame) if frame.key?("selftest")
       return handle_read_pos(frame)  if frame.key?("read")
@@ -327,9 +302,9 @@ module StackchanApp
       servo = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
       ok = handle_head(frame) && ok if servo
       @stdout.write(ok ? ACK_FRAME : ERROR_FRAME)
-      emit_servo_detail(frame) if ok && servo
+      emit_servo_detail if ok && servo
     rescue => e
-      log_error(e)
+      puts "[application] dispatch error: #{e.class}: #{e.message}"
       @stdout.write(ERROR_FRAME)
     end
 
@@ -344,14 +319,10 @@ module StackchanApp
 
     # Touch reaction: draw the zone's face locally (no PC round-trip).
     def react_to_touch(zone)
-      face_class = TOUCH_FACE_TABLE[zone] || Face::Surprised
+      face_class, side, r, g, b = TOUCH_TABLE[zone]
       @current_face_class = face_class
       face_class.new.redraw(@display)
-      led_entry = TOUCH_LED_TABLE[zone]
-      if @led && led_entry
-        side, r, g, b = led_entry
-        @led.flash_side(side, r, g, b)
-      end
+      @led.flash_side(side, r, g, b)
     end
 
     private
@@ -403,7 +374,7 @@ module StackchanApp
       end
       @head.selftest
       @stdout.write(ACK_FRAME)
-      emit_servo_detail({ "YL" => "0", "PU" => "0" })  # synthetic frame: report current actuals
+      emit_servo_detail
     end
 
     def handle_read_pos(frame)
@@ -472,7 +443,7 @@ module StackchanApp
     # Reports the pose at command receipt, not after the move: waiting out T
     # would stall LinkLoop. Its job is the `unknown` signal; a post-move pose
     # comes from <read:pos>.
-    def emit_servo_detail(_frame)
+    def emit_servo_detail
       if @head.nil?
         @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")
         return
@@ -504,9 +475,6 @@ module StackchanApp
 
       @stdout.write("<#{yaw_part},#{pitch_part}>\n")
     end
-
-    def log_error(e)
-    end
   end
 end
 
@@ -522,25 +490,28 @@ module StackchanApp
     # if a whole clip is waited out in one call.
     DRAIN_STEP_MS = 50
 
-    def initialize(speaker:, parser:)
+    def initialize(speaker:, parser:, notify:, drain:, pump:)
       @speaker = speaker
       @parser  = parser
+      @notify  = notify
+      @drain   = drain
+      @pump    = pump
     end
 
-    def consume(rx_data, notify_fn: nil, drain_fn: nil, pump_fn: nil)
+    def consume(rx_data)
       @parser.feed(rx_data).each do |frame|
         if frame.key?("A")
           n = frame["A"].to_i
           next if n <= 0
-          notify_fn.call("<A:ready>\n") if notify_fn
-          ulaw = wait_and_drain(receive_t_ms(n), drain_fn, pump_fn)
+          @notify.call("<A:ready>\n")
+          ulaw = wait_and_drain(receive_t_ms(n))
           play(ulaw) if @speaker
-          return 1
+          return true
         else
-          yield frame if block_given?
+          yield frame
         end
       end
-      0
+      false
     end
 
     private
@@ -550,7 +521,7 @@ module StackchanApp
       (n * 1000 / 8000) + 3000
     end
 
-    def wait_and_drain(t, drain_fn, pump_fn)
+    def wait_and_drain(t)
       buf = ""
       waited = 0
       while waited < t
@@ -558,9 +529,8 @@ module StackchanApp
         step = DRAIN_STEP_MS if step > DRAIN_STEP_MS
         Machine.delay_ms(step)
         waited += step
-        pump_fn.call if pump_fn
-        next unless drain_fn
-        while (chunk = drain_fn.call)
+        @pump.call
+        while (chunk = @drain.call)
           buf << chunk
         end
       end
@@ -570,7 +540,7 @@ module StackchanApp
     def play(ulaw)
       return if ulaw.bytesize == 0
       @speaker.play_ulaw(ulaw)
-      @speaker.i2s.write(SILENCE_TAIL) if @speaker.i2s
+      @speaker.i2s.write(SILENCE_TAIL)
     end
   end
 end
@@ -699,7 +669,7 @@ module StackchanApp
     def service(port)
       cccd = port.take_write(@cccd_handle)
       if cccd
-        @notify = (cccd == "\x01\x00")
+        @notify = (cccd == LinkLoop::CCCD_NOTIFY)
         @responder.reset unless @notify
       end
       while (data = port.take_write(@rx_handle))
@@ -723,9 +693,10 @@ module StackchanApp
   # BLE#start would call it only after the 1 s heartbeat.
   class LinkLoop
     TICK_MS = 20   # ESP32 VM tick is 10 ms: a pop with no event returns after 2 ticks
+    CCCD_NOTIFY = "\x01\x00"
 
     # port: pop_event(timeout_ms:) / event_popped / take_write(handle) / send_notification(handle, frame)
-    def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb: nil)
+    def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb:)
       @port        = port
       @rx_handle   = rx_handle
       @tx_handle   = tx_handle
@@ -740,17 +711,13 @@ module StackchanApp
       @rx_at = nil
     end
 
-    def notify_enabled?
-      @notify_enabled
-    end
-
     def tick
       event = @port.pop_event(timeout_ms: TICK_MS)
       @port.event_popped
       @on_packet.call(event) if event.is_a?(String)
       poll_cccd      # before drain_rx: a subscribe landing with the first command must not lose its ACK
       drain_rx
-      @drb.service(@port) if @drb
+      @drb.service(@port)
       @ticker.tick(@clock.call / 1000)
     end
 
@@ -758,7 +725,6 @@ module StackchanApp
       @port.event_popped
       event = @port.pop_event(timeout_ms: 0)
       @on_packet.call(event) if event.is_a?(String)
-      event
     end
 
     # AckSink: one complete newline-terminated frame. Sent immediately; dropped
@@ -775,7 +741,7 @@ module StackchanApp
     def disconnected
       @notify_enabled = false
       @rx_at = nil
-      @drb.disconnected if @drb
+      @drb.disconnected
     end
 
     private
@@ -783,7 +749,7 @@ module StackchanApp
     def poll_cccd
       cccd = @port.take_write(@cccd_handle)
       return unless cccd
-      @notify_enabled = (cccd == "\x01\x00")
+      @notify_enabled = (cccd == CCCD_NOTIFY)
       @log.call("[application] notify #{@notify_enabled ? 'enabled' : 'disabled'}")
     end
 
@@ -882,13 +848,13 @@ led_init_attempt = 0
 led = nil
 begin
   led = StackchanLed.new(py32)
-rescue IOError
+rescue IOError => e
   led_init_attempt += 1
   if led_init_attempt < 6
     Machine.delay_ms(200)
     retry
   end
-  raise
+  raise e
 end
 puts "[boot] step:led-init-ok"
 
@@ -961,24 +927,21 @@ class StackChanApp < BLE
   NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
   def initialize(display:, led:, head: nil, touch: nil, speaker: nil)
-    @display = display
-    @led     = led
-    @head    = head
-    @touch   = touch
-    @speaker = speaker
     @adv_data = build_adv_data
     db = build_gatt_database
-    @db = db
     @rx_handle = nus_handle(db, NUS_RX_CHAR_UUID, :value_handle)
-    @tx_handle = nus_handle(db, NUS_TX_CHAR_UUID, :value_handle)
-    @tx_cccd_handle = nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION)
-    @parser = StackchanProtocol::FrameParser.new
-    @audio = StackchanApp::AudioReceiver.new(speaker: speaker, parser: @parser)
+    @audio = StackchanApp::AudioReceiver.new(
+      speaker: speaker,
+      parser:  StackchanProtocol::FrameParser.new,
+      notify:  ->(msg) { write(msg) },
+      drain:   -> { pop_write_value(@rx_handle) },
+      pump:    -> { @link.pump }
+    )
     @dispatcher = StackchanApp::Dispatcher.new(
-      display: @display, led: @led, head: @head, stdout: self
+      display: display, led: led, head: head, stdout: self
     )
     ticker = StackchanApp::Ticker.new(
-      display: @display, led: @led, touch: @touch, dispatcher: @dispatcher,
+      display: display, led: led, touch: touch, dispatcher: @dispatcher,
       notify: ->(frame) { write(frame) }
     )
     drb = StackchanApp::DrbChannel.new(
@@ -990,7 +953,9 @@ class StackChanApp < BLE
     )
     @link = StackchanApp::LinkLoop.new(
       port: self,
-      rx_handle: @rx_handle, tx_handle: @tx_handle, cccd_handle: @tx_cccd_handle,
+      rx_handle: @rx_handle,
+      tx_handle: nus_handle(db, NUS_TX_CHAR_UUID, :value_handle),
+      cccd_handle: nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
       ticker: ticker,
       on_packet: ->(pkt) { packet_callback(pkt) },
       on_rx: ->(data) { consume_rx(data) },
@@ -1085,18 +1050,11 @@ class StackChanApp < BLE
 
   # Audio frames go to the receiver (blocking playback); everything else to the dispatcher.
   def consume_rx(rx_data)
-    done = @audio.consume(
-      rx_data,
-      notify_fn: ->(msg) { write(msg) },
-      drain_fn:  -> { pop_write_value(@rx_handle) },
-      pump_fn:   -> { @link.pump }
-    ) { |frame| @dispatcher.handle(frame) }
-    done.times { write("<A:done>\n") }
+    write("<A:done>\n") if @audio.consume(rx_data) { |frame| @dispatcher.handle(frame) }
   end
 end
 
 # [4] Run forever. StackChanApp#run is our own 20 ms tick loop, not BLE#start.
 puts "[application] BLE peripheral starting (infinite advertise)"
 peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch, speaker: @speaker)
-peri.debug = true
 peri.run

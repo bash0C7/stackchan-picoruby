@@ -48,6 +48,11 @@ class LinkLoopTest < Picotest::Test
     end
   end
 
+  class NullDrb
+    def service(_port); end
+    def disconnected; end
+  end
+
   class FakeTicker
     attr_reader :ticks
 
@@ -75,6 +80,7 @@ class LinkLoopTest < Picotest::Test
       on_rx: ->(data) { @rx << data; @now += 15_000; @link.write(".\n") },
       clock: -> { @now },
       log: ->(line) { @logs << line },
+      drb: NullDrb.new,
     )
   end
 
@@ -117,7 +123,6 @@ class LinkLoopTest < Picotest::Test
   def test_write_before_subscribe_is_dropped
     @link.write(".\n")
     assert_equal [], @port.notifies
-    assert_false @link.notify_enabled?
   end
 
   def test_subscribe_in_the_same_tick_as_the_first_command_still_acks
@@ -132,7 +137,6 @@ class LinkLoopTest < Picotest::Test
     @link.write(".\n")
     @link.write("<YL_actual:1,PU_actual:2>\n")
     assert_equal [[TX, ".\n"], [TX, "<YL_actual:1,PU_actual:2>\n"]], @port.notifies
-    assert @link.notify_enabled?
   end
 
   def test_cccd_disable_and_disconnected_close_the_gate
@@ -156,11 +160,12 @@ class LinkLoopTest < Picotest::Test
 
   def test_pump_is_non_blocking_and_dispatches
     @port.queue_event("\x05\x00")
-    assert_equal "\x05\x00", @link.pump
+    @link.pump
     assert_equal [0], @port.pops
     assert_equal 1, @port.event_popped_count
     assert_equal ["\x05\x00"], @packets
-    assert_nil @link.pump
+    @link.pump
+    assert_equal ["\x05\x00"], @packets
   end
 
   def test_one_stamp_line_per_command_with_rx_to_ack_delta
@@ -198,6 +203,7 @@ class LinkLoopTest < Picotest::Test
       on_rx: ->(data) { @rx << data },      # records only, never answers
       clock: -> { @now },
       log: ->(line) { @logs << line },
+      drb: NullDrb.new,
     )
     @port.queue_write(CCCD, "\x01\x00")
     @port.queue_write(RX, "<F:2>\n")

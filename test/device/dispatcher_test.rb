@@ -50,4 +50,46 @@ class DispatcherFaceTest < Picotest::Test
     @disp.handle({ "F" => "99" })
     assert(@stdout.writes.include?("?\n"))
   end
+
+  class RaisingDisplay
+    def draw_rect(x, y, w, h, color, fill: false)
+      raise IOError, "spi"
+    end
+  end
+
+  def test_a_dispatch_exception_answers_question_mark
+    disp = StackchanApp::Dispatcher.new(display: RaisingDisplay.new, led: @led, stdout: @stdout)
+    disp.handle({ "F" => "0" })
+    assert_equal ["?\n"], @stdout.writes
+  end
+
+  class FlashLed
+    attr_reader :flashes
+    def initialize; @flashes = []; end
+    def flash_side(side, r, g, b); @flashes << [side, r, g, b]; end
+  end
+
+  def touch(zone)
+    led = FlashLed.new
+    disp = StackchanApp::Dispatcher.new(display: @display, led: led, stdout: @stdout)
+    disp.react_to_touch(zone)
+    [disp.current_face_class, led.flashes]
+  end
+
+  def test_touch_zone_0_draws_surprised_and_flashes_both_green
+    assert_equal [StackchanApp::Face::Surprised, [[:both, 0, 60, 0]]], touch(0)
+  end
+
+  def test_touch_zone_1_draws_angry_and_flashes_right_red
+    assert_equal [StackchanApp::Face::Angry, [[:right, 60, 0, 0]]], touch(1)
+  end
+
+  def test_touch_zone_2_draws_sad_and_flashes_left_blue
+    assert_equal [StackchanApp::Face::Sad, [[:left, 0, 0, 60]]], touch(2)
+  end
+
+  def test_touch_redraws_the_face_on_the_display
+    touch(1)
+    assert_equal 4, @display.calls.select { |c| c.first == :draw_line }.size
+  end
 end
