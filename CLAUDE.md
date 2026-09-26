@@ -69,6 +69,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 
 - yaw: `<YL:0..100>` / `<YR:0..100>` (排他、YL 優先)、pitch: `<PU:0..100>` (上のみ)、timing: `<T:ms>` か `<V:speed>` のどちらか。
 - 稀: `<torque:on|off>`、`<selftest:run>`、`<read:pos>` (`calibrate` だけが使う)。
+- dRuby over BLE: NUS service 内の第 2 pair (`6e400004` write / `6e400005` notify) に DRb の TCP stream をそのまま 180 B chunk で流す (`mrbgems/picoruby-drb-ble`)。front は `StackchanApp::Remote` で、各 call は text frame 1 個として同じ `Dispatcher` を通り、text link が notify するはずの行を Array で返す。firmware に `picoruby-drb` が無ければ pair は GATT に出ない。CLI は `stackchan remote servo YL=50 PU=30 T=500`。
 - cold-boot は torque OFF + `Face::Closed`。操作者が正面に合わせて `<torque:on>`。
 - 位置コマンドの detail `<YL_actual:N,PU_actual:N>` は **受信時点の姿勢** (移動後ではない)。`unknown` = キャリブレーション要。移動後の値が要るなら `<read:pos>` を使うか、次の位置コマンドの detail を読む。CLI の `raw` verb は device の detail を捨てて `OK raw` しか返さないので、`stackchan raw '<read:pos>'` では値が取れない。
 - audio は半二重: `<A:N>` → device `<A:ready>` → `T = N*1000/8000 + 3000 ms` 静止 → RX queue drain → I2S 再生。PC は 1.5 s 待ってから blast、`N/8000 + 2 s` 待つ。

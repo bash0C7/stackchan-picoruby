@@ -341,6 +341,15 @@ module StackchanApp
       @stdout.write(ERROR_FRAME)
     end
 
+    # handle, with this one call's output lines going to sink instead of stdout.
+    def handle_to(frame, sink)
+      saved = @stdout
+      @stdout = sink
+      handle(frame)
+    ensure
+      @stdout = saved
+    end
+
     # Touch reaction: draw the zone's face locally (no PC round-trip).
     def react_to_touch(zone)
       face_class = TOUCH_FACE_TABLE[zone] || Face::Surprised
@@ -637,6 +646,123 @@ module StackchanApp
     end
   end
 
+  # The dRuby front object. Each call is one text-protocol frame run through the
+  # same Dispatcher, so both links behave identically; it returns the lines the
+  # text link would have notified (e.g. [".\n", "<YL_actual:50,PU_actual:29>\n"]).
+  class Remote
+    EXPOSED = [:command, :face, :servo, :led, :text, :torque, :read_pos]
+
+    class Lines
+      attr_reader :lines
+
+      def initialize
+        @lines = []
+      end
+
+      def write(s)
+        @lines << s
+      end
+    end
+
+    def initialize(dispatcher)
+      @dispatcher = dispatcher
+    end
+
+    # frame: the <K:V> pairs as a Hash, e.g. { "YL" => 50, "T" => 500 }.
+    def command(frame)
+      out = Lines.new
+      @dispatcher.handle_to(stringify(frame), out)
+      out.lines
+    end
+
+    def face(id)
+      command({ "F" => id })
+    end
+
+    # opts: YL / YR / PU (0..100) and T (ms) or V; String or Symbol keys.
+    def servo(opts)
+      command(opts)
+    end
+
+    # opts: M (s/b/p/o), S (L/R/B), R / G / B.
+    def led(opts)
+      command(opts)
+    end
+
+    def text(s)
+      command({ "text" => s })
+    end
+
+    def torque(on)
+      command({ "torque" => (on == true || on.to_s == "on") ? "on" : "off" })
+    end
+
+    def read_pos
+      command({ "read" => "pos" })
+    end
+
+    private
+
+    def stringify(frame)
+      out = {}
+      keys = frame.keys
+      i = 0
+      while i < keys.length
+        out[keys[i].to_s] = frame[keys[i]].to_s
+        i += 1
+      end
+      out
+    end
+  end
+
+  # The dRuby characteristic pair next to NUS: writes to rx_handle feed the
+  # Responder, its replies go out as notifications on tx_handle.
+  class DrbChannel
+    CHUNK = 180
+
+    def initialize(rx_handle:, tx_handle:, cccd_handle:, responder:)
+      @rx_handle   = rx_handle
+      @tx_handle   = tx_handle
+      @cccd_handle = cccd_handle
+      @responder   = responder
+      @notify_enabled = false
+    end
+
+    def notify_enabled?
+      @notify_enabled
+    end
+
+    def service(port)
+      cccd = port.take_write(@cccd_handle)
+      if cccd
+        @notify_enabled = (cccd == "\x01\x00")
+        @responder.reset unless @notify_enabled
+      end
+      data = port.take_write(@rx_handle)
+      while data
+        reply = @responder.feed(data)
+        send_reply(port, reply) unless reply.empty?
+        data = port.take_write(@rx_handle)
+      end
+    end
+
+    def disconnected
+      @notify_enabled = false
+      @responder.reset
+    end
+
+    private
+
+    def send_reply(port, reply)
+      return unless @notify_enabled
+      pos = 0
+      while pos < reply.bytesize
+        port.send_notification(@tx_handle, reply.byteslice(pos, CHUNK))
+        pos += CHUNK
+      end
+    end
+  end
+
   # One tick of the peripheral run loop. `event_popped` runs on EVERY tick: on
   # the ESP32 port inbound writes reach Ruby only inside BLE#_event_popped, and
   # BLE#start would call it only after the 1 s heartbeat.
@@ -644,7 +770,7 @@ module StackchanApp
     TICK_MS = 20   # ESP32 VM tick is 10 ms: a pop with no event returns after 2 ticks
 
     # port: pop_event(timeout_ms:) / event_popped / take_write(handle) / send_notification(handle, frame)
-    def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:)
+    def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb: nil)
       @port        = port
       @rx_handle   = rx_handle
       @tx_handle   = tx_handle
@@ -654,6 +780,7 @@ module StackchanApp
       @on_rx       = on_rx
       @clock       = clock
       @log         = log
+      @drb         = drb
       @notify_enabled = false
       @rx_at = nil
     end
@@ -668,6 +795,7 @@ module StackchanApp
       @on_packet.call(event) if event.is_a?(String)
       poll_cccd      # before drain_rx: a subscribe landing with the first command must not lose its ACK
       drain_rx
+      @drb.service(@port) if @drb
       @ticker.tick(@clock.call / 1000)
     end
 
@@ -692,6 +820,7 @@ module StackchanApp
     def disconnected
       @notify_enabled = false
       @rx_at = nil
+      @drb.disconnected if @drb
     end
 
     private
@@ -868,6 +997,9 @@ class StackChanApp < BLE
   NUS_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
   NUS_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x02\x00\x40\x6e"
   NUS_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x03\x00\x40\x6e"
+  # dRuby pair in the NUS service (6e400004 / 6e400005), present when the firmware has picoruby-drb.
+  DRB_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x04\x00\x40\x6e"
+  DRB_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x05\x00\x40\x6e"
 
   NUS_RX_PROPS = BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
   NUS_TX_PROPS = BLE::READ | BLE::NOTIFY | BLE::DYNAMIC
@@ -881,6 +1013,7 @@ class StackChanApp < BLE
     @touch   = touch
     @speaker = speaker
     @adv_data = build_adv_data
+    @drb_enabled = Object.const_defined?(:DRb) && Object.const_defined?(:DRbBle)
     db = build_gatt_database
     @db = db
     @rx_handle = nus_handle(db, NUS_RX_CHAR_UUID, :value_handle)
@@ -895,6 +1028,17 @@ class StackChanApp < BLE
       display: @display, led: @led, touch: @touch, dispatcher: @dispatcher,
       notify: ->(frame) { write(frame) }
     )
+    drb = nil
+    if @drb_enabled
+      drb = StackchanApp::DrbChannel.new(
+        rx_handle:   nus_handle(db, DRB_RX_CHAR_UUID, :value_handle),
+        tx_handle:   nus_handle(db, DRB_TX_CHAR_UUID, :value_handle),
+        cccd_handle: nus_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
+        responder:   DRbBle::Responder.new(StackchanApp::Remote.new(@dispatcher),
+                                           allow: StackchanApp::Remote::EXPOSED)
+      )
+      puts "[application] dRuby over BLE enabled"
+    end
     @link = StackchanApp::LinkLoop.new(
       port: self,
       rx_handle: @rx_handle, tx_handle: @tx_handle, cccd_handle: @tx_cccd_handle,
@@ -902,7 +1046,8 @@ class StackChanApp < BLE
       on_packet: ->(pkt) { packet_callback(pkt) },
       on_rx: ->(data) { consume_rx(data) },
       clock: -> { Machine.uptime_us },
-      log: ->(line) { puts line }
+      log: ->(line) { puts line },
+      drb: drb
     )
     puts "[application] initialize: super(:peripheral) entering"
     super(:peripheral, db.profile_data)
@@ -961,6 +1106,12 @@ class StackChanApp < BLE
         s.add_characteristic(NUS_RX_PROPS, NUS_RX_CHAR_UUID, NUS_RX_PROPS, "")
         s.add_characteristic(NUS_TX_PROPS, NUS_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
           c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
+        end
+        if @drb_enabled
+          s.add_characteristic(NUS_RX_PROPS, DRB_RX_CHAR_UUID, NUS_RX_PROPS, "")
+          s.add_characteristic(NUS_TX_PROPS, DRB_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
+            c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
+          end
         end
       end
     end

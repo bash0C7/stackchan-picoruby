@@ -17,6 +17,7 @@ unless Object.const_defined?(:Stackchan)
 end
 require "drb"
 load "#{root}/pc/stackchan-pico/app/drb_eintr_retry.rb"
+load "#{root}/mrbgems/picoruby-drb-ble/mrblib/drb-ble.rb" unless Object.const_defined?(:DRbBle)
 load "#{root}/pc/stackchan-pico/app/calib.rb"
 load "#{root}/pc/stackchan-pico/app/daemon_app.rb"
 

@@ -24,6 +24,9 @@ module NusResolver
 
   def rx_uuid; nus_uuid(0x00, 0x02); end
   def tx_uuid; nus_uuid(0x00, 0x03); end
+  # dRuby over BLE pair (0x0004 write / 0x0005 notify); absent on firmware without picoruby-drb.
+  def drb_rx_uuid; nus_uuid(0x00, 0x04); end
+  def drb_tx_uuid; nus_uuid(0x00, 0x05); end
 
   def cccd_uuid
     [0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x10, 0x00,
@@ -64,7 +67,7 @@ module NusResolver
     :other
   end
 
-  module_function :nus_uuid, :rx_uuid, :tx_uuid, :cccd_uuid,
+  module_function :nus_uuid, :rx_uuid, :tx_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
                   :find_characteristic, :cccd_handle, :classify
 end
 
@@ -129,6 +132,7 @@ if Object.const_defined?(:BLE)
     AUDIO_DONE_TIMEOUT_MAX_MS = 180_000  # hard cap -- never an unbounded wait
     AUDIO_DONE_BASE_MS        = 3_300    # measured intercept, see audio_done_timeout_ms
     SUBSCRIBE_ENABLE          = "\x01\x00"
+    DRB_URI                   = "drbble://stackchan"
 
     attr_accessor :on_unsolicited
     attr_reader   :last_detail_frame
@@ -141,6 +145,11 @@ if Object.const_defined?(:BLE)
       @rx_handle          = nil
       @tx_handle          = nil
       @cccd_handle        = nil
+      @drb_rx_handle      = nil
+      @drb_tx_handle      = nil
+      @drb_cccd_handle    = nil
+      @drb_inbox          = []
+      @drb_sent_at        = nil
       @inbox              = []
       @connected          = false
       @on_unsolicited     = nil
@@ -163,6 +172,7 @@ if Object.const_defined?(:BLE)
       end
       resolve_handles
       subscribe_tx
+      subscribe_drb
       @connected = true
       self
     end
@@ -229,6 +239,48 @@ if Object.const_defined?(:BLE)
       end
     end
 
+    def drb?
+      !@drb_rx_handle.nil?
+    end
+
+    # A DRbObject for the device's StackchanApp::Remote over the dRuby pair.
+    def remote
+      raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+      raise Stackchan::BLE::ConnectionError, "device has no dRuby characteristics" unless drb?
+      DRbBle.register(DRB_URI, DrbLink.new(self), timeout_ms: ACK_TIMEOUT_MS)
+      DRb::DRbObject.new_with_uri(DRB_URI)
+    end
+
+    # DRbBle link port: one ATT write per chunk, paced like the audio blast
+    # (unpaced back-to-back writes are silently truncated on macOS).
+    class DrbLink
+      def initialize(central)
+        @central = central
+      end
+
+      def send_chunk(bytes)
+        @central.write_drb(bytes)
+      end
+
+      def poll
+        @central.take_drb
+      end
+    end
+
+    def write_drb(bytes)
+      if @drb_sent_at
+        wait = POLLING_UNIT_MS - (Machine.board_millis - @drb_sent_at)
+        sleep_ms(wait) if wait > 0
+      end
+      @radio.write_value_of_characteristic_without_response(@radio.conn_handle, @drb_rx_handle, bytes)
+      @drb_sent_at = Machine.board_millis
+    end
+
+    def take_drb
+      drain
+      @drb_inbox.shift
+    end
+
     private
 
     def polls_for(ms)
@@ -244,6 +296,12 @@ if Object.const_defined?(:BLE)
       @rx_handle   = rx[:value_handle]
       @tx_handle   = tx[:value_handle]
       @cccd_handle = NusResolver.cccd_handle(tx)
+      drb_rx = NusResolver.find_characteristic(services, NusResolver.drb_rx_uuid)
+      drb_tx = NusResolver.find_characteristic(services, NusResolver.drb_tx_uuid)
+      return unless drb_rx && drb_tx
+      @drb_rx_handle   = drb_rx[:value_handle]
+      @drb_tx_handle   = drb_tx[:value_handle]
+      @drb_cccd_handle = NusResolver.cccd_handle(drb_tx)
     end
 
     # Subscribe TX, then drain SUBSCRIBE_SETTLE_MS: there is no central-side
@@ -255,6 +313,13 @@ if Object.const_defined?(:BLE)
       settle(SUBSCRIBE_SETTLE_MS)
     end
 
+    def subscribe_drb
+      return unless @drb_cccd_handle
+      @radio.write_characteristic_descriptor_using_descriptor_handle(
+        @radio.conn_handle, @drb_cccd_handle, SUBSCRIBE_ENABLE)
+      settle(SUBSCRIBE_SETTLE_MS)
+    end
+
     def settle(ms)
       polls_for(ms).times do
         drain
@@ -263,6 +328,10 @@ if Object.const_defined?(:BLE)
     end
 
     def handle_notification(handle, value)
+      if handle == @drb_tx_handle
+        @drb_inbox << value
+        return
+      end
       return unless handle == @tx_handle
       case NusResolver.classify(value)
       when :touch

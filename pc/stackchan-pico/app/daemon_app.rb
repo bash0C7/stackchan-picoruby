@@ -193,6 +193,14 @@ module Stackchan
       "OK raw"
     end
 
+    # One call on the device's StackchanApp::Remote over dRuby-over-BLE;
+    # returns the lines the device answered (e.g. [".\n", "<YL_actual:..>\n"]).
+    def remote(msg, args = [])
+      lines = with_ble { @ble.remote.send(msg.to_sym, *args) }
+      record(:remote)
+      lines
+    end
+
     # Median of N <read:pos> reads; raises on "unknown".
     def sample_pose(samples = 3)
       n = samples || 3

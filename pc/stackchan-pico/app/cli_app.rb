@@ -4,7 +4,7 @@
 # NOT_RUNNING_MESSAGE, which names that command.
 module Stackchan
   class CLI
-    VERBS = %w[connect status stop say chat face led servo torque selftest raw touch demo tui calibrate].freeze
+    VERBS = %w[connect status stop say chat face led servo torque selftest raw remote touch demo tui calibrate].freeze
     OBSERVE_ONLY = %w[status].freeze
 
     def self.run(argv, host: "127.0.0.1", port: 8787)
@@ -67,6 +67,7 @@ module Stackchan
       when "torque"   then out @daemon.torque(args[0] == "on")
       when "selftest" then out @daemon.selftest
       when "raw"      then out @daemon.raw_send(args.join(" "))
+      when "remote"   then verb_remote(args)
       when "touch"    then verb_touch(args)
       else
         self.class.usage
@@ -120,6 +121,26 @@ module Stackchan
         velocity:  opts["velocity"]  && opts["velocity"].to_i,
       )
       out "servo detail=#{detail.inspect}"
+    end
+
+    # stackchan remote <method> [KEY=VALUE ... | ARG ...]  (dRuby over BLE)
+    #   stackchan remote servo YL=50 PU=30 T=500 / remote face 2 / remote read_pos
+    def verb_remote(args)
+      msg = args.shift
+      unless msg
+        out "remote <command|face|servo|led|text|torque|read_pos> [KEY=VALUE ... | ARG ...]"
+        return
+      end
+      call_args = args
+      if !args.empty? && args.all? { |a| a.include?("=") }
+        frame = {}
+        args.each do |a|
+          k, v = a.split("=", 2)
+          frame[k] = v
+        end
+        call_args = [frame]
+      end
+      @daemon.remote(msg, call_args).each { |line| out line.chomp }
     end
 
     def verb_touch(args)

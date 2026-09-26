@@ -45,6 +45,10 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
     stackchan/ble/send_builder.rb
     stackchan/ai/frame_text.rb
   ].map { |f| File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "mrblib", f) }
+  # picoruby-drb is not in the host VM: suites that need it load its mrblib as
+  # source (Marshal is compiled in), then the drbble transport gem.
+  DRB_MRBLIB = %w[drb.rb drb_message.rb drb_object.rb].map { |f| File.join(PICORUBY_ROOT, "mrbgems", "picoruby-drb", "mrblib", f) }
+  DRB_BLE_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "mrblib", "*.rb")].sort
   EXTRACTED_APP_RB = "/tmp/_extracted_application.rb"
   EXTRACTED_PC_RB  = "/tmp/_extracted_ble_client.rb"
   EXTRACTED_CLI_RB = "/tmp/_extracted_cli_app.rb"
@@ -62,7 +66,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(APPLICATION_RB, EXTRACTED_APP_RB, exclude_superclasses: %w[BLE])
-        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {
@@ -80,7 +84,8 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
         RubyClassExtract.extract_to_file(BLE_CLIENT_RB, EXTRACTED_PC_RB)
         RubyClassExtract.extract_to_file(CLI_APP_RB, EXTRACTED_CLI_RB)
         RubyClassExtract.extract_to_file(DAEMON_APP_RB, EXTRACTED_DAEMON_RB)
-        files = [PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, PC_DRB_PATCH_RB]
+        # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
+        files = [*DRB_MRBLIB, PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files
       },
@@ -91,6 +96,11 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       load_files: lambda { SHARED_MRBLIB },
     },
 }
+  SUITES["drb-ble"] = {
+    dir: File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "test"),
+    cruby: lambda {},
+    load_files: lambda { [*DRB_MRBLIB, *DRB_BLE_MRBLIB] },
+  }
   DEVICE_GEMS.each do |gem|
     mrblib = Dir[File.join(gem, "mrblib", "*.rb")].sort
     SUITES[File.basename(gem).sub("picoruby-", "")] = {

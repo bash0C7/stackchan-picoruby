@@ -243,7 +243,7 @@ end
 
 # Pure-Ruby driver gems live under mrbgems/ but are not in the firmware build_config, so
 # their mrblib is prepended to the application source before picorbc.
-DEVICE_GEM_SOURCES = %w[stackchan-led si12t].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/*.rb", __dir__)].sort }
+DEVICE_GEM_SOURCES = %w[stackchan-led si12t drb-ble].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/*.rb", __dir__)].sort }
 
 def bundle_app_source(src)
   out = File.expand_path("tmp/build/#{File.basename(src, '.rb')}.bundled.rb", __dir__)
