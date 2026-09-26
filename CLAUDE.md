@@ -12,6 +12,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - 長い rake (setup / build_flash / full_rebuild) は subagent (haiku) の foreground で 1 chain task として回し、log は `/tmp/stackchan-picoruby-debug/` に tee する。
 - spec / plan / review / 調査レポートは Obsidian vault の `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ObsidianVault/02_dev_docs/stackchan-picoruby/{specs,plans,review}/` に置く。PR #427 関連は隣の `picoruby-ble-esp32-port/`。repo の `docs/` は commit する必要のあるものだけ。記事・WIP メモは esa (team `ksbrb`、カテゴリ `ｽﾀｯｸﾁｬﾝ`)。
 - 日付・経緯・「以前は」を doc やコメントに残さない。現在の挙動を現在形で書く。経緯は git log に任せる。
+- コメントを書かない。コードは How、テストは What (テスト名)、コミットログは Why を担う。残すのは toolchain が読むもの (magic comment、suppify の `#:` 型注釈、rigor/steep 指示) と `# REQUIRED FOR PY32 COLD-BOOT` だけ。
 
 ## 検証と報告の規律
 
