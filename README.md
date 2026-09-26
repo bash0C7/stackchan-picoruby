@@ -37,7 +37,7 @@ advertises the Nordic UART Service, and listens for control frames.
 The macOS side is the orchestrator. It sends control frames (face, LED, servo
 position, audio) and reads single-byte ACK or ERR replies plus detail frames.
 
-Control frames are key-value, semicolon-delimited, parsed by the FrameParser in
+Control frames are key-value, comma-delimited, parsed by the FrameParser in
 the `picoruby-stackchan-protocol` gem. Audio is sent as a length-prefixed
 `<A:nbytes>` frame followed by raw mu-law bytes in MTU-sized writes.
 
@@ -171,10 +171,10 @@ firmware-build time rather than vendored here. It finds it in the firmware build
 build once first, or point `SCSERVO_RB` at your own clone of `picoruby-scservo`.
 
 The test VM builds as `host-picotest` and the firmware's own host tools build as
-`host`, so a firmware build cannot reach it. They shared `build/host` until CI
-built both in one job and every suite came up `uninitialized constant Picotest`:
-mruby does not treat MRUBY_CONFIG as a dependency of objects it has already
-built, so whichever config ran last simply kept what the other had left.
+`host`, so a firmware build cannot reach it. They are separate because mruby
+does not treat MRUBY_CONFIG as a dependency of objects it has already built:
+with one build directory, whichever config ran last keeps what the other
+left, and every suite fails with `uninitialized constant Picotest`.
 
 ### Optional
 
@@ -305,8 +305,8 @@ touch — completes without a single ACK timeout or retry.
   PicoRuby VM cannot trap that: `Signal.list` carries no `PIPE`, and every
   `Signal.trap` form raises `SystemStackError`. launchd restarts the process,
   so the damage is a dropped connection rather than a dead robot. `rake pc:up`
-  no longer triggers it — its port check asks the kernel who is listening
-  instead of connecting — but the daemon still has no defence of its own.
+  checks the port by asking the kernel who is listening, not by connecting, so
+  it does not trigger this; the daemon itself has no defence.
 
 ## Audio path
 
@@ -318,8 +318,8 @@ heartbeat to pick it up, blasts the bytes in MTU-sized writes, then waits
 `N/8000 + 2 s` for playback to finish. The device, on receiving `<A:N>`,
 replies `<A:ready>`, sleeps `T = (N × 1000 / 8000) + 3000 ms` (main task fully
 static during this window), drains the receive queue, and plays the buffer. The
-phase separation prevents the btstack FreeRTOS thread and the PicoRuby main
-task from racing on the mruby heap.
+phase separation prevents the NimBLE host thread and the PicoRuby main task
+from racing on the mruby heap.
 
 That window is sized from an assumed 8000 bytes/s blast, while the PC paces at a
 nominal 9000 bytes/s and measures slower than that. Long clips can therefore
@@ -339,35 +339,24 @@ speaker is being overdriven, and the fix is amplitude, not the codec.
 
 A `face` command over BLE takes 0.16 s (neutral) to 0.21 s (joy), median of
 eight rounds. `led` travels the same path and draws nothing: 0.18 s. The faces
-sit at that floor, so the LCD repaint no longer stands out above the BLE round
-trip.
+sit at that floor, close to the BLE round trip.
 
 Numbers drift 15-25% between sessions; only compare runs from the same
 session. `ROUNDS=8 tools/face_profile.zsh` produces the table.
 
-| face | seconds | with the primitives in Ruby |
-|---|---|---|
-| neutral | 0.16 | 0.42 |
-| surprised | 0.16 | 0.42 |
-| angry | 0.17 | 0.55 |
-| smile | 0.18 | 0.56 |
-| sad | 0.18 | 0.52 |
-| joy | 0.21 | 0.67 |
-| `led` (floor) | 0.18 | 0.19 |
+| face | seconds |
+|---|---|
+| neutral | 0.16 |
+| surprised | 0.16 |
+| angry | 0.17 |
+| smile | 0.18 |
+| sad | 0.18 |
+| joy | 0.21 |
+| `led` (floor) | 0.18 |
 
-Both columns are medians of the same eight-round run, measured in one session
-either side of the firmware change, so they are comparable. The device-side
-ACK in the daemon log moved the same way: 344-624 ms down to 100-164 ms.
-
-A rebuild from the same sources, measured later in that session, gave 0.17-0.21 s
-against a 0.19 s floor: the ordering across faces is stable, individual faces move
-by about 0.02 s between runs.
-
-What went away is the time PicoRuby spent interpreting Bresenham and
-midpoint-ellipse loops. `picoruby-ili9342` issues the address window, RAMWR
-and pixel stream from C, one call per shape. Neither pixel count nor
-`SPI#write` count ever explained the cost (cutting the calls from ~400 to 10
-was worth 7-9%); primitive count did.
+Drawing cost follows primitive count; `picoruby-ili9342` issues the address
+window, RAMWR and pixel stream from C, one call per shape. Neither pixel
+count nor `SPI#write` count explains it.
 
 Two device-only constraints bind anything that goes back onto the draw path in
 Ruby:
@@ -487,8 +476,8 @@ Adds on top of upstream:
   wires the 4 standalone driver gems above plus `picoruby-ble` /
   `picoruby-ble-uart` / `picoruby-i2s`.
 - Points its `components/picoruby-esp32/picoruby` submodule at `7258676` on the
-  picoruby fork's `stackchan-integration` branch below. The branch head has moved
-  past that commit onto a lineage that boot-loops on this board; see HANDOFF.
+  picoruby fork's `stackchan-integration` branch below. The branch head is on
+  the rebased lineage, which boot-loops on this board; see HANDOFF.
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby)
 

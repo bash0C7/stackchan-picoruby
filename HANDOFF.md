@@ -33,7 +33,7 @@ with no failures, crashes or skips, plus the CRuby host tests, where ten cases
 are omitted on machines without `plutil`. Both workflows are green on the tip
 of `main`.
 
-`rake test` now runs `rigor:check` first, a host-side type analysis that fails
+`rake test` runs `rigor:check` first, a host-side type analysis that fails
 on any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
 to have run, and installs its own gemset into `vendor/rigor-tool` on first use.
 Seventeen diagnostics are frozen in the snapshot; eight of them are false
@@ -54,7 +54,7 @@ green on the host and built into firmware, but have not run on the robot:
   front, `stackchan remote <method>` on the Mac. R2P2-darwin
   `claude/drb-over-ble` sends the iOS / watchOS apps' commands the same way.
 - **AOT kernels** — `aot/`: mu-law decode and glyph expansion written in Ruby
-  and compiled with spinel → suppify. `picoruby-aw88298` is pure Ruby now;
+  and compiled with spinel → suppify. `picoruby-aw88298` is pure Ruby;
   picoruby-ili9342 `claude/aot-glyph16` hands 16-row glyphs to the kernel.
 - **core 1** — picoruby-multicore runs `ulaw_decode` there while core 0
   writes the previous chunk to I2S.
@@ -90,22 +90,12 @@ R2P2-darwin, R2P2-ESP32 (with ili9342 back at `main`).
 
 ### 2. The daemon has no defence against a client hanging up
 
-`rake pc:up` failed about a quarter of the time with "daemon on 8787 is
-listening but did not answer status". The cause is not a slow daemon. Its port
-check connected to the drb port and closed immediately; the daemon, blocked in
-its own startup and running cooperative Tasks, could not service that connection
-until it unblocked, and then wrote to a socket whose peer was gone and died of
-SIGPIPE. Measured at 4 failures in 15 bring-ups, and 0 in 15 once the check asks
-the kernel who is listening instead of connecting.
-
-What remains is the daemon side of it. Its PicoRuby VM cannot trap SIGPIPE --
-`Signal.list` carries no `PIPE` and every `Signal.trap` form raises
-`SystemStackError` -- so any client that hangs up mid-call can still kill it,
-and launchd restarts it. Closing that means `SO_NOSIGPIPE` or an ignored SIGPIPE
-in picoruby's socket layer, which is upstream work rather than a change here.
-
-This also accounts for the SIGPIPE recorded as a one-off after a `selftest`. It
-was never a one-off.
+Any client that hangs up mid-call can kill the daemon: its PicoRuby VM cannot
+trap SIGPIPE (`Signal.list` carries no `PIPE` and every `Signal.trap` form
+raises `SystemStackError`), so a peer gone while the daemon writes to it takes
+the process down, and launchd restarts it. Closing that means `SO_NOSIGPIPE`
+or an ignored SIGPIPE in picoruby's socket layer, which is upstream work
+rather than a change here.
 
 ### 3. The lineage that will not boot
 
