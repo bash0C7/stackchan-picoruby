@@ -1,8 +1,6 @@
 # StackChan autostart payload (/home/app.mrb):
 #   [1] escape hatch → [2] cold-boot init → [3] BLE NUS peripheral → [4] run loop
 
-#   Pure-Ruby driver gems (stackchan-led, si12t) are bundled in by the Rakefile at compile time;
-#   aw88298 is a C gem compiled into the firmware.
 require 'spi'
 require 'gpio'
 require 'i2c'
@@ -14,7 +12,6 @@ require 'stackchan-protocol'
 require 'scservo'
 require 'ble'
 require 'i2s'
-require 'aw88298'
 
 # [1] Escape hatch: time to reach the shell and rm /home/app.mrb if this build crash-loops.
 sleep_ms 5000
