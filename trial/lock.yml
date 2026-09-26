@@ -21,11 +21,11 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: b16d7fe74a58b0f8f581e39d72bf6b8c6b405872   # claude/ecstatic-allen-s6qki1
-    R2P2-ESP32: 561fd672494850a42af58871b11ae83b44b1b50d           # claude/stackchan-aot-multicore-drb
+    stackchan-picoruby: 6dafd86309bc301752a220868442c954ec7a68a3   # claude/ecstatic-allen-s6qki1
+    R2P2-ESP32: 9fe8b7cf614a1eef647eec9d783fa714f82df2d0           # claude/stackchan-aot-multicore-drb
     picoruby: 7258676d6177dc4d8eb89fccec2fe0c6c0e4ef0b
     repos:
-      picoruby-ili9342: 8e6e24f9d2fc6a0848f3d540013474194d816423    # claude/aot-glyph16
+      picoruby-ili9342: 14e3b2a69bc9ce25b8c7579b2551705e5f04be66    # claude/aot-glyph16
       picoruby-py32-io-expander: 407b2c43fbeaace13239be8773d7a06aa3835baf
       picoruby-stackchan-protocol: 44000e576fce6d98396e68efa89017a42900eec9
       picoruby-scservo: 2f0ec4a1403adaaf3da1df13478b3562341c159f
@@ -41,4 +41,4 @@ arms:
 
 # iOS / watchOS apps, run against the trial arm's firmware.
 darwin:
-  R2P2-darwin: 89df03468c9a999b651367bda4229147ae657c7e             # claude/drb-over-ble
+  R2P2-darwin: 6a163ffab2acfe21d46c61298a70869f55bcf51e             # claude/drb-over-ble

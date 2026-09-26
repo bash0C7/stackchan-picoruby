@@ -28,7 +28,7 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 The device reports App version `2f18720`, so it is running this tree.
 
-Tests pass: 468 picotest across device, pc, shared, drb-ble and the three driver gems,
+Tests pass: 467 picotest across device, pc, shared, aot, drb-ble and the three driver gems,
 with no failures, crashes or skips, plus the CRuby host tests, where ten cases
 are omitted on machines without `plutil`. Both workflows are green on the tip
 of `main`.
@@ -81,8 +81,9 @@ trial:darwin` builds and runs the iOS / watchOS apps against the trial
 firmware. The build half of the run (pin, set up, build, pins still hold)
 has been run for both arms in a Linux container; the device half has not.
 
-Host numbers (x86_64, `bench/`): glyph 16x16 44.9 → 8.5 µs; mu-law 4096 B
-interpreted ~1.9 ms → ~0.29 ms on the pthread multicore port.
+Host numbers (x86_64, `bench/aot_ab.rb`, interpreted → AOT): one 16x16 glyph
+~83 → ~7 µs; `ulaw_decode` 4096 B ~2.5–3.0 ms → ~0.11 ms; `play_ulaw` 16384 B
+on the pthread multicore port ~10 ms → ~1 ms.
 
 On `verdict: pass`, merge in order: suppify, picoruby-ili9342, this repo,
 R2P2-darwin, R2P2-ESP32 (with ili9342 back at `main`).
