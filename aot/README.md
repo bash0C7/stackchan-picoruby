@@ -12,13 +12,14 @@ inline RBS (`#:`) on each public top-level `def`; helpers are `private`.
 | `glyph16(w, fg, bg, r0..r15) -> String` | Kernel method, core 0 | `ILI9342#blit_glyph` (16-row glyphs) |
 | `glyph_row(row, w, fg, bg) -> String` | Kernel method, core 0 | bench only |
 
-`ulaw_decode` goes through picoruby-multicore because its MessagePack path keeps
-0x00 bytes, and the direct suppify binding takes a String argument as a
-NUL-terminated `char*`. A kernel reply must fit picoruby-multicore's 4096-byte
-buffer, so `play_ulaw` sends 2046 mu-law bytes per call.
+`ulaw_decode` runs on core 1 so the decode of one chunk overlaps the blocking
+I2S write of the previous one. A kernel reply must fit picoruby-multicore's
+4096-byte buffer, so `play_ulaw` sends 2046 mu-law bytes per call. Direct calls
+keep 0x00 bytes in String arguments: the binding publishes each argument's
+length with `<lib>_set_arg_len`.
 
 **One runtime, one core at a time.** Every kernel shares one spinel runtime
-(one suppify library: two in one image also collide at link time). It is not
+(one suppify library, so the firmware carries one set of runtime tables). It is not
 thread-safe, so no kernel runs on core 0 while core 1 is inside one. That holds
 because `play_ulaw` is the only multicore caller and does nothing but I2S writes
 while core 1 decodes; drawing never runs during playback.

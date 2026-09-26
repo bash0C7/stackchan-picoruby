@@ -2,8 +2,7 @@
 # aot/kernels/*.rb -> one suppify gem (picoruby-stackchan_aot) plus
 # picoruby-kernel_registry, the multicore_kernels table picoruby-multicore
 # looks kernels up in. All files are merged into one library so the firmware
-# carries one spinel runtime (two suppify gems in one image also collide at
-# link time).
+# carries one spinel runtime.
 #
 #   tools/aot/kernels_build.rb <esp32|host>
 #

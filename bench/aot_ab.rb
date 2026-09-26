@@ -82,12 +82,11 @@ class NullSpi
   def write(_x); end
 end
 
-def bytes_input(n, nul_free)
+def bytes_input(n)
   s = "\x01" * n
   i = 0
   while i < n
-    v = (i * 37) % 256
-    v = 1 if nul_free && v == 0
+    v = (i * 37) % 256   # every code, 0x00 included
     s.setbyte(i, v)
     i += 1
   end
@@ -112,7 +111,7 @@ aot = respond_to?(:glyph_row, true)
 c_gem = Object.const_defined?(:AW88298) && AW88298.respond_to?(:ulaw_decode)
 
 [180, 4096].each do |n|
-  src = bytes_input(n, false)
+  src = bytes_input(n)
   ref = ulaw_decode_rb(src)
   reps = n == 180 ? 2000 : 200
   row("ulaw n=#{n} interpreted", time_us(reps / 10) { ulaw_decode_rb(src) })
@@ -121,11 +120,8 @@ c_gem = Object.const_defined?(:AW88298) && AW88298.respond_to?(:ulaw_decode)
     row("ulaw n=#{n} C", time_us(reps) { AW88298.ulaw_decode(src) })
   end
   if aot
-    # The suppify binding takes String arguments NUL-terminated, so a 0x00
-    # byte cannot reach the kernel; time it on NUL-free input.
-    free = bytes_input(n, true)
-    raise "AOT ulaw mismatch" unless ulaw_decode(free) == ulaw_decode_rb(free)
-    row("ulaw n=#{n} AOT (NUL-free input)", time_us(reps) { ulaw_decode(free) })
+    raise "AOT ulaw mismatch" unless ulaw_decode(src) == ref
+    row("ulaw n=#{n} AOT", time_us(reps) { ulaw_decode(src) })
   end
 end
 

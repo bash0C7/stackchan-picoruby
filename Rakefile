@@ -10,7 +10,7 @@ R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP
 # c-primitives-verified, not stackchan-integration: the latter's picoruby submodule
 # is on the lineage rebased onto upstream master, which overflows the picoruby task
 # stack during its own startup and boot-loops. See HANDOFF.
-R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "c-primitives-verified"
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/stackchan-aot-multicore-drb"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
@@ -230,6 +230,7 @@ end
 
 def r2p2_build_cmd(*targets, port: nil)
   env = %Q{SDKCONFIG_DEFAULTS="#{SDKCONFIG_DEFAULTS_CORES3}"}
+  env += " #{aot_build_env}" unless aot_disabled?
   env += " ESPPORT=#{port}" if port
   "#{env} rake #{targets.join(' ')}"
 end
@@ -314,9 +315,38 @@ def deploy_application_and_wait(label)
   sleep wait
 end
 
+# AOT kernels (aot/) and picoruby-multicore go into every firmware build unless
+# STACKCHAN_AOT=0. aot:esp32 generates them; r2p2_build_cmd passes their dirs to
+# R2P2-ESP32's build_config and CMakeLists.txt.
+AOT_ESP32_DIR     = File.expand_path("build/aot/esp32", __dir__)
+AOT_MULTICORE_DIR = File.expand_path("build/aot/picoruby-multicore", __dir__)
+
+def aot_disabled?
+  ENV["STACKCHAN_AOT"] == "0"
+end
+
+def aot_build_env
+  gems = [File.join(AOT_ESP32_DIR, "gems", "picoruby-stackchan_aot"), File.join(AOT_ESP32_DIR, "picoruby-kernel_registry")]
+  %Q{STACKCHAN_AOT_GEMS="#{gems.join(':')}" STACKCHAN_MULTICORE_DIR="#{AOT_MULTICORE_DIR}"}
+end
+
+namespace :aot do
+  desc "Fetch suppify / spinel / picoruby-multicore at their pins and build spinel (tools/aot/setup.sh)"
+  task :setup do
+    sh File.expand_path("tools/aot/setup.sh", __dir__)
+  end
+
+  desc "Generate the AOT kernel gem + multicore_kernels registry for the firmware (build/aot/esp32)"
+  task :esp32 do
+    next if aot_disabled?
+    Rake::Task["aot:setup"].invoke
+    sh "ruby", File.expand_path("tools/aot/kernels_build.rb", __dir__), "esp32"
+  end
+end
+
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
-  task :setup do
+  task :setup => 'aot:esp32' do
     in_r2p2 "rm -f sdkconfig && #{r2p2_build_cmd('setup_esp32s3')}"
   end
 
@@ -328,7 +358,7 @@ namespace :r2p2 do
   end
 
   desc "build with CoreS3 sdkconfig (Quad PSRAM + 16MB flash)"
-  task :build => :clean_picoruby_build do
+  task :build => [:clean_picoruby_build, 'aot:esp32'] do
     ensure_sdkconfig_fresh
     in_r2p2 r2p2_build_cmd('picoruby:build')
   end
@@ -340,7 +370,7 @@ namespace :r2p2 do
   end
 
   desc 'build + flash in one shot'
-  task :build_flash => :clean_picoruby_build do
+  task :build_flash => [:clean_picoruby_build, 'aot:esp32'] do
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     in_r2p2 r2p2_build_cmd('picoruby:build', 'flash', port: espport)
