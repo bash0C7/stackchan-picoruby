@@ -23,7 +23,6 @@ class LinkLoopTest < Picotest::Test
       (@writes[handle] ||= []) << value
     end
 
-    # Model data that only becomes visible to Ruby when the port drains.
     def on_event_popped(&blk)
       @on_event_popped = blk
     end
@@ -71,8 +70,7 @@ class LinkLoopTest < Picotest::Test
     @packets = []
     @rx      = []
     @logs    = []
-    @now     = 5_000_000   # microseconds
-    # on_rx models the dispatcher: record, take 15 ms, answer with an ACK.
+    @now     = 5_000_000
     @link = StackchanApp::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: @ticker,
@@ -173,7 +171,7 @@ class LinkLoopTest < Picotest::Test
     @port.queue_write(RX, "<F:2>\n")
     @link.tick
     assert_equal ["[t] rx=5000000 ack=5015000 d=15000"], stamp_lines
-    @link.write("<YL_actual:1,PU_actual:2>\n")   # second frame of the same command
+    @link.write("<YL_actual:1,PU_actual:2>\n")
     assert_equal 1, stamp_lines.size
   end
 
@@ -188,7 +186,7 @@ class LinkLoopTest < Picotest::Test
   end
 
   def test_dropped_write_does_not_leave_a_stale_rx_stamp
-    @port.queue_write(RX, "<F:2>\n")   # gate closed: on_rx's ACK write is dropped
+    @port.queue_write(RX, "<F:2>\n")
     @link.tick
     subscribe
     @link.write("<touch:1>\n")
@@ -200,14 +198,14 @@ class LinkLoopTest < Picotest::Test
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: @ticker,
       on_packet: ->(pkt) { @packets << pkt },
-      on_rx: ->(data) { @rx << data },      # records only, never answers
+      on_rx: ->(data) { @rx << data },
       clock: -> { @now },
       log: ->(line) { @logs << line },
       drb: NullDrb.new,
     )
     @port.queue_write(CCCD, "\x01\x00")
     @port.queue_write(RX, "<F:2>\n")
-    silent.tick                          # rx stamp latched, nothing notified
+    silent.tick
     silent.disconnected
     @port.queue_write(CCCD, "\x01\x00")
     silent.tick

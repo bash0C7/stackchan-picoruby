@@ -25,43 +25,37 @@ class DispatcherServoTest < Picotest::Test
     )
   end
 
-  def test_Y_frame_routes_to_yaw
+  def test_YL50_PU50_writes_yaw_482_minus_150_and_pitch_633_plus_148
     @yaw_servo.next_read = 332
     @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50", "T" => "2000" })
-    # YL (StackChan's left) subtracts: 482 - 50*300/100 = 332; PU:50 → 633 + 50*296/100 = 781
     assert_equal [[332, 2000, 0]], @yaw_servo.writes
     assert_equal [[781, 2000, 0]], @pitch_servo.writes
   end
 
-  # Direction regression guard: YR is StackChan's right,
-  # raw ABOVE the forward zero — the opposite sign from YL.
-  def test_YR_drives_opposite_sign_from_YL
+  def test_YR50_writes_yaw_above_the_forward_zero_opposite_to_YL
     @disp.handle({ "YR" => "50", "T" => "1000" })
-    assert_equal [[632, 1000, 0]], @yaw_servo.writes # 482 + 50*300/100
+    assert_equal [[632, 1000, 0]], @yaw_servo.writes
   end
 
   def test_YR_read_back_reports_YR_actual
-    @yaw_servo.next_read   = 632   # 482 + 150 → YR:50
-    @pitch_servo.next_read = 633   # zero → PU:0
+    @yaw_servo.next_read   = 632
+    @pitch_servo.next_read = 633
     @disp.handle({ "YR" => "50" })
     assert_equal "<YR_actual:50,PU_actual:0>\n", @stdout.writes[1]
   end
 
   def test_servo_frame_emits_ack_byte_then_detail_frame
-    # raw 332 → (482-332)*100/300 = YL:50 (below zero = StackChan's left);
-    # raw 781 → (781-633)*100/296 = PU:50
     @yaw_servo.next_read = 332
     @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50" })
-    # 1st write: ACK frame ".\n", 2nd write: detail frame "<YL_actual:50,PU_actual:50>\n"
     assert_equal ".\n", @stdout.writes[0]
     assert_equal "<YL_actual:50,PU_actual:50>\n", @stdout.writes[1]
   end
 
-  def test_servo_frame_with_nil_read_emits_error_frame
+  def test_servo_frame_with_nil_yaw_read_acks_and_reports_YL_actual_unknown
     @yaw_servo.next_read   = nil
-    @pitch_servo.next_read = 781   # raw 781 → PU:50
+    @pitch_servo.next_read = 781
     @disp.handle({ "YL" => "50", "PU" => "50" })
     assert_equal ".\n", @stdout.writes[0]
     assert_equal "<YL_actual:unknown,PU_actual:50>\n", @stdout.writes[1]
@@ -76,9 +70,8 @@ class DispatcherServoTest < Picotest::Test
 
   def test_servo_frame_with_only_yaw_specified_still_reports_both_actuals
     @yaw_servo.next_read   = nil
-    @pitch_servo.next_read = 633   # zero position (SERVO_PITCH_ZERO)
+    @pitch_servo.next_read = 633
     @disp.handle({ "YL" => "50" })
-    # New protocol always reports both axes; only YL was sent but both are output
     assert_equal "<YL_actual:unknown,PU_actual:0>\n", @stdout.writes[1]
   end
 
@@ -96,12 +89,11 @@ class DispatcherServoTest < Picotest::Test
     assert_equal ["?\n"], @stdout.writes
   end
 
-  def test_dispatcher_without_head_returns_unavailable
+  def test_servo_frame_without_head_acks_and_reports_both_axes_unknown
     disp = StackchanApp::Dispatcher.new(
       display: @display, led: @led, stdout: @stdout, head: nil
     )
     disp.handle({ "YL" => "50" })
-    # ACK frame ".\n", detail frame with nil-head guard indicates unavailable
     assert_equal ".\n", @stdout.writes[0]
     assert_equal "<YL_actual:unknown,PU_actual:unknown>\n", @stdout.writes[1]
   end

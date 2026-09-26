@@ -30,10 +30,7 @@ class DispatcherFaceTest < Picotest::Test
                   :draw_line, :draw_line, :draw_line, :draw_line], methods
   end
 
-  # A face command repaints only the eye and mouth bands. Falling back to the
-  # full 320x200 fill would still look right on the panel — only the clock
-  # would show it, at about a second per face — so pin it here.
-  def test_a_face_command_never_fills_the_whole_face_region
+  def test_a_face_command_repaints_only_the_eye_and_mouth_bands_never_the_whole_face_region
     @disp.handle({ "F" => "5" })
     rects = @display.calls.select { |c| c.first == :draw_rect }.map(&:last)
     assert_equal 2, rects.length

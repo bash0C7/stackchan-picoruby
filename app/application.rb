@@ -1,6 +1,3 @@
-# StackChan autostart payload (/home/app.mrb):
-#   [1] escape hatch → [2] cold-boot init → [3] BLE NUS peripheral → [4] run loop
-
 require 'spi'
 require 'gpio'
 require 'i2c'
@@ -13,18 +10,10 @@ require 'scservo'
 require 'ble'
 require 'i2s'
 
-# [1] Escape hatch: time to reach the shell and rm /home/app.mrb if this build crash-loops.
 sleep_ms 5000
 
 module StackchanApp
   module Face
-    # Geometry derived from the M5Stack official StackChan reference photo.
-    # Ratios (normalised to screen 320×240):
-    #   eye-to-eye   : 0.31 W  = 100 px  (offset ±50 from cx=160)
-    #   eye_y        : 0.42 H  = 100 px  (slightly above geometric centre y=120)
-    #   mouth_y      : 0.58 H  = 140 px  (slightly below centre, gap 40 from eye)
-    #   eye diameter : 0.025 W = 8  px   (radius 4)
-    #   mouth width  : 0.16 W  = 50 px   (half-width 25)
     EYE_LEFT_CX  = 110
     EYE_LEFT_CY  = 100
     EYE_RIGHT_CX = 210
@@ -36,7 +25,7 @@ module StackchanApp
     MOUTH_COLOR      = ILI9342::Color::WHITE
     BACKGROUND_COLOR = ILI9342::Color::BLACK
 
-    FACE_REGION_HEIGHT = 200   # rows 0..199; rows 200..239 are the subtitle band
+    FACE_REGION_HEIGHT = 200
 
     MOUTH_CX         = 160
     MOUTH_CY         = 140
@@ -45,16 +34,14 @@ module StackchanApp
     SURPRISED_MOUTH_HALF_W = 6
     SURPRISED_MOUTH_HALF_H = 12
 
-    BROW_OFFSET_Y    = 18   # baseline 18px above eye centerline
-    BROW_HALF_LENGTH = 16   # horizontal extent each side of eye cx
-    BROW_INNER_DROP  = 8    # inner end of brow drops 8px relative to outer end
+    BROW_OFFSET_Y    = 18
+    BROW_HALF_LENGTH = 16
+    BROW_INNER_DROP  = 8
 
     EYE_REGION_HALF_W = 6
     EYE_REGION_HALF_H = 6
     CLOSED_EYE_HALF_W = 4
 
-    # Every face paints inside these two bands, so an expression change
-    # repaints ~5600 px instead of the whole field.
     FEATURE_MARGIN = 2
     MOUTH_MAX_RISE = 18
     EYE_BAND_X   = EYE_LEFT_CX - BROW_HALF_LENGTH - FEATURE_MARGIN
@@ -65,7 +52,6 @@ module StackchanApp
     MOUTH_BAND_W = (MOUTH_CX + MOUTH_HALF_WIDTH + FEATURE_MARGIN) - MOUTH_BAND_X
     MOUTH_BAND_Y = MOUTH_CY - MOUTH_MAX_RISE - FEATURE_MARGIN
     MOUTH_BAND_H = (MOUTH_CY + SURPRISED_MOUTH_HALF_H + FEATURE_MARGIN) - MOUTH_BAND_Y
-
 
     class Base
       DELTA_Y = 0
@@ -86,19 +72,16 @@ module StackchanApp
         display.draw_line(cx,     cy,       right_x, corner_y, MOUTH_COLOR)
       end
 
-      # Full repaint (cold boot).
       def draw(display)
         display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
         draw_features(display)
       end
 
-      # What this face paints on the black field; subclasses extend this, not draw.
       def draw_features(display)
         draw_eyes(display)
         draw_mouth(display)
       end
 
-      # Repaint over an existing face: clear only the bands, then paint.
       def redraw(display)
         display.draw_rect(EYE_BAND_X, EYE_BAND_Y, EYE_BAND_W, EYE_BAND_H,
                           BACKGROUND_COLOR, fill: true)
@@ -121,7 +104,6 @@ module StackchanApp
         draw_eyes(display)
       end
 
-      # Eye-only closed-eye update for blink; leaves the mouth alone.
       def redraw_eyes_closed(display)
         clear_eye_region(display)
         draw_closed_eyes(display)
@@ -190,7 +172,6 @@ module StackchanApp
         draw_closed_eyes(display)
       end
 
-      # Torque-off idle face: closed eyes, no mouth.
       def draw_features(display)
         draw_eyes(display)
       end
@@ -198,12 +179,9 @@ module StackchanApp
   end
 
   class Head
-    # Raw units per 90° from forward, from `stackchan calibrate`:
-    #   yaw forward=482, left max=182, right max=783; pitch forward=633, up max=929.
     YAW_RANGE_RAW   = 300
     PITCH_RANGE_RAW = 296
 
-    # Forward (zero) raw positions, read after the operator aligns the head by hand.
     SERVO_YAW_ZERO   = 482
     SERVO_PITCH_ZERO = 633
 
@@ -226,7 +204,6 @@ module StackchanApp
       { yaw: @yaw.read_pos, pitch: @pitch.read_pos }
     end
 
-    # <selftest:run>: nudge yaw ±10 raw and return to center (UART round-trip check).
     def selftest
       y0 = SERVO_YAW_ZERO
       [(y0 + 10), (y0 - 10), y0].each do |target|
@@ -270,13 +247,12 @@ module StackchanApp
       "B" => :both,
     }.freeze
 
-    # Bottom subtitle band: rows SUBTITLE_BAND_Y..239 of the 320x240 panel.
     SUBTITLE_BAND_Y      = Face::FACE_REGION_HEIGHT
     SUBTITLE_BAND_HEIGHT = 240 - SUBTITLE_BAND_Y
-    SUBTITLE_FONT        = "go16"   # JIS X 0208 16px gothic
-    SUBTITLE_TEXT_Y      = 212      # vertical centering of the 16px glyph in the band
+    SUBTITLE_FONT        = "go16"
+    SUBTITLE_TEXT_Y      = 212
     SUBTITLE_MARGIN_X    = 4
-    SUBTITLE_MAX_CHARS   = 19       # (320 - 2*4) / 16px per JIS glyph
+    SUBTITLE_MAX_CHARS   = 19
     SUBTITLE_FG          = ILI9342::Color::WHITE
     SUBTITLE_BG          = ILI9342::Color::BLACK
 
@@ -308,7 +284,6 @@ module StackchanApp
       @stdout.write(ERROR_FRAME)
     end
 
-    # handle, with this one call's output lines going to sink instead of stdout.
     def handle_to(frame, sink)
       saved = @stdout
       @stdout = sink
@@ -317,7 +292,6 @@ module StackchanApp
       @stdout = saved
     end
 
-    # Touch reaction: draw the zone's face locally (no PC round-trip).
     def react_to_touch(zone)
       face_class, side, r, g, b = TOUCH_TABLE[zone]
       @current_face_class = face_class
@@ -411,8 +385,6 @@ module StackchanApp
       yaw_raw   = nil
       pitch_raw = nil
 
-      # Raw below the forward zero is StackChan's left, above is its right:
-      # YL subtracts, YR adds.
       if frame.key?("YL")
         mag = frame["YL"].to_i
         return false unless mag >= 0 && mag <= 100
@@ -440,9 +412,6 @@ module StackchanApp
       true
     end
 
-    # Reports the pose at command receipt, not after the move: waiting out T
-    # would stall LinkLoop. Its job is the `unknown` signal; a post-move pose
-    # comes from <read:pos>.
     def emit_servo_detail
       if @head.nil?
         @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")
@@ -479,15 +448,9 @@ module StackchanApp
 end
 
 module StackchanApp
-  # Half-duplex audio receiver. On <A:N>: notify <A:ready>, block T ms,
-  # drain the accumulated bytes, play. Non-audio frames are yielded to the block.
   class AudioReceiver
-    # 200ms of silence overwrites all I2S DMA circular descriptors so the last
-    # audio frame does not replay at EOF.
     SILENCE_TAIL = ("\x00" * 3200)
 
-    # Wait in short steps: the ESP32 port's inbound queue (depth 32) overflows
-    # if a whole clip is waited out in one call.
     DRAIN_STEP_MS = 50
 
     def initialize(speaker:, parser:, notify:, drain:, pump:)
@@ -517,7 +480,6 @@ module StackchanApp
     private
 
     def receive_t_ms(n)
-      # PC READY_WAIT 1500 ms + blast (n/8000 s) + 1500 ms margin.
       (n * 1000 / 8000) + 3000
     end
 
@@ -546,7 +508,6 @@ module StackchanApp
 end
 
 module StackchanApp
-  # Periodic work (touch poll, LED animation, blink). Pure: caller passes now_ms.
   class Ticker
     TOUCH_PERIOD_MS = 50
     LED_PERIOD_MS   = 50
@@ -608,8 +569,6 @@ module StackchanApp
     end
   end
 
-  # dRuby front: each call is one text frame through the Dispatcher and returns
-  # the lines the text link would have sent.
   class Remote
     EXPOSED = [:command, :servo, :led, :face, :text, :torque, :read_pos]
 
@@ -623,7 +582,6 @@ module StackchanApp
       @dispatcher = dispatcher
     end
 
-    # frame: the <K:V> pairs, e.g. { "YL" => 50, "T" => 500 }
     def command(frame)
       pairs = {}
       keys = frame.keys
@@ -656,7 +614,6 @@ module StackchanApp
     end
   end
 
-  # The dRuby characteristic pair: writes feed the Responder, replies are notified.
   class DrbChannel
     def initialize(rx_handle:, tx_handle:, cccd_handle:, responder:)
       @rx_handle   = rx_handle
@@ -688,14 +645,10 @@ module StackchanApp
     end
   end
 
-  # One tick of the peripheral run loop. `event_popped` runs on EVERY tick: on
-  # the ESP32 port inbound writes reach Ruby only inside BLE#_event_popped, and
-  # BLE#start would call it only after the 1 s heartbeat.
   class LinkLoop
-    TICK_MS = 20   # ESP32 VM tick is 10 ms: a pop with no event returns after 2 ticks
+    TICK_MS = 20
     CCCD_NOTIFY = "\x01\x00"
 
-    # port: pop_event(timeout_ms:) / event_popped / take_write(handle) / send_notification(handle, frame)
     def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb:)
       @port        = port
       @rx_handle   = rx_handle
@@ -715,7 +668,7 @@ module StackchanApp
       event = @port.pop_event(timeout_ms: TICK_MS)
       @port.event_popped
       @on_packet.call(event) if event.is_a?(String)
-      poll_cccd      # before drain_rx: a subscribe landing with the first command must not lose its ACK
+      poll_cccd
       drain_rx
       @drb.service(@port)
       @ticker.tick(@clock.call / 1000)
@@ -727,11 +680,9 @@ module StackchanApp
       @on_packet.call(event) if event.is_a?(String)
     end
 
-    # AckSink: one complete newline-terminated frame. Sent immediately; dropped
-    # while no central is subscribed (the PC subscribes before its first write).
     def write(frame)
       unless @notify_enabled
-        @rx_at = nil   # nothing answers this command; never stamp a later one against it
+        @rx_at = nil
         return
       end
       @port.send_notification(@tx_handle, frame)
@@ -762,8 +713,6 @@ module StackchanApp
       end
     end
 
-    # One line per command: the first notification after an RX chunk carries
-    # the rx->ack delta in microseconds (the device-side latency component).
     def stamp_ack
       return unless @rx_at
       ack_at = @clock.call
@@ -773,8 +722,6 @@ module StackchanApp
   end
 end
 
-# [2] cold-boot init. Order is critical; see CLAUDE.md "cold-boot 初期化"
-# for the why behind each I2C write.
 I2C_SDA_PIN  = 12
 I2C_SCL_PIN  = 11
 AXP2101_ADDR = 0x34
@@ -791,7 +738,7 @@ i2c.write(AXP2101_ADDR, 0x97, 0x1C)
 i2c.write(AXP2101_ADDR, 0x69, 0x35)
 i2c.write(AXP2101_ADDR, 0x30, 0x3F)
 i2c.write(AXP2101_ADDR, 0x90, 0xBF)
-i2c.write(AXP2101_ADDR, 0x92, 13)   # ALDO1 = 1.8V — AW88298 speaker amp rail (M5Unified Power_Class.cpp:167)
+i2c.write(AXP2101_ADDR, 0x92, 13)
 i2c.write(AXP2101_ADDR, 0x94, 28)
 i2c.write(AXP2101_ADDR, 0x95, 28)
 i2c.write(AXP2101_ADDR, 0x27, 0x00)
@@ -864,7 +811,6 @@ led.brightness = 100
 puts "[boot] step:led-show-ok"
 StackchanApp::Face::Closed.new.draw(display)
 puts "[application] LCD cold-boot done (torque-OFF idle)"
-# Head touch reuses the system I2C. Optional; failure keeps @touch=nil.
 @touch = nil
 begin
   @touch = Si12T.new(i2c)
@@ -873,14 +819,11 @@ rescue => e
   puts "[boot] si12t init failed: #{e.class}: #{e.message}"
 end
 
-# Servos: torque stays OFF until <torque:on>. Optional; failure keeps @head=nil.
 @head = nil
 begin
-  # ESP32 TX on GPIO 6, RX on GPIO 7 (StackChan hal_servo.cpp); swapped pins give silent RX.
   servo_uart = UART.new(unit: :ESP32_UART1, txd_pin: 6, rxd_pin: 7, baudrate: 1_000_000)
   yaw_servo   = SCServo.new(servo_uart, id: 1)
   pitch_servo = SCServo.new(servo_uart, id: 2)
-  # SCS EEPROM default is torque ON; cold boot wants it OFF.
   yaw_servo.enable_torque(false)
   pitch_servo.enable_torque(false)
   @head = StackchanApp::Head.new(yaw_servo, pitch_servo)
@@ -889,8 +832,6 @@ rescue => e
   puts "[boot] servo init failed: #{e.class}: #{e.message}"
 end
 
-# Speaker: AW88298 over system I2C + I2S TX on GPIO13. Optional; failure keeps @speaker=nil.
-# The rate has to match what the PC encodes (Stackchan::Voice::Tts::SAMPLE_RATE).
 SPEAKER_SAMPLE_RATE = 8000
 @speaker = nil
 begin
@@ -902,12 +843,8 @@ rescue => e
   puts "[boot] speaker init failed: #{e.class}: #{e.message}"
 end
 
-# The cold-boot block above is synchronous I2C/SPI and starves the NimBLE
-# host task. Without this yield BLE.new/start looks fine in the log but
-# nothing is emitted over RF.
 sleep_ms 3000
 
-# [3] BLE NUS peripheral. Per-tick logic lives in LinkLoop, periodic work in Ticker.
 class StackChanApp < BLE
   AD_TYPE_FLAGS = 0x01
   AD_TYPE_COMPLETE_LOCAL_NAME = 0x09
@@ -963,17 +900,12 @@ class StackChanApp < BLE
       log: ->(line) { puts line },
       drb: drb
     )
-    puts "[application] initialize: super(:peripheral) entering"
     super(:peripheral, db.profile_data)
-    puts "[application] initialize: super returned"
   end
 
-  # AckSink: one newline-terminated frame; dropped while no central is subscribed.
   def write(frame)
     @link.write(frame)
   end
-
-  # LinkLoop port. (BLE#notify takes one argument and must not be shadowed.)
 
   def pop_event(timeout_ms:)
     @event_queue.pop(timeout_ms: timeout_ms)
@@ -992,7 +924,6 @@ class StackChanApp < BLE
     notify(handle)
   end
 
-  # Own run loop instead of BLE#start; mirrors start's setup and ensure (mrblib/ble.rb).
   def run
     @event_queue.clear
     _event_queue_cleared
@@ -1034,7 +965,6 @@ class StackChanApp < BLE
   end
 
   def packet_callback(event_packet)
-    puts "[application] pkt evt=#{event_packet.getbyte(0) || 'nil'}"
     case event_packet.getbyte(0)
     when BTSTACK_EVENT_STATE
       return unless event_packet.getbyte(2) == BLE::HCI_STATE_WORKING
@@ -1043,18 +973,15 @@ class StackChanApp < BLE
     when HCI_EVENT_DISCONNECTION_COMPLETE
       puts "[application] disconnected"
       @link.disconnected
-      # Re-advertise so a central can reconnect.
       advertise(@adv_data)
     end
   end
 
-  # Audio frames go to the receiver (blocking playback); everything else to the dispatcher.
   def consume_rx(rx_data)
     write("<A:done>\n") if @audio.consume(rx_data) { |frame| @dispatcher.handle(frame) }
   end
 end
 
-# [4] Run forever. StackChanApp#run is our own 20 ms tick loop, not BLE#start.
 puts "[application] BLE peripheral starting (infinite advertise)"
 peri = StackChanApp.new(display: display, led: led, head: @head, touch: @touch, speaker: @speaker)
 peri.run

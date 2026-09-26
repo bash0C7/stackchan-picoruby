@@ -1,6 +1,3 @@
-# Compiled ahead of time by spinel -> suppify. Types are inline RBS on each
-# public def.
-
 private
 
 def ulaw_sample(b)
@@ -12,7 +9,6 @@ end
 
 public
 
-# G.711 mu-law -> little-endian signed 16-bit PCM.
 #: (String) -> String
 def ulaw_decode(src)
   n = src.bytesize
@@ -27,9 +23,6 @@ def ulaw_decode(src)
   out
 end
 
-# One 16-row glyph as RGB565 big-endian pixels: fg where a bit is set, the
-# row's MSB (of w bits) leftmost. Rows come as 16 Integers: an Array cannot
-# cross the suppify boundary.
 #: (Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer) -> String
 def glyph16(w, fg, bg, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15)
   rows = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15]
