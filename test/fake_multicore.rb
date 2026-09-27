@@ -1,5 +1,3 @@
-# picoruby-multicore as play_ulaw uses it. The kernel runs here, from its Ruby
-# source (aot/kernels, loaded next to this); a job finishes on its second done?.
 module Multicore
   class Job
     def initialize(value)

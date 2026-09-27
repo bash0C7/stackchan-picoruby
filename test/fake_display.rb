@@ -1,5 +1,3 @@
-# Records the sequence of draw calls made on a display instance.
-# Each entry is [method_symbol, args_array].
 class FakeDisplay
   attr_reader :calls
 
@@ -8,7 +6,6 @@ class FakeDisplay
     @raise_on_fill = nil
   end
 
-  # When set to a truthy exception class/instance, the next #fill call raises it.
   attr_accessor :raise_on_fill
 
   def fill(color)

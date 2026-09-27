@@ -41,13 +41,10 @@ end
 class FaceClosedTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
-  def test_closed_face_draws_background_fill_and_horizontal_eyes_no_mouth
+  def test_closed_face_clears_the_face_region_first_then_draws_two_eye_lines_and_no_ellipse
     StackchanApp::Face::Closed.new.draw(@display)
-    # First call: face-region clear (top-anchored rect)
     assert_equal :draw_rect, @display.calls.first[0]
-    # No draw_ellipse (open eyes) calls
     assert_false(@display.calls.any? { |c| c[0] == :draw_ellipse })
-    # Two draw_line calls for the horizontal closed eyes
     line_calls = @display.calls.select { |c| c[0] == :draw_line }
     assert_equal 2, line_calls.length
   end
@@ -56,12 +53,10 @@ end
 class BaseRedrawEyesClosedTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
-  def test_base_redraw_eyes_closed_does_eye_only_update
+  def test_base_redraw_eyes_closed_clears_each_eye_region_and_draws_two_eye_lines_without_a_fill
     base = StackchanApp::Face::Base.new
     base.redraw_eyes_closed(@display)
-    # No full-screen fill
     assert_false(@display.calls.any? { |c| c[0] == :fill })
-    # clear_eye_region's draw_rect calls (2: one per eye region) + 2 draw_line eyes
     rect_calls = @display.calls.select { |c| c[0] == :draw_rect }
     line_calls = @display.calls.select { |c| c[0] == :draw_line }
     assert_equal 2, rect_calls.length
@@ -69,10 +64,6 @@ class BaseRedrawEyesClosedTest < Picotest::Test
   end
 end
 
-# The differential path only works if the two bands it clears actually cover
-# everything any face draws. If a face reached outside them, switching away
-# from it would leave part of the old expression on the panel — and no test
-# that only checks draw call order would notice.
 class FaceFeatureBandsTest < Picotest::Test
   FACES = [
     StackchanApp::Face::Neutral, StackchanApp::Face::Smile,
@@ -87,7 +78,6 @@ class FaceFeatureBandsTest < Picotest::Test
      [f::MOUTH_BAND_X, f::MOUTH_BAND_Y, f::MOUTH_BAND_W, f::MOUTH_BAND_H]]
   end
 
-  # [x0, y0, x1, y1] of one recorded primitive.
   def box(call)
     kind, a = call
     case kind

@@ -1,6 +1,3 @@
-# The dRuby characteristic pair end to end on the device side: a DRbObject on
-# the central writes chunks to the DRb RX handle, LinkLoop's tick feeds them to
-# the Responder over Remote, and the reply leaves as TX notifications.
 class DrbChannelTest < Picotest::Test
   RX = 0x11; TX = 0x14; CCCD = 0x15
   DRX = 0x21; DTX = 0x24; DCCCD = 0x25
@@ -28,8 +25,6 @@ class DrbChannelTest < Picotest::Test
     def tick(_now); end
   end
 
-  # The central's side of the link: each chunk is a write the peripheral sees
-  # on its next tick; notifications on DTX are what poll returns.
   class CentralLink
     def initialize(port, loop_)
       @port = port
