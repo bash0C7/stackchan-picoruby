@@ -4,10 +4,9 @@ class Si12TTest < Picotest::Test
     @si  = Si12T.new(@i2c)
   end
 
-  def test_init_writes_enable_ctrl_and_sensitivity_registers
+  def test_init_writes_enable_and_sensitivity_registers_and_ctrl2_0x0f_then_0x07
     w = @i2c.writes
     (0x0A..0x0F).each { |reg| assert(w.include?([Si12T::ADDR, [reg, 0x00]])) }
-    # Ctrl2 (0x09) must be written 0x0F then 0x07 in order.
     ctrl2 = w.select { |e| e[0] == Si12T::ADDR && e[1][0] == 0x09 }.map { |e| e[1][1] }
     assert_equal [0x0F, 0x07], ctrl2
     assert(w.include?([Si12T::ADDR, [0x08, 0x22]]))
@@ -19,9 +18,15 @@ class Si12TTest < Picotest::Test
     assert_equal [1, 2, 3], @si.read_zones
   end
 
-  def test_read_zones_returns_zeros_on_failed_read
-    @i2c.script_reads(nil)
-    assert_equal [0, 0, 0], @si.read_zones
+  class FailingReadI2C < FakeI2C
+    def read(addr, len, *params)
+      raise IOError, "read failed"
+    end
+  end
+
+  def test_read_zones_raises_what_the_bus_read_raises
+    si = Si12T.new(FailingReadI2C.new)
+    assert_raise(IOError) { si.read_zones }
   end
 
   def test_poll_fires_once_on_rising_edge_then_nil_while_held_and_released
