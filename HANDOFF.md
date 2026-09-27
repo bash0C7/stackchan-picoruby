@@ -44,13 +44,14 @@ anything it covers.
 
 ## Branches in flight
 
-Each line is one unit of work with its own device trial. Never mix two units
-on one branch: a trial must say which change it tried.
+Each line is one unit of work. Never mix two units on one branch: a trial must
+say which change it tried.
 
 | unit | branch (every repo it touches) | stacks on | state |
 |---|---|---|---|
 | dRuby over BLE, AOT kernels, core 1, domain simplification | `claude/ecstatic-allen-s6qki1` (stackchan-picoruby, PR #11); `claude/stackchan-aot-multicore-drb` (R2P2-ESP32); `claude/aot-glyph16` (picoruby-ili9342); `claude/simplify` (py32-io-expander, stackchan-protocol, scservo); `claude/drb-over-ble` (R2P2-darwin); `claude/string-arg-length` (suppify) | `main` | waiting for `/stackchan-device-trial`; pins in `trial/lock.yml` |
-| DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green (498 picotest, no failures/crashes/skips) and firmware-built without the robot; trial pins in this branch's `trial/lock.yml`; before the run, base moves to `main` once PR #11 has merged |
+| QEMU boot gate before every flash (tooling) | `claude/qemu-boot-gate` (stackchan-picoruby) | the line above | host-green; QEMU gate PASS on this tree and FAIL on an injected Regexp; PR #11's trial runs from this branch |
+| DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green and firmware-built without the robot; merges the gate branch; trial pins in this branch’s `trial/lock.yml`; before the run, base moves to `main` once PR #11 has merged |
 
 DSL steps 2–6 (`docs/superpowers/specs/2026-09-27-stackchan-dsl-design.md`)
 each get their own branch, stacked on the step before, named when the step

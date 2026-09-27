@@ -1,8 +1,12 @@
 require "bundler/setup" if File.exist?(File.expand_path("Gemfile", __dir__))
+require "digest"
 require "json"
+require "open3"
+require "rbconfig"
 require "tempfile"
 require "yaml"
 require_relative "lib/deploy/picomodem"
+require_relative "lib/qemu_gate"
 
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
 # fork or branch swap needs no edit here.
@@ -209,6 +213,9 @@ ESP_PYTHON = ENV['ESP_PYTHON'] || newest_esp_python ||
 
 SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble'
 PICORUBY_BUILD_DIR = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby"
+R2P2_VM_BY_TASK = { 'picoruby' => 'mruby', 'femtoruby' => 'mrubyc' }.freeze
+R2P2_VM_TASK = 'picoruby'
+PICORB_VM = R2P2_VM_BY_TASK.fetch(R2P2_VM_TASK)
 SERIAL_LOG_DEFAULT = '/tmp/stackchan-picoruby-debug/serial.log'
 # Storage partition (littlefs, /home). Must match R2P2-ESP32's partitions.csv.
 STORAGE_OFFSET = '0x410000'
@@ -339,6 +346,127 @@ namespace :aot do
   end
 end
 
+QEMU_ROOT = File.expand_path("build/qemu", __dir__)
+QEMU_RUN_DIR = File.join(QEMU_ROOT, "run")
+QEMU_BUILD_DIR = "#{R2P2_ROOT}/build-qemu"
+QEMU_CONSOLE_FRAGMENT = File.expand_path("build_config/qemu_console.sdkconfig", __dir__)
+QEMU_SDKCONFIG_DEFAULTS = QemuGate.sdkconfig_defaults(SDKCONFIG_DEFAULTS_CORES3, QEMU_CONSOLE_FRAGMENT)
+QEMU_MISSING_LIB_PACKAGE_CMD = {
+  'linux'  => 'sudo apt-get install libsdl2-2.0-0 libslirp0',
+  'darwin' => 'brew install libgcrypt glib pixman sdl2 libslirp',
+}.freeze
+
+def qemu_platform
+  QemuGate.platform(host_os: RbConfig::CONFIG['host_os'], host_cpu: RbConfig::CONFIG['host_cpu'])
+end
+
+def qemu_pin
+  QemuGate::PINS.fetch(qemu_platform)
+end
+
+def qemu_version_dir
+  File.join(QEMU_ROOT, QemuGate::QEMU_VERSION)
+end
+
+def qemu_binary_path
+  File.join(qemu_version_dir, 'qemu', 'bin', 'qemu-system-xtensa')
+end
+
+def qemu_tarball_path
+  File.join(QEMU_ROOT, File.basename(qemu_pin.fetch(:url)))
+end
+
+def qemu_missing_lib_package_cmd
+  os = qemu_platform.split('-').last
+  QEMU_MISSING_LIB_PACKAGE_CMD.fetch(os, '(no package command known for this platform)')
+end
+
+namespace :qemu do
+  desc 'Download + verify + extract the pinned QEMU build for this host into build/qemu/'
+  task :setup do
+    mkdir_p QEMU_ROOT
+    pin = qemu_pin
+    tarball = qemu_tarball_path
+
+    if File.exist?(tarball)
+      actual = Digest::SHA256.file(tarball).hexdigest
+      abort "[qemu:setup] #{tarball} exists but sha256 #{actual} does not match pinned #{pin.fetch(:sha256)}" unless actual == pin.fetch(:sha256)
+      puts "[qemu:setup] #{tarball} present, sha256 matches — skip download"
+    else
+      sh 'curl', '-fsSL', '-o', tarball, pin.fetch(:url)
+      actual = Digest::SHA256.file(tarball).hexdigest
+      abort "[qemu:setup] downloaded #{tarball} sha256 #{actual} does not match pinned #{pin.fetch(:sha256)}" unless actual == pin.fetch(:sha256)
+    end
+
+    unless File.executable?(qemu_binary_path)
+      mkdir_p qemu_version_dir
+      sh 'tar', '-xJf', tarball, '-C', qemu_version_dir
+    end
+
+    out, err, status = Open3.capture3(qemu_binary_path, '--version')
+    if !status.success?
+      if err =~ /error while loading shared libraries: (\S+)/
+        abort "[qemu:setup] missing shared library #{$1} — #{qemu_missing_lib_package_cmd}"
+      end
+      abort "[qemu:setup] #{qemu_binary_path} --version failed:\n#{err}"
+    end
+    abort "[qemu:setup] unexpected --version output (want #{QemuGate::QEMU_VERSION}):\n#{out}" unless out.include?(QemuGate::QEMU_VERSION)
+    puts "[qemu:setup] #{out.lines.first.strip}"
+  end
+end
+
+def qemu_littlefs_python
+  Dir.glob(File.join(QEMU_BUILD_DIR, '**', 'littlefs-python')).find { |p| File.executable?(p) } or
+    abort "[r2p2:qemu_check] littlefs-python not found under #{QEMU_BUILD_DIR} — did the qemu build run?"
+end
+
+def qemu_build_storage_image(probe_source, out_bin)
+  storage_dir = File.join(QEMU_RUN_DIR, 'storage')
+  rm_rf storage_dir
+  mkdir_p File.join(storage_dir, 'home')
+  probe_rb = File.join(QEMU_RUN_DIR, 'probe.rb')
+  File.write(probe_rb, probe_source)
+  compile_mrb(probe_rb, File.join(storage_dir, 'home', 'app.mrb'))
+  rm_f out_bin
+  sh qemu_littlefs_python, 'create', '--fs-size=1048576', '--name-max=64', '--block-size=4096', storage_dir, out_bin
+end
+
+def qemu_merged_flash_image(out_bin)
+  rm_f out_bin
+  sh %Q{bash -c '. #{ESP_IDF_EXPORT} && cd #{QEMU_BUILD_DIR} && esptool.py --chip esp32s3 merge_bin -o #{out_bin} --fill-flash-size 16MB @flash_args'}
+end
+
+def qemu_overwrite_storage(flash_bin, storage_bin)
+  offset = Integer(STORAGE_OFFSET, 16)
+  block = 4096
+  abort "[r2p2:qemu_check] STORAGE_OFFSET #{STORAGE_OFFSET} is not #{block}-aligned" unless (offset % block).zero?
+  sh 'dd', "if=#{storage_bin}", "of=#{flash_bin}", "bs=#{block}", "seek=#{offset / block}", 'conv=notrunc', 'status=none'
+end
+
+def qemu_write_efuse_image(path)
+  File.binwrite(path, QemuGate.efuse_image)
+end
+
+def qemu_run_and_poll(flash:, efuse:, log:, timeout: 120)
+  argv = QemuGate.argv(qemu: qemu_binary_path, flash: flash, efuse: efuse, log: log)
+  pid = Process.spawn(*argv, out: File::NULL, err: File::NULL)
+  deadline = Time.now + timeout
+  verdict = QemuGate.verdict('')
+  loop do
+    text = File.exist?(log) ? File.binread(log) : ''
+    verdict = QemuGate.verdict(text)
+    break if verdict.pass || verdict.message != 'no marker' || Time.now >= deadline
+    sleep 1
+  end
+  verdict
+ensure
+  begin
+    Process.kill('TERM', pid)
+    Process.wait(pid)
+  rescue Errno::ESRCH, Errno::ECHILD
+  end
+end
+
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup => 'aot:esp32' do
@@ -347,28 +475,67 @@ namespace :r2p2 do
 
   # rake re-archives libmruby.a from the object list, so a stale .o whose
   # source moved or changed survives an incremental build. Always start clean.
+  def clean_picoruby_build!
+    rm_rf PICORUBY_BUILD_DIR if Dir.exist?(PICORUBY_BUILD_DIR)
+  end
+
+  def qemu_gate_then_clean!
+    Rake::Task['r2p2:qemu_check'].invoke
+    clean_picoruby_build!
+  end
+
   desc 'rm picoruby build dir so the next build recompiles every gem object'
   task :clean_picoruby_build do
-    rm_rf PICORUBY_BUILD_DIR if Dir.exist?(PICORUBY_BUILD_DIR)
+    clean_picoruby_build!
   end
 
   desc "build with CoreS3 sdkconfig (Quad PSRAM + 16MB flash)"
   task :build => [:clean_picoruby_build, 'aot:esp32'] do
     ensure_sdkconfig_fresh
-    in_r2p2 r2p2_build_cmd('picoruby:build')
+    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build")
   end
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
   task :flash do
+    qemu_gate_then_clean!
     ensure_no_concurrent_monitor
+    ensure_sdkconfig_fresh
     in_r2p2 "ESPPORT=#{espport} rake flash"
   end
 
-  desc 'build + flash in one shot'
-  task :build_flash => [:clean_picoruby_build, 'aot:esp32'] do
+  desc "boot this tree under QEMU and require the probe marker (spec steps 1-5); FAILs abort"
+  task :qemu_check => ['qemu:setup', 'aot:esp32'] do
+    clean_picoruby_build!
+    rm_rf QEMU_BUILD_DIR if Dir.exist?(QEMU_BUILD_DIR)
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" SDKCONFIG=build-qemu/sdkconfig idf.py -B build-qemu set-target esp32s3}
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" SDKCONFIG=build-qemu/sdkconfig idf.py -B build-qemu build -DPICORB_VM=#{PICORB_VM}}
+
+    mkdir_p QEMU_RUN_DIR
+    probe_source = QemuGate.probe_source(application: File.expand_path('app/application.rb', __dir__), gem_sources: DEVICE_GEM_SOURCES)
+    storage_bin = File.join(QEMU_RUN_DIR, 'storage.bin')
+    qemu_build_storage_image(probe_source, storage_bin)
+
+    flash_bin = File.join(QEMU_RUN_DIR, 'flash.bin')
+    qemu_merged_flash_image(flash_bin)
+    qemu_overwrite_storage(flash_bin, storage_bin)
+
+    efuse_bin = File.join(QEMU_RUN_DIR, 'efuse.bin')
+    qemu_write_efuse_image(efuse_bin)
+
+    mkdir_p '/tmp/stackchan-picoruby-debug'
+    log = "/tmp/stackchan-picoruby-debug/qemu-#{Time.now.strftime('%Y%m%d-%H%M%S')}.log"
+    verdict = qemu_run_and_poll(flash: flash_bin, efuse: efuse_bin, log: log)
+
+    puts "[r2p2:qemu_check] #{verdict.pass ? 'PASS' : 'FAIL'} — #{verdict.message} — log: #{log}"
+    abort "[r2p2:qemu_check] FAIL" unless verdict.pass
+  end
+
+  desc 'build + flash in one shot (QEMU gate first; flashes only on a PASS)'
+  task :build_flash do
+    qemu_gate_then_clean!
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
-    in_r2p2 r2p2_build_cmd('picoruby:build', 'flash', port: espport)
+    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build", 'flash', port: espport)
   end
 
   desc 'idf.py monitor (human use only — needs a TTY)'
@@ -470,12 +637,13 @@ namespace :r2p2 do
   # lands at /home/app.mrb with no picomodem upload. esptool hard-resets on
   # its own; capture boot separately.
   desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass'
-  task :build_flash_appmrb => :clean_picoruby_build do
+  task :build_flash_appmrb do
+    qemu_gate_then_clean!
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     src = src_from_env('r2p2:build_flash_appmrb')
     compile_mrb(bundle_app_source(src), "#{R2P2_ROOT}/storage/home/app.mrb")
-    in_r2p2 r2p2_build_cmd('picoruby:build', 'flash', port: espport)
+    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build", 'flash', port: espport)
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src)} flashed"
   end
 
