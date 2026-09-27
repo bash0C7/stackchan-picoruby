@@ -19,8 +19,6 @@ class DRbBleTest < Picotest::Test
 
   ALLOW = [:servo, :face, :echo, :boom]
 
-  # Peripheral side in-process: every written chunk goes to the Responder and
-  # its reply comes back as notification-sized chunks, one per poll.
   class LoopbackLink
     attr_reader :sent
 
@@ -97,7 +95,7 @@ class DRbBleTest < Picotest::Test
     assert_equal s, @remote.echo(s)
   end
 
-  def test_responder_waits_for_the_whole_request
+  def test_responder_waits_for_the_whole_request_and_keeps_no_leftover
     req = request_bytes(:face, ["smile"])
     i = 0
     while i < req.bytesize - 1
@@ -106,7 +104,6 @@ class DRbBleTest < Picotest::Test
     end
     reply = @responder.feed(req.byteslice(req.bytesize - 1, 1))
     assert_equal [true, "face:smile"], decode_reply(reply)
-    # nothing left over: the next request parses on its own
     assert_equal [true, "face:a"], decode_reply(@responder.feed(request_bytes(:face, ["a"])))
   end
 

@@ -1,4 +1,3 @@
-# dRuby over BLE: DRb's TCP byte stream, cut into ATT-sized chunks.
 module DRbBle
   CHUNK = 180
 
@@ -14,7 +13,6 @@ module DRbBle
     out
   end
 
-  # socket#read over a String; Incomplete until the bytes are there.
   class Reader
     attr_reader :pos
 
@@ -42,8 +40,6 @@ module DRbBle
     end
   end
 
-  # Peripheral side: feed each BLE write, get back the reply bytes ("" if none).
-  # A request that does not parse, or outgrows MAX_REQUEST, is dropped.
   class Responder
     MAX_REQUEST = 4096
 
@@ -95,8 +91,6 @@ module DRbBle
     end
   end
 
-  # Central side: the socket DRb.send_message uses. Writes go out on the first
-  # read. link: send_chunk(bytes) / poll -> String or nil.
   class Socket
     POLL_MS = 20
 
