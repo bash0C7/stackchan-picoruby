@@ -88,6 +88,9 @@ class QemuGateTest < Test::Unit::TestCase
         "-display", "none",
         "-serial", "file:/tmp/qemu-42.log",
         "-monitor", "none",
+        "-icount", "shift=2,align=off,sleep=off",
+        "-seed", "1",
+        "-rtc", "clock=vm",
       ],
       argv
     )
@@ -373,21 +376,34 @@ class QemuGateTest < Test::Unit::TestCase
     refute QemuGate.flash_console_ok?("#define CONFIG_ESP_CONSOLE_UART_DEFAULT 1\n#define CONFIG_ESP_CONSOLE_UART 1\n")
   end
 
-def test_verdict_waits_for_the_shell_prompt_after_the_marker
-  verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n")
-  refute verdict.pass
-  refute verdict.decided
-end
+  def test_verdict_waits_for_the_shell_prompt_after_the_marker
+    verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n")
+    refute verdict.pass
+    refute verdict.decided
+  end
 
-def test_verdict_fails_on_a_panic_between_the_marker_and_the_shell_prompt
-  verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\nGuru Meditation Error: Core  0 panic'ed\n")
-  refute verdict.pass
-  assert verdict.decided
-end
+  def test_verdict_fails_on_a_panic_between_the_marker_and_the_shell_prompt
+    verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\nGuru Meditation Error: Core  0 panic'ed\n")
+    refute verdict.pass
+    assert verdict.decided
+  end
 
-def test_verdict_ignores_a_shell_prompt_that_came_before_the_marker
-  refute QemuGate.verdict("$> \nLoading app.mrb\nQEMU_PROBE_OK\n").pass
-end
+  def test_verdict_ignores_a_shell_prompt_that_came_before_the_marker
+    refute QemuGate.verdict("$> \nLoading app.mrb\nQEMU_PROBE_OK\n").pass
+  end
+
+  def test_verdict_reads_the_log_only_up_to_the_shell_prompt_after_the_marker
+    verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n$> \nGuru Meditation Error: Core  0 panic'ed\n")
+    assert verdict.pass
+    assert verdict.decided
+  end
+
+  def test_verdict_is_the_same_for_every_prefix_that_holds_the_shell_prompt
+    log = "Loading app.mrb\nQEMU_PROBE_OK\n$> \nabort() was called\nRebooting...\n"
+    prompt_end = log.index("$> ") + 3
+    verdicts = (prompt_end..log.size).map { |n| QemuGate.verdict(log[0, n]).to_a }
+    assert_equal [[true, "marker QEMU_PROBE_OK found and the shell prompt followed", true]], verdicts.uniq
+  end
 
   private
 
