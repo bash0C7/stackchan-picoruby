@@ -257,7 +257,7 @@ gracefully — LEDs off, face neutral, servo centered, torque off.
 
 `phrase_announcer.rb` picks one of five fixed phrases at random and speaks it
 every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
-0.05 was inaudible over room noise, 0.3 clipped the 1W speaker).
+0.05 is inaudible over room noise, 0.3 clips the 1W speaker).
 
 Run both in the background and stop them together when done:
 
@@ -490,8 +490,8 @@ onto upstream picoruby/picoruby's `master`:
   `picoruby-ble-bridge`).
 - `port-darwin` — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
-  role can receive a GAP disconnect but cannot initiate one (no such API
-  exists in this port yet) — `StackchanCentral#disconnect` in
+  role can receive a GAP disconnect but cannot initiate one (this port has
+  no such API) — `StackchanCentral#disconnect` in
   `pc/stackchan-pico/app/ble_client.rb` is therefore a local-state-only
   no-op; reconnect-from-ACK-timeout relies on the peripheral's own
   supervision timeout, not on the central closing the link.

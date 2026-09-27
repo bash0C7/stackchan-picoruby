@@ -107,9 +107,9 @@ boots, against `568b4b88`, the lineage rebased onto upstream master, which
 overflows the 8 KB picoruby task stack during its own startup and boot-loops.
 Switching is a one-line bump once that is resolved. Land shared changes on
 both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
-already runs — the vendored tree carries `nimble_owner.c`, there is no btstack
-component, and the sdkconfig fragment is `bt_nimble` — and it was driven end to
-end over every verb. What the boot loop blocks is adopting that port rebased
+runs — the vendored tree carries `nimble_owner.c`, there is no btstack
+component, and the sdkconfig fragment is `bt_nimble` — and every verb drives it
+end to end. What the boot loop blocks is adopting that port rebased
 onto upstream master. Its plan is in the vault under
 `02_dev_docs/picoruby-ble-esp32-port/plans/`.
 
