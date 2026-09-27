@@ -807,7 +807,6 @@ puts "[boot] step:led-init-ok"
 
 Machine.delay_ms(50)
 led.show
-led.brightness = 100
 puts "[boot] step:led-show-ok"
 StackchanApp::Face::Closed.new.draw(display)
 puts "[application] LCD cold-boot done (torque-OFF idle)"

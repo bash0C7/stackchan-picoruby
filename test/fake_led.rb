@@ -5,8 +5,6 @@ class FakeLed
     @calls = []
   end
 
-  # Mirrors StackchanLed#animate_side(side, r, g, b, mode) — the Dispatcher
-  # calls this with separated r/g/b ints, not a packed color.
   def animate_side(side, r, g, b, mode)
     @calls << [:animate_side, [side, r, g, b, mode]]
     self
@@ -19,9 +17,5 @@ class FakeLed
   def show
     @calls << [:show, []]
     self
-  end
-
-  def brightness=(v)
-    @calls << [:brightness=, [v]]
   end
 end

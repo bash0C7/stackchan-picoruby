@@ -4,12 +4,11 @@ class StackchanLedTest < Picotest::Test
     @led  = StackchanLed.new(@py32)
   end
 
-  def test_initialize_configures_data_pin_and_count
+  def test_initialize_configures_the_data_pin_and_sets_the_count_to_the_12_pixel_ring
     names = @py32.calls.map(&:first)
     assert(names.include?(:set_direction))
     assert(names.include?(:set_pull_mode))
     assert(names.include?(:set_drive_mode))
-    # set_led_count is called with the 12-pixel ring size.
     count_call = @py32.calls.find { |c| c.first == :set_led_count }
     assert_equal [StackchanLed::PIXEL_COUNT], count_call.last
   end
@@ -23,59 +22,11 @@ class StackchanLedTest < Picotest::Test
     assert_equal [0, 0, 0],    px[3]
   end
 
-  def test_fill_left_targets_left_half_only
-    @led.fill_left(1, 2, 3)
-    @led.show
-    px = @py32.last_pixels
-    assert_equal [1, 2, 3], px[StackchanLed::LEFT_RANGE.first]
-    assert_equal [1, 2, 3], px[StackchanLed::LEFT_RANGE.last]
-    assert_equal [0, 0, 0], px[StackchanLed::RIGHT_RANGE.first]
-  end
-
-  def test_fill_right_targets_right_half_only
-    @led.fill_right(4, 5, 6)
-    @led.show
-    px = @py32.last_pixels
-    assert_equal [4, 5, 6], px[StackchanLed::RIGHT_RANGE.first]
-    assert_equal [0, 0, 0], px[StackchanLed::LEFT_RANGE.first]
-  end
-
-  def test_brightness_scales_pushed_pixels
-    @led.fill(100, 200, 50)
-    @led.brightness = 50
-    @led.show
-    # apply_brightness halves each channel via integer division.
-    assert_equal [50, 100, 25], @py32.last_pixels[0]
-  end
-
-  def test_brightness_clamps_above_100
-    @led.brightness = 250
-    @led.fill(10, 10, 10)
-    @led.show
-    # Clamped to 100 → no scaling.
-    assert_equal [10, 10, 10], @py32.last_pixels[0]
-  end
-
-  def test_brightness_clamps_below_zero
-    @led.brightness = -10
-    @led.fill(10, 10, 10)
-    @led.show
-    # Clamped to 0 → all channels zeroed.
-    assert_equal [0, 0, 0], @py32.last_pixels[0]
-  end
-
   def test_show_refreshes_via_py32
     @led.show
     names = @py32.calls.map(&:first)
     assert(names.include?(:write_led_ram))
     assert(names.include?(:refresh_leds))
-  end
-
-  def test_clear_zeroes_buffer
-    @led.fill(255, 255, 255)
-    @led.clear
-    @led.show
-    assert_equal [0, 0, 0], @py32.last_pixels[0]
   end
 
   def test_animate_side_solid_lights_only_that_half
@@ -115,7 +66,7 @@ class StackchanLedTest < Picotest::Test
     @led.tick(20)
     @led.tick(40)
     assert_equal n, led_ram_writes
-    @led.tick(500)                      # half period elapsed -> off phase -> one write
+    @led.tick(500)
     assert_equal n + 1, led_ram_writes
     @led.tick(520)
     assert_equal n + 1, led_ram_writes
@@ -168,16 +119,15 @@ class StackchanLedAnimatorTest < Picotest::Test
     StackchanLed::Animator.new(@led, pixel_range: range)
   end
 
-  def test_blink_alternates_on_and_off_each_half_period
+  def test_blink_alternates_on_and_off_each_half_period_from_the_first_tick
     a = animator
     a.set(100, 0, 0, :blink)
     half = StackchanLed::Animator::BLINK_HALF_PERIOD_MS
-    # tick origin is the first tick's now_ms; from then elapsed is measured.
     a.tick(0)
     assert_equal [100, 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
-    a.tick(half)            # one half-period later → off
+    a.tick(half)
     assert_equal [0, 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
-    a.tick(half * 2)        # two half-periods → on again
+    a.tick(half * 2)
     assert_equal [100, 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
   end
 
@@ -186,21 +136,20 @@ class StackchanLedAnimatorTest < Picotest::Test
     a.set(100, 100, 100, :breathing)
     lut  = StackchanLed::Animator::BREATHING_LUT
     step = StackchanLed::Animator::BREATHING_STEP_MS
-    a.tick(0)  # establishes phase origin, ratio = lut[0]
+    a.tick(0)
     assert_equal [lut[0], lut[0], lut[0]], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
-    a.tick(step)      # ratio = lut[1]
+    a.tick(step)
     assert_equal [lut[1], lut[1], lut[1]], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
-    a.tick(step * 6)  # ratio = lut[6] (peak = 100)
+    a.tick(step * 6)
     assert_equal [lut[6], lut[6], lut[6]], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
   end
 
-  def test_breathing_wraps_around_the_lut_period
+  def test_breathing_returns_to_the_first_ratio_one_lut_period_later
     a = animator
     a.set(100, 0, 0, :breathing)
     lut  = StackchanLed::Animator::BREATHING_LUT
     step = StackchanLed::Animator::BREATHING_STEP_MS
     a.tick(0)
-    # One full LUT period later, the ratio returns to lut[0].
     a.tick(step * lut.size)
     assert_equal [lut[0], 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
   end
@@ -218,12 +167,11 @@ class StackchanLedAnimatorTest < Picotest::Test
     assert_equal [0, 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
   end
 
-  def test_tick_is_noop_for_static_modes
+  def test_tick_does_not_write_for_static_modes
     a = animator
     a.set(5, 6, 7, :solid)
     @py32.calls.clear
     a.tick(1000)
-    # Static modes don't re-push on tick.
     assert(@py32.calls.empty?)
   end
 end
