@@ -76,9 +76,10 @@ app/application.rb   Face rendering, head-touch reactions, the command
 mrbgems/             picoruby-stackchan-led (WS2812 ring), picoruby-si12t
                      (head touch), picoruby-aw88298 (amp + mu-law playback),
                      picoruby-drb-ble (dRuby over BLE) and
-                     picoruby-stackchan-shared (frame codec, which the PC
-                     daemon loads as source). The device-side gems are prepended to
-                     application.rb by the Rakefile before compiling app.mrb.
+                     picoruby-stackchan-shared (send builder and BLE error
+                     hierarchy, which the PC daemon loads as source). The
+                     device-side gems are prepended to application.rb by the
+                     Rakefile before compiling app.mrb.
 aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
                      firmware: mu-law decode on core 1, glyph expansion on
                      core 0. See aot/README.md.

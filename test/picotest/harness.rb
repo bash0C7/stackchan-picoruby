@@ -37,9 +37,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
   SHARED_MRBLIB = %w[
     stackchan/ble/errors.rb
-    stackchan/ble/frame_codec.rb
     stackchan/ble/send_builder.rb
-    stackchan/ai/frame_text.rb
   ].map { |f| File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "mrblib", f) }
   # picoruby-drb is not in the host VM: suites that need it load its mrblib as
   # source (Marshal is compiled in), then the drbble transport gem.
@@ -73,6 +71,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       dir: File.join(REPO_ROOT, "test", "pc"),
       cruby: lambda {
         load PC_STUBS_RB
+        PROTOCOL_MRBLIB.each { |f| require f }
         SHARED_MRBLIB.each { |f| require f }
         RubyClassExtract.load_classes_from(BLE_CLIENT_RB)
         RubyClassExtract.load_classes_from(CLI_APP_RB)
@@ -86,15 +85,15 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
         RubyClassExtract.extract_to_file(CLI_APP_RB, EXTRACTED_CLI_RB)
         RubyClassExtract.extract_to_file(DAEMON_APP_RB, EXTRACTED_DAEMON_RB)
         # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
-        files = [*DRB_MRBLIB, PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, CALIB_RB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
+        files = [*DRB_MRBLIB, PC_STUBS_RB, *PROTOCOL_MRBLIB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, CALIB_RB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files
       },
     },
     "shared" => {
       dir: File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "test"),
-      cruby: lambda { SHARED_MRBLIB.each { |f| require f } },
-      load_files: lambda { SHARED_MRBLIB },
+      cruby: lambda { PROTOCOL_MRBLIB.each { |f| require f }; SHARED_MRBLIB.each { |f| require f } },
+      load_files: lambda { [*PROTOCOL_MRBLIB, *SHARED_MRBLIB] },
     },
 }
   SUITES["aot"] = {

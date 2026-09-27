@@ -81,7 +81,7 @@ Two constraints on that list, both learned by hitting them:
 The picoruby paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must
 have run. That costs nothing: `rake test` already needs the same tree to build the picotest VM.
 
-This repo's own four gems carry hand-written `sig/` in the upstream picoruby layout
+This repo's own five gems carry hand-written `sig/` in the upstream picoruby layout
 (`mrbgems/picoruby-<gem>/sig/*.rbs`), also listed in `signature_paths`. They are hand-written
 rather than generated: `rigor sig-gen` emits only the methods it can fully type and says
 nothing about the rest — 5 of `frame_codec.rb`'s 10 — writes them to a mirrored

@@ -46,8 +46,10 @@ mbedtls + io-console + machine darwin ports) internally. From the repo root:
 bundle exec rake pc:vm_build   # vendor/R2P2-darwin/build/host/bin/picoruby
 ```
 
-The VM carries no StackChan code: the daemon loads `picoruby-stackchan-shared`
-(`Stackchan::BLE` / `Stackchan::AI`) as source from the checkout it runs from.
+The VM carries no StackChan code: the daemon loads `picoruby-stackchan-protocol`
+(`StackchanProtocol::FrameParser`, `Stackchan::BLE::FrameCodec`, `Stackchan::AI::FrameText`)
+and `picoruby-stackchan-shared` (`Stackchan::BLE::SendBuilder`, the `Stackchan::BLE::Error`
+hierarchy) as source from the checkout it runs from.
 
 Then package that VM into `~/Applications/StackchanPico.app` (from the repo
 root; required once, and again after every `pc:vm_build`, so real-mode BLE
