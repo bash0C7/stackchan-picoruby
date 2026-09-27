@@ -1,5 +1,3 @@
-# NusResolver is pure (UUID -> handle lookup, frame classification) and is
-# the first thing the pc suite loads, so it doubles as the suite's smoke test.
 class NusResolverTest < Picotest::Test
   def services
     [
@@ -26,12 +24,12 @@ class NusResolverTest < Picotest::Test
     assert_nil NusResolver.cccd_handle(nil)
   end
 
-  def test_classify
-    assert_equal :touch,  NusResolver.classify("<touch:2>\n")
-    assert_equal :ack,    NusResolver.classify(".\n")
-    assert_equal :ack,    NusResolver.classify("?\n")
-    assert_equal :detail, NusResolver.classify("<YL_actual:1,PU_actual:2>\n")
-    assert_equal :detail, NusResolver.classify("<yaw_raw:1,pitch_raw:2>\n")
-    assert_equal :other,  NusResolver.classify("<rx:ok>\n")
+  def test_classify_separates_touch_and_ack_from_every_other_frame
+    assert_equal :touch, NusResolver.classify("<touch:2>\n")
+    assert_equal :ack,   NusResolver.classify(".\n")
+    assert_equal :ack,   NusResolver.classify("?\n")
+    assert_equal :other, NusResolver.classify("<YL_actual:1,PU_actual:2>\n")
+    assert_equal :other, NusResolver.classify("<yaw_raw:1,pitch_raw:2>\n")
+    assert_equal :other, NusResolver.classify("<rx:ok>\n")
   end
 end

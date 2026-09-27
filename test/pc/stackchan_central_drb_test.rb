@@ -1,6 +1,3 @@
-# StackchanCentral's dRuby pair: handle resolution, subscription, and a
-# DRbObject call whose chunks reach a Responder and whose reply comes back as
-# notifications on the DRb TX handle.
 class StackchanCentralDrbTest < Picotest::Test
   RX = 0x11; TX = 0x14; CCCD = 0x16
   DRX = 0x21; DTX = 0x24; DCCCD = 0x26
@@ -15,8 +12,6 @@ class StackchanCentralDrbTest < Picotest::Test
     end
   end
 
-  # FakeRadio whose DRb RX writes drive a Responder; replies are scheduled as
-  # DRb TX notifications in 20-byte pieces.
   class DrbRadio < FakeRadio
     attr_accessor :reply_delay
 

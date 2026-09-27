@@ -1,9 +1,3 @@
-# SocketReadRetry is the policy behind the TCPSocket#readpartial patch in
-# pc/stackchan-pico/app/drb_eintr_retry.rb. picoruby-socket's POSIX port maps
-# every failing recv() to RuntimeError "read failed" with errno discarded, so
-# a transient interruption cannot be told from a dead peer at the Ruby level.
-# The policy is pure, so it is exercised with injected sleep/warn rather than
-# a socket pair.
 class SocketReadRetryTest < Picotest::Test
   def setup
     @sleeps = []
@@ -20,7 +14,6 @@ class SocketReadRetryTest < Picotest::Test
     ->(n) { warns << n }
   end
 
-  # Fails with `message` for the first `failures` attempts, then returns :value.
   def flaky(failures, message)
     attempts = 0
     SocketReadRetry.call(sleep_fn: sleep_fn, warn_fn: warn_fn) do
@@ -42,8 +35,6 @@ class SocketReadRetryTest < Picotest::Test
     assert_equal [1, 2], @warns
   end
 
-  # A peer that is really gone keeps failing: the error must surface as before,
-  # after a bounded number of attempts.
   def test_persistent_read_failure_is_reraised_after_the_retry_budget
     raised = nil
     begin
@@ -55,9 +46,7 @@ class SocketReadRetryTest < Picotest::Test
     assert_equal SocketReadRetry::MAX_RETRIES, @sleeps.size
   end
 
-  # Only the errno-less read failure is transient; anything else is a real
-  # error and must not be replayed.
-  def test_other_errors_pass_through_untouched
+  def test_errors_other_than_the_errno_less_read_failure_are_not_retried
     raised = nil
     begin
       flaky(1, "write failed")

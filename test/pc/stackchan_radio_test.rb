@@ -1,6 +1,3 @@
-# The darwin port hands packets to Ruby only inside `_event_popped`, so the
-# radio must call it on every poll — not only after the queue already had an
-# event (that was the 1 s gate: nothing reached Ruby until the heartbeat).
 class StackchanRadioTest < Picotest::Test
   class FakeReport
     def initialize(name)
@@ -16,8 +13,6 @@ class StackchanRadioTest < Picotest::Test
     @radio = StackchanRadio.new(name_prefix: "StackChan")
   end
 
-  # GATT_EVENT_NOTIFICATION layout as StackchanRadio#packet_callback reads it:
-  # byte 0 = 0xA7, byte 4 = handle (1 byte), byte 6 = length, bytes 8.. = value.
   def notification_packet(handle, value)
     [0xA7, 0, 0, 0, handle, 0, value.bytesize, 0].pack("C*") + value
   end

@@ -1,7 +1,3 @@
-# StackchanRadio as seen from StackchanCentral. Tests script the device's
-# replies: a scheduled notification is delivered to on_notification on the
-# first pop_and_dispatch whose ordinal reaches `after_polls` from now — one
-# packet per call, like the real radio.
 class FakeRadio
   attr_accessor :on_notification
   attr_reader :writes, :descriptor_writes, :pop_count, :target, :services, :conn_handle
@@ -9,7 +5,7 @@ class FakeRadio
   def initialize(services: [], conn_handle: 1, target: :fake_target)
     @writes = []
     @descriptor_writes = []
-    @scheduled = []       # [[due_pop_count, handle, value], ...]
+    @scheduled = []
     @pop_count = 0
     @target = target
     @services = services

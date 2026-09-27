@@ -1,10 +1,3 @@
-# Stand-ins for the pc suite, loaded first on BOTH the CRuby orchestrator and
-# the host picoruby VM (which has no picoruby-ble gem).
-#
-# BLE mirrors only what pc/stackchan-pico/app/ble_client.rb's StackchanRadio
-# touches. The darwin port's `_event_popped` copies ONE packet out of the Swift
-# FIFO into @event_queue; @pending plays the FIFO's role here, so a test can
-# check that pop_and_dispatch drains even when nothing is in the queue yet.
 class FakeQueue
   def initialize
     @items = []
@@ -14,7 +7,6 @@ class FakeQueue
     @items << v
   end
 
-  # Only the timeout_ms: 0 shape is exercised here: nil when empty.
   def pop(timeout_ms: nil)
     @items.shift
   end
@@ -29,8 +21,6 @@ class BLE
   GATT_EVENT_NOTIFICATION = 0xA7
 
   module Utils
-    # picoruby declares this as (String|nil) -> Integer, and the caller feeds it
-    # `byteslice` results, so nil has to mean 0 here too rather than raise.
     def self.little_endian_to_int16(str)
       return 0 unless str
       (str.getbyte(0) || 0) | ((str.getbyte(1) || 0) << 8)
@@ -51,7 +41,6 @@ class BLE
     @writes = []
   end
 
-  # Test helper: a packet the Swift side has enqueued but Ruby has not drained.
   def push_pending(packet)
     @pending << packet
   end
@@ -59,14 +48,9 @@ class BLE
   def scan(timeout_ms: nil, stop_state: :TC_IDLE)
   end
 
-  # Base decoder is a no-op here; StackchanRadio#packet_callback calls super.
   def packet_callback(event_packet)
   end
 
-  # The three below return what picoruby's BLE::Central declares — bool, and the
-  # btstack success code — not the value of the `<<` that records the call. A
-  # fake that answers a different type than the device is how a test stays green
-  # over a branch the device would take differently.
   def connect(adv_report)
     @connect_calls << adv_report
     true
@@ -91,14 +75,12 @@ class BLE
   end
 end
 
-# Stand-in for the daemon proxy the CLI gets back from DRb.
 class FakeDaemonProxy
   def status
     { ble_connected: true }
   end
 end
 
-# Fake clock for the pc suite: sleep_ms advances Machine.board_millis and is recorded.
 module FakeClock
   @now = 0
   @sleeps = []
@@ -122,10 +104,6 @@ def sleep_ms(ms)
   FakeClock.sleep(ms)
 end
 
-# picoruby-drb is absent from both the CRuby orchestrator and the host VM.
-# Daemon#stop only has to be observed for whether it tore the service down.
-# drb_eintr_retry.rb aliases create_socket when DRb exists, so the stub carries
-# one for that alias to bind to.
 module DRb
   @stop_service_calls = 0
   def self.stop_service_calls = @stop_service_calls
@@ -142,10 +120,6 @@ module DRb
   end
 end
 
-# The host VM has a real cooperative Task whose body waits for the current task
-# to yield, and picotest does not yield inside a test, so a Task created there
-# stays pending. CRuby has no Task at all; this gives it the same observable
-# behaviour — created, body not yet run.
 unless Object.const_defined?(:Task)
   class Task
     attr_reader :name
@@ -155,16 +129,11 @@ unless Object.const_defined?(:Task)
       @block = block
     end
 
-    def run
-      @block.call
-    end
-
     def terminate
     end
   end
 end
 
-# Daemon#stop reaches only #disconnect on the BLE client.
 class FakeStoppableBle
   attr_reader :disconnect_calls
 

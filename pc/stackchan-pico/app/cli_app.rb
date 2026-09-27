@@ -1,11 +1,6 @@
-# StackChan CLI. Talks to the daemon over picoruby-drb TCP loopback
-# (picoruby-drb is TCP/WS only). The daemon is a launchd job started by
-# `rake pc:up`; a verb against an unreachable daemon reports
-# NOT_RUNNING_MESSAGE, which names that command.
 module Stackchan
   class CLI
     VERBS = %w[connect status stop say chat face led servo torque selftest raw remote touch demo tui calibrate].freeze
-    OBSERVE_ONLY = %w[status].freeze
 
     def self.run(argv, host: "127.0.0.1", port: 8787)
       verb, *args = argv
@@ -17,7 +12,7 @@ module Stackchan
       daemon = attach(host, port)
       if daemon.nil?
         out NOT_RUNNING_MESSAGE
-        return OBSERVE_ONLY.include?(verb) ? 0 : 1
+        return verb == "status" ? 0 : 1
       end
       new(daemon).dispatch(verb, args)
     end
@@ -29,10 +24,9 @@ module Stackchan
     def self.attach(host, port, drb_factory: nil, warn_fn: nil)
       factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
       d = factory.call("druby://#{host}:#{port}")
-      d.status   # force a real round-trip
+      d.status
       d
     rescue StandardError => e
-      # Broad on purpose: a stopped daemon raises SocketError, not DRbConnError.
       warn_fn ? warn_fn.call(e) : $stderr.write("stackchan: attach failed: #{e.class}: #{e.message}\n")
       nil
     end
@@ -69,9 +63,6 @@ module Stackchan
       when "raw"      then out @daemon.raw_send(args.join(" "))
       when "remote"   then verb_remote(args)
       when "touch"    then verb_touch(args)
-      else
-        self.class.usage
-        return 1
       end
       0
     end
@@ -123,8 +114,6 @@ module Stackchan
       out "servo detail=#{detail.inspect}"
     end
 
-    # stackchan remote <method> [KEY=VALUE ... | ARG ...]  (dRuby over BLE)
-    #   stackchan remote servo YL=50 PU=30 T=500 / remote face 2 / remote read_pos
     def verb_remote(args)
       msg = args.shift
       unless msg
@@ -150,21 +139,17 @@ module Stackchan
         return
       end
       out "[touch] listening (Ctrl-C to exit)..."
-      # Poll the daemon (no remote block — picoruby-drb can't relay a Proc).
       loop do
         event = @daemon.poll_touch
         if event
-          zone = event[:zone]
-          label = @daemon.touch_zone_label(zone)
-          out "touch zone=#{zone} (#{label})"
+          out "touch zone=#{event[:zone]} (#{event[:label]})"
         else
           sleep 0.2
         end
       end
     end
 
-    # Step count, not a Time deadline (no Time on PicoRuby).
-    DEMO_SPEECH_RATE = 250   # wpm — faster speech => fewer bytes => less BLE timing exposure
+    DEMO_SPEECH_RATE = 250
     DEMO_INTRO_LINE = "ぼくスタックチャン！"
     DEMO_OUTRO_LINE = "タッチしてみて"
     DEMO_FACES = %w[joy smile surprised joy smile]
@@ -242,7 +227,6 @@ module Stackchan
       out "  detail: #{detail.inspect}" if detail
     end
 
-    # Exit codes: 0 ok, 6 device-unknown, 7 verify-fail.
     def verb_calibrate(args)
       align_only = delete_flag(args, "--align-only")
       engage     = delete_flag(args, "--engage-torque")

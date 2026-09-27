@@ -1,12 +1,9 @@
-# `stackchan stop` reported DRb::DRbConnError and exit 1 while the daemon had
-# in fact stopped. Daemon#stop runs inside the drb accept Task that still owes
-# the caller a reply, so tearing the service down inline killed the writer
-# before it wrote. The teardown must still be pending when stop returns.
 class DaemonStopTest < Picotest::Test
   def setup
     DRb.reset_stop_service_calls
     @ble = FakeStoppableBle.new
     @daemon = Stackchan::Daemon.new(ble: @ble)
+    @daemon.instance_variable_set(:@keepalive_task, Task.new(name: "keepalive") {})
   end
 
   def test_stop_answers_the_caller

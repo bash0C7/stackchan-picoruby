@@ -1,6 +1,3 @@
-# The CLI attaches to launchd-managed backends; it never starts them. So a
-# missing daemon must fail immediately with the command that fixes it, not
-# poll for an auto-spawn.
 class CliAttachTest < Picotest::Test
   def test_attach_returns_the_proxy_when_the_daemon_answers
     tries = 0
@@ -28,9 +25,7 @@ class CliAttachTest < Picotest::Test
     assert_true Stackchan::CLI::NOT_RUNNING_MESSAGE.include?("rake pc:up")
   end
 
-  # A bug inside the CLI must not reach the operator as a stopped daemon: what
-  # actually failed is named before the "run rake pc:up" hint.
-  def test_attach_names_what_actually_failed
+  def test_attach_names_what_actually_failed_rather_than_only_a_stopped_daemon
     reported = []
     Stackchan::CLI.attach("127.0.0.1", 8787,
                           drb_factory: lambda { |_uri| raise "connection refused" },

@@ -1,17 +1,4 @@
 #!/bin/sh
-# StackChan PC-side CLI entry (PicoRuby edition).
-#
-# Attach only. The daemon and the AI/voice sidecar are launchd jobs; bring them
-# up with `bundle exec rake pc:up`. This script does not probe, spawn or kill
-# anything: guessing whether a resident process is usable kills healthy
-# daemons, and the probe itself costs CRuby startup on every command.
-#
-#   stackchan <verb> [args]
-#
-# Config via env (defaults target this dev checkout):
-#   STACKCHAN_PICORUBY   path to the picoruby VM
-#   STACKCHAN_ROOT       repo root (for the app boot scripts)
-#   STACKCHAN_PORT       daemon drb port (default 8787)
 set -eu
 
 ROOT="${STACKCHAN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"

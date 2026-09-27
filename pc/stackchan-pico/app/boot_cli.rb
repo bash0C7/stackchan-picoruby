@@ -1,5 +1,3 @@
-# Host boot for the PicoRuby CLI.
-#   picoruby boot_cli.rb <repo-root> <port> <verb> [args...]
 root = ARGV[0] || "."
 port = (ARGV[1] || "8787").to_i
 verb_args = ARGV[2, ARGV.length - 2] || []

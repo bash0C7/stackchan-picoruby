@@ -39,8 +39,6 @@ class StackchanCentralTest < Picotest::Test
     StackchanCentral::ACK_TIMEOUT_MS / StackchanCentral::POLLING_UNIT_MS
   end
 
-  # --- connect ---
-
   def test_connect_subscribes_tx_and_settles_200ms
     radio = FakeRadio.new(services: nus_services)
     sleeps_before = FakeClock.sleeps.size
@@ -66,8 +64,6 @@ class StackchanCentralTest < Picotest::Test
     central = build_central(FakeRadio.new(services: nus_services))
     assert_raise(Stackchan::BLE::ConnectionError) { central.raw_send("<F:2>\n") }
   end
-
-  # --- ACK wait ---
 
   def test_raw_send_returns_on_first_drain_without_sleeping
     @radio.schedule_notification(TX, ".\n", after_polls: 1)
@@ -108,7 +104,7 @@ class StackchanCentralTest < Picotest::Test
   end
 
   def test_detail_timeout_is_named_in_the_timing_log
-    @radio.schedule_notification(TX, ".\n", after_polls: 1)   # ACK arrives, detail never does
+    @radio.schedule_notification(TX, ".\n", after_polls: 1)
     @central.raw_send("<YL:0,PU:0,T:300>\n")
     assert_nil @central.last_detail_frame
     assert_equal ack_timeout_polls, FakeClock.sleeps.size
@@ -156,8 +152,6 @@ class StackchanCentralTest < Picotest::Test
     assert_equal [], FakeClock.sleeps
     assert_equal [], @logs
   end
-
-  # --- audio done ---
 
   def test_audio_done_timeout_ms_clamps_to_floor_and_cap
     assert_equal 30_000,  @central.audio_done_timeout_ms(240)

@@ -1,21 +1,4 @@
-# picoruby-ble central for the StackChan NUS. NusResolver is pure logic,
-# StackchanRadio is the BLE subclass, StackchanCentral is the verb-facing
-# wrapper the daemon holds (same interface as FakeBleClient).
-#
-# Darwin-port rules this file depends on:
-# - StackchanRadio must not define `connect`: BLE#connect(report) is called by
-#   name from advertising_report_callback. Connecting from inside that callback
-#   lets one `scan` call drive connect + full GATT discovery.
-# - After the initial scan, never call scan/start/connect again: BLE#start
-#   re-powers the controller and the port flushes its FIFO, dropping in-flight
-#   packets. Drain with pop_and_dispatch only.
-# - The port synthesizes GATT_EVENT_NOTIFICATION (0xA7); ble_central.rb leaves
-#   it undecoded, so packet_callback here handles it after super.
-
 module NusResolver
-  # bare `module_function` is a no-op on PicoRuby; use the explicit form.
-
-  # 16-byte UUID; suffix 0x0001 = service, 0x0002 = RX (write), 0x0003 = TX (notify)
   def nus_uuid(suffix_hi, suffix_lo)
     [0x6e, 0x40, suffix_hi, suffix_lo,
      0xb5, 0xa3, 0xf3, 0x93, 0xe0, 0xa9,
@@ -24,7 +7,6 @@ module NusResolver
 
   def rx_uuid; nus_uuid(0x00, 0x02); end
   def tx_uuid; nus_uuid(0x00, 0x03); end
-  # dRuby over BLE pair: 0x0004 write, 0x0005 notify.
   def drb_rx_uuid; nus_uuid(0x00, 0x04); end
   def drb_tx_uuid; nus_uuid(0x00, 0x05); end
 
@@ -34,36 +16,23 @@ module NusResolver
   end
 
   def find_characteristic(services, uuid128)
-    si = 0
-    while si < services.size
-      chs = services[si][:characteristics]
-      ci = 0
-      while ci < chs.size
-        return chs[ci] if chs[ci][:uuid128] == uuid128
-        ci += 1
-      end
-      si += 1
+    services.each do |service|
+      found = service[:characteristics].find { |ch| ch[:uuid128] == uuid128 }
+      return found if found
     end
     nil
   end
 
   def cccd_handle(characteristic)
     return nil unless characteristic
-    ds = characteristic[:descriptors]
-    i = 0
-    while i < ds.size
-      return ds[i][:handle] if ds[i][:uuid128] == cccd_uuid
-      i += 1
-    end
-    nil
+    descriptor = characteristic[:descriptors].find { |d| d[:uuid128] == cccd_uuid }
+    descriptor && descriptor[:handle]
   end
 
-  # :touch (<touch:N>), :ack ("."/"?"), :detail (<..._actual:..>/<yaw_raw:..>), :other
   def classify(frame)
     return :touch if Stackchan::BLE::FrameCodec.touch_event?(frame)
     head = frame[0, 1]
     return :ack if head == Stackchan::BLE::FrameCodec::ACK_OK || head == Stackchan::BLE::FrameCodec::ACK_ERROR
-    return :detail if frame.include?("_actual:") || frame.include?("_raw:")
     :other
   end
 
@@ -71,10 +40,10 @@ module NusResolver
                   :find_characteristic, :cccd_handle, :classify
 end
 
-# `defined?(BLE)` guards: this file also loads on a VM without the ble gem.
 if Object.const_defined?(:BLE)
   class StackchanRadio < BLE
-    attr_reader :target
+    attr_reader :target, :conn_handle
+    attr_accessor :on_notification
 
     def initialize(name_prefix:)
       @name_prefix    = name_prefix
@@ -83,14 +52,6 @@ if Object.const_defined?(:BLE)
       super(:central)
     end
 
-    attr_accessor :on_notification
-
-    def conn_handle
-      @conn_handle
-    end
-
-    # `_event_popped` first: on the darwin port it is the only place a packet
-    # moves from the Swift FIFO into @event_queue.
     def pop_and_dispatch
       _event_popped
       event = @event_queue.pop(timeout_ms: 0)
@@ -123,16 +84,14 @@ if Object.const_defined?(:BLE)
     end
   end
 
-  #
-  # Every wait is a poll loop in POLLING_UNIT_MS steps; budgets are in ms.
   class StackchanCentral
-    CONNECT_TIMEOUT_MS        = 15_000   # scan-wait + connect + full GATT discovery
+    CONNECT_TIMEOUT_MS        = 15_000
     POLLING_UNIT_MS           = 20
     ACK_TIMEOUT_MS            = 3_000
-    SUBSCRIBE_SETTLE_MS       = 200      # CoreBluetooth setNotifyValue needs a moment before the first write
-    AUDIO_DONE_TIMEOUT_MIN_MS = 30_000   # floor (previous fixed value; short-clip behavior unchanged)
-    AUDIO_DONE_TIMEOUT_MAX_MS = 180_000  # hard cap -- never an unbounded wait
-    AUDIO_DONE_BASE_MS        = 3_300    # measured intercept, see audio_done_timeout_ms
+    SUBSCRIBE_SETTLE_MS       = 200
+    AUDIO_DONE_TIMEOUT_MIN_MS = 30_000
+    AUDIO_DONE_TIMEOUT_MAX_MS = 180_000
+    AUDIO_DONE_BASE_MS        = 3_300
     SUBSCRIBE_ENABLE          = "\x01\x00"
     DRB_URI                   = "drbble://stackchan"
 
@@ -167,9 +126,7 @@ if Object.const_defined?(:BLE)
       unless @radio.target
         raise Stackchan::BLE::ConnectionError, "no #{@name_prefix} advertiser found"
       end
-      # @state is reset to :TC_OFF after scan whether or not discovery
-      # succeeded; @conn_handle is the success signal.
-      unless @radio.conn_handle != BLE::HCI_CON_HANDLE_INVALID
+      if @radio.conn_handle == BLE::HCI_CON_HANDLE_INVALID
         raise Stackchan::BLE::ConnectionError, "GATT connect did not complete"
       end
       resolve_handles
@@ -181,11 +138,6 @@ if Object.const_defined?(:BLE)
     def disconnect
       @connected = false
       self
-    end
-
-    # The darwin port exposes no MTU query; macOS write-without-response cap.
-    def max_write_chunk
-      180
     end
 
     def send
@@ -208,8 +160,6 @@ if Object.const_defined?(:BLE)
       self
     end
 
-    # Safety net for a lost <A:done>; scales with clip size (~0.95 ms/byte +
-    # 3.3 s base measured, 1.2 ms/byte used).
     def audio_done_timeout_ms(n)
       ms = AUDIO_DONE_BASE_MS + (n * 6 / 5)
       return AUDIO_DONE_TIMEOUT_MIN_MS if ms < AUDIO_DONE_TIMEOUT_MIN_MS
@@ -240,7 +190,6 @@ if Object.const_defined?(:BLE)
       end
     end
 
-    # A DRbObject for the robot's StackchanApp::Remote.
     def remote
       raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
       @drb_inbox.clear
@@ -248,7 +197,6 @@ if Object.const_defined?(:BLE)
       DRb::DRbObject.new_with_uri(DRB_URI)
     end
 
-    # DRbBle link: one paced write per chunk (unpaced writes get cut on macOS).
     def send_chunk(bytes)
       if @drb_sent_at
         wait = POLLING_UNIT_MS - (Machine.board_millis - @drb_sent_at)
@@ -286,8 +234,6 @@ if Object.const_defined?(:BLE)
       @drb_cccd_handle = NusResolver.cccd_handle(drb_tx)
     end
 
-    # Subscribe both notify characteristics, then drain SUBSCRIBE_SETTLE_MS:
-    # there is no central-side "subscribe complete" event to wait on.
     def subscribe_tx
       [@cccd_handle, @drb_cccd_handle].compact.each do |h|
         @radio.write_characteristic_descriptor_using_descriptor_handle(@radio.conn_handle, h, SUBSCRIBE_ENABLE)
@@ -338,10 +284,8 @@ if Object.const_defined?(:BLE)
         if servo_or_read?(frame)
           @last_detail_frame = await_inbox
           t_detail = @last_detail_frame ? Machine.board_millis : :timeout
-          # Log raw bytes if the detail await returns a bare ACK byte (seen once, unexplained).
           if @last_detail_frame && NusResolver.classify(@last_detail_frame) == :ack
-            $stderr.write("[ble_client] anomaly: detail-frame slot got an ACK-like byte #{@last_detail_frame.inspect} for #{frame.inspect}\n")
-            $stderr.flush
+            @log_fn.call("[ble_client] anomaly: detail-frame slot got an ACK-like byte #{@last_detail_frame.inspect} for #{frame.inspect}")
           end
         end
         log_timing(frame, t0, t_ack, t_detail)
@@ -353,7 +297,6 @@ if Object.const_defined?(:BLE)
       end
     end
 
-    # One line per command in daemon.log: write→ACK (and →detail) latency in ms.
     def log_timing(frame, t0, t_ack, t_detail)
       line = "[t] #{frame.chomp} ack=#{t_ack - t0}ms"
       if t_detail == :timeout
@@ -376,7 +319,6 @@ if Object.const_defined?(:BLE)
       end
     end
 
-    # No alternation regex on PicoRuby — String includes.
     def servo_or_read?(frame)
       frame.include?("YL:") || frame.include?("YR:") || frame.include?("PU:") || frame.start_with?("<read:")
     end

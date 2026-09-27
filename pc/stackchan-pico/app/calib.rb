@@ -1,4 +1,3 @@
-# Calibration math + raw-detail parsing.
 require "json"
 
 module CalibrationMath
@@ -21,8 +20,6 @@ module CalibrationMath
     sorted[(sorted.length - 1) / 2]
   end
 
-  # poses: { forward:, left_max:, right_max:, up_max:, fwd_verify: }, each a
-  # { yaw_raw:, pitch_raw: } hash. Returns the anchor constants + verify deltas.
   def compute_anchors(poses)
     yaw_zero   = poses[:forward][:yaw_raw]
     pitch_zero = poses[:forward][:pitch_raw]
@@ -74,7 +71,6 @@ module CalibrationMath
     end
   end
 
-  # Parse "<yaw_raw:N,pitch_raw:M>\n"; nil for "unknown". No alternation regex on PicoRuby.
   def parse_raw_detail(frame)
     s = frame.to_s
     s = s[0, s.length - 1] while s.length > 0 && (s[-1] == "\n" || s[-1] == "\r")

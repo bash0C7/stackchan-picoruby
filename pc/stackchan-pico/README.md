@@ -27,8 +27,9 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   wrapper) are host-tested in `test/pc` (`SUITE=pc bundle exec rake test` from
   the repo root) against a `BLE` stub and `FakeRadio`. They implement
   scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio, and
-  reconnect (see the file's header for the gotcha around calling `start`/`scan`
-  again after the initial connect). `app/fake_ble.rb`
+  reconnect. `scan` re-powers the controller and the port flushes in-flight
+  packets, so it runs only from `connect` (the initial connect and a
+  reconnect); everything else drains with `pop_and_dispatch`. `app/fake_ble.rb`
   (`bundle exec rake pc:up BLE_FAKE=1`) swaps in for verb-logic testing without
   hardware.
 - **sidecar**: `../sidecar/sidecar.rb` (CRuby). Returns data only (reply text /
@@ -39,17 +40,14 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
 Build the deployment VM once (shared gem baked in). `vendor/R2P2-darwin` is
 fetched via `rake vendor:r2p2_darwin:setup` from the repo root (see the
 top-level README); it vendors picoruby itself (`port-darwin` branch — BLE +
-mbedtls + io-console + machine darwin ports) internally:
+mbedtls + io-console + machine darwin ports) internally. From the repo root:
 
 ```sh
-cd ../../vendor/R2P2-darwin   # from pc/stackchan-pico/, or use the repo-root-relative path
-bundle exec rake setup          # fetches R2P2-darwin's own vendor/picoruby (port-darwin branch)
-MRUBY_CONFIG=build_config/r2p2-stackchan-pc.rb bundle exec rake macos:build
-# → build/host/bin/picoruby  (Stackchan::BLE / Stackchan::AI compiled in)
+bundle exec rake pc:vm_build   # vendor/R2P2-darwin/build/host/bin/picoruby, Stackchan::BLE / Stackchan::AI compiled in
 ```
 
 Then package that VM into `~/Applications/StackchanPico.app` (from the repo
-root; required once, and again after every `macos:build`, so real-mode BLE
+root; required once, and again after every `pc:vm_build`, so real-mode BLE
 can pass macOS TCC — see "macOS TCC / CoreBluetooth" below):
 
 ```sh
@@ -80,17 +78,15 @@ pc/stackchan-pico/bin/stackchan stop
 ```
 
 Verbs: connect, status, stop, say, chat, face, led, servo, torque, selftest,
-raw, touch, demo, tui, calibrate.
+raw, remote, touch, demo, tui, calibrate.
 
 **Use `bundle exec rake pc:down` to stop the backends.** It boots both jobs
 out and removes their plists from `~/Library/LaunchAgents/`. The `stop` verb
 is not the same thing: it asks the daemon to exit — launchd leaves it down,
 since `KeepAlive` only restarts an abnormal exit — but the plist stays, so
-the daemon returns at the next login. `stop` also acknowledges nothing. It
-runs inside the daemon's DRb server task and tears that task down, so the
-reply never reaches the CLI: a successful stop prints nothing, and the verb
-can hang instead of returning. The BLE link is not closed by the command
-either; the Mac drops it on its own 15-20s idle timeout once the daemon's
+the daemon returns at the next login. `stop` returns once the daemon has
+answered and prints "daemon stopped". The BLE link is not closed by the
+command; the Mac drops it on its own 15-20s idle timeout once the daemon's
 keepalive stops. A verb has no time limit, so against a wedged daemon it
 hangs rather than failing.
 
@@ -104,7 +100,7 @@ only, default `StackChan`), `STACKCHAN_PORT=` (daemon drb
 port, default 8787), `STACKCHAN_SIDECAR_PORT=` (default 8788), `NS=` (launchd
 label namespace), plus `STACKCHAN_LOGDIR` and `STACKCHAN_PICORUBY_APP`.
 
-Use `STACKCHAN_PORT` rather than the bare `PORT` (still accepted) for the
+Use `STACKCHAN_PORT` rather than the bare `PORT` (also accepted) for the
 daemon port: it is the same variable the wrapper reads, so exporting it once
 keeps `pc:up` and the CLI on the same port. Set only `PORT=9999` and the
 daemon listens on 9999 while every later command still asks 8787 and reports
@@ -127,8 +123,8 @@ pc/stackchan-pico/bin/stackchan connect
   connection (see the top-level README's Dependencies / picoruby fork
   entry) — so the ESP32 peripheral never re-advertises and the following
   rescan finds nothing. `BLE_FAKE=1` (`rake pc:up`, host, no radio) covers
-  every verb, including real FM chat and real say/afconvert, for testing verb
-  logic without hardware.
+  every verb except `remote`, including real FM chat and real say/afconvert,
+  for testing verb logic without hardware.
 
 ## macOS TCC / CoreBluetooth
 
@@ -141,13 +137,13 @@ from a shell, even signed and previously authorized, always crashes.
 `~/Applications/StackchanPico.app` bundle (built by `rake pc:app_bundle`,
 path overridable with `STACKCHAN_PICORUBY_APP`); launchd is an acceptable
 responsible process for TCC, so this needs no `open -a` step. Rebuild the bundle (`rake pc:app_bundle`) after every
-`macos:build` — the ad-hoc code signature, and the TCC authorization tied to
+`pc:vm_build` — the ad-hoc code signature, and the TCC authorization tied to
 it, is bound to the binary's exact bytes.
 
 ## PicoRuby constraints worked around
 
 No Mutex/Thread (timesliced Tasks, `Task::Queue`); drb carries no kwargs (Hash args) and
 no remote block (poll, not yield-back); `system` can't background/redirect
-(spawning belongs to launchd now, not this wrapper); regexp has no `|` alternation; `gsub`/`sub`
+(launchd spawns the backends, not this wrapper); regexp has no `|` alternation; `gsub`/`sub`
 mishandle multibyte (each_char); `module_function` bare form is a no-op; strings
 from PicoRuby arrive ASCII-8BIT in CRuby (re-tag UTF-8 at the sidecar boundary).

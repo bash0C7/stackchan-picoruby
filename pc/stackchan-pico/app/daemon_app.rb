@@ -1,50 +1,10 @@
 module Stackchan
-
-  # Verb-friendly wrapper over a BLE client's #send (SendBuilder → ACK → detail).
-  class Display
-    def initialize(ble)
-      @ble = ble
-    end
-
-    def face(name)
-      @ble.send { |s| s.face(name.to_sym) }
-    end
-
-    def led(side:, color:, mode:)
-      @ble.send { |s| s.led(color.to_sym, side: side.to_sym, mode: mode.to_sym) }
-    end
-
-    def servo(yaw_left: nil, yaw_right: nil, pitch_up: nil, time_ms: nil, velocity: nil)
-      @ble.send do |s|
-        s.head(yaw_left: yaw_left, yaw_right: yaw_right, pitch_up: pitch_up,
-               time_ms: time_ms, velocity: velocity)
-      end
-      @ble.last_detail_frame
-    end
-
-    def torque(on)
-      @ble.send { |s| s.torque(on: on) }
-    end
-
-    def selftest
-      @ble.send { |s| s.selftest }
-    end
-  end
-
   class Daemon
     KEEPALIVE_INTERVAL_S = 7
     TOUCH_ZONE_LABELS = { 0 => "頭のうしろ", 1 => "右側", 2 => "左側" }
-
-    # Played when sidecar.respond returns nil; synthesized once at #start.
     FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
-
-    # Half-duplex audio: the device sleeps n*1000/8000 + 3000 ms after <A:N>;
-    # wait READY_WAIT_S before blasting, then n/8000 + 2 s after.
     READY_WAIT_S = 1.5
-
-    # Write Without Response has no flow control and the port has no can-send
-    # signal; an unpaced blast is silently truncated. 180 bytes / 20 ms = 9 KB/s
-    # stays inside the device's receive window.
+    AUDIO_CHUNK = 180
     CHUNK_PACE_S = 0.02
 
     def initialize(ble:, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788")
@@ -53,12 +13,10 @@ module Stackchan
       @host          = host
       @sidecar_uri   = sidecar_uri
       @sidecar       = nil
-      @display       = Display.new(@ble)
       @robot_state   = { last_face: nil, last_say: nil, last_heard: nil, last_action: nil }
       @touch_events  = []
       @ble_token     = Task::Queue.new
       @ble_token.push(true)
-      @running       = false
       @fallback_audio = nil
     end
 
@@ -68,11 +26,6 @@ module Stackchan
       DRb.start_service("druby://#{@host}:#{@port}", self)
       @server_task    = DRb.thread
       @keepalive_task = start_keepalive
-      @running        = true
-      # This rescue does not cover a sidecar TCP connect that hangs instead of
-      # failing fast: DRb.start_service already ran above and no other Task runs
-      # while this one blocks, so that case freezes the whole daemon VM.
-      # Known, not fixed here.
       @fallback_audio = begin
         sidecar.synthesize(FALLBACK_CHAT_PHRASE)
       rescue StandardError => e
@@ -87,25 +40,15 @@ module Stackchan
       @server_task.join
     end
 
-    # Runs inside the drb accept Task, which still has to write this method's
-    # reply. Stopping the service here kills that Task before it writes, so the
-    # caller sees the connection close instead of an answer; the teardown goes
-    # to a Task that runs once the reply is out.
     def stop
-      @running = false
-      @keepalive_task&.terminate
-      @shutdown_task = Task.new(name: "shutdown") do
+      @keepalive_task.terminate
+      Task.new(name: "shutdown") do
         sleep 1
-        begin
-          @ble.disconnect
-        rescue StandardError
-        end
-        DRb.stop_service rescue nil
+        @ble.disconnect
+        DRb.stop_service
       end
       true
     end
-
-    # === Verb-facing API (called by the CLI via the drb proxy) ===
 
     def status
       {
@@ -118,36 +61,37 @@ module Stackchan
     end
 
     def face(name)
-      with_ble { @display.face(name) }
+      with_ble { @ble.send { |s| s.face(name.to_sym) } }
       record(:face, last_face: name.to_s)
       "OK face=#{name}"
     end
 
-    # opts Hash, not kwargs: picoruby-drb collapses kwargs into a positional Hash.
     def led(opts)
-      with_ble { @display.led(side: opts[:side], color: opts[:color], mode: opts[:mode]) }
+      with_ble { @ble.send { |s| s.led(opts[:color], side: opts[:side], mode: opts[:mode]) } }
       record(:led)
       "OK led=#{opts[:side]}/#{opts[:color]}/#{opts[:mode]}"
     end
 
     def servo(opts)
       detail = with_ble do
-        @display.servo(yaw_left: opts[:yaw_left], yaw_right: opts[:yaw_right],
-                       pitch_up: opts[:pitch_up], time_ms: opts[:time_ms],
-                       velocity: opts[:velocity])
+        @ble.send do |s|
+          s.head(yaw_left: opts[:yaw_left], yaw_right: opts[:yaw_right], pitch_up: opts[:pitch_up],
+                 time_ms: opts[:time_ms], velocity: opts[:velocity])
+        end
+        @ble.last_detail_frame
       end
       record(:servo)
       detail
     end
 
     def torque(on)
-      with_ble { @display.torque(on) }
+      with_ble { @ble.send { |s| s.torque(on: on) } }
       record(:torque)
       "OK torque=#{on ? 'on' : 'off'}"
     end
 
     def selftest
-      with_ble { @display.selftest }
+      with_ble { @ble.send { |s| s.selftest } }
       record(:selftest)
       "OK selftest"
     end
@@ -167,11 +111,9 @@ module Stackchan
       "OK say bytes=#{ulaw.bytesize}"
     end
 
-    # opts: { speak: true/false, touch_zone: N }
-    def chat(text, opts = {})
-      opts ||= {}
-      speak = opts.key?(:speak) ? opts[:speak] : true
-      reply = sidecar.respond(text, chat_context(opts[:touch_zone]))
+    def chat(text, opts)
+      speak = opts[:speak]
+      reply = sidecar.respond(text, @robot_state.dup)
       record(:chat, last_heard: text)
       if reply
         with_ble { @ble.raw_send(Stackchan::AI::FrameText.build(face_index: 1, text: reply)) }
@@ -188,17 +130,13 @@ module Stackchan
       "OK raw"
     end
 
-    # One call on the device's StackchanApp::Remote over dRuby-over-BLE;
-    # returns the lines the device answered (e.g. [".\n", "<YL_actual:..>\n"]).
     def remote(msg, args = [])
       lines = with_ble { @ble.remote.send(msg.to_sym, *args) }
       record(:remote)
       lines
     end
 
-    # Median of N <read:pos> reads; raises on "unknown".
-    def sample_pose(samples = 3)
-      n = samples || 3
+    def sample_pose(n)
       readings = []
       i = 0
       while i < n
@@ -216,13 +154,8 @@ module Stackchan
       }
     end
 
-    def touch_zone_label(zone)
-      TOUCH_ZONE_LABELS[zone]
-    end
-
-    # Polled by the CLI: picoruby-drb cannot relay a block.
     def poll_touch
-      @touch_events.shift   # Array-as-queue; shift/push straddle no yield point
+      @touch_events.shift
     end
 
     private
@@ -231,42 +164,22 @@ module Stackchan
       @sidecar ||= DRb::DRbObject.new_with_uri(@sidecar_uri)
     end
 
-    def chat_context(touch_zone)
-      ctx = {
-        last_face:   @robot_state[:last_face],
-        last_say:    @robot_state[:last_say],
-        last_heard:  @robot_state[:last_heard],
-        last_action: @robot_state[:last_action],
-      }
-      if touch_zone
-        ctx[:touch_zone]       = touch_zone
-        ctx[:touch_zone_label] = TOUCH_ZONE_LABELS[touch_zone]
-      end
-      ctx
-    end
-
     def stream_audio(ulaw)
       n = ulaw.bytesize
       @ble.write_without_ack("<A:#{n}>\n")
       log "[checkpoint] announce_done n=#{n}"
       sleep READY_WAIT_S
-      chunk = ble_chunk_size
       i = 0
       chunk_count = 0
       while i < n
-        @ble.write_without_ack(ulaw.byteslice(i, chunk))
-        i += chunk
+        @ble.write_without_ack(ulaw.byteslice(i, AUDIO_CHUNK))
+        i += AUDIO_CHUNK
         chunk_count += 1
         log "[checkpoint] blast_progress i=#{i} n=#{n}" if chunk_count % 100 == 0
         sleep CHUNK_PACE_S
       end
       log "[checkpoint] blast_done i=#{i} n=#{n}, entering await"
       @ble.await_audio_done(n)
-    end
-
-    def ble_chunk_size
-      n = (@ble.max_write_chunk rescue nil)
-      n && n > 0 ? n : 180
     end
 
     def record(action, extras = {})
@@ -288,10 +201,7 @@ module Stackchan
     end
 
     def reconnect
-      begin
-        @ble.disconnect
-      rescue StandardError
-      end
+      @ble.disconnect
       @ble.connect
       start_touch_reader
       log "reconnected"
@@ -301,16 +211,14 @@ module Stackchan
       @ble.on_unsolicited = lambda do |frame|
         zone = Stackchan::BLE::FrameCodec.parse_touch(frame)
         next unless zone
-        @touch_events.push({ type: :touch, zone: zone })
+        @touch_events.push({ zone: zone, label: TOUCH_ZONE_LABELS[zone] })
       end
     end
 
-    # Idempotent <read:pos> to defeat the Mac's ~15-20 s idle disconnect.
     def start_keepalive
       Task.new(name: "keepalive") do
-        while @running
-          KEEPALIVE_INTERVAL_S.times { sleep 1 }
-          break unless @running
+        loop do
+          sleep KEEPALIVE_INTERVAL_S
           begin
             with_ble { @ble.send { |s| s.read_pos } }
           rescue StandardError => e
