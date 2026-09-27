@@ -47,6 +47,9 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   AOT_KERNELS = Dir[File.join(REPO_ROOT, "aot", "kernels", "*.rb")].sort
   DRB_MRBLIB = %w[drb.rb drb_message.rb drb_object.rb].map { |f| File.join(PICORUBY_ROOT, "mrbgems", "picoruby-drb", "mrblib", f) }
   DRB_BLE_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "mrblib", "*.rb")].sort
+  PROTOCOL_GEM_DIR = File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-protocol")
+  PROTOCOL_MRBLIB = [File.join(PROTOCOL_GEM_DIR, "mrblib", "stackchan-protocol.rb"),
+                      *Dir[File.join(PROTOCOL_GEM_DIR, "mrblib", "stackchan-protocol", "*.rb")].sort]
   EXTRACTED_APP_RB = "/tmp/_extracted_application.rb"
   EXTRACTED_PC_RB  = "/tmp/_extracted_ble_client.rb"
   EXTRACTED_CLI_RB = "/tmp/_extracted_cli_app.rb"
@@ -103,6 +106,11 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
     dir: File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "test"),
     cruby: lambda {},
     load_files: lambda { [*DRB_MRBLIB, *DRB_BLE_MRBLIB] },
+  }
+  SUITES["stackchan-protocol"] = {
+    dir: File.join(PROTOCOL_GEM_DIR, "test"),
+    cruby: lambda { PROTOCOL_MRBLIB.each { |f| load f } },
+    load_files: lambda { PROTOCOL_MRBLIB },
   }
   DEVICE_GEMS.each do |gem|
     mrblib = Dir[File.join(gem, "mrblib", "*.rb")].sort
