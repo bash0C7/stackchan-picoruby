@@ -27,6 +27,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")
   CLI_APP_RB          = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "cli_app.rb")
+  CALIB_RB            = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "calib.rb")
   DAEMON_APP_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "daemon_app.rb")
   DEVICE_STUBS_RB     = File.join(REPO_ROOT, "test", "picotest", "stubs.rb")
   FACE_GOLDEN_HASH_RB = File.join(REPO_ROOT, "test", "face_golden_hash.rb")
@@ -73,6 +74,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
         RubyClassExtract.load_classes_from(BLE_CLIENT_RB)
         RubyClassExtract.load_classes_from(CLI_APP_RB)
         RubyClassExtract.load_classes_from(DAEMON_APP_RB)
+        load CALIB_RB
         load PC_DRB_PATCH_RB
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
       },
@@ -81,7 +83,7 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
         RubyClassExtract.extract_to_file(CLI_APP_RB, EXTRACTED_CLI_RB)
         RubyClassExtract.extract_to_file(DAEMON_APP_RB, EXTRACTED_DAEMON_RB)
         # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
-        files = [*DRB_MRBLIB, PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
+        files = [*DRB_MRBLIB, PC_STUBS_RB, *SHARED_MRBLIB, EXTRACTED_PC_RB, EXTRACTED_CLI_RB, EXTRACTED_DAEMON_RB, CALIB_RB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files
       },

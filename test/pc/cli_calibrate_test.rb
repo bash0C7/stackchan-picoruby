@@ -1,5 +1,3 @@
-load File.join(ENV["STACKCHAN_REPO_ROOT"].to_s, "pc", "stackchan-pico", "app", "calib.rb")
-
 class CliCalibrateTest < Picotest::Test
   class CalibrationDaemon
     attr_reader :calls
