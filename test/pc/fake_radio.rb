@@ -18,6 +18,10 @@ class FakeRadio
     @scheduled << [@pop_count + after_polls, handle, value]
   end
 
+  def deliver_scheduled_on_next_poll
+    @scheduled.each { |s| s[0] = @pop_count + 1 }
+  end
+
   def pop_and_dispatch
     @pop_count += 1
     idx = @scheduled.index { |s| s[0] <= @pop_count }

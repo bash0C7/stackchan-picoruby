@@ -192,6 +192,7 @@ if Object.const_defined?(:BLE)
 
     def remote
       raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+      drain
       @drb_inbox.clear
       DRbBle.register(DRB_URI, self, timeout_ms: ACK_TIMEOUT_MS)
       DRb::DRbObject.new_with_uri(DRB_URI)

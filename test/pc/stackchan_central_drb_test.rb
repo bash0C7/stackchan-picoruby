@@ -78,12 +78,22 @@ class StackchanCentralDrbTest < Picotest::Test
     assert_true paced.length >= drb_writes.length - 1
   end
 
-  def test_a_reply_that_arrives_after_its_call_timed_out_is_not_returned_to_the_next_call
+  def test_a_late_reply_drained_between_calls_is_not_returned_to_the_next_call
     radio = DrbRadio.new(services: services)
     central = build(radio)
     radio.reply_delay = 200
     assert_raise(DRb::DRbConnError) { central.remote.echo("stale") }
     100.times { central.drain }
+    radio.reply_delay = 0
+    assert_equal ["fresh"], central.remote.echo("fresh")
+  end
+
+  def test_a_late_reply_still_in_the_radio_queue_is_not_returned_to_the_next_call
+    radio = DrbRadio.new(services: services)
+    central = build(radio)
+    radio.reply_delay = 10_000
+    assert_raise(DRb::DRbConnError) { central.remote.echo("stale") }
+    radio.deliver_scheduled_on_next_poll
     radio.reply_delay = 0
     assert_equal ["fresh"], central.remote.echo("fresh")
   end
