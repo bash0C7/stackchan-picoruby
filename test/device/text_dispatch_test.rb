@@ -39,7 +39,7 @@ class TextDispatchTest < Picotest::Test
   end
 
   def test_face_draw_clears_only_face_region_not_band
-    StackChan::Robot::Face::Neutral.new.draw(@display)
+    StackChan::Robot::Face.new.draw(@display)
     assert_false(@display.calls.any? { |c| c.first == :fill })
     clear = @display.calls.find { |c| c.first == :draw_rect && c.last[1] == 0 }
     assert(clear)

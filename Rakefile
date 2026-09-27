@@ -150,9 +150,9 @@ def load_face_context
   require 'face_golden_hash'
 end
 
-def write_face_golden(name, klass)
+def write_face_golden(name, face)
   out = File.expand_path("spec/golden/face_#{name}.dump", __dir__)
-  File.write(out, FaceGoldenHash.compute_dump(klass))
+  File.write(out, FaceGoldenHash.compute_dump(face))
   puts "[face:register_golden] wrote #{out}"
 end
 
@@ -161,16 +161,16 @@ namespace :face do
   task :register_golden do
     name = ENV.fetch('FACE') { abort 'FACE=<name> required' }
     load_face_context
-    klass = FaceGoldenHash::FACE_CASES.fetch(name.to_sym) do
+    face = FaceGoldenHash::FACE_CASES.fetch(name.to_sym) do
       abort "unknown FACE=#{name}; one of: #{FaceGoldenHash::FACE_CASES.keys.join(' / ')}"
     end
-    write_face_golden(name, klass)
+    write_face_golden(name, face)
   end
 
   desc "Write goldens for all faces"
   task :register_all_goldens do
     load_face_context
-    FaceGoldenHash::FACE_CASES.each { |name, klass| write_face_golden(name, klass) }
+    FaceGoldenHash::FACE_CASES.each { |name, face| write_face_golden(name, face) }
   end
 end
 

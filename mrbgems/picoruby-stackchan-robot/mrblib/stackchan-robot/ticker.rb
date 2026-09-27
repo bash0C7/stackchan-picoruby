@@ -50,11 +50,11 @@ module StackChan
         @blink_at ||= now_ms
         if @closed_at
           if now_ms - @closed_at >= BLINK_CLOSED_MS
-            @dispatcher.current_face_class.new.redraw_eyes_open(@display)
+            @dispatcher.current_face.redraw_eyes_open(@display)
             @closed_at = nil
           end
         elsif now_ms - @blink_at >= BLINK_PERIOD_MS
-          @dispatcher.current_face_class.new.redraw_eyes_closed(@display)
+          @dispatcher.current_face.redraw_eyes_closed(@display)
           @blink_at  = now_ms
           @closed_at = now_ms
         end

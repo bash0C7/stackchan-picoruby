@@ -70,19 +70,25 @@ class DispatcherFaceTest < Picotest::Test
     led = FlashLed.new
     disp = StackChan::Robot::Dispatcher.new(display: @display, led: led, stdout: @stdout)
     disp.react_to_touch(zone)
-    [disp.current_face_class, led.flashes]
+    [disp.current_face, led.flashes]
   end
 
   def test_touch_zone_0_draws_surprised_and_flashes_both_green
-    assert_equal [StackChan::Robot::Face::Surprised, [[:both, 0, 60, 0]]], touch(0)
+    face, flashes = touch(0)
+    assert_equal :open, face.mouth
+    assert_equal [[:both, 0, 60, 0]], flashes
   end
 
   def test_touch_zone_1_draws_angry_and_flashes_right_red
-    assert_equal [StackChan::Robot::Face::Angry, [[:right, 60, 0, 0]]], touch(1)
+    face, flashes = touch(1)
+    assert_equal :angry, face.brows
+    assert_equal [[:right, 60, 0, 0]], flashes
   end
 
   def test_touch_zone_2_draws_sad_and_flashes_left_blue
-    assert_equal [StackChan::Robot::Face::Sad, [[:left, 0, 0, 60]]], touch(2)
+    face, flashes = touch(2)
+    assert_equal(-8, face.mouth)
+    assert_equal [[:left, 0, 0, 60]], flashes
   end
 
   def test_touch_redraws_the_face_on_the_display

@@ -26,27 +26,36 @@ module StackChan
       SUBTITLE_FG          = 0xFFFF
       SUBTITLE_BG          = 0x0000
 
-      attr_reader :current_face_class
+      attr_reader :current_face
 
       def initialize(display:, led:, stdout: $stdout, head: nil)
         @display = display
         @led     = led
         @stdout  = stdout
         @head    = head
+        neutral   = Face.new
+        smile     = Face.new(mouth: 8)
+        joy       = Face.new(mouth: 18)
+        surprised = Face.new(mouth: :open)
+        sad       = Face.new(mouth: -8)
+        angry     = Face.new(brows: :angry)
+        closed    = Face.new(eyes: :closed, mouth: :none)
         @face_table = {
-          "0" => Face::Neutral,
-          "1" => Face::Smile,
-          "2" => Face::Joy,
-          "3" => Face::Surprised,
-          "4" => Face::Sad,
-          "5" => Face::Angry,
+          "0" => neutral,
+          "1" => smile,
+          "2" => joy,
+          "3" => surprised,
+          "4" => sad,
+          "5" => angry,
         }.freeze
         @touch_table = {
-          0 => [Face::Surprised, :both,  0, 60, 0],
-          1 => [Face::Angry,     :right, 60, 0, 0],
-          2 => [Face::Sad,       :left,  0, 0, 60],
+          0 => [surprised, :both,  0, 60, 0],
+          1 => [angry,     :right, 60, 0, 0],
+          2 => [sad,       :left,  0, 0, 60],
         }.freeze
-        @current_face_class = Face::Neutral
+        @neutral_face = neutral
+        @closed_face  = closed
+        @current_face = neutral
       end
 
       def handle(frame)
@@ -76,19 +85,19 @@ module StackChan
       end
 
       def react_to_touch(zone)
-        face_class, side, r, g, b = @touch_table[zone]
-        @current_face_class = face_class
-        face_class.new.redraw(@display)
+        face, side, r, g, b = @touch_table[zone]
+        @current_face = face
+        face.redraw(@display)
         @led.flash_side(side, r, g, b)
       end
 
       private
 
       def handle_face(frame)
-        face_class = @face_table[frame["F"]]
-        return false unless face_class
-        @current_face_class = face_class
-        face_class.new.redraw(@display)
+        face = @face_table[frame["F"]]
+        return false unless face
+        @current_face = face
+        face.redraw(@display)
         true
       end
 
@@ -107,13 +116,13 @@ module StackChan
         case frame["torque"]
         when "on"
           @head.enable_torque(true) if @head
-          @current_face_class = Face::Neutral
-          Face::Neutral.new.redraw(@display)
+          @current_face = @neutral_face
+          @neutral_face.redraw(@display)
           @stdout.write(ACK_FRAME)
         when "off"
           @head.enable_torque(false) if @head
-          @current_face_class = Face::Closed
-          Face::Closed.new.redraw(@display)
+          @current_face = @closed_face
+          @closed_face.redraw(@display)
           @stdout.write(ACK_FRAME)
         else
           @stdout.write(ERROR_FRAME)

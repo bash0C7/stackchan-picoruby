@@ -21,7 +21,7 @@ class TickerTest < Picotest::Test
     end
   end
 
-  class FakeFaceClass
+  class FakeFace
     LOG = []
 
     def redraw_eyes_closed(_display)
@@ -38,14 +38,15 @@ class TickerTest < Picotest::Test
 
     def initialize
       @touches = []
+      @current_face = FakeFace.new
     end
 
     def react_to_touch(zone)
       @touches << zone
     end
 
-    def current_face_class
-      FakeFaceClass
+    def current_face
+      @current_face
     end
   end
 
@@ -55,7 +56,7 @@ class TickerTest < Picotest::Test
     @touch      = FakeTouch.new
     @dispatcher = FakeDispatcher.new
     @notified   = []
-    FakeFaceClass::LOG.clear
+    FakeFace::LOG.clear
     @ticker = StackChan::Robot::Ticker.new(
       display: @display, led: @led, touch: @touch, dispatcher: @dispatcher,
       notify: ->(frame) { @notified << frame }
@@ -107,13 +108,13 @@ class TickerTest < Picotest::Test
     before = Machine.uptime_us
     @ticker.tick(1000)
     @ticker.tick(5999)
-    assert_equal [], FakeFaceClass::LOG
+    assert_equal [], FakeFace::LOG
     @ticker.tick(6000)
-    assert_equal [:closed], FakeFaceClass::LOG
+    assert_equal [:closed], FakeFace::LOG
     @ticker.tick(6100)
-    assert_equal [:closed], FakeFaceClass::LOG
+    assert_equal [:closed], FakeFace::LOG
     @ticker.tick(6150)
-    assert_equal [:closed, :open], FakeFaceClass::LOG
+    assert_equal [:closed, :open], FakeFace::LOG
     assert_equal before, Machine.uptime_us
   end
 
@@ -122,8 +123,8 @@ class TickerTest < Picotest::Test
     @ticker.tick(5000)
     @ticker.tick(5150)
     @ticker.tick(9999)
-    assert_equal [:closed, :open], FakeFaceClass::LOG
+    assert_equal [:closed, :open], FakeFace::LOG
     @ticker.tick(10000)
-    assert_equal [:closed, :open, :closed], FakeFaceClass::LOG
+    assert_equal [:closed, :open, :closed], FakeFace::LOG
   end
 end

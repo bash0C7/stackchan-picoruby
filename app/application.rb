@@ -96,7 +96,7 @@ puts "[boot] step:led-init-ok"
 Machine.delay_ms(50)
 led.show
 puts "[boot] step:led-show-ok"
-StackChan::Robot::Face::Closed.new.draw(display)
+StackChan::Robot::Face.new(eyes: :closed, mouth: :none).draw(display)
 puts "[application] LCD cold-boot done (torque-OFF idle)"
 @touch = nil
 begin

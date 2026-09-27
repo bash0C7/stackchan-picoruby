@@ -5,13 +5,13 @@
 # stays a single source of truth between registration and assertion.
 module FaceGoldenHash
   FACE_CASES = {
-    neutral:   StackChan::Robot::Face::Neutral,
-    smile:     StackChan::Robot::Face::Smile,
-    joy:       StackChan::Robot::Face::Joy,
-    surprised: StackChan::Robot::Face::Surprised,
-    sad:       StackChan::Robot::Face::Sad,
-    angry:     StackChan::Robot::Face::Angry,
-    closed:    StackChan::Robot::Face::Closed,
+    neutral:   StackChan::Robot::Face.new,
+    smile:     StackChan::Robot::Face.new(mouth: 8),
+    joy:       StackChan::Robot::Face.new(mouth: 18),
+    surprised: StackChan::Robot::Face.new(mouth: :open),
+    sad:       StackChan::Robot::Face.new(mouth: -8),
+    angry:     StackChan::Robot::Face.new(brows: :angry),
+    closed:    StackChan::Robot::Face.new(eyes: :closed, mouth: :none),
   }.freeze
   # Deterministic string for a single FakeDisplay#calls entry:
   #   "method_name|arg0,arg1,...,argN-1,{fill:true/false}"
@@ -35,9 +35,9 @@ module FaceGoldenHash
     calls.map { |c| serialize_call(c) }.join("\n")
   end
 
-  def self.compute_dump(face_class)
+  def self.compute_dump(face)
     display = FakeDisplay.new
-    face_class.new.draw(display)
+    face.draw(display)
     canonical_dump(display.calls)
   end
 end

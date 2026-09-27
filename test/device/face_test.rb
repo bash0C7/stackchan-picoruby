@@ -2,7 +2,7 @@ class FaceNeutralTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_neutral_draw_sequence
-    StackChan::Robot::Face::Neutral.new.draw(@display)
+    StackChan::Robot::Face.new.draw(@display)
     methods = @display.calls.map(&:first)
     assert_equal [:draw_rect, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line], methods
   end
@@ -11,12 +11,8 @@ end
 class FaceSadTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
-  def test_sad_delta_y_is_negative_eight
-    assert_equal(-8, StackChan::Robot::Face::Sad::DELTA_Y)
-  end
-
   def test_sad_corners_droop_below_center
-    StackChan::Robot::Face::Sad.new.draw_mouth(@display)
+    StackChan::Robot::Face.new(mouth: -8).draw_mouth(@display)
     assert_equal [135, 148, 160, 140, ILI9342::Color::WHITE], @display.calls[0].last
     assert_equal [160, 140, 185, 148, ILI9342::Color::WHITE], @display.calls[1].last
   end
@@ -32,7 +28,7 @@ class FaceAngryTest < Picotest::Test
   end
 
   def test_angry_draw_sequence
-    StackChan::Robot::Face::Angry.new.draw(@display)
+    StackChan::Robot::Face.new(brows: :angry).draw(@display)
     methods = @display.calls.map(&:first)
     assert_equal [:draw_rect, :draw_ellipse, :draw_ellipse, :draw_line, :draw_line, :draw_line, :draw_line], methods
   end
@@ -42,7 +38,7 @@ class FaceClosedTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
   def test_closed_face_clears_the_face_region_first_then_draws_two_eye_lines_and_no_ellipse
-    StackChan::Robot::Face::Closed.new.draw(@display)
+    StackChan::Robot::Face.new(eyes: :closed, mouth: :none).draw(@display)
     assert_equal :draw_rect, @display.calls.first[0]
     assert_false(@display.calls.any? { |c| c[0] == :draw_ellipse })
     line_calls = @display.calls.select { |c| c[0] == :draw_line }
@@ -50,12 +46,12 @@ class FaceClosedTest < Picotest::Test
   end
 end
 
-class BaseRedrawEyesClosedTest < Picotest::Test
+class FaceRedrawEyesClosedTest < Picotest::Test
   def setup; @display = FakeDisplay.new; end
 
-  def test_base_redraw_eyes_closed_clears_each_eye_region_and_draws_two_eye_lines_without_a_fill
-    base = StackChan::Robot::Face::Base.new
-    base.redraw_eyes_closed(@display)
+  def test_redraw_eyes_closed_clears_each_eye_region_and_draws_two_eye_lines_without_a_fill
+    face = StackChan::Robot::Face.new
+    face.redraw_eyes_closed(@display)
     assert_false(@display.calls.any? { |c| c[0] == :fill })
     rect_calls = @display.calls.select { |c| c[0] == :draw_rect }
     line_calls = @display.calls.select { |c| c[0] == :draw_line }
@@ -65,12 +61,17 @@ class BaseRedrawEyesClosedTest < Picotest::Test
 end
 
 class FaceFeatureBandsTest < Picotest::Test
-  FACES = [
-    StackChan::Robot::Face::Neutral, StackChan::Robot::Face::Smile,
-    StackChan::Robot::Face::Joy,     StackChan::Robot::Face::Surprised,
-    StackChan::Robot::Face::Sad,     StackChan::Robot::Face::Angry,
-    StackChan::Robot::Face::Closed,
-  ]
+  def faces
+    [
+      StackChan::Robot::Face.new,
+      StackChan::Robot::Face.new(mouth: 8),
+      StackChan::Robot::Face.new(mouth: 18),
+      StackChan::Robot::Face.new(mouth: :open),
+      StackChan::Robot::Face.new(mouth: -8),
+      StackChan::Robot::Face.new(brows: :angry),
+      StackChan::Robot::Face.new(eyes: :closed, mouth: :none),
+    ]
+  end
 
   def bands
     f = StackChan::Robot::Face
@@ -95,9 +96,9 @@ class FaceFeatureBandsTest < Picotest::Test
   end
 
   def test_every_face_paints_only_inside_the_bands_redraw_clears
-    FACES.each do |face_class|
+    faces.each do |face|
       display = FakeDisplay.new
-      face_class.new.draw_features(display)
+      face.draw_features(display)
       display.calls.each do |call|
         b = box(call)
         assert_true inside_a_band?(b)
@@ -107,8 +108,26 @@ class FaceFeatureBandsTest < Picotest::Test
 
   def test_redraw_clears_both_bands_before_painting
     display = FakeDisplay.new
-    StackChan::Robot::Face::Angry.new.redraw(display)
+    StackChan::Robot::Face.new(brows: :angry).redraw(display)
     cleared = display.calls[0, 2].map { |c| c.last[0, 4] }
     assert_equal bands, cleared
+  end
+end
+
+class FaceArgumentValidationTest < Picotest::Test
+  def test_unknown_key_raises_argument_error
+    assert_raise(ArgumentError) { StackChan::Robot::Face.new(bogus: 1) }
+  end
+
+  def test_bad_eyes_value_raises_argument_error
+    assert_raise(ArgumentError) { StackChan::Robot::Face.new(eyes: :sideways) }
+  end
+
+  def test_bad_mouth_value_raises_argument_error
+    assert_raise(ArgumentError) { StackChan::Robot::Face.new(mouth: "8") }
+  end
+
+  def test_bad_brows_value_raises_argument_error
+    assert_raise(ArgumentError) { StackChan::Robot::Face.new(brows: :sad) }
   end
 end
