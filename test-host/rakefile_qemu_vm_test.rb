@@ -5,7 +5,7 @@ class RakefileQemuVmTest < Test::Unit::TestCase
 
   def test_qemu_build_passes_the_picorb_vm_constant_not_a_literal
     rakefile = File.read(File.join(ROOT, 'Rakefile'))
-    assert_match(/idf\.py -B build-qemu \S+ build -DPICORB_VM=#\{PICORB_VM\}/, rakefile)
+    assert_match(/idf\.py -B build-qemu \S+ -DPICORB_VM=#\{PICORB_VM\} build\}/, rakefile)
   end
 
   def test_real_build_target_is_derived_from_the_same_r2p2_vm_task_constant

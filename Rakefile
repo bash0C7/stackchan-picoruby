@@ -530,7 +530,7 @@ namespace :r2p2 do
     project_sdkconfig = "#{R2P2_ROOT}/sdkconfig"
     before = File.exist?(project_sdkconfig) ? Digest::SHA256.file(project_sdkconfig).hexdigest : nil
     in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" idf.py -B build-qemu -DSDKCONFIG=#{QEMU_BUILD_DIR}/sdkconfig set-target esp32s3}
-    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" idf.py -B build-qemu -DSDKCONFIG=#{QEMU_BUILD_DIR}/sdkconfig build -DPICORB_VM=#{PICORB_VM}}
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" idf.py -B build-qemu -DSDKCONFIG=#{QEMU_BUILD_DIR}/sdkconfig -DPICORB_VM=#{PICORB_VM} build}
     after = File.exist?(project_sdkconfig) ? Digest::SHA256.file(project_sdkconfig).hexdigest : nil
     abort "[r2p2:qemu_check] the QEMU build changed #{project_sdkconfig}" unless before == after
     abort "[r2p2:qemu_check] #{QEMU_BUILD_DIR}/sdkconfig missing" unless File.exist?("#{QEMU_BUILD_DIR}/sdkconfig")
