@@ -206,7 +206,7 @@ module Stackchan
         with_ble { @ble.send { |s| s.read_pos } }
         parsed = CalibrationMath.parse_raw_detail(@ble.last_detail_frame.to_s)
         if parsed[:yaw_raw].nil? || parsed[:pitch_raw].nil?
-          raise Stackchan::BLE::DeviceError, "device returned unknown raw position"
+          raise Stackchan::BLE::DeviceError, CalibrationMath::UNKNOWN_POSITION
         end
         readings << parsed
         i += 1

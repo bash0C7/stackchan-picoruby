@@ -4,6 +4,8 @@ require "json"
 module CalibrationMath
   PASS_TOLERANCE = 3
   FAIL_TOLERANCE = 10
+  FORMATS = %i[ruby env json]
+  UNKNOWN_POSITION = "device returned unknown raw position"
 
   POSE_PROMPTS = [
     [:forward,    "[2/6] Align FORWARD: head level, LCD facing operator. Press Enter..."],

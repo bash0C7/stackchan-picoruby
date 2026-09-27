@@ -250,6 +250,10 @@ module Stackchan
       opts = parse_kw(args)
       samples = (opts["samples"] && opts["samples"].to_i) || 3
       fmt = (opts["format"] || "ruby").to_sym
+      unless CalibrationMath::FORMATS.include?(fmt)
+        out "calibrate: --format ruby|env|json"
+        return 1
+      end
       if align_only
         calibrate_align(no_toggle)
       else
@@ -286,7 +290,11 @@ module Stackchan
           out "  reading yaw_raw=#{p[:yaw_raw]} pitch_raw=#{p[:pitch_raw]}"
         end
       rescue => e
-        out "[FAIL] #{e.message} (device returned unknown — manual calibration needed)"
+        unless e.message.include?(CalibrationMath::UNKNOWN_POSITION)
+          out "[FAIL] #{e.message}"
+          return 1
+        end
+        out "[FAIL] #{e.message} (manual calibration needed)"
         return 6
       end
       anchors = CalibrationMath.compute_anchors(poses)
