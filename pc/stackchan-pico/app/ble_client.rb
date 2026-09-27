@@ -117,6 +117,8 @@ if Object.const_defined?(:BLE)
 
     def connect_and_discover(timeout_ms)
       @target = nil
+      @conn_handle = HCI_CON_HANDLE_INVALID
+      @services.clear
       scan(timeout_ms: timeout_ms, stop_state: :TC_IDLE)
     end
   end

@@ -56,6 +56,9 @@ class BLE
     @pending << packet
   end
 
+  def scan(timeout_ms: nil, stop_state: :TC_IDLE)
+  end
+
   # Base decoder is a no-op here; StackchanRadio#packet_callback calls super.
   def packet_callback(event_packet)
   end

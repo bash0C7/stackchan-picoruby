@@ -46,6 +46,14 @@ class StackchanRadioTest < Picotest::Test
     assert_equal [], got
   end
 
+  def test_connect_and_discover_forgets_the_previous_connection_when_no_new_one_completes
+    @radio.instance_variable_set(:@conn_handle, 0x40)
+    @radio.services << { characteristics: [] }
+    @radio.connect_and_discover(15_000)
+    assert_equal BLE::HCI_CON_HANDLE_INVALID, @radio.conn_handle
+    assert_equal [], @radio.services
+  end
+
   def test_advertising_report_callback_connects_to_first_match_only
     @radio.advertising_report_callback(FakeReport.new("Other"))
     assert_equal 0, @radio.connect_calls.size
