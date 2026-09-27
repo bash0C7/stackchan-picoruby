@@ -105,7 +105,6 @@ class QemuGateTest < Test::Unit::TestCase
     assert_equal %w[CONFIG_ESP_CONSOLE_UART_DEFAULT=y CONFIG_ESP_CONSOLE_SECONDARY_NONE=y], lines
   end
 
-  # --- probe source -----------------------------------------------------
 
   def test_probe_source_orders_requires_gems_classes_wire_marker
     application = Tempfile.new(['fixture_app', '.rb'])
@@ -213,7 +212,6 @@ class QemuGateTest < Test::Unit::TestCase
     end
   end
 
-  # --- verdict -----------------------------------------------------------
 
   def test_verdict_passes_when_marker_line_is_present
     log = <<~LOG
