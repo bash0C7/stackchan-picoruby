@@ -9,28 +9,6 @@ class AudioReceiverTest < Picotest::Test
     end
   end
 
-  class BufferParser
-    def initialize
-      @buf = ""
-    end
-
-    def feed(data)
-      @buf << data
-      frames = []
-      while (s = @buf.index("<")) && (e = @buf.index(">", s))
-        body = @buf[s + 1, e - s - 1]
-        @buf = @buf[e + 1, @buf.bytesize - e - 1] || ""
-        frame = {}
-        body.split(",").each do |pair|
-          kv = pair.split(":", 2)
-          frame[kv[0]] = kv[1] if kv.size == 2
-        end
-        frames << frame unless frame.empty?
-      end
-      frames
-    end
-  end
-
   def make_speaker
     AW88298.new(i2c: FakeI2C.new, i2s: I2S.new(sample_rate: 8000))
   end
@@ -100,7 +78,7 @@ class AudioReceiverTest < Picotest::Test
     notifies = []
     dispatched = []
 
-    rx = receiver(speaker: nil, parser: BufferParser.new,
+    rx = receiver(speaker: nil, parser: StackchanProtocol::FrameParser.new,
                   notify: ->(msg) { notifies << msg }, drain: -> { rx_queue.shift })
     done = rx.consume("<A:#{blast.bytesize}>\n") { |f| dispatched << f }
     while (data = rx_queue.shift)

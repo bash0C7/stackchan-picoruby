@@ -59,12 +59,13 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
       cruby: lambda {
         load DEVICE_STUBS_RB
         DEVICE_GEM_MRBLIB.each { |f| load f }
+        PROTOCOL_MRBLIB.each { |f| require f }
         RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE])
         require "face_golden_hash"
       },
       load_files: lambda {
         RubyClassExtract.extract_to_file(APPLICATION_RB, EXTRACTED_APP_RB, exclude_superclasses: %w[BLE])
-        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {
