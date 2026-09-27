@@ -11,8 +11,6 @@ class AW88298
   AW_RATE_TBL: Array[Integer]
 
   def self.aw88298_reg06: (Integer sample_rate) -> Integer
-
-  # Ordered init writes as [reg, hi, lo] triples.
   def self.aw88298_init_writes: (Integer sample_rate) -> Array[Array[Integer]]
 
   CHUNK: Integer
@@ -20,7 +18,6 @@ class AW88298
   @i2c: _Bus
   @i2s: _Sink
 
-  attr_reader i2c: _Bus
   attr_reader i2s: _Sink
 
   def initialize: (i2c: _Bus, i2s: _Sink) -> void

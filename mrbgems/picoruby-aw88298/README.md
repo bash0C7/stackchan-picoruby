@@ -9,5 +9,7 @@ picoruby-multicore, one 2046-byte chunk ahead of the I2S write.
 ```ruby
 amp = AW88298.new(i2c: i2c, i2s: I2S.new(sample_rate: 8000))
 amp.init_amp(8000)
-amp.play_ulaw(ulaw_bytes)   # G.711 mu-law -> signed 16-bit PCM -> I2S
+amp.play_ulaw(ulaw_bytes)
 ```
+
+`play_ulaw` takes G.711 mu-law bytes and writes signed 16-bit PCM to the I2S.

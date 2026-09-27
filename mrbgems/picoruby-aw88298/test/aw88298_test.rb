@@ -1,16 +1,19 @@
 class AW88298Test < Picotest::Test
-  # AW88298 init writes (from M5Unified), 16-bit big-endian -> [reg, hi, lo] triples.
-  def test_aw88298_init_writes_8khz
+  def test_aw88298_init_writes_8khz_as_big_endian_reg_hi_lo_triples
     seq = AW88298.aw88298_init_writes(8000)
     assert_equal [0x61, 0x06, 0x73], seq[0]
     assert_equal [0x04, 0x40, 0x40], seq[1]
     assert_equal [0x05, 0x00, 0x08], seq[2]
-    assert_equal [0x06, 0x14, 0xC0], seq[3]   # 8 kHz -> reg0x06 = 0x14C0
+    assert_equal [0x06, 0x14, 0xC0], seq[3]
     assert_equal [0x0C, 0x00, 0x64], seq[4]
   end
 
   def test_aw88298_reg06_16khz
     assert_equal 0x14C3, AW88298.aw88298_reg06(16000)
+  end
+
+  def test_aw88298_reg06_clamps_a_rate_above_the_table_to_the_last_entry
+    assert_equal 0x14C9, AW88298.aw88298_reg06(192000)
   end
 
   def test_init_amp_writes_registers_via_i2c
@@ -31,7 +34,6 @@ class AW88298Test < Picotest::Test
     s
   end
 
-  # Binary Strings in a failure message break picotest's JSON report; compare hex.
   def hex(s)
     s.unpack("H*")[0]
   end
