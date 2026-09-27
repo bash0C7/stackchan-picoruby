@@ -31,6 +31,7 @@ module QemuGate
   FAIL_PATTERNS = [/Guru Meditation/, /abort\(\)/, /Rebooting\.\.\./, /assert failed/].freeze
   ERROR_CLASS_PATTERN = /\((?:[A-Z]\w*::)*[A-Z]\w*(?:Error|Exception)\)\s*$|^Error: |^Exception\(vm_id=/
   MARKER = 'QEMU_PROBE_OK'
+  SHELL_PROMPT = '$> '
 
   Verdict = Struct.new(:pass, :message, :decided)
   FLASH_CONSOLE_DEFINE = "#define CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 1"
@@ -118,9 +119,11 @@ module QemuGate
       return Verdict.new(false, "boot log shows #{line.strip.inspect}", true) if line.match?(ERROR_CLASS_PATTERN)
     end
 
-    return Verdict.new(true, "marker #{MARKER} found", true) if text.include?(MARKER)
+    marker_at = text.index(MARKER)
+    return Verdict.new(false, 'no marker', false) unless marker_at
+    return Verdict.new(true, "marker #{MARKER} found and the shell prompt followed", true) if text.index(SHELL_PROMPT, marker_at)
 
-    Verdict.new(false, 'no marker', false)
+    Verdict.new(false, "marker #{MARKER} found but no shell prompt after it", false)
   end
 
   def flash_console_ok?(sdkconfig_h)
