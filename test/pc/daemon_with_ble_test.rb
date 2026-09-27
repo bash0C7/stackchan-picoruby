@@ -26,6 +26,20 @@ class DaemonWithBleTest < Picotest::Test
     end
   end
 
+  class HeldBle
+    attr_accessor :release
+
+    def initialize
+      @release = false
+    end
+
+    def send
+      yield Stackchan::BLE::SendBuilder.new
+      Task.pass until @release
+      self
+    end
+  end
+
   def run_two_face_calls(daemon, first, second)
     t1 = Task.new(name: "first") do
       begin
@@ -42,6 +56,23 @@ class DaemonWithBleTest < Picotest::Test
     ble = InterleavingBle.new
     run_two_face_calls(Stackchan::Daemon.new(ble: ble), "joy", "sad")
     assert_equal [[:start, "<F:2>\n"], [:end, "<F:2>\n"], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
+  end
+
+  def test_a_second_caller_is_parked_on_the_token_while_the_first_holds_it
+    ble = HeldBle.new
+    daemon = Stackchan::Daemon.new(ble: ble)
+    t1 = Task.new(name: "first") { daemon.face("joy") }
+    t2 = Task.new(name: "second") { daemon.face("sad") }
+    i = 0
+    while i < 10
+      Task.pass
+      i += 1
+    end
+    waiting = daemon.instance_variable_get(:@ble_token).num_waiting
+    ble.release = true
+    t1.join
+    t2.join
+    assert_equal 1, waiting
   end
 
   def test_a_second_caller_starts_only_after_the_first_body_raises
