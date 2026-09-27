@@ -1,3 +1,4 @@
+x = /a/
 class Si12T
   ADDR        = 0x68
   REG_CTRL1   = 0x08
