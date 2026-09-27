@@ -461,7 +461,7 @@ def qemu_run_and_poll(flash:, efuse:, log:, timeout: 120)
       pid = nil
       return QemuGate::Verdict.new(false, "qemu exited (#{status}) before a verdict: #{File.read(stderr_log).strip}", true)
     end
-    return QemuGate::Verdict.new(false, "no marker within #{timeout} s", true) if Time.now >= deadline
+    return QemuGate::Verdict.new(false, "#{verdict.message} within #{timeout} s", true) if Time.now >= deadline
     sleep 1
   end
 ensure

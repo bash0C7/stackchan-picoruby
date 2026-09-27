@@ -219,6 +219,7 @@ class QemuGateTest < Test::Unit::TestCase
       PROBE parse_touch=2
       QEMU_PROBE_OK
       Starting shell...
+      $> 
     LOG
     verdict = QemuGate.verdict(log)
     assert verdict.pass
@@ -320,6 +321,7 @@ class QemuGateTest < Test::Unit::TestCase
       File /etc/network/wifi.yml does not exist
       Loading app.mrb
       QEMU_PROBE_OK
+      $> 
     LOG
     verdict = QemuGate.verdict(log)
     assert verdict.pass
@@ -342,6 +344,7 @@ class QemuGateTest < Test::Unit::TestCase
       PROBE parse_touch=2
       QEMU_PROBE_OK
       Starting shell...
+      $> 
     LOG
     verdict = QemuGate.verdict(log)
     assert verdict.pass
@@ -355,12 +358,12 @@ class QemuGateTest < Test::Unit::TestCase
   end
 
   def test_verdict_does_not_treat_idf_log_lines_as_errors
-    log = "E (123) spi_flash: detected chip: issi\nW (857) eFuse: calibration efuse version does not match, set default version to 0\nLoading app.mrb\nQEMU_PROBE_OK\n"
+    log = "E (123) spi_flash: detected chip: issi\nW (857) eFuse: calibration efuse version does not match, set default version to 0\nLoading app.mrb\nQEMU_PROBE_OK\n$> \n"
     assert QemuGate.verdict(log).pass
   end
 
   def test_verdict_is_decided_on_pass_and_on_failure_but_not_while_waiting
-    assert QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n").decided
+    assert QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n$> \n").decided
     assert QemuGate.verdict("Guru Meditation Error\n").decided
     refute QemuGate.verdict("Initializing FLASH disk as the root volume...\n").decided
   end
@@ -369,6 +372,22 @@ class QemuGateTest < Test::Unit::TestCase
     assert QemuGate.flash_console_ok?("#define CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 1\n")
     refute QemuGate.flash_console_ok?("#define CONFIG_ESP_CONSOLE_UART_DEFAULT 1\n#define CONFIG_ESP_CONSOLE_UART 1\n")
   end
+
+def test_verdict_waits_for_the_shell_prompt_after_the_marker
+  verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n")
+  refute verdict.pass
+  refute verdict.decided
+end
+
+def test_verdict_fails_on_a_panic_between_the_marker_and_the_shell_prompt
+  verdict = QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\nGuru Meditation Error: Core  0 panic'ed\n")
+  refute verdict.pass
+  assert verdict.decided
+end
+
+def test_verdict_ignores_a_shell_prompt_that_came_before_the_marker
+  refute QemuGate.verdict("$> \nLoading app.mrb\nQEMU_PROBE_OK\n").pass
+end
 
   private
 
