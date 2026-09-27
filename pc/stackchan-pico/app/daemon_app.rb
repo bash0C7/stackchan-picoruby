@@ -11,8 +11,7 @@ module Stackchan
     end
 
     def led(side:, color:, mode:)
-      form, value = color.is_a?(Array) ? color : [color, nil]
-      @ble.send { |s| s.led(form, value, side: side.to_sym, mode: mode.to_sym) }
+      @ble.send { |s| s.led(color.to_sym, side: side.to_sym, mode: mode.to_sym) }
     end
 
     def servo(yaw_left: nil, yaw_right: nil, pitch_up: nil, time_ms: nil, velocity: nil)

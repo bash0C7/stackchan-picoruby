@@ -7,9 +7,6 @@ name_prefix = ARGV[2] || "StackChan"
 unless Object.const_defined?(:Stackchan)
   [
     "stackchan/ble/errors.rb",
-    "stackchan/ble/face_table.rb",
-    "stackchan/ble/led_color_table.rb",
-    "stackchan/ble/hsb_to_rgb.rb",
     "stackchan/ble/frame_codec.rb",
     "stackchan/ble/send_builder.rb",
     "stackchan/ai/frame_text.rb",

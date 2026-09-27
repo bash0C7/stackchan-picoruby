@@ -1,8 +1,15 @@
 module Stackchan
   module BLE
     module FrameCodec
-      # :left / :right are from StackChan's own perspective. The device wire
-      # chars run the other way, so this table absorbs the reversal.
+      FACE_INDICES = {
+        neutral:   "0",
+        smile:     "1",
+        joy:       "2",
+        surprised: "3",
+        sad:       "4",
+        angry:     "5",
+      }.freeze
+
       SIDE_TO_CHAR = {
         left:  "R",
         right: "L",
@@ -22,8 +29,7 @@ module Stackchan
       TOUCH_RE = /\A<touch:(\d+)>/
 
       def self.encode_face(face_name:)
-        index = FaceTable::FACE_INDICES.fetch(face_name)
-        encode_pairs("F" => index)
+        encode_pairs("F" => FACE_INDICES.fetch(face_name))
       end
 
       def self.encode_led(r:, g:, b:, side:, mode:)
@@ -60,21 +66,10 @@ module Stackchan
         encode_pairs("read" => "pos")
       end
 
-      def self.parse_ack(frame)
-        case frame[0, 1]
-        when ACK_OK    then :ok
-        when ACK_ERROR then :error
-        else
-          raise ArgumentError, "unknown ack frame: #{frame.inspect}"
-        end
-      end
-
-      # A device-initiated head-touch event (unsolicited; not a response to a send).
       def self.touch_event?(frame)
         !!(frame =~ TOUCH_RE)
       end
 
-      # Zone index from "<touch:N>", or nil if not a touch frame.
       def self.parse_touch(frame)
         m = frame.match(TOUCH_RE)
         m && m[1].to_i

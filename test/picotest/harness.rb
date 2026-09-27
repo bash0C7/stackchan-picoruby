@@ -36,9 +36,6 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
   SHARED_MRBLIB = %w[
     stackchan/ble/errors.rb
-    stackchan/ble/face_table.rb
-    stackchan/ble/led_color_table.rb
-    stackchan/ble/hsb_to_rgb.rb
     stackchan/ble/frame_codec.rb
     stackchan/ble/send_builder.rb
     stackchan/ai/frame_text.rb
