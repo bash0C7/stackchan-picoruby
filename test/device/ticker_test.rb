@@ -56,7 +56,7 @@ class TickerTest < Picotest::Test
     @dispatcher = FakeDispatcher.new
     @notified   = []
     FakeFaceClass::LOG.clear
-    @ticker = StackchanApp::Ticker.new(
+    @ticker = StackChan::Robot::Ticker.new(
       display: @display, led: @led, touch: @touch, dispatcher: @dispatcher,
       notify: ->(frame) { @notified << frame }
     )
@@ -82,7 +82,7 @@ class TickerTest < Picotest::Test
   end
 
   def test_no_touch_sensor_is_skipped
-    t = StackchanApp::Ticker.new(display: @display, led: @led, touch: nil, dispatcher: @dispatcher,
+    t = StackChan::Robot::Ticker.new(display: @display, led: @led, touch: nil, dispatcher: @dispatcher,
                                  notify: ->(frame) { @notified << frame })
     t.tick(1000)
     assert_equal [], @notified

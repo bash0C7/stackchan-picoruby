@@ -65,7 +65,7 @@ The branch `claude/ecstatic-allen-s6qki1` carries three pieces that are
 green on the host and built into firmware, but have not run on the robot:
 
 - **dRuby over BLE** — `mrbgems/picoruby-drb-ble`, a second characteristic
-  pair next to NUS carrying the DRb stream, `StackchanApp::Remote` as the
+  pair next to NUS carrying the DRb stream, `StackChan::Robot::Remote` as the
   front, `stackchan remote <method>` on the Mac. R2P2-darwin
   `claude/drb-over-ble` sends the iOS / watchOS apps' commands the same way.
 - **AOT kernels** — `aot/`: mu-law decode and glyph expansion written in Ruby

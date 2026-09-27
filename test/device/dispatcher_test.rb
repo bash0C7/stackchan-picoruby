@@ -3,7 +3,7 @@ class DispatcherFaceTest < Picotest::Test
     @display = FakeDisplay.new
     @led     = FakeLed.new
     @stdout  = MiniSink.new
-    @disp    = StackchanApp::Dispatcher.new(display: @display, led: @led, stdout: @stdout)
+    @disp    = StackChan::Robot::Dispatcher.new(display: @display, led: @led, stdout: @stdout)
   end
 
   class MiniSink
@@ -34,7 +34,7 @@ class DispatcherFaceTest < Picotest::Test
     @disp.handle({ "F" => "5" })
     rects = @display.calls.select { |c| c.first == :draw_rect }.map(&:last)
     assert_equal 2, rects.length
-    full = rects.select { |r| r[2] == 320 && r[3] == StackchanApp::Face::FACE_REGION_HEIGHT }
+    full = rects.select { |r| r[2] == 320 && r[3] == StackChan::Robot::Face::FACE_REGION_HEIGHT }
     assert_equal 0, full.length
   end
 
@@ -55,7 +55,7 @@ class DispatcherFaceTest < Picotest::Test
   end
 
   def test_a_dispatch_exception_answers_question_mark
-    disp = StackchanApp::Dispatcher.new(display: RaisingDisplay.new, led: @led, stdout: @stdout)
+    disp = StackChan::Robot::Dispatcher.new(display: RaisingDisplay.new, led: @led, stdout: @stdout)
     disp.handle({ "F" => "0" })
     assert_equal ["?\n"], @stdout.writes
   end
@@ -68,21 +68,21 @@ class DispatcherFaceTest < Picotest::Test
 
   def touch(zone)
     led = FlashLed.new
-    disp = StackchanApp::Dispatcher.new(display: @display, led: led, stdout: @stdout)
+    disp = StackChan::Robot::Dispatcher.new(display: @display, led: led, stdout: @stdout)
     disp.react_to_touch(zone)
     [disp.current_face_class, led.flashes]
   end
 
   def test_touch_zone_0_draws_surprised_and_flashes_both_green
-    assert_equal [StackchanApp::Face::Surprised, [[:both, 0, 60, 0]]], touch(0)
+    assert_equal [StackChan::Robot::Face::Surprised, [[:both, 0, 60, 0]]], touch(0)
   end
 
   def test_touch_zone_1_draws_angry_and_flashes_right_red
-    assert_equal [StackchanApp::Face::Angry, [[:right, 60, 0, 0]]], touch(1)
+    assert_equal [StackChan::Robot::Face::Angry, [[:right, 60, 0, 0]]], touch(1)
   end
 
   def test_touch_zone_2_draws_sad_and_flashes_left_blue
-    assert_equal [StackchanApp::Face::Sad, [[:left, 0, 0, 60]]], touch(2)
+    assert_equal [StackChan::Robot::Face::Sad, [[:left, 0, 0, 60]]], touch(2)
   end
 
   def test_touch_redraws_the_face_on_the_display

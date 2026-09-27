@@ -23,8 +23,8 @@ module PicotestHarness
 # embeds them the same way.
 DEVICE_GEMS = %w[stackchan-led si12t aw88298].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
 DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb")].sort }
+ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "mrblib", "**", "*.rb")].sort
 
-  APPLICATION_RB      = File.join(REPO_ROOT, "app", "application.rb")
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")
   CLI_APP_RB          = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "cli_app.rb")
   CALIB_RB            = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "calib.rb")
@@ -48,7 +48,6 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
   PROTOCOL_GEM_DIR = File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-protocol")
   PROTOCOL_MRBLIB = [File.join(PROTOCOL_GEM_DIR, "mrblib", "stackchan-protocol.rb"),
                       *Dir[File.join(PROTOCOL_GEM_DIR, "mrblib", "stackchan-protocol", "*.rb")].sort]
-  EXTRACTED_APP_RB = "/tmp/_extracted_application.rb"
   EXTRACTED_PC_RB  = "/tmp/_extracted_ble_client.rb"
   EXTRACTED_CLI_RB = "/tmp/_extracted_cli_app.rb"
   EXTRACTED_DAEMON_RB = "/tmp/_extracted_daemon_app.rb"
@@ -60,12 +59,11 @@ DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb"
         load DEVICE_STUBS_RB
         DEVICE_GEM_MRBLIB.each { |f| load f }
         PROTOCOL_MRBLIB.each { |f| require f }
-        RubyClassExtract.load_classes_from(APPLICATION_RB, exclude_superclasses: %w[BLE])
+        ROBOT_MRBLIB.each { |f| load f }
         require "face_golden_hash"
       },
       load_files: lambda {
-        RubyClassExtract.extract_to_file(APPLICATION_RB, EXTRACTED_APP_RB, exclude_superclasses: %w[BLE])
-        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, EXTRACTED_APP_RB, FACE_GOLDEN_HASH_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, FACE_GOLDEN_HASH_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {

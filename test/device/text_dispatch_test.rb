@@ -6,7 +6,7 @@ class TextDispatchTest < Picotest::Test
   def setup
     @display = FakeDisplay.new
     @led     = FakeLed.new
-    @dispatcher = StackchanApp::Dispatcher.new(
+    @dispatcher = StackChan::Robot::Dispatcher.new(
       display: @display, led: @led, stdout: NullSink.new
     )
   end
@@ -18,7 +18,7 @@ class TextDispatchTest < Picotest::Test
     clear = @display.calls.find { |c| c.first == :draw_rect }
     assert(clear)
     _x, y, _w, _h, _color, opts = clear.last
-    assert_equal StackchanApp::Dispatcher::SUBTITLE_BAND_Y, y
+    assert_equal StackChan::Robot::Dispatcher::SUBTITLE_BAND_Y, y
     assert_equal true, opts[:fill]
     txt = @display.calls.find { |c| c.first == :draw_text }
     assert(txt)
@@ -35,16 +35,16 @@ class TextDispatchTest < Picotest::Test
     long = "あ" * 50
     @dispatcher.handle({ "text" => long })
     txt = @display.calls.find { |c| c.first == :draw_text }
-    assert_equal("あ" * StackchanApp::Dispatcher::SUBTITLE_MAX_CHARS, txt.last[2])
+    assert_equal("あ" * StackChan::Robot::Dispatcher::SUBTITLE_MAX_CHARS, txt.last[2])
   end
 
   def test_face_draw_clears_only_face_region_not_band
-    StackchanApp::Face::Neutral.new.draw(@display)
+    StackChan::Robot::Face::Neutral.new.draw(@display)
     assert_false(@display.calls.any? { |c| c.first == :fill })
     clear = @display.calls.find { |c| c.first == :draw_rect && c.last[1] == 0 }
     assert(clear)
     _x, _y, _w, h, _color, opts = clear.last
     assert_equal true, opts[:fill]
-    assert(h <= StackchanApp::Dispatcher::SUBTITLE_BAND_Y)
+    assert(h <= StackChan::Robot::Dispatcher::SUBTITLE_BAND_Y)
   end
 end

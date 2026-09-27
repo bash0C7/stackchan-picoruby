@@ -26,7 +26,7 @@ class NoDeviceRegexpTest < Test::Unit::TestCase
   def device_gem_source_files
     list = rakefile[/^DEVICE_GEM_SOURCES\s*=\s*%w\[([^\]]*)\]/, 1]
     assert_not_nil list, 'DEVICE_GEM_SOURCES = %w[...] not found in Rakefile'
-    list.split.flat_map { |g| Dir[File.join(ROOT, "mrbgems/picoruby-#{g}/mrblib/*.rb")] }
+    list.split.flat_map { |g| Dir[File.join(ROOT, "mrbgems/picoruby-#{g}/mrblib/**/*.rb")] }
   end
 
   def repo_local_r2p2_gem_dirs

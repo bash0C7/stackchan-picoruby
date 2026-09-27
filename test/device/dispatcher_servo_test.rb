@@ -19,8 +19,8 @@ class DispatcherServoTest < Picotest::Test
     @stdout  = MiniSink.new
     @yaw_servo   = FakeServo.new
     @pitch_servo = FakeServo.new
-    @head    = StackchanApp::Head.new(@yaw_servo, @pitch_servo)
-    @disp    = StackchanApp::Dispatcher.new(
+    @head    = StackChan::Robot::Head.new(@yaw_servo, @pitch_servo)
+    @disp    = StackChan::Robot::Dispatcher.new(
       display: @display, led: @led, stdout: @stdout, head: @head
     )
   end
@@ -90,7 +90,7 @@ class DispatcherServoTest < Picotest::Test
   end
 
   def test_servo_frame_without_head_acks_and_reports_both_axes_unknown
-    disp = StackchanApp::Dispatcher.new(
+    disp = StackChan::Robot::Dispatcher.new(
       display: @display, led: @led, stdout: @stdout, head: nil
     )
     disp.handle({ "YL" => "50" })

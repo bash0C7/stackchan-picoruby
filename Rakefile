@@ -140,13 +140,12 @@ namespace :test do
   end
 end
 
-# Load the application's Face classes + FakeDisplay into this CRuby process.
+# Load the robot gem's Face classes + FakeDisplay into this CRuby process.
 def load_face_context
   $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
   $LOAD_PATH.unshift(File.expand_path('test', __dir__))
   load File.expand_path('test/picotest/stubs.rb', __dir__)
-  require 'ruby_class_extract'
-  RubyClassExtract.load_classes_from(File.expand_path('app/application.rb', __dir__), exclude_superclasses: %w[BLE])
+  Dir[File.expand_path('mrbgems/picoruby-stackchan-robot/mrblib/**/*.rb', __dir__)].sort.each { |f| load f }
   require 'fake_display'
   require 'face_golden_hash'
 end
@@ -250,12 +249,13 @@ end
 
 # Pure-Ruby driver gems live under mrbgems/ but are not in the firmware build_config, so
 # their mrblib is prepended to the application source before picorbc.
-DEVICE_GEM_SOURCES = %w[stackchan-led si12t aw88298 drb-ble].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/*.rb", __dir__)].sort }
+DEVICE_GEM_SOURCES = %w[stackchan-led si12t aw88298 drb-ble stackchan-robot].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/**/*.rb", __dir__)].sort }
 
 def bundle_app_source(src)
   out = File.expand_path("tmp/build/#{File.basename(src, '.rb')}.bundled.rb", __dir__)
   mkdir_p File.dirname(out)
-  File.write(out, (DEVICE_GEM_SOURCES + [src]).map { |f| File.read(f) }.join("\n"))
+  sections = [QemuGate.top_level_requires(src).join("\n")] + (DEVICE_GEM_SOURCES + [src]).map { |f| File.read(f) }
+  File.write(out, sections.join("\n"))
   out
 end
 

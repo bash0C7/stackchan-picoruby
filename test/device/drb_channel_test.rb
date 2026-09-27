@@ -51,16 +51,16 @@ class DrbChannelTest < Picotest::Test
     @yaw = FakeServo.new
     @pitch = FakeServo.new
     @display = FakeDisplay.new
-    @dispatcher = StackchanApp::Dispatcher.new(
+    @dispatcher = StackChan::Robot::Dispatcher.new(
       display: @display, led: (@led = FakeLed.new), stdout: nil,
-      head: StackchanApp::Head.new(@yaw, @pitch)
+      head: StackChan::Robot::Head.new(@yaw, @pitch)
     )
     @port = Port.new
-    @channel = StackchanApp::DrbChannel.new(
+    @channel = StackChan::Robot::DrbChannel.new(
       rx_handle: DRX, tx_handle: DTX, cccd_handle: DCCCD,
-      responder: DRbBle::Responder.new(StackchanApp::Remote.new(@dispatcher), allow: StackchanApp::Remote::EXPOSED)
+      responder: DRbBle::Responder.new(StackChan::Robot::Remote.new(@dispatcher), allow: StackChan::Robot::Remote::EXPOSED)
     )
-    @loop = StackchanApp::LinkLoop.new(
+    @loop = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: NullTicker.new, on_packet: ->(_p) {}, on_rx: ->(_d) {},
       clock: -> { 0 }, log: ->(_l) {}, drb: @channel

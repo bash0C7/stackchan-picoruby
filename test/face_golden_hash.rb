@@ -5,13 +5,13 @@
 # stays a single source of truth between registration and assertion.
 module FaceGoldenHash
   FACE_CASES = {
-    neutral:   StackchanApp::Face::Neutral,
-    smile:     StackchanApp::Face::Smile,
-    joy:       StackchanApp::Face::Joy,
-    surprised: StackchanApp::Face::Surprised,
-    sad:       StackchanApp::Face::Sad,
-    angry:     StackchanApp::Face::Angry,
-    closed:    StackchanApp::Face::Closed,
+    neutral:   StackChan::Robot::Face::Neutral,
+    smile:     StackChan::Robot::Face::Smile,
+    joy:       StackChan::Robot::Face::Joy,
+    surprised: StackChan::Robot::Face::Surprised,
+    sad:       StackChan::Robot::Face::Sad,
+    angry:     StackChan::Robot::Face::Angry,
+    closed:    StackChan::Robot::Face::Closed,
   }.freeze
   # Deterministic string for a single FakeDisplay#calls entry:
   #   "method_name|arg0,arg1,...,argN-1,{fill:true/false}"

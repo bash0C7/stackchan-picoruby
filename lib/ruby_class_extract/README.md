@@ -35,9 +35,8 @@ hardware bootstrap with pure-Ruby class definitions.
 require 'ruby_class_extract'
 
 RubyClassExtract.load_classes_from(
-  'app/application.rb',
+  'pc/stackchan-pico/app/ble_client.rb',
   exclude_superclasses: %w[BLE],
 )
-display = FakeDisplay.new
-StackchanApp::Face::Sad.new.draw(display)
+NusResolver.rx_uuid
 ```

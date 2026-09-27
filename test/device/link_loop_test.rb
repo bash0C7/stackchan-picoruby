@@ -71,7 +71,7 @@ class LinkLoopTest < Picotest::Test
     @rx      = []
     @logs    = []
     @now     = 5_000_000
-    @link = StackchanApp::LinkLoop.new(
+    @link = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: @ticker,
       on_packet: ->(pkt) { @packets << pkt },
@@ -93,7 +93,7 @@ class LinkLoopTest < Picotest::Test
 
   def test_tick_pops_with_tick_ms_and_calls_event_popped_without_an_event
     @link.tick
-    assert_equal [StackchanApp::LinkLoop::TICK_MS], @port.pops
+    assert_equal [StackChan::Robot::LinkLoop::TICK_MS], @port.pops
     assert_equal 1, @port.event_popped_count
   end
 
@@ -182,7 +182,7 @@ class LinkLoopTest < Picotest::Test
   end
 
   def test_tick_ms_is_20
-    assert_equal 20, StackchanApp::LinkLoop::TICK_MS
+    assert_equal 20, StackChan::Robot::LinkLoop::TICK_MS
   end
 
   def test_dropped_write_does_not_leave_a_stale_rx_stamp
@@ -194,7 +194,7 @@ class LinkLoopTest < Picotest::Test
   end
 
   def test_disconnected_clears_the_rx_stamp
-    silent = StackchanApp::LinkLoop.new(
+    silent = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: @ticker,
       on_packet: ->(pkt) { @packets << pkt },

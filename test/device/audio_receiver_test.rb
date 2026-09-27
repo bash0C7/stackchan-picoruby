@@ -14,7 +14,7 @@ class AudioReceiverTest < Picotest::Test
   end
 
   def receiver(speaker:, parser:, notify: ->(msg) {}, drain: -> { nil }, pump: -> {})
-    StackchanApp::AudioReceiver.new(speaker: speaker, parser: parser, notify: notify, drain: drain, pump: pump)
+    StackChan::Robot::AudioReceiver.new(speaker: speaker, parser: parser, notify: notify, drain: drain, pump: pump)
   end
 
   def total_delay_ms
@@ -116,7 +116,7 @@ class AudioReceiverTest < Picotest::Test
     assert_equal 3000, total_delay_ms
     longest = 0
     Machine.delays.each { |ms| longest = ms if ms > longest }
-    assert_equal StackchanApp::AudioReceiver::DRAIN_STEP_MS, longest
+    assert_equal StackChan::Robot::AudioReceiver::DRAIN_STEP_MS, longest
     assert_equal Machine.delays.length, pumps
     assert_equal 3212, spk.i2s.written.bytesize
   end

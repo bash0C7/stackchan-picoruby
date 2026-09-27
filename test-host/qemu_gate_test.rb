@@ -201,8 +201,8 @@ class QemuGateTest < Test::Unit::TestCase
     omit "host picotest VM's mrbc not built (run `bundle exec rake picotest:build`)" unless mrbc
 
     application = File.join(ROOT, 'app', 'application.rb')
-    gem_sources = %w[stackchan-led si12t aw88298 drb-ble].flat_map do |g|
-      Dir[File.join(ROOT, 'mrbgems', "picoruby-#{g}", 'mrblib', '*.rb')].sort
+    gem_sources = %w[stackchan-led si12t aw88298 drb-ble stackchan-robot].flat_map do |g|
+      Dir[File.join(ROOT, 'mrbgems', "picoruby-#{g}", 'mrblib', '**', '*.rb')].sort
     end
 
     source = QemuGate.probe_source(application: application, gem_sources: gem_sources)
