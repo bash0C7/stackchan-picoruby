@@ -1,5 +1,4 @@
 require 'prism'
-require_relative 'ruby_class_extract'
 
 module QemuGate
   QEMU_VERSION = 'esp_develop_9.2.2_20250817'
@@ -100,7 +99,8 @@ module QemuGate
     sections = []
     sections << top_level_requires(application).join("\n")
     gem_sources.each { |path| sections << File.read(path) }
-    sections << RubyClassExtract.extract_source_from(application, exclude_superclasses: %w[BLE])
+    sections << "class StackChan::Robot\n  def run\n  end\nend"
+    sections << File.read(application)
     sections << <<~RUBY
       raise "frame parser round trip failed" unless StackchanProtocol::FrameParser.new.feed("<F:1>\\n") == [{"F"=>"1"}]
     RUBY

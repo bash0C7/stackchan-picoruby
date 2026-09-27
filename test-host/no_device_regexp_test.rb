@@ -43,7 +43,7 @@ class NoDeviceRegexpTest < Test::Unit::TestCase
   end
 
   def device_files
-    (device_gem_source_files + r2p2_gem_dir_mrblib_files + [File.join(ROOT, 'app/application.rb')]).sort.uniq
+    (device_gem_source_files + r2p2_gem_dir_mrblib_files + [File.join(ROOT, 'apps/robot/app.rb')]).sort.uniq
   end
 
   def find_regexp(node, acc = [])

@@ -145,7 +145,7 @@ def load_face_context
   $LOAD_PATH.unshift(File.expand_path('lib', __dir__))
   $LOAD_PATH.unshift(File.expand_path('test', __dir__))
   load File.expand_path('test/picotest/stubs.rb', __dir__)
-  Dir[File.expand_path('mrbgems/picoruby-stackchan-robot/mrblib/**/*.rb', __dir__)].sort.each { |f| load f }
+  Dir[File.expand_path('mrbgems/picoruby-stackchan-robot/mrblib/**/*.rb', __dir__)].sort.reject { |f| File.basename(f) == 'peripheral.rb' }.each { |f| load f }
   require 'fake_display'
   require 'face_golden_hash'
 end
@@ -310,11 +310,11 @@ def stackchan_cli!(label, *args)
   stackchan_cli(*args) or abort "[#{label}] `stackchan #{args.join(' ')}` FAIL"
 end
 
-# Upload application.rb as the autostart payload, reset, and wait for
+# Upload the robot app as the autostart payload, reset, and wait for
 # advertising (5 s escape hatch + cold-boot + 3 s BLE yield).
 def deploy_application_and_wait(label)
   wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
-  ENV['SRC'] = 'app/application.rb'
+  ENV['SRC'] = 'apps/robot/app.rb'
   Rake::Task['r2p2:upload_appmrb'].invoke
   Rake::Task['r2p2:reset'].invoke
   puts "[#{label}] waiting #{wait}s for autostart + BLE advertise"
@@ -491,7 +491,7 @@ namespace :r2p2 do
     rm_rf PICORUBY_BUILD_DIR if Dir.exist?(PICORUBY_BUILD_DIR)
   end
 
-  def qemu_gate_then_clean!(app: 'app/application.rb')
+  def qemu_gate_then_clean!(app: 'apps/robot/app.rb')
     ENV['QEMU_PROBE_APP'] = app
     Rake::Task['r2p2:qemu_check'].invoke
     clean_picoruby_build!
@@ -538,7 +538,7 @@ namespace :r2p2 do
     abort "[r2p2:qemu_check] #{QEMU_BUILD_DIR}/sdkconfig missing" unless File.exist?("#{QEMU_BUILD_DIR}/sdkconfig")
 
     mkdir_p QEMU_RUN_DIR
-    probe_app = File.expand_path(ENV.fetch('QEMU_PROBE_APP', 'app/application.rb'), __dir__)
+    probe_app = File.expand_path(ENV.fetch('QEMU_PROBE_APP', 'apps/robot/app.rb'), __dir__)
     probe_source = QemuGate.probe_source(application: probe_app, gem_sources: DEVICE_GEM_SOURCES)
     storage_bin = File.join(QEMU_RUN_DIR, 'storage.bin')
     qemu_build_storage_image(probe_source, storage_bin)
@@ -664,7 +664,7 @@ namespace :r2p2 do
   # and `idf.py flash` writes it with the firmware, so app.mrb placed there
   # lands at /home/app.mrb with no picomodem upload. esptool hard-resets on
   # its own; capture boot separately.
-  desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass'
+  desc 'host-compile SRC=apps/robot/app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass'
   task :build_flash_appmrb do
     src = src_from_env('r2p2:build_flash_appmrb')
     qemu_gate_then_clean!(app: src)
@@ -675,7 +675,7 @@ namespace :r2p2 do
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src)} flashed"
   end
 
-  desc 'build_flash → wipe_storage → upload_appmrb → reset (SRC=app.rb, ~7 min)'
+  desc 'build_flash → wipe_storage → upload_appmrb → reset (SRC=apps/robot/app.rb, ~7 min)'
   task :full_rebuild do
     src = ENV.fetch('SRC') { abort 'SRC=path/to/app.rb required for r2p2:full_rebuild' }
     ensure_no_concurrent_monitor

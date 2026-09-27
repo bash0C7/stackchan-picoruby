@@ -2,7 +2,6 @@ require 'test/unit'
 require 'tempfile'
 require 'open3'
 require 'qemu_gate'
-require 'ruby_class_extract'
 
 class QemuGateTest < Test::Unit::TestCase
   ROOT = File.expand_path('..', __dir__)
@@ -106,23 +105,16 @@ class QemuGateTest < Test::Unit::TestCase
   end
 
 
-  def test_probe_source_orders_requires_gems_classes_wire_marker
+  def test_probe_source_orders_requires_gems_run_stub_app_wire_marker
     application = Tempfile.new(['fixture_app', '.rb'])
     application.write(<<~RUBY)
       require 'spi'
       require 'gpio'
       require 'stackchan-protocol'
 
-      class BLE
-      end
-
-      class Excluded < BLE
-        def ping; end
-      end
-
-      class Widget
-        def ping = :pong
-      end
+      StackChan.robot do |bot|
+        bot.face :neutral
+      end.run
     RUBY
     application.close
 
@@ -136,21 +128,22 @@ class QemuGateTest < Test::Unit::TestCase
     require2_idx = source.index("require 'gpio'")
     require3_idx = source.index("require 'stackchan-protocol'")
     gem_idx = source.index("class GemHelper")
-    class_idx = source.index("class Widget")
+    stub_idx = source.index("class StackChan::Robot\n  def run\n  end\nend")
+    app_idx = source.index("StackChan.robot do |bot|")
     wire_idx = source.index("FrameParser")
     marker_idx = source.index('puts "QEMU_PROBE_OK"')
 
-    [require_idx, require2_idx, require3_idx, gem_idx, class_idx, wire_idx, marker_idx].each do |idx|
+    [require_idx, require2_idx, require3_idx, gem_idx, stub_idx, app_idx, wire_idx, marker_idx].each do |idx|
       assert idx, "expected all sections present in:\n#{source}"
     end
     assert require_idx < require2_idx
     assert require2_idx < require3_idx
     assert require3_idx < gem_idx
-    assert gem_idx < class_idx
-    assert class_idx < wire_idx
+    assert gem_idx < stub_idx
+    assert stub_idx < app_idx
+    assert app_idx < wire_idx
     assert wire_idx < marker_idx
-
-    refute source.include?("class Excluded"), "BLE-derived class body must be excluded"
+    assert source.include?(File.read(application.path)), "the whole app file belongs in the probe"
   ensure
     application.unlink
     gem_source.unlink
@@ -171,11 +164,9 @@ class QemuGateTest < Test::Unit::TestCase
     application.close
 
     source = QemuGate.probe_source(application: application.path, gem_sources: [])
-    requires_section = source.lines.take_while { |l| !l.include?("class Widget") }.join
+    requires_section = source.split("\n\n").first
 
-    assert source.include?("require 'top_level'")
-    refute source.include?("require SOME_NAME")
-    refute requires_section.include?("nested_not_top_level"), "only literal top-level requires belong in the requires section"
+    assert_equal "require 'top_level'", requires_section
   ensure
     application.unlink
   end
@@ -196,11 +187,11 @@ class QemuGateTest < Test::Unit::TestCase
     end
   end
 
-  def test_probe_source_compiles_for_the_real_application
+  def test_probe_source_compiles_for_the_robot_app
     mrbc = mrbc_path
     omit "host picotest VM's mrbc not built (run `bundle exec rake picotest:build`)" unless mrbc
 
-    application = File.join(ROOT, 'app', 'application.rb')
+    application = File.join(ROOT, 'apps', 'robot', 'app.rb')
     gem_sources = %w[stackchan-led si12t aw88298 drb-ble stackchan-robot].flat_map do |g|
       Dir[File.join(ROOT, 'mrbgems', "picoruby-#{g}", 'mrblib', '**', '*.rb')].sort
     end
@@ -208,7 +199,7 @@ class QemuGateTest < Test::Unit::TestCase
     source = QemuGate.probe_source(application: application, gem_sources: gem_sources)
     with_tempfile(source) do |src_path, mrb_path|
       _out, err, status = Open3.capture3(mrbc, '-o', mrb_path, src_path)
-      assert status.success?, "mrbc failed on the real application:\n#{err}"
+      assert status.success?, "mrbc failed on the robot app:\n#{err}"
     end
   end
 

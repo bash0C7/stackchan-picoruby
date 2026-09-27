@@ -16,5 +16,5 @@ Needs the CoreS3 on USB, the Mac's Bluetooth, and ESP-IDF (`ESP_IDF_EXPORT` if n
 
 - A step marked FAIL stops the run; its detail names the tree, marker or command. `pins hold ...` = something moved a checkout (fix the tree, do not edit the lock to match it). `boot` = read the boot log it names with `stackchan-device-crash-analyze`.
 - A FAIL under `pc_vm` = the Mac VM (`pc:vm_build` / `pc:app_bundle` at the locked R2P2-darwin) did not build; no arm runs.
-- Change what is trialled only by editing `trial/lock.yml` (full shas).
+- Change what is trialled only by editing `trial/lock.yml` (full shas). Each arm uploads the app its `app:` names (`app/application.rb` when absent).
 - Timings are compared only inside one report (base vs trial of the same run).

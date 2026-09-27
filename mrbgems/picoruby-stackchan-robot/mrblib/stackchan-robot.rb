@@ -58,6 +58,20 @@ module StackChan
       Wiring.new(dispatcher, ticker, Remote.new(dispatcher, remote_handlers: @remote_handlers))
     end
 
+    def run
+      sleep_ms 5000
+      devices = Boot.run
+      sleep_ms 3000
+      puts "[application] BLE peripheral starting (infinite advertise)"
+      peripheral = Peripheral.new(
+        self,
+        display: devices[:display], led: devices[:led], head: devices[:head],
+        touch: devices[:touch], speaker: devices[:speaker]
+      )
+      run_on_boot(peripheral.robot_handle)
+      peripheral.run
+    end
+
     def run_on_boot(handle)
       i = 0
       while i < @boot_handlers.size

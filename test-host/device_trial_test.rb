@@ -123,6 +123,25 @@ class DeviceTrialTest < Test::Unit::TestCase
                  rakes.select { |d, _| d == "trial" }.map(&:last)
   end
 
+  def upload_src(arm)
+    call = @ops.calls.find { |c| c[0] == :rake && c[1] == wt(arm) && c[2] == "r2p2:upload_appmrb" }
+    call.last["SRC"]
+  end
+
+  def test_an_arm_without_an_app_key_uploads_app_application_rb
+    lock = Marshal.load(Marshal.dump(LOCK))
+    lock["arms"]["trial"].delete("app")
+    DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, rounds: 2, stamp: "t").run(%w[trial])
+    assert_equal "app/application.rb", upload_src("trial")
+  end
+
+  def test_an_arm_uploads_the_app_its_lock_entry_names
+    lock = Marshal.load(Marshal.dump(LOCK))
+    lock["arms"]["trial"]["app"] = "apps/robot/app.rb"
+    DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, rounds: 2, stamp: "t").run(%w[trial])
+    assert_equal "apps/robot/app.rb", upload_src("trial")
+  end
+
   def test_every_tree_is_pinned_before_the_first_build
     trial.run(%w[trial])
     first_rake = @ops.calls.index { |c| c[0] == :rake && c[2] == "r2p2:setup" }

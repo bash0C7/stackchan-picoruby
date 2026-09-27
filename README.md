@@ -70,18 +70,21 @@ vendoring needed for those. The BLE frame protocol gem
 (`mrbgems/picoruby-stackchan-protocol`) lives in this repo and is handed to
 the same build_config as a gem dir (`R2P2_GEM_DIRS`).
 
-All StackChan business logic lives in a single autostart payload:
+The robot's behaviour is one DSL file; the engine gem does everything else:
 
 ```
-app/application.rb   Face rendering, head-touch reactions, the command
-                     dispatcher, the BLE peripheral, audio receive, and the
-                     cold-boot init sequence.
-mrbgems/             picoruby-stackchan-led (WS2812 ring), picoruby-si12t
+apps/robot/app.rb    The autostart payload: requires and one
+                     `StackChan.robot do |bot| ... end.run` naming the faces,
+                     the face index, the head-touch reactions and the blink.
+mrbgems/             picoruby-stackchan-robot (the engine: DSL, cold-boot
+                     init sequence, BLE peripheral, command dispatcher, face
+                     rendering, audio receive, tick loop, dRuby front),
+                     picoruby-stackchan-led (WS2812 ring), picoruby-si12t
                      (head touch), picoruby-aw88298 (amp + mu-law playback),
                      picoruby-drb-ble (dRuby over BLE) and
                      picoruby-stackchan-shared (send builder and BLE error
                      hierarchy, which the PC daemon loads as source). The
-                     device-side gems are prepended to application.rb by the
+                     device-side gems are prepended to the app by the
                      Rakefile before compiling app.mrb.
 aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
                      firmware: mu-law decode on core 1, glyph expansion on
@@ -98,17 +101,18 @@ pc/sidecar/                The CRuby sidecar process, bridged to the
 
 test/                      Host tests (picotest on a host PicoRuby VM, reusing
                            vendor/R2P2-ESP32's own picoruby submodule).
-lib/ruby_class_extract.rb  prism-AST loader for application.rb class bodies.
+lib/ruby_class_extract.rb  prism-AST loader for the pc app class bodies.
 lib/deploy/                host-side picomodem uploader.
 Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
                            task wrappers.
 ```
 
-Host tests run the device-side logic on a host PicoRuby VM through picotest. A
-CRuby orchestrator extracts the class bodies from `application.rb` with a prism
-AST so the device classes can be exercised without the device;
-`pc/stackchan-pico/app/ble_client.rb` is extracted the same way for the pc
-suite. Device interaction (build, flash, deploy, capture) goes through the
+Host tests run the device-side logic on a host PicoRuby VM through picotest.
+The device suite loads the robot gem (all but its `< BLE` peripheral) with
+fakes for the display, LEDs, servos and touch, and evaluates
+`apps/robot/app.rb` with its requires stripped and `Robot#run` stubbed, so the
+app's handlers are exercised without the device. The pc suite extracts the
+class bodies of `pc/stackchan-pico/app/*.rb` with a prism AST. Device interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
 ## Setting up a new machine
@@ -129,13 +133,13 @@ bundle exec rake vendor:setup          # clone both build trees and the picoruby
 
 ```bash
 bundle exec rake r2p2:setup            # 10-20 min; first time, and after a target switch
-bundle exec rake r2p2:build_flash_appmrb SRC=app/application.rb
+bundle exec rake r2p2:build_flash_appmrb SRC=apps/robot/app.rb
 ```
 
 `r2p2:setup` rebuilds the host mruby and runs `idf.py set-target esp32s3`.
 Skipping it leaves the target at the default `esp32`, which fails to link with an
 IRAM overflow. The second command builds the firmware and bakes
-`app/application.rb` into the littlefs storage partition as `/home/app.mrb`, so
+`apps/robot/app.rb` into the littlefs storage partition as `/home/app.mrb`, so
 the robot autostarts it. Both need the CoreS3 attached over USB-C.
 
 Day-to-day iteration on the application alone does not reflash the firmware — use

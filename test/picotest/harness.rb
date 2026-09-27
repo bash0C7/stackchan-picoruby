@@ -24,6 +24,7 @@ module PicotestHarness
 DEVICE_GEMS = %w[stackchan-led si12t aw88298].map { |g| File.join(REPO_ROOT, "mrbgems", "picoruby-#{g}") }
 DEVICE_GEM_MRBLIB = DEVICE_GEMS.flat_map { |g| Dir[File.join(g, "mrblib", "*.rb")].sort }
 ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "mrblib", "**", "*.rb")].sort
+  .reject { |f| File.basename(f) == "peripheral.rb" }
 
   BLE_CLIENT_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "ble_client.rb")
   CLI_APP_RB          = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "cli_app.rb")
@@ -52,6 +53,8 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   EXTRACTED_PC_RB  = "/tmp/_extracted_ble_client.rb"
   EXTRACTED_CLI_RB = "/tmp/_extracted_cli_app.rb"
   EXTRACTED_DAEMON_RB = "/tmp/_extracted_daemon_app.rb"
+  ROBOT_APP_RB = File.join(REPO_ROOT, "apps", "robot", "app.rb")
+  EXTRACTED_ROBOT_APP_RB = "/tmp/_extracted_robot_app.rb"
 
   SUITES = {
     "device" => {
@@ -64,7 +67,8 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
         require "face_golden_hash"
       },
       load_files: lambda {
-        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, FACE_GOLDEN_HASH_RB, ROBOT_TABLES_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
+        extract_robot_app(ROBOT_APP_RB, EXTRACTED_ROBOT_APP_RB)
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, FACE_GOLDEN_HASH_RB, ROBOT_TABLES_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB, EXTRACTED_ROBOT_APP_RB]
       },
     },
     "pc" => {
@@ -122,6 +126,25 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   SUITES.freeze
 
   module_function
+
+  def extract_robot_app(src, out)
+    require "prism"
+    body = Prism.parse_file(src).value.statements.body
+    kept = body.reject { |n| n.is_a?(Prism::CallNode) && n.name == :require && n.receiver.nil? }
+    File.write(out, <<~RUBY)
+      class StackChan::Robot
+        def run
+          self
+        end
+      end
+
+      module RobotApp
+        def self.robot
+      #{kept.map(&:slice).join("\n")}
+        end
+      end
+    RUBY
+  end
 
   # Returns the total error count across the selected suites (0 = green).
   def run(filter: nil, suite: nil)

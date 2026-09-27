@@ -38,6 +38,7 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
     remote: true
+    app: apps/robot/app.rb
 
 # iOS / watchOS apps, run against the trial arm's firmware.
 darwin:

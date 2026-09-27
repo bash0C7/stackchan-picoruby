@@ -88,7 +88,8 @@ picoruby-multicore, R2P2-darwin — for two arms: `base` (main as it is) and
 `trial` (these branches). `rake trial:run` first pins R2P2-darwin and builds
 the Mac VM and app bundle once for both arms (each arm's daemon loads the
 shared gem as source from its own worktree), then builds each arm with its own
-worktree's tooling, checks the pins before and after the build, checks the
+worktree's tooling, checks the pins before and after the build, uploads the
+arm's `app:` from the lock (`app/application.rb` when absent), checks the
 boot log (markers, App version, no fault), drives torque / face / LED /
 servo / `remote` / `say` from the Mac, times faces, the 19-glyph subtitle,
 servo over text and over dRuby, and `say`, and writes

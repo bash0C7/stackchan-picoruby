@@ -74,7 +74,7 @@ class DeviceTrial
     step(r, "r2p2:build_flash") { rake(wt, "r2p2:build_flash") }
     step(r, "pins hold after build") { verify(arm, wt, aot: true) }
     step(r, "r2p2:wipe_storage") { rake(wt, "r2p2:wipe_storage") }
-    step(r, "r2p2:upload_appmrb") { rake(wt, "r2p2:upload_appmrb", env: { "SRC" => "app/application.rb" }) }
+    step(r, "r2p2:upload_appmrb") { rake(wt, "r2p2:upload_appmrb", env: { "SRC" => arm.fetch("app", "app/application.rb") }) }
     step(r, "boot") { check_boot(arm, name) }
     step(r, "pc:up") { rake(wt, "pc:up") }
 

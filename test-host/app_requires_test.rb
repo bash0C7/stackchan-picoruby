@@ -11,7 +11,7 @@ class AppRequiresTest < Test::Unit::TestCase
   end
 
   def app_requires
-    File.read(File.join(ROOT, 'app', 'application.rb')).scan(/^\s*require\s+['"]([^'"]+)['"]/).flatten
+    File.read(File.join(ROOT, 'apps', 'robot', 'app.rb')).scan(/^\s*require\s+['"]([^'"]+)['"]/).flatten
   end
 
   def test_app_does_not_require_a_gem_the_rakefile_bundles_as_source
