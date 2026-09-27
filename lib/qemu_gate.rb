@@ -29,10 +29,11 @@ module QemuGate
   }.freeze
 
   FAIL_PATTERNS = [/Guru Meditation/, /abort\(\)/, /Rebooting\.\.\./, /assert failed/].freeze
-  ERROR_CLASS_PATTERN = /\((NameError|LoadError|NoMethodError|ArgumentError|TypeError|RuntimeError|Exception)\)|^Error: |^Exception\(vm_id=/
+  ERROR_CLASS_PATTERN = /\((?:[A-Z]\w*::)*[A-Z]\w*(?:Error|Exception)\)\s*$|^Error: |^Exception\(vm_id=/
   MARKER = 'QEMU_PROBE_OK'
 
-  Verdict = Struct.new(:pass, :message)
+  Verdict = Struct.new(:pass, :message, :decided)
+  FLASH_CONSOLE_DEFINE = "#define CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 1"
 
   module_function
 
@@ -110,15 +111,19 @@ module QemuGate
     text = log.to_s
     FAIL_PATTERNS.each do |pattern|
       match = text[pattern]
-      return Verdict.new(false, "boot log shows #{match.inspect}") if match
+      return Verdict.new(false, "boot log shows #{match.inspect}", true) if match
     end
 
     text.each_line do |line|
-      return Verdict.new(false, "boot log shows #{line.strip.inspect}") if line.match?(ERROR_CLASS_PATTERN)
+      return Verdict.new(false, "boot log shows #{line.strip.inspect}", true) if line.match?(ERROR_CLASS_PATTERN)
     end
 
-    return Verdict.new(true, "marker #{MARKER} found") if text.include?(MARKER)
+    return Verdict.new(true, "marker #{MARKER} found", true) if text.include?(MARKER)
 
-    Verdict.new(false, 'no marker')
+    Verdict.new(false, 'no marker', false)
+  end
+
+  def flash_console_ok?(sdkconfig_h)
+    sdkconfig_h.to_s.include?(FLASH_CONSOLE_DEFINE)
   end
 end

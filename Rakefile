@@ -403,9 +403,8 @@ namespace :qemu do
 
     out, err, status = Open3.capture3(qemu_binary_path, '--version')
     if !status.success?
-      if err =~ /error while loading shared libraries: (\S+)/
-        abort "[qemu:setup] missing shared library #{$1} — #{qemu_missing_lib_package_cmd}"
-      end
+      lib = err[/error while loading shared libraries: (\S+)/, 1] || err[/Library not loaded: (\S+)/, 1]
+      abort "[qemu:setup] missing shared library #{lib} — #{qemu_missing_lib_package_cmd}" if lib
       abort "[qemu:setup] #{qemu_binary_path} --version failed:\n#{err}"
     end
     abort "[qemu:setup] unexpected --version output (want #{QemuGate::QEMU_VERSION}):\n#{out}" unless out.include?(QemuGate::QEMU_VERSION)
@@ -426,7 +425,7 @@ def qemu_build_storage_image(probe_source, out_bin)
   File.write(probe_rb, probe_source)
   compile_mrb(probe_rb, File.join(storage_dir, 'home', 'app.mrb'))
   rm_f out_bin
-  sh qemu_littlefs_python, 'create', '--fs-size=1048576', '--name-max=64', '--block-size=4096', storage_dir, out_bin
+  sh qemu_littlefs_python, 'create', "--fs-size=#{Integer(STORAGE_SIZE, 16)}", '--name-max=64', '--block-size=4096', storage_dir, out_bin
 end
 
 def qemu_merged_flash_image(out_bin)
@@ -438,7 +437,9 @@ def qemu_overwrite_storage(flash_bin, storage_bin)
   offset = Integer(STORAGE_OFFSET, 16)
   block = 4096
   abort "[r2p2:qemu_check] STORAGE_OFFSET #{STORAGE_OFFSET} is not #{block}-aligned" unless (offset % block).zero?
-  sh 'dd', "if=#{storage_bin}", "of=#{flash_bin}", "bs=#{block}", "seek=#{offset / block}", 'conv=notrunc', 'status=none'
+  image = File.binread(storage_bin)
+  abort "[r2p2:qemu_check] storage image is #{image.bytesize} bytes, partition is #{STORAGE_SIZE}" unless image.bytesize == Integer(STORAGE_SIZE, 16)
+  File.open(flash_bin, 'r+b') { |io| io.seek(offset); io.write(image) }
 end
 
 def qemu_write_efuse_image(path)
@@ -447,22 +448,33 @@ end
 
 def qemu_run_and_poll(flash:, efuse:, log:, timeout: 120)
   argv = QemuGate.argv(qemu: qemu_binary_path, flash: flash, efuse: efuse, log: log)
-  pid = Process.spawn(*argv, out: File::NULL, err: File::NULL)
+  stderr_log = "#{log}.stderr"
+  pid = Process.spawn(*argv, out: File::NULL, err: stderr_log)
   deadline = Time.now + timeout
-  verdict = QemuGate.verdict('')
   loop do
-    text = File.exist?(log) ? File.binread(log) : ''
-    verdict = QemuGate.verdict(text)
-    break if verdict.pass || verdict.message != 'no marker' || Time.now >= deadline
+    verdict = QemuGate.verdict(File.exist?(log) ? File.binread(log) : '')
+    return verdict if verdict.decided
+    _, status = Process.wait2(pid, Process::WNOHANG)
+    if status
+      pid = nil
+      return QemuGate::Verdict.new(false, "qemu exited (#{status}) before a verdict: #{File.read(stderr_log).strip}", true)
+    end
+    return QemuGate::Verdict.new(false, "no marker within #{timeout} s", true) if Time.now >= deadline
     sleep 1
   end
-  verdict
 ensure
-  begin
-    Process.kill('TERM', pid)
-    Process.wait(pid)
-  rescue Errno::ESRCH, Errno::ECHILD
+  qemu_stop(pid) if pid
+end
+
+def qemu_stop(pid)
+  Process.kill('TERM', pid)
+  20.times do
+    return if Process.wait(pid, Process::WNOHANG)
+    sleep 0.25
   end
+  Process.kill('KILL', pid)
+  Process.wait(pid)
+rescue Errno::ESRCH, Errno::ECHILD
 end
 
 namespace :r2p2 do
@@ -477,9 +489,19 @@ namespace :r2p2 do
     rm_rf PICORUBY_BUILD_DIR if Dir.exist?(PICORUBY_BUILD_DIR)
   end
 
-  def qemu_gate_then_clean!
+  def qemu_gate_then_clean!(app: 'app/application.rb')
+    ENV['QEMU_PROBE_APP'] = app
     Rake::Task['r2p2:qemu_check'].invoke
     clean_picoruby_build!
+  end
+
+  def build_then_flash!(port)
+    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build")
+    header = "#{R2P2_ROOT}/build/config/sdkconfig.h"
+    unless File.exist?(header) && QemuGate.flash_console_ok?(File.read(header))
+      abort "[r2p2] #{header} lacks `#{QemuGate::FLASH_CONSOLE_DEFINE}` — refusing to flash a build without the USB console"
+    end
+    in_r2p2 "ESPPORT=#{port} rake flash"
   end
 
   desc 'rm picoruby build dir so the next build recompiles every gem object'
@@ -498,18 +520,24 @@ namespace :r2p2 do
     qemu_gate_then_clean!
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
-    in_r2p2 "ESPPORT=#{espport} rake flash"
+    build_then_flash!(espport)
   end
 
   desc "boot this tree under QEMU and require the probe marker (spec steps 1-5); FAILs abort"
   task :qemu_check => ['qemu:setup', 'aot:esp32'] do
     clean_picoruby_build!
     rm_rf QEMU_BUILD_DIR if Dir.exist?(QEMU_BUILD_DIR)
-    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" SDKCONFIG=build-qemu/sdkconfig idf.py -B build-qemu set-target esp32s3}
-    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" SDKCONFIG=build-qemu/sdkconfig idf.py -B build-qemu build -DPICORB_VM=#{PICORB_VM}}
+    project_sdkconfig = "#{R2P2_ROOT}/sdkconfig"
+    before = File.exist?(project_sdkconfig) ? Digest::SHA256.file(project_sdkconfig).hexdigest : nil
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" idf.py -B build-qemu -DSDKCONFIG=#{QEMU_BUILD_DIR}/sdkconfig set-target esp32s3}
+    in_r2p2 %Q{SDKCONFIG_DEFAULTS="#{QEMU_SDKCONFIG_DEFAULTS}" idf.py -B build-qemu -DSDKCONFIG=#{QEMU_BUILD_DIR}/sdkconfig build -DPICORB_VM=#{PICORB_VM}}
+    after = File.exist?(project_sdkconfig) ? Digest::SHA256.file(project_sdkconfig).hexdigest : nil
+    abort "[r2p2:qemu_check] the QEMU build changed #{project_sdkconfig}" unless before == after
+    abort "[r2p2:qemu_check] #{QEMU_BUILD_DIR}/sdkconfig missing" unless File.exist?("#{QEMU_BUILD_DIR}/sdkconfig")
 
     mkdir_p QEMU_RUN_DIR
-    probe_source = QemuGate.probe_source(application: File.expand_path('app/application.rb', __dir__), gem_sources: DEVICE_GEM_SOURCES)
+    probe_app = File.expand_path(ENV.fetch('QEMU_PROBE_APP', 'app/application.rb'), __dir__)
+    probe_source = QemuGate.probe_source(application: probe_app, gem_sources: DEVICE_GEM_SOURCES)
     storage_bin = File.join(QEMU_RUN_DIR, 'storage.bin')
     qemu_build_storage_image(probe_source, storage_bin)
 
@@ -533,7 +561,7 @@ namespace :r2p2 do
     qemu_gate_then_clean!
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
-    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build", 'flash', port: espport)
+    build_then_flash!(espport)
   end
 
   desc 'idf.py monitor (human use only — needs a TTY)'
@@ -636,12 +664,12 @@ namespace :r2p2 do
   # its own; capture boot separately.
   desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass'
   task :build_flash_appmrb do
-    qemu_gate_then_clean!
+    src = src_from_env('r2p2:build_flash_appmrb')
+    qemu_gate_then_clean!(app: src)
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
-    src = src_from_env('r2p2:build_flash_appmrb')
     compile_mrb(bundle_app_source(src), "#{R2P2_ROOT}/storage/home/app.mrb")
-    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build", 'flash', port: espport)
+    build_then_flash!(espport)
     puts "[build_flash_appmrb] PASS — firmware + #{File.basename(src)} flashed"
   end
 

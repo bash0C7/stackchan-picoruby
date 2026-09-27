@@ -347,6 +347,29 @@ class QemuGateTest < Test::Unit::TestCase
     assert verdict.pass
   end
 
+  def test_verdict_fails_on_any_error_class_line_including_ones_outside_a_fixed_list
+    %w[KeyError IndexError ZeroDivisionError StopIteration::FooError].each do |klass|
+      verdict = QemuGate.verdict("(unknown):0: boom (#{klass})\nLoading app.mrb\nQEMU_PROBE_OK\n")
+      refute verdict.pass, klass
+    end
+  end
+
+  def test_verdict_does_not_treat_idf_log_lines_as_errors
+    log = "E (123) spi_flash: detected chip: issi\nW (857) eFuse: calibration efuse version does not match, set default version to 0\nLoading app.mrb\nQEMU_PROBE_OK\n"
+    assert QemuGate.verdict(log).pass
+  end
+
+  def test_verdict_is_decided_on_pass_and_on_failure_but_not_while_waiting
+    assert QemuGate.verdict("Loading app.mrb\nQEMU_PROBE_OK\n").decided
+    assert QemuGate.verdict("Guru Meditation Error\n").decided
+    refute QemuGate.verdict("Initializing FLASH disk as the root volume...\n").decided
+  end
+
+  def test_flash_console_ok_requires_the_usb_serial_jtag_console_define
+    assert QemuGate.flash_console_ok?("#define CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 1\n")
+    refute QemuGate.flash_console_ok?("#define CONFIG_ESP_CONSOLE_UART_DEFAULT 1\n#define CONFIG_ESP_CONSOLE_UART 1\n")
+  end
+
   private
 
   def fixture_with_no_requires

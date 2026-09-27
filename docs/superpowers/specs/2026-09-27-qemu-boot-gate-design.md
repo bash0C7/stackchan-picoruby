@@ -58,7 +58,7 @@ missing shared library fails with its name and the host's package command (Linux
 ## `r2p2:qemu_check`
 
 1. `idf.py -B build-qemu` in the R2P2-ESP32 tree with the Rakefile's build env,
-   `SDKCONFIG=build-qemu/sdkconfig`, and `SDKCONFIG_DEFAULTS` = the CoreS3 list with
+   `-DSDKCONFIG=<abs path>/build-qemu/sdkconfig` (idf.py ignores `SDKCONFIG` in the environment and would rewrite the project `sdkconfig`; the task aborts if that file changes), and `SDKCONFIG_DEFAULTS` = the CoreS3 list with
    `sdkconfigs/usb_console` replaced by `build_config/qemu_console.sdkconfig`; `set-target esp32s3`
    on a fresh dir, then `build`. `build-qemu` is removed first (idf.py refuses to re-apply
    defaults to an existing dir).
