@@ -213,7 +213,6 @@ ESP_PYTHON = ENV['ESP_PYTHON'] || newest_esp_python ||
 
 SDKCONFIG_DEFAULTS_CORES3 = 'sdkconfig.defaults;sdkconfigs/usb_console;sdkconfigs/cores3;sdkconfigs/bt_nimble'
 PICORUBY_BUILD_DIR = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/build/esp32-picoruby"
-# vendor/R2P2-ESP32/Rakefile: { femtoruby: :mrubyc, picoruby: :mruby }.each { |name, vm| task "#{name}:build" }
 R2P2_VM_BY_TASK = { 'picoruby' => 'mruby', 'femtoruby' => 'mrubyc' }.freeze
 R2P2_VM_TASK = 'picoruby'
 PICORB_VM = R2P2_VM_BY_TASK.fetch(R2P2_VM_TASK)
@@ -474,12 +473,13 @@ namespace :r2p2 do
 
   # rake re-archives libmruby.a from the object list, so a stale .o whose
   # source moved or changed survives an incremental build. Always start clean.
-  # The picoruby build dir is shared between the qemu build and the real
-  # flash build, so this runs again as an explicit call (not a Rake
-  # prerequisite, which only fires once per invocation) wherever both share
-  # a single `rake` process — see r2p2:build_flash.
   def clean_picoruby_build!
     rm_rf PICORUBY_BUILD_DIR if Dir.exist?(PICORUBY_BUILD_DIR)
+  end
+
+  def qemu_gate_then_clean!
+    Rake::Task['r2p2:qemu_check'].invoke
+    clean_picoruby_build!
   end
 
   desc 'rm picoruby build dir so the next build recompiles every gem object'
@@ -495,7 +495,9 @@ namespace :r2p2 do
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
   task :flash do
+    qemu_gate_then_clean!
     ensure_no_concurrent_monitor
+    ensure_sdkconfig_fresh
     in_r2p2 "ESPPORT=#{espport} rake flash"
   end
 
@@ -528,8 +530,7 @@ namespace :r2p2 do
 
   desc 'build + flash in one shot (QEMU gate first; flashes only on a PASS)'
   task :build_flash do
-    Rake::Task['r2p2:qemu_check'].invoke
-    clean_picoruby_build!
+    qemu_gate_then_clean!
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build", 'flash', port: espport)
@@ -634,7 +635,8 @@ namespace :r2p2 do
   # lands at /home/app.mrb with no picomodem upload. esptool hard-resets on
   # its own; capture boot separately.
   desc 'host-compile SRC=app.rb → bake into littlefs /home/app.mrb → build+flash firmware+storage in one pass'
-  task :build_flash_appmrb => :clean_picoruby_build do
+  task :build_flash_appmrb do
+    qemu_gate_then_clean!
     ensure_no_concurrent_monitor
     ensure_sdkconfig_fresh
     src = src_from_env('r2p2:build_flash_appmrb')

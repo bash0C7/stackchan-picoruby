@@ -28,4 +28,27 @@ class RakefileQemuVmTest < Test::Unit::TestCase
                  "vendor/R2P2-ESP32/Rakefile no longer maps #{task.inspect} to #{vm.inspect} — " \
                  "the QEMU build's -DPICORB_VM would then disagree with the real build")
   end
+
+  def test_every_task_that_flashes_firmware_passes_the_qemu_gate_first
+    require 'prism'
+    tree = Prism.parse_file(File.join(ROOT, 'Rakefile')).value
+    flashing = []
+    walk = lambda do |node|
+      next unless node.is_a?(Prism::Node)
+      if node.is_a?(Prism::CallNode) && node.name == :task && node.block.is_a?(Prism::BlockNode)
+        body = node.block.body
+        src = body ? body.slice : ''
+        if src.match?(/'flash'|rake flash/)
+          first = body.body.first
+          flashing << [node.arguments.arguments.first.slice, first&.slice]
+        end
+      end
+      node.compact_child_nodes.each { |c| walk.(c) }
+    end
+    walk.(tree)
+    assert_operator flashing.size, :>=, 3
+    flashing.each do |name, first|
+      assert_equal 'qemu_gate_then_clean!', first, "task #{name} flashes without running the QEMU gate first"
+    end
+  end
 end
