@@ -18,9 +18,10 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
                                           │                          └─ say + afconvert → mu-law (say)
 ```
 
-- **CLI / daemon**: PicoRuby (`app/cli_app.rb`, `app/daemon_app.rb`). Concurrency
-  is cooperative Tasks (no Mutex/Queue/Thread): drb accept loop + keepalive Task,
-  a `Task.pass` spinlock for BLE exclusion, an Array touch queue drained by polling.
+- **CLI / daemon**: PicoRuby (`app/cli_app.rb`, `app/daemon_app.rb`). Tasks are
+  timesliced: the drb accept loop and the keepalive are Tasks, a one-token
+  `Task::Queue` serialises BLE access, and touch events wait in an Array the CLI
+  polls.
 - **BLE**: `app/ble_client.rb`. `NusResolver` (UUID→handle, frame classify),
   `StackchanRadio` (the `BLE` subclass) and `StackchanCentral` (verb-facing
   wrapper) are host-tested in `test/pc` (`SUITE=pc bundle exec rake test` from
@@ -145,7 +146,7 @@ it, is bound to the binary's exact bytes.
 
 ## PicoRuby constraints worked around
 
-No Mutex/Queue/Thread (cooperative Tasks); drb carries no kwargs (Hash args) and
+No Mutex/Thread (timesliced Tasks, `Task::Queue`); drb carries no kwargs (Hash args) and
 no remote block (poll, not yield-back); `system` can't background/redirect
 (spawning belongs to launchd now, not this wrapper); regexp has no `|` alternation; `gsub`/`sub`
 mishandle multibyte (each_char); `module_function` bare form is a no-op; strings

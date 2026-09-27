@@ -1,8 +1,3 @@
-# StackChan PC-side daemon. PicoRuby has no Mutex/Queue/Thread, only
-# cooperative Tasks: the drb accept loop and keepalive are Tasks, BLE exclusion
-# is a spin on @ble_busy (no yield between test and set), touch events are an
-# Array. Voice and AI live in the CRuby sidecar over dRuby; this owns BLE only.
-
 module Stackchan
 
   # Verb-friendly wrapper over a BLE client's #send (SendBuilder → ACK → detail).
@@ -62,7 +57,8 @@ module Stackchan
       @display       = Display.new(@ble)
       @robot_state   = { last_face: nil, last_say: nil, last_heard: nil, last_action: nil }
       @touch_events  = []
-      @ble_busy      = false
+      @ble_token     = Task::Queue.new
+      @ble_token.push(true)
       @running       = false
       @fallback_audio = nil
     end
@@ -279,10 +275,8 @@ module Stackchan
       extras.each { |k, v| @robot_state[k] = v }
     end
 
-    # Cooperative exclusion: no yield between the spin exit and the assignment.
     def with_ble
-      Task.pass while @ble_busy
-      @ble_busy = true
+      @ble_token.pop
       begin
         yield
       rescue Stackchan::BLE::ConnectionError, Stackchan::BLE::TimeoutError => e
@@ -290,7 +284,7 @@ module Stackchan
         reconnect
         yield
       ensure
-        @ble_busy = false
+        @ble_token.push(true)
       end
     end
 
