@@ -113,11 +113,7 @@ module QemuGate
       return Verdict.new(false, "boot log shows #{match.inspect}") if match
     end
 
-    after_loading = false
     text.each_line do |line|
-      after_loading ||= line.include?('Loading app.mrb')
-      next unless after_loading
-
       return Verdict.new(false, "boot log shows #{line.strip.inspect}") if line.match?(ERROR_CLASS_PATTERN)
     end
 

@@ -245,14 +245,17 @@ class QemuGateTest < Test::Unit::TestCase
     assert_match "NameError", verdict.message
   end
 
-  def test_verdict_ignores_error_class_pattern_before_loading_app_mrb
+  def test_verdict_fails_on_a_gem_load_error_during_vm_boot_before_loading_app_mrb
     log = <<~LOG
-      some early boot line mentions (NameError) before app loads
+      I (568) main_task: Returned from app_main()
+      (unknown):0: uninitialized constant Regexp (NameError)
+      Initializing FLASH disk as the root volume...
       Loading app.mrb
       QEMU_PROBE_OK
     LOG
     verdict = QemuGate.verdict(log)
-    assert verdict.pass
+    refute verdict.pass
+    assert_match "uninitialized constant Regexp", verdict.message
   end
 
   def test_verdict_fails_on_guru_meditation_anywhere
@@ -308,10 +311,13 @@ class QemuGateTest < Test::Unit::TestCase
     assert_match "MAX_SYMBOLS_COUNT", verdict.message
   end
 
-  def test_verdict_ignores_error_and_exception_lines_before_loading_app_mrb
+  def test_verdict_passes_the_measured_clean_boot_log_shape
     log = <<~LOG
-      Error: some early boot noise
-      Exception(vm_id=1): whatever
+      I (568) main_task: Returned from app_main()
+      Initializing FLASH disk as the root volume...
+      Not found: /etc/machine-id, Writing 12 bytes
+      Available
+      File /etc/network/wifi.yml does not exist
       Loading app.mrb
       QEMU_PROBE_OK
     LOG
