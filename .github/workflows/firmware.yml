@@ -24,6 +24,8 @@ jobs:
     # esp-idf on the development machine says v5.4.2.
     container: espressif/idf:v5.4.2
     timeout-minutes: 90
+    env:
+      LC_ALL: C.UTF-8
 
     steps:
       - uses: actions/checkout@v7
