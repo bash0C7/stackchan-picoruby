@@ -71,6 +71,7 @@ DSL (`StackChan.robot do |bot| … end`, evaluated once at boot):
 | `bot.on_frame(key) { \|r, value\| … }` | handles a frame key the engine does not own; the block's truthiness is the part's result for ACK / `?` |
 | `bot.remote(name) { \|r, *args\| … }` | adds a method to the dRuby front (allow-listed) |
 | `bot.every(ms) { \|r\| … }` | periodic arrangement (idle blink, ambient LED) |
+| `bot.release_after(ms)` | ms without RX after which the robot drops the central and advertises again |
 
 `r` is the robot handle: `face`, `led(side, colour, mode:, flash: ms)`, `head(yaw_left:, yaw_right:,
 pitch_up:, time:)`, `text`, `say_ready?`. It is one object built by the engine; handlers receive it
@@ -79,7 +80,8 @@ as an argument.
 ## Controller engine
 
 Owns: BLE central scan/connect/reconnect, the `Task::Queue` link token, text frames with ACK and
-detail, the dRuby pair (`remote`), audio blast pacing, touch notifications, keepalive.
+detail, the dRuby pair (`remote`), audio blast pacing, touch notifications, keepalive while the
+link is held.
 
 DSL (`StackChan.controller do |c| … end`):
 
@@ -89,6 +91,7 @@ DSL (`StackChan.controller do |c| … end`):
 | `c.on_touch { \|s, zone\| … }` | touch notification from the robot |
 | `c.on_reply { \|s, text\| … }` | an AI reply before it is spoken (Mac sidecar) |
 | `c.every(ms) { \|s\| … }` | periodic arrangement |
+| `c.hold(ms)` | ms after the last action during which keepalive runs; after it the controller goes quiet and the robot releases the link |
 
 `s` is the session handle: `face`, `led`, `servo`, `torque`, `text`, `say` (where a TTS provider
 exists: Mac sidecar; on iOS the Swift synthesiser feeds `speak_audio`), `remote(:method, *args)`,
@@ -96,6 +99,26 @@ exists: Mac sidecar; on iOS the Swift synthesiser feeds `speak_audio`), `remote(
 
 Built-in actions stay in the engine and are not re-declared: `connect`, `status`, `stop`, `raw`,
 `calibrate`, `speak_audio`.
+
+## Sharing the robot (one central at a time)
+
+The Mac, the iPhone and the Watch are each an independent BLE central; the Watch does not relay
+through the iPhone. The robot serves one central at a time.
+
+- The robot releases the link: `release_after` ms after the last RX it disconnects the central and
+  advertises again. The release decision lives only in the robot engine.
+- A controller holds the link while it is in use: keepalive runs until `hold` ms after its last
+  action, then stops, so the robot's `release_after` fires. A command after a release reconnects
+  first. A controller that finds the robot taken reports it as busy and retries on the next action,
+  never in a loop of its own.
+- Touch while no central is connected: the robot reacts locally (face and LED) and drops the
+  notification. `c.on_touch` sees only touches that happen while that controller holds the link.
+- On every disconnect the robot resets the audio receiver (a partial `<A:n>` never swallows the next
+  central's frames), the dRuby responder, the CCCD notify state and the latency stamp. The
+  controller resets its dRuby inbox and send stamp.
+- Releasing needs a peripheral-side disconnect in picoruby-ble: `BLE_peripheral_disconnect` in
+  `include/ble_peripheral.h`, implemented in the rp2040 (btstack) and ESP32 (NimBLE) ports, reached
+  from Ruby as `BLE#disconnect`. The darwin central port needs no disconnect.
 
 ## Execution model (8 KB VM stack on the robot)
 
@@ -138,9 +161,14 @@ Built-in actions stay in the engine and are not re-declared: `connect`, `status`
   the fake hardware).
 - The four DSL apps each have a host test that evaluates them against fakes.
 - Face goldens stay (`spec/golden`), re-registered only if a face's geometry is defined differently.
+- Release and reconnect are host-tested with an injected clock: the robot's `release_after` against a
+  fake port, the controller's `hold` and reconnect against `FakeRadio` with a link drop and a failing
+  connect.
 - Not testable in the container: Swift UI, Xcode builds, the darwin VM, the robot — covered by
   `/stackchan-device-trial` and `trial:darwin`, whose lock gains the R2P2-darwin and R2P2-ESP32
-  platform pins.
+  platform pins. The trial checks every step by ACK and detail, not by a person's answer, and ends
+  with a hand-off: Mac action → release → iPhone action → release → Watch action → release → Mac
+  action, recording each reconnect time.
 
 ## Order
 
@@ -148,7 +176,8 @@ Development of each step stacks on the previous branch without the robot. Nothin
 
 1. Fold picoruby-stackchan-protocol + the shared codec into `mrbgems/picoruby-stackchan-protocol`;
    firmware takes it as a gem dir.
-2. Robot engine + `apps/robot/app.rb`.
+2. Robot engine + `apps/robot/app.rb`, including `release_after`. It stacks on a picoruby-ble unit
+   that adds the peripheral disconnect (fork branch on the picoruby lineage R2P2-ESP32 pins).
 3. Controller engine + Mac (`apps/mac/app.rb`), shared gem removed.
 4. R2P2-darwin platform shape + `App` constant; iOS/Watch move to `apps/`, buttons from actions.
 5. R2P2-ESP32 external build config; StackChan gem list moves to `build_config/esp32-stackchan.rb`.
