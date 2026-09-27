@@ -23,8 +23,8 @@ class FakePy32
   end
 
   def write_led_ram(pixels)
-    @last_pixels = pixels
-    @calls << [:write_led_ram, [pixels]]
+    @last_pixels = pixels.map { |p| p.dup }
+    @calls << [:write_led_ram, [pixels.map { |p| p.dup }]]
   end
 
   def refresh_leds
