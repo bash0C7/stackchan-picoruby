@@ -61,10 +61,6 @@ jobs:
       - name: Install the QEMU boot gate's shared libraries
         run: apt-get install -y -qq libsdl2-2.0-0 libslirp0
 
-      # Boots this tree under QEMU and requires the probe marker: the same
-      # requires, driver gems, and application class bodies the robot loads,
-      # with a verdict read from the boot log. It does not reach hardware
-      # (I2C, LCD, servos, speaker, BLE), only boot and Ruby load.
       - name: Run the QEMU boot gate
         env:
           ESP_IDF_EXPORT: /opt/esp/idf/export.sh
