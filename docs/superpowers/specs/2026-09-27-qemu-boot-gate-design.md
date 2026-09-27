@@ -72,8 +72,9 @@ missing shared library fails with its name and the host's package command (Linux
    -display none -serial file:<log> -monitor none`, polled until a verdict pattern appears or
    120 s pass, then killed.
 5. Verdict: FAIL on `Guru Meditation`, `abort()`, `Rebooting...`, `assert failed`, or any line
-   matching `\((NameError|LoadError|NoMethodError|ArgumentError|TypeError|RuntimeError)\)` after
-   `Loading app.mrb`; PASS only when the probe's marker line appears; FAIL on timeout. The log is
+   anywhere in the log matching `\((NameError|LoadError|NoMethodError|ArgumentError|TypeError|RuntimeError|Exception)\)`,
+   `^Error: ` or `^Exception\(vm_id=` (gems load during VM boot, before `Loading app.mrb`, and a
+   gem that fails there prints `(unknown):0: uninitialized constant Regexp (NameError)`); PASS only when the probe's marker line appears; FAIL on timeout. The log is
    kept at `/tmp/stackchan-picoruby-debug/qemu-<stamp>.log` and its path printed.
 
 Probe (`app.mrb`, compiled with the tree's host `mrbc`), generated in this order:
