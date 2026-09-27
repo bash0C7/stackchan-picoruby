@@ -779,9 +779,7 @@ if ver_bytes && ver_bytes.length > 0
   puts sprintf("[application] PY32 REG_VERSION = 0x%02X", ver_bytes.bytes[0])
 end
 
-# REQUIRED FOR PY32 COLD-BOOT: the puts in this block prevent a
-# LoadProhibited crash in the PY32 init region (bytecode-layout dependent;
-# removing one shifts the crash a line later). Not debug logs.
+# REQUIRED FOR PY32 COLD-BOOT
 puts "[boot] step:py32-init-begin"
 py32 = PY32IOExpander.new(i2c)
 puts "[boot] step:py32-instance"
