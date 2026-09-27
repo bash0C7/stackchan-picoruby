@@ -77,6 +77,8 @@ class StackchanLed
     @py32 = py32
     @brightness = 100
     @buffer = Array.new(PIXEL_COUNT) { [0, 0, 0] }
+    @flash_left_until = nil
+    @flash_right_until = nil
     @py32.set_direction(LED_DATA_PIN, true)
     @py32.set_pull_mode(LED_DATA_PIN, true)
     @py32.set_drive_mode(LED_DATA_PIN, false)
@@ -139,38 +141,24 @@ class StackchanLed
     else
       raise ArgumentError, "unknown side: #{side.inspect}"
     end
+    @flash_left_until = nil unless side == :right
+    @flash_right_until = nil unless side == :left
     self
   end
 
-  # One-shot pulse: solid color now, off after duration_ms.
   def flash_side(side, r, g, b, duration_ms = 300)
     animate_side(side, r, g, b, :solid)
-    @flash_until ||= { left: nil, right: nil }
-    end_ms = (Machine.uptime_us / 1000) + duration_ms
-    case side
-    when :both
-      @flash_until[:left]  = end_ms
-      @flash_until[:right] = end_ms
-    when :left
-      @flash_until[:left] = end_ms
-    when :right
-      @flash_until[:right] = end_ms
-    end
+    end_ms = Machine.uptime_us / 1000 + duration_ms
+    @flash_left_until = end_ms unless side == :right
+    @flash_right_until = end_ms unless side == :left
     self
   end
 
   def tick(now_ms)
     left_animator.tick(now_ms)
     right_animator.tick(now_ms)
-    return unless @flash_until
-    if @flash_until[:left] && now_ms >= @flash_until[:left]
-      @flash_until[:left] = nil
-      animate_side(:left, 0, 0, 0, :off)
-    end
-    if @flash_until[:right] && now_ms >= @flash_until[:right]
-      @flash_until[:right] = nil
-      animate_side(:right, 0, 0, 0, :off)
-    end
+    animate_side(:left, 0, 0, 0, :off) if @flash_left_until && now_ms >= @flash_left_until
+    animate_side(:right, 0, 0, 0, :off) if @flash_right_until && now_ms >= @flash_right_until
   end
 
   private

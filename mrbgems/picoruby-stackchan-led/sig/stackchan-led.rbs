@@ -39,7 +39,8 @@ class StackchanLed
   @py32: _Expander
   @brightness: Integer
   @buffer: Array[Array[Integer]]
-  @flash_until: Hash[Symbol, Integer?]?
+  @flash_left_until: Integer?
+  @flash_right_until: Integer?
   @left_animator: Animator?
   @right_animator: Animator?
 

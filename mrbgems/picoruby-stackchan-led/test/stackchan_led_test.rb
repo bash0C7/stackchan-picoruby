@@ -128,6 +128,26 @@ class StackchanLedTest < Picotest::Test
     assert_equal n + 1, led_ram_writes
   end
 
+  def test_flash_side_holds_the_colour_until_the_deadline_then_blanks_that_half_only
+    @led.animate_side(:right, 4, 5, 6, :solid)
+    t = Machine.uptime_us / 1000
+    @led.flash_side(:left, 1, 2, 3)
+    @led.tick(t + 299)
+    assert_equal [1, 2, 3], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
+    @led.tick(t + 300)
+    assert_equal [0, 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
+    assert_equal [4, 5, 6], @py32.last_pixels[StackchanLed::RIGHT_RANGE.first]
+  end
+
+  def test_animate_side_after_a_flash_is_not_blanked_by_the_flash_deadline
+    t = Machine.uptime_us / 1000
+    @led.flash_side(:both, 0, 255, 0)
+    @led.animate_side(:both, 255, 0, 0, :blink)
+    @led.tick(t + 300)
+    assert_equal [255, 0, 0], @py32.last_pixels[StackchanLed::LEFT_RANGE.first]
+    assert_equal [255, 0, 0], @py32.last_pixels[StackchanLed::RIGHT_RANGE.first]
+  end
+
   def test_animator_restarting_blink_writes_on_the_first_tick_again
     @led.animate_side(:left, 10, 20, 30, :blink)
     @led.tick(0)
