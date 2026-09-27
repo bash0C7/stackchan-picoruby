@@ -314,8 +314,9 @@ def deploy_application_and_wait(label)
   sleep wait
 end
 
-# AOT kernels (aot/) and picoruby-multicore go into every firmware build:
-# aot:esp32 generates them, in_r2p2 hands their dirs to R2P2-ESP32.
+# AOT kernels (aot/), picoruby-multicore, and picoruby-stackchan-protocol go
+# into every firmware build: aot:esp32 generates the kernels, r2p2_build_env
+# hands all three gem dirs to R2P2-ESP32.
 AOT_ESP32_DIR     = File.expand_path("build/aot/esp32", __dir__)
 AOT_MULTICORE_DIR = File.expand_path("build/aot/picoruby-multicore", __dir__)
 

@@ -28,10 +28,10 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 The device reports App version `2f18720`, so it is running this tree.
 
-Tests pass: 491 picotest across device, pc, shared, stackchan-protocol, aot,
-drb-ble and the three driver gems, with no failures, crashes or skips, plus
-the CRuby host tests, where ten cases are omitted on machines without
-`plutil`. Both workflows are green on the tip of `main`.
+Tests pass: 476 picotest across device, pc, shared, aot, drb-ble and the three driver gems,
+with no failures, crashes or skips, plus the CRuby host tests, where ten cases
+are omitted on machines without `plutil`. Both workflows are green on the tip
+of `main`.
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails
 on any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -50,7 +50,7 @@ on one branch: a trial must say which change it tried.
 | unit | branch (every repo it touches) | stacks on | state |
 |---|---|---|---|
 | dRuby over BLE, AOT kernels, core 1, domain simplification | `claude/ecstatic-allen-s6qki1` (stackchan-picoruby, PR #11); `claude/stackchan-aot-multicore-drb` (R2P2-ESP32); `claude/aot-glyph16` (picoruby-ili9342); `claude/simplify` (py32-io-expander, stackchan-protocol, scservo); `claude/drb-over-ble` (R2P2-darwin); `claude/string-arg-length` (suppify) | `main` | waiting for `/stackchan-device-trial`; pins in `trial/lock.yml` |
-| DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green and firmware-built without the robot; trial pins in this branch's `trial/lock.yml`; before the run, base moves to `main` once PR #11 has merged |
+| DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green (498 picotest, no failures/crashes/skips) and firmware-built without the robot; trial pins in this branch's `trial/lock.yml`; before the run, base moves to `main` once PR #11 has merged |
 
 DSL steps 2–6 (`docs/superpowers/specs/2026-09-27-stackchan-dsl-design.md`)
 each get their own branch, stacked on the step before, named when the step
