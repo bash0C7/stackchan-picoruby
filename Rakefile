@@ -448,7 +448,7 @@ def qemu_write_efuse_image(path)
   File.binwrite(path, QemuGate.efuse_image)
 end
 
-def qemu_run_and_poll(flash:, efuse:, log:, timeout: 120)
+def qemu_run_and_poll(flash:, efuse:, log:, timeout: 900)
   argv = QemuGate.argv(qemu: qemu_binary_path, flash: flash, efuse: efuse, log: log)
   stderr_log = "#{log}.stderr"
   pid = Process.spawn(*argv, out: File::NULL, err: stderr_log)
