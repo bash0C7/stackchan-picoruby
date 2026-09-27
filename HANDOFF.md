@@ -50,7 +50,7 @@ say which change it tried.
 | unit | branch (every repo it touches) | stacks on | state |
 |---|---|---|---|
 | dRuby over BLE, AOT kernels, core 1, domain simplification | `claude/ecstatic-allen-s6qki1` (stackchan-picoruby, PR #11); `claude/stackchan-aot-multicore-drb` (R2P2-ESP32); `claude/aot-glyph16` (picoruby-ili9342); `claude/simplify` (py32-io-expander, stackchan-protocol, scservo); `claude/drb-over-ble` (R2P2-darwin); `claude/string-arg-length` (suppify) | `main` | waiting for `/stackchan-device-trial`; pins in `trial/lock.yml` |
-| QEMU boot gate before every flash (tooling) | `claude/qemu-boot-gate` (stackchan-picoruby) | the line above | host-green; QEMU gate PASS on this tree and FAIL on an injected Regexp; `build_flash` stops at a FAIL and, after a PASS, flashes only a clean build with the USB console; trial dry run all OK; CI `firmware.yml` runs the gate after the build; `rake qemu:setup` on macOS unverified; PR #11's trial runs from this branch (trial arm `cf89dcc` in `trial/lock.yml`) |
+| QEMU boot gate before every flash (tooling) | `claude/qemu-boot-gate` (stackchan-picoruby) | the line above | host-green; the gate runs QEMU with `-icount`, a fixed seed and a VM-clock RTC, so one image gives one verdict (two boots: byte-identical logs up to the prompt); QEMU gate PASS on this tree and FAIL on an injected Regexp; `build_flash` stops at a FAIL and, after a PASS, flashes only a clean build with the USB console; trial dry run all OK; CI `firmware.yml` runs the gate after the build; `rake qemu:setup` on macOS unverified; PR #11's trial runs from this branch (trial arm `65a3f07` in `trial/lock.yml`) |
 | DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green and firmware-built without the robot; QEMU gate PASS on this tree; trial dry run all OK (image `0x256cb0`); merges the gate branch; trial pins in this branch’s `trial/lock.yml`; before the run, base moves to `main` once PR #11 has merged |
 
 DSL steps 2–6 (`docs/superpowers/specs/2026-09-27-stackchan-dsl-design.md`)
@@ -103,6 +103,21 @@ Host numbers (x86_64, `bench/aot_ab.rb`, interpreted → AOT): one 16x16 glyph
 ~83 → ~7 µs; `ulaw_decode` 4096 B ~2.5–3.0 ms → ~0.11 ms; `play_ulaw` 16384 B
 on the pthread multicore port ~10 ms → ~1 ms.
 
+Known risk on the robot: the picoruby task starts with 248 B of its 8 KB
+stack left. That figure is the high-water mark of the trial arm's firmware
+(R2P2-ESP32 `d9a4f2e`, picoruby `7258676`), read in gdb at the shell's first
+`picorb_hal_getchar` under QEMU `-icount shift=2,align=off,sleep=off -seed 1
+-rtc clock=vm`; two runs give the same value and byte-identical serial logs.
+One interrupt frame on the task stack takes about 144 B more, so a boot can
+overflow and reboot (`stack overflow in task picoruby_task` right after
+`Returned from app_main()`). The next boot starts over. The base arm carries
+the same picoruby. The peak is a raise during `mrb_open`: picoruby-uart's
+`begin require "irq" rescue LoadError` and picoruby-ble's `begin require
+'cyw43' rescue LoadError` both raise on ESP32, and each raise nests a second
+`mrb_vm_exec` (2,896 B frame). With both taken out the same measurement reads
+2,072 B and no raise happens during startup. A trial reboot with that line
+in the boot log is this risk, not a regression of the branch.
+
 On `verdict: pass`, merge in order: suppify, picoruby-ili9342, this repo,
 R2P2-darwin, R2P2-ESP32 (with ili9342 back at `main`).
 
@@ -121,6 +136,8 @@ rather than a change here.
 differ by exactly one line, the picoruby submodule pointer: `7258676`, which
 boots, against `568b4b88`, the lineage rebased onto upstream master, which
 overflows the 8 KB picoruby task stack during its own startup and boot-loops.
+`7258676` itself starts with 248 B left (item 1), so the rebased lineage
+needs only a little more startup depth to cross the line.
 Switching is a one-line bump once that is resolved. Land shared changes on
 both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
 runs — the vendored tree carries `nimble_owner.c`, there is no btstack

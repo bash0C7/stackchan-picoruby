@@ -69,12 +69,16 @@ missing shared library fails with its name and the host's package command (Linux
    -drive file=<efuse>,if=none,format=raw,id=efuse
    -global driver=nvram.esp32s3.efuse,property=drive,value=efuse
    -global driver=timer.esp32s3.timg,property=wdt_disable,value=true
-   -display none -serial file:<log> -monitor none`, polled until a verdict pattern appears or
-   120 s pass, then killed.
+   -icount shift=2,align=off,sleep=off -seed 1 -rtc clock=vm
+   -display none -serial file:<log> -monitor none`, polled until a verdict is decided or 900 s of
+   host time pass, then killed. `-icount` ties guest time to the instruction count, and the fixed
+   seed and VM-clock RTC remove the other host inputs, so the serial output up to the shell prompt
+   is a function of the image: two boots of one image give byte-identical logs up to the prompt.
+   The first boot of a fresh image writes the littlefs files and takes about 200 s of host time.
 5. Verdict: FAIL on `Guru Meditation`, `abort()`, `Rebooting...`, `assert failed`, or any line
    anywhere in the log matching `\((NameError|LoadError|NoMethodError|ArgumentError|TypeError|RuntimeError|Exception)\)`,
    `^Error: ` or `^Exception\(vm_id=` (gems load during VM boot, before `Loading app.mrb`, and a
-   gem that fails there prints `(unknown):0: uninitialized constant Regexp (NameError)`); PASS only when the probe's marker line appears; FAIL on timeout. The log is
+   gem that fails there prints `(unknown):0: uninitialized constant Regexp (NameError)`); PASS only when the probe's marker line appears and the shell prompt follows it; FAIL on timeout. When the prompt has appeared after the marker, the verdict reads the log only up to that prompt, so output after it, which depends on when the poll lands, never changes the verdict. The log is
    kept at `/tmp/stackchan-picoruby-debug/qemu-<stamp>.log` and its path printed.
 
 Probe (`app.mrb`, compiled with the tree's host `mrbc`), generated in this order:

@@ -73,6 +73,9 @@ module QemuGate
       '-display', 'none',
       '-serial', "file:#{log}",
       '-monitor', 'none',
+      '-icount', 'shift=2,align=off,sleep=off',
+      '-seed', '1',
+      '-rtc', 'clock=vm',
     ]
   end
 
@@ -110,6 +113,9 @@ module QemuGate
 
   def verdict(log)
     text = log.to_s
+    marker_at = text.index(MARKER)
+    prompt_at = marker_at && text.index(SHELL_PROMPT, marker_at)
+    text = text[0, prompt_at + SHELL_PROMPT.size] if prompt_at
     FAIL_PATTERNS.each do |pattern|
       match = text[pattern]
       return Verdict.new(false, "boot log shows #{match.inspect}", true) if match
@@ -119,9 +125,8 @@ module QemuGate
       return Verdict.new(false, "boot log shows #{line.strip.inspect}", true) if line.match?(ERROR_CLASS_PATTERN)
     end
 
-    marker_at = text.index(MARKER)
     return Verdict.new(false, 'no marker', false) unless marker_at
-    return Verdict.new(true, "marker #{MARKER} found and the shell prompt followed", true) if text.index(SHELL_PROMPT, marker_at)
+    return Verdict.new(true, "marker #{MARKER} found and the shell prompt followed", true) if prompt_at
 
     Verdict.new(false, "marker #{MARKER} found but no shell prompt after it", false)
   end
