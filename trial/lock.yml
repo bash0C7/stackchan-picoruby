@@ -22,7 +22,7 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: a83709e270962c4383561e8437c345a9f4b73fb7   # claude/ecstatic-allen-s6qki1
+    stackchan-picoruby: ef796b9f3ea018fe415d74b58f0851d7dce478f2   # claude/qemu-boot-gate (PR #11 + QEMU gate)
     R2P2-ESP32: d9a4f2ea0aaa4ca7b25989dc7085e91ddfb8a805           # claude/stackchan-aot-multicore-drb
     picoruby: 7258676d6177dc4d8eb89fccec2fe0c6c0e4ef0b
     repos:
