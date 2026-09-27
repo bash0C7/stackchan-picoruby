@@ -9,7 +9,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   # A machine made of git HEADs: every directory is a checkout at some sha.
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
-    attr_reader :calls, :heads, :dirty
+    attr_reader :calls, :heads, :dirty, :submodules
     attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake
 
     def initialize
@@ -23,6 +23,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       @on_rake = {}
       @fail_rake = {}
       @fetched = {}
+      @submodules = {}
     end
 
     def exist?(path) = @exists[path] || @heads.key?(path)
@@ -43,6 +44,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       in ["worktree", "add", "--detach", wt, sha] then (@heads[wt] = sha; [true, "", 0])
       in ["init", "--quiet", path] then (@heads[path] = nil; @exists[path] = true; [true, "", 0])
       in ["status", "--porcelain", "--untracked-files=no"] then [true, @dirty[dir].to_s, 0]
+      in ["submodule", "update", *] then (@submodules.fetch(@heads[dir], {}).each { |path, sha| @heads[path] = sha }; [true, "", 0])
       else [true, "", 0]
       end
     end
@@ -81,9 +83,9 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def setup
     @ops = FakeOps.new
-    # The picoruby submodule follows whatever R2P2-ESP32 is checked out.
     @ops.heads[r2p2] = "0" * 40
     @ops.heads[picoruby] = LOCK["arms"]["base"]["picoruby"]
+    LOCK["arms"].each_value { |arm| @ops.submodules[arm["R2P2-ESP32"]] = { picoruby => arm["picoruby"] } }
     @ops.on_rake["r2p2:setup"] = lambda do |dir, _env|
       aot = dir == wt("trial") ? LOCK["arms"]["trial"]["aot"] : {}
       aot.each { |name, sha| @ops.heads[File.join(dir, "build", "aot", name)] = sha }
