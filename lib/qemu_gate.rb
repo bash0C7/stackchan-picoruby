@@ -29,7 +29,7 @@ module QemuGate
   }.freeze
 
   FAIL_PATTERNS = [/Guru Meditation/, /abort\(\)/, /Rebooting\.\.\./, /assert failed/].freeze
-  ERROR_CLASS_PATTERN = /\((NameError|LoadError|NoMethodError|ArgumentError|TypeError|RuntimeError)\)/
+  ERROR_CLASS_PATTERN = /\((NameError|LoadError|NoMethodError|ArgumentError|TypeError|RuntimeError|Exception)\)|^Error: |^Exception\(vm_id=/
   MARKER = 'QEMU_PROBE_OK'
 
   Verdict = Struct.new(:pass, :message)
@@ -118,8 +118,7 @@ module QemuGate
       after_loading ||= line.include?('Loading app.mrb')
       next unless after_loading
 
-      match = line[ERROR_CLASS_PATTERN]
-      return Verdict.new(false, "boot log shows #{match.inspect}") if match
+      return Verdict.new(false, "boot log shows #{line.strip.inspect}") if line.match?(ERROR_CLASS_PATTERN)
     end
 
     return Verdict.new(true, "marker #{MARKER} found") if text.include?(MARKER)

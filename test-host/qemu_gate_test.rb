@@ -296,6 +296,29 @@ class QemuGateTest < Test::Unit::TestCase
     assert_match "no marker", verdict.message
   end
 
+  def test_verdict_fails_on_mrubyc_symbol_overflow_after_loading_app_mrb
+    log = <<~LOG
+      Loading app.mrb
+      Error: Overflow MAX_SYMBOLS_COUNT
+      Exception(vm_id=20): in `extern': Overflow MAX_SYMBOLS_COUNT (Exception)
+      \tin `require'
+    LOG
+    verdict = QemuGate.verdict(log)
+    refute verdict.pass
+    assert_match "MAX_SYMBOLS_COUNT", verdict.message
+  end
+
+  def test_verdict_ignores_error_and_exception_lines_before_loading_app_mrb
+    log = <<~LOG
+      Error: some early boot noise
+      Exception(vm_id=1): whatever
+      Loading app.mrb
+      QEMU_PROBE_OK
+    LOG
+    verdict = QemuGate.verdict(log)
+    assert verdict.pass
+  end
+
   def test_verdict_fails_on_real_neg_log_excerpt
     log = <<~LOG
       File /etc/network/wifi.yml does not exist
