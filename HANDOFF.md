@@ -102,6 +102,21 @@ Host numbers (x86_64, `bench/aot_ab.rb`, interpreted → AOT): one 16x16 glyph
 ~83 → ~7 µs; `ulaw_decode` 4096 B ~2.5–3.0 ms → ~0.11 ms; `play_ulaw` 16384 B
 on the pthread multicore port ~10 ms → ~1 ms.
 
+Known risk on the robot: the picoruby task starts with 248 B of its 8 KB
+stack left. That figure is the high-water mark of the trial arm's firmware
+(R2P2-ESP32 `d9a4f2e`, picoruby `7258676`), read in gdb at the shell's first
+`picorb_hal_getchar` under QEMU `-icount shift=2,align=off,sleep=off -seed 1
+-rtc clock=vm`; two runs give the same value and byte-identical serial logs.
+One interrupt frame on the task stack takes about 144 B more, so a boot can
+overflow and reboot (`stack overflow in task picoruby_task` right after
+`Returned from app_main()`). The next boot starts over. The base arm carries
+the same picoruby. The peak is a raise during `mrb_open`: picoruby-uart's
+`begin require "irq" rescue LoadError` and picoruby-ble's `begin require
+'cyw43' rescue LoadError` both raise on ESP32, and each raise nests a second
+`mrb_vm_exec` (2,896 B frame). With both taken out the same measurement reads
+2,072 B and no raise happens during startup. A trial reboot with that line
+in the boot log is this risk, not a regression of the branch.
+
 On `verdict: pass`, merge in order: suppify, picoruby-ili9342, this repo,
 R2P2-darwin, R2P2-ESP32 (with ili9342 back at `main`).
 
@@ -120,6 +135,8 @@ rather than a change here.
 differ by exactly one line, the picoruby submodule pointer: `7258676`, which
 boots, against `568b4b88`, the lineage rebased onto upstream master, which
 overflows the 8 KB picoruby task stack during its own startup and boot-loops.
+`7258676` itself starts with 248 B left (item 1), so the rebased lineage
+needs only a little more startup depth to cross the line.
 Switching is a one-line bump once that is resolved. Land shared changes on
 both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
 runs — the vendored tree carries `nimble_owner.c`, there is no btstack
