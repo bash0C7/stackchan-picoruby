@@ -177,6 +177,24 @@ class TickerTest < Picotest::Test
     assert_equal [:a, :a, :b, :a], fired
   end
 
+  def test_a_raising_periodic_handler_is_logged_and_the_next_period_still_fires
+    fired = []
+    calls = 0
+    t = ticker(periodic: [[100, ->(_r) { calls += 1; raise IOError, "led" if calls == 1; fired << calls }]])
+    t.tick(0)
+    t.tick(100)
+    t.tick(200)
+    assert_equal [2], fired
+  end
+
+  def test_a_raising_periodic_handler_does_not_starve_the_ones_after_it
+    fired = []
+    t = ticker(periodic: [[100, ->(_r) { raise IOError, "led" }], [100, ->(_r) { fired << :b }]])
+    t.tick(0)
+    t.tick(100)
+    assert_equal [:b], fired
+  end
+
   def test_a_periodic_handler_reaches_the_led
     t = ticker(periodic: [[500, ->(r) { r.led(:both, [1, 2, 3], mode: :breathing) }]])
     t.tick(0)

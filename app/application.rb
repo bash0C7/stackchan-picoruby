@@ -132,6 +132,25 @@ end
 
 sleep_ms 3000
 
+ROBOT = StackChan.robot do |bot|
+  bot.face :neutral
+  bot.face :smile,     mouth: 8
+  bot.face :joy,       mouth: 18
+  bot.face :surprised, mouth: :open
+  bot.face :sad,       mouth: -8
+  bot.face :angry,     brows: :angry
+  bot.face :closed,    eyes: :closed, mouth: :none
+
+  bot.face_index "0" => :neutral, "1" => :smile, "2" => :joy,
+                 "3" => :surprised, "4" => :sad, "5" => :angry
+
+  bot.on_touch(:back)  { |r| r.face(:surprised); r.led(:both,  [0, 60, 0], flash: 300) }
+  bot.on_touch(:right) { |r| r.face(:angry);     r.led(:right, [60, 0, 0], flash: 300) }
+  bot.on_touch(:left)  { |r| r.face(:sad);       r.led(:left,  [0, 0, 60], flash: 300) }
+
+  bot.every(5000) { |r| r.blink(150) }
+end
+
 class StackChanApp < BLE
   AD_TYPE_FLAGS = 0x01
   AD_TYPE_COMPLETE_LOCAL_NAME = 0x09
@@ -161,37 +180,13 @@ class StackChanApp < BLE
       drain:   -> { pop_write_value(@rx_handle) },
       pump:    -> { @link.pump }
     )
-    @dispatcher = StackChan::Robot::Dispatcher.new(
-      display: display, led: led, head: head, speaker: speaker, stdout: self,
-      faces: {
-        neutral:   StackChan::Robot::Face.new,
-        smile:     StackChan::Robot::Face.new(mouth: 8),
-        joy:       StackChan::Robot::Face.new(mouth: 18),
-        surprised: StackChan::Robot::Face.new(mouth: :open),
-        sad:       StackChan::Robot::Face.new(mouth: -8),
-        angry:     StackChan::Robot::Face.new(brows: :angry),
-        closed:    StackChan::Robot::Face.new(eyes: :closed, mouth: :none),
-      },
-      face_index: {
-        "0" => :neutral,
-        "1" => :smile,
-        "2" => :joy,
-        "3" => :surprised,
-        "4" => :sad,
-        "5" => :angry,
-      }
+    wiring = ROBOT.wire(
+      display: display, led: led, head: head, touch: touch, speaker: speaker,
+      stdout: self, notify: ->(frame) { write(frame) }
     )
-    ticker = StackChan::Robot::Ticker.new(
-      display: display, led: led, touch: touch, dispatcher: @dispatcher,
-      notify: ->(frame) { write(frame) },
-      touch_handlers: {
-        0 => ->(r) { r.face(:surprised); r.led(:both,  [0, 60, 0], flash: 300) },
-        1 => ->(r) { r.face(:angry);     r.led(:right, [60, 0, 0], flash: 300) },
-        2 => ->(r) { r.face(:sad);       r.led(:left,  [0, 0, 60], flash: 300) },
-      },
-      periodic: [[5000, ->(r) { r.blink(150) }]]
-    )
-    remote = StackChan::Robot::Remote.new(@dispatcher)
+    @dispatcher = wiring.dispatcher
+    ticker = wiring.ticker
+    remote = wiring.remote
     drb = StackChan::Robot::DrbChannel.new(
       rx_handle:   nus_handle(db, DRB_RX_CHAR_UUID, :value_handle),
       tx_handle:   nus_handle(db, DRB_TX_CHAR_UUID, :value_handle),

@@ -71,10 +71,16 @@ module StackChan
             @periodic_due[i] = now_ms + entry[0]
           elsif now_ms >= due
             @periodic_due[i] = now_ms + entry[0]
-            entry[1].call(@robot_handle)
+            call_periodic(entry[1])
           end
           i += 1
         end
+      end
+
+      def call_periodic(handler)
+        handler.call(@robot_handle)
+      rescue => e
+        puts "[application] periodic error: #{e.class}: #{e.message}"
       end
     end
   end
