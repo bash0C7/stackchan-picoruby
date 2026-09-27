@@ -22,13 +22,12 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: a83709e270962c4383561e8437c345a9f4b73fb7   # claude/ecstatic-allen-s6qki1
-    R2P2-ESP32: d9a4f2ea0aaa4ca7b25989dc7085e91ddfb8a805           # claude/stackchan-aot-multicore-drb
+    stackchan-picoruby: d16d4aeabfeea2f1498cd592ad6878000472675b   # claude/stackchan-protocol-fold
+    R2P2-ESP32: f0a8225f02ae25ae88e0568e5819cc6a74fdc86b           # claude/stackchan-protocol-fold
     picoruby: 7258676d6177dc4d8eb89fccec2fe0c6c0e4ef0b
     repos:
       picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # claude/aot-glyph16
       picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # claude/simplify
-      picoruby-stackchan-protocol: 5e92d42cb8b410a091a7c8708a5d99344bda6a51   # claude/simplify
       picoruby-scservo: 1e3a18b19ecf1d23e33a455278d691690af2acb8   # claude/simplify
     aot:                                                           # build/aot/<name> in the worktree
       suppify: a5449a394c6d6ef31afebdbabd56be563208a83e            # claude/string-arg-length
