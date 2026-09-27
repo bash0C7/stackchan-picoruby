@@ -35,4 +35,29 @@ class FrameCodecTest < Picotest::Test
     assert_equal 2,   FC.parse_touch("<touch:2>\n")
     assert_nil        FC.parse_touch("<F:0>\n")
   end
+
+  def test_parse_touch_multi_digit_zone
+    assert_equal 12, FC.parse_touch("<touch:12>\n")
+  end
+
+  def test_parse_touch_no_digits_is_nil
+    assert_nil FC.parse_touch("<touch:>\n")
+    assert_equal false, FC.touch_event?("<touch:>\n")
+  end
+
+  def test_parse_touch_non_digit_is_nil
+    assert_nil FC.parse_touch("<touch:a>\n")
+  end
+
+  def test_parse_touch_missing_close_bracket_is_nil
+    assert_nil FC.parse_touch("<touch:2")
+  end
+
+  def test_parse_touch_prefix_not_at_start_is_nil
+    assert_nil FC.parse_touch("x<touch:2>\n")
+  end
+
+  def test_parse_touch_trailing_text_after_close_bracket_still_parses
+    assert_equal 2, FC.parse_touch("<touch:2>garbage")
+  end
 end

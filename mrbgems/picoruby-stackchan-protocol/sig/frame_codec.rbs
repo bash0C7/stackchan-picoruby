@@ -10,7 +10,6 @@ module Stackchan
       MODE_TO_CHAR: Hash[led_mode, String]
       ACK_OK: String
       ACK_ERROR: String
-      TOUCH_RE: Regexp
 
       def self.encode_face: (face_name: face_name) -> String
       def self.encode_led: (r: Integer, g: Integer, b: Integer, side: side, mode: led_mode) -> String

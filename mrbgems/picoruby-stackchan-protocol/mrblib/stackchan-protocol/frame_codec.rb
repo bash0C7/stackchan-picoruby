@@ -26,8 +26,6 @@ module Stackchan
       ACK_OK    = "."
       ACK_ERROR = "?"
 
-      TOUCH_RE = /\A<touch:(\d+)>/
-
       def self.encode_face(face_name:)
         encode_pairs("F" => FACE_INDICES.fetch(face_name))
       end
@@ -67,12 +65,21 @@ module Stackchan
       end
 
       def self.touch_event?(frame)
-        !!(frame =~ TOUCH_RE)
+        !parse_touch(frame).nil?
       end
 
       def self.parse_touch(frame)
-        m = frame.match(TOUCH_RE)
-        m && m[1].to_i
+        prefix = "<touch:"
+        return nil unless frame.start_with?(prefix)
+        len = frame.length
+        i = prefix.length
+        digits_start = i
+        while i < len && frame.getbyte(i) >= 48 && frame.getbyte(i) <= 57
+          i += 1
+        end
+        return nil if i == digits_start
+        return nil unless frame.getbyte(i) == 62
+        frame[digits_start...i].to_i
       end
 
       def self.encode_pairs(pairs)
