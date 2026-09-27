@@ -18,9 +18,12 @@ class StackchanCentralDrbTest < Picotest::Test
   # FakeRadio whose DRb RX writes drive a Responder; replies are scheduled as
   # DRb TX notifications in 20-byte pieces.
   class DrbRadio < FakeRadio
+    attr_accessor :reply_delay
+
     def initialize(services:)
       super(services: services)
       @responder = DRbBle::Responder.new(Front.new, allow: [:face, :echo])
+      @reply_delay = 0
     end
 
     def write_value_of_characteristic_without_response(conn, handle, value)
@@ -30,7 +33,7 @@ class StackchanCentralDrbTest < Picotest::Test
       parts = DRbBle.chunks(reply, 20)
       i = 0
       while i < parts.length
-        schedule_notification(DTX, parts[i], after_polls: i + 1)
+        schedule_notification(DTX, parts[i], after_polls: @reply_delay + i + 1)
         i += 1
       end
     end
@@ -78,6 +81,16 @@ class StackchanCentralDrbTest < Picotest::Test
     assert_true drb_writes.length >= 3
     paced = FakeClock.sleeps.select { |ms| ms == StackchanCentral::POLLING_UNIT_MS }
     assert_true paced.length >= drb_writes.length - 1
+  end
+
+  def test_a_reply_that_arrives_after_its_call_timed_out_is_not_returned_to_the_next_call
+    radio = DrbRadio.new(services: services)
+    central = build(radio)
+    radio.reply_delay = 200
+    assert_raise(DRb::DRbConnError) { central.remote.echo("stale") }
+    100.times { central.drain }
+    radio.reply_delay = 0
+    assert_equal ["fresh"], central.remote.echo("fresh")
   end
 
   def test_text_notifications_do_not_reach_the_drb_inbox
