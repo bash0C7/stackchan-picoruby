@@ -93,8 +93,9 @@ covers boot, gem loading and class-body load; everything past the first hardware
 ## Placement
 
 Branch `claude/qemu-boot-gate`, stacked on `claude/ecstatic-allen-s6qki1` (PR #11). It changes
-tooling only. PR #11's device trial runs from this branch (same `trial/lock.yml` pins), so the
-trial arm passes the gate before it is flashed. `claude/stackchan-protocol-fold` merges this
+tooling only. Each trial arm builds and flashes with the Rakefile of the commit it pins, so this
+branch's `trial/lock.yml` pins its own head (PR #11's code plus the gate) for the trial arm, and
+PR #11's device trial runs from this branch. `claude/stackchan-protocol-fold` merges this
 branch. Merge order: PR #11, this branch, the protocol fold-in.
 
 The base arm (`main`) builds with its own Rakefile, which has no gate; it is the known-good
