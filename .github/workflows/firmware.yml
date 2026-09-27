@@ -58,6 +58,31 @@ jobs:
           ESP_IDF_EXPORT: /opt/esp/idf/export.sh
         run: bundle exec rake r2p2:build
 
+      - name: Install the QEMU boot gate's shared libraries
+        run: apt-get install -y -qq libsdl2-2.0-0 libslirp0
+
+      # Boots this tree under QEMU and requires the probe marker: the same
+      # requires, driver gems, and application class bodies the robot loads,
+      # with a verdict read from the boot log. It does not reach hardware
+      # (I2C, LCD, servos, speaker, BLE), only boot and Ruby load.
+      - name: Run the QEMU boot gate
+        env:
+          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
+        run: |
+          bundle exec rake qemu:setup
+          bundle exec rake r2p2:qemu_check
+
+      - name: Print the QEMU boot log on failure
+        if: failure()
+        run: |
+          log=$(ls -t /tmp/stackchan-picoruby-debug/qemu-*.log 2>/dev/null | head -1)
+          if [ -n "$log" ]; then
+            echo "== $log =="
+            cat "$log"
+          else
+            echo "no qemu boot log found under /tmp/stackchan-picoruby-debug/"
+          fi
+
       - name: Report what was produced
         run: |
           find vendor/R2P2-ESP32/build -maxdepth 1 -name '*.bin' -exec ls -l {} +

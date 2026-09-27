@@ -124,6 +124,8 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 | 復旧 | cold-recovery → full-rebuild → 人手 (USB 抜き差し / download mode) |
 | merge 前の実機実績 | `/stackchan-device-trial` (`trial/lock.yml` の commit を base / trial の 2 arm で実機に載せる) |
 
+- `r2p2:build_flash` は先に `r2p2:qemu_check` を通す。同じ tree を UART console 付き QEMU で起動し、app の require・bundle した driver gem・class 本体を読ませたうえで boot log から verdict を出す。FAIL なら flash せず、PASS のあと clean build してから flash する。QEMU が見るのは boot・gem load・class 本体の load までで、I2C デバイス・LCD・サーボ・スピーカー・BLE 無線は見ない (そこは `/stackchan-device-trial`)。
+- `rake qemu:setup` は QEMU (`esp_develop_9.2.2_20250817`) を sha256 で pin して `build/qemu/` に展開する。macOS は `brew install libgcrypt glib pixman sdl2 libslirp` が要る。QEMU `9.0.0` は PSRAM を見つけない (`quad_psram: PSRAM ID read error`)。eFuse drive は `nvram.esp32s3.efuse` (`esp32c3.efuse` は QEMU 9.2.2 に拒否される) に `BLK_VERSION_MAJOR=1` (byte 64 = `0x01`) を乗せないと boot が eFuse チェックで spin する。build と gate の `PICORB_VM` は一致させる。
 - `.rb` の直接 upload は禁止。必ず host で picorbc compile した `.mrb` を上げる (on-device compile は codegen stack overflow)。
 - `main_task.rb` は `/home/app.mrb` を無条件に `load` し、このアプリは戻らないので `$shell.start` に到達しない。抜ける keypress も無い。`upload_appmrb` はこのため先に `wipe_storage` を通す。`upload_mrb` (`DST=`) は app.mrb を壊さずに wipe できないので、autostart 中の device への helper upload は wipe → helper → app.mrb の順になる。
 - device 側に一時的な `puts` を足さない。cold boot で Guru Meditation の boot loop に入ることがあり (原因未特定、`Loading app.mrb` 直後で panic)、そうなると USB CDC が再列挙し続けて esptool も繋がらない。復旧は人間による USB 抜き差しだけで、抜き差し直後の 1 回しか esptool が通らないので、その 1 回を何に使うか決めてから頼む。

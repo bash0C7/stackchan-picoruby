@@ -1,6 +1,6 @@
 ---
 name: stackchan-device-trial
-description: Put the commits pinned in trial/lock.yml on the robot (base arm, then trial arm, one session): pin R2P2-darwin and build the Mac VM + app bundle once for both arms, pin every tree, build + flash with each arm's own tooling, check the boot log, drive it over BLE and dRuby, time it, and write trial/results/<stamp>.{md,json} (~40 min). Required before merging anything that changes firmware, gems, app or the BLE link.
+description: Put the commits pinned in trial/lock.yml on the robot (base arm, then trial arm, one session): pin R2P2-darwin and build the Mac VM + app bundle once for both arms, pin every tree, build + flash with each arm's own tooling (the trial arm's build_flash runs the QEMU boot gate first), check the boot log, drive it over BLE and dRuby, time it, and write trial/results/<stamp>.{md,json} (~45 min). Required before merging anything that changes firmware, gems, app or the BLE link.
 ---
 
 Needs the CoreS3 on USB, the Mac's Bluetooth, and ESP-IDF (`ESP_IDF_EXPORT` if not at `~/esp/esp-idf/export.sh`). Nothing else may hold the serial port.

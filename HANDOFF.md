@@ -50,7 +50,7 @@ say which change it tried.
 | unit | branch (every repo it touches) | stacks on | state |
 |---|---|---|---|
 | dRuby over BLE, AOT kernels, core 1, domain simplification | `claude/ecstatic-allen-s6qki1` (stackchan-picoruby, PR #11); `claude/stackchan-aot-multicore-drb` (R2P2-ESP32); `claude/aot-glyph16` (picoruby-ili9342); `claude/simplify` (py32-io-expander, stackchan-protocol, scservo); `claude/drb-over-ble` (R2P2-darwin); `claude/string-arg-length` (suppify) | `main` | waiting for `/stackchan-device-trial`; pins in `trial/lock.yml` |
-| QEMU boot gate before every flash (tooling) | `claude/qemu-boot-gate` (stackchan-picoruby) | the line above | in development; plan `docs/superpowers/plans/2026-09-27-qemu-boot-gate.md`; PR #11's trial runs from this branch |
+| QEMU boot gate before every flash (tooling) | `claude/qemu-boot-gate` (stackchan-picoruby) | the line above | host-green; QEMU gate PASS on this tree and FAIL on an injected Regexp; PR #11's trial runs from this branch |
 | DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green and firmware-built without the robot; merges the gate branch; before the run, base moves to `main` once PR #11 has merged |
 
 DSL steps 2–6 (`docs/superpowers/specs/2026-09-27-stackchan-dsl-design.md`)
