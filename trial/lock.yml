@@ -22,7 +22,7 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: 330afec7891a345c7b6aebf0e1ecfcb8e6dddefb   # claude/stackchan-protocol-fold
+    stackchan-picoruby: bec61e49e1fa466a72e451afc73890a47923d949   # claude/stackchan-protocol-fold
     R2P2-ESP32: 9652d89f2dcb2bc3001dce8045850509f84d7aa4           # claude/stackchan-protocol-fold
     picoruby: 7258676d6177dc4d8eb89fccec2fe0c6c0e4ef0b
     repos:
