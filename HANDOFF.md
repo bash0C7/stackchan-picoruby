@@ -28,7 +28,7 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 The device reports App version `2f18720`, so it is running this tree.
 
-Tests pass: 467 picotest across device, pc, shared, aot, drb-ble and the three driver gems,
+Tests pass: 476 picotest across device, pc, shared, aot, drb-ble and the three driver gems,
 with no failures, crashes or skips, plus the CRuby host tests, where ten cases
 are omitted on machines without `plutil`. Both workflows are green on the tip
 of `main`.
