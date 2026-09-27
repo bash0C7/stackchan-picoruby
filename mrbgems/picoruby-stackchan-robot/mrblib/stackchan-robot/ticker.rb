@@ -3,22 +3,26 @@ module StackChan
     class Ticker
       TOUCH_PERIOD_MS = 50
       LED_PERIOD_MS   = 50
-      BLINK_PERIOD_MS = 5000
-      BLINK_CLOSED_MS = 150
 
-      def initialize(display:, led:, touch:, dispatcher:, notify:)
-        @display    = display
-        @led        = led
-        @touch      = touch
-        @dispatcher = dispatcher
-        @notify     = notify
-        @touch_at   = nil
-        @led_at     = nil
-        @blink_at   = nil
-        @closed_at  = nil
+      def initialize(display:, led:, touch:, dispatcher:, notify:, touch_handlers: {}, periodic: [])
+        @display        = display
+        @led            = led
+        @touch          = touch
+        @dispatcher     = dispatcher
+        @notify         = notify
+        @touch_handlers = touch_handlers
+        @periodic       = periodic
+        @periodic_due   = []
+        @robot_handle   = dispatcher.robot_handle
+        @robot_handle.ticker = self
+        @now_ms         = 0
+        @touch_at       = nil
+        @led_at         = nil
+        @open_at        = nil
       end
 
       def tick(now_ms)
+        @now_ms = now_ms
         if due?(@touch_at, now_ms, TOUCH_PERIOD_MS)
           @touch_at = now_ms
           poll_touch
@@ -27,7 +31,12 @@ module StackChan
           @led_at = now_ms
           @led.tick(now_ms)
         end
-        blink(now_ms)
+        reopen_eyes(now_ms)
+        run_periodic(now_ms)
+      end
+
+      def reopen_eyes_after(closed_ms)
+        @open_at = @now_ms + closed_ms
       end
 
       private
@@ -40,23 +49,31 @@ module StackChan
         return unless @touch
         zone = @touch.poll
         return unless zone
-        @dispatcher.react_to_touch(zone)
+        handler = @touch_handlers[zone]
+        handler.call(@robot_handle) if handler
         @notify.call("<touch:#{zone}>\n")
       rescue => e
         puts "[application] touch poll error: #{e.class}: #{e.message}"
       end
 
-      def blink(now_ms)
-        @blink_at ||= now_ms
-        if @closed_at
-          if now_ms - @closed_at >= BLINK_CLOSED_MS
-            @dispatcher.current_face.redraw_eyes_open(@display)
-            @closed_at = nil
+      def reopen_eyes(now_ms)
+        return unless @open_at && now_ms >= @open_at
+        @open_at = nil
+        @dispatcher.current_face.redraw_eyes_open(@display)
+      end
+
+      def run_periodic(now_ms)
+        i = 0
+        while i < @periodic.size
+          entry = @periodic[i]
+          due = @periodic_due[i]
+          if due.nil?
+            @periodic_due[i] = now_ms + entry[0]
+          elsif now_ms >= due
+            @periodic_due[i] = now_ms + entry[0]
+            entry[1].call(@robot_handle)
           end
-        elsif now_ms - @blink_at >= BLINK_PERIOD_MS
-          @dispatcher.current_face.redraw_eyes_closed(@display)
-          @blink_at  = now_ms
-          @closed_at = now_ms
+          i += 1
         end
       end
     end

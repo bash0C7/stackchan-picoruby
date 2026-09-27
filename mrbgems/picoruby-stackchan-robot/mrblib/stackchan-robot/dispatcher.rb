@@ -26,36 +26,21 @@ module StackChan
       SUBTITLE_FG          = 0xFFFF
       SUBTITLE_BG          = 0x0000
 
-      attr_reader :current_face
+      attr_reader :current_face, :robot_handle
 
-      def initialize(display:, led:, stdout: $stdout, head: nil)
-        @display = display
-        @led     = led
-        @stdout  = stdout
-        @head    = head
-        neutral   = Face.new
-        smile     = Face.new(mouth: 8)
-        joy       = Face.new(mouth: 18)
-        surprised = Face.new(mouth: :open)
-        sad       = Face.new(mouth: -8)
-        angry     = Face.new(brows: :angry)
-        closed    = Face.new(eyes: :closed, mouth: :none)
-        @face_table = {
-          "0" => neutral,
-          "1" => smile,
-          "2" => joy,
-          "3" => surprised,
-          "4" => sad,
-          "5" => angry,
-        }.freeze
-        @touch_table = {
-          0 => [surprised, :both,  0, 60, 0],
-          1 => [angry,     :right, 60, 0, 0],
-          2 => [sad,       :left,  0, 0, 60],
-        }.freeze
-        @neutral_face = neutral
-        @closed_face  = closed
-        @current_face = neutral
+      def initialize(display:, led:, stdout: $stdout, head: nil, speaker: nil,
+                     faces:, face_index:, frame_handlers: {})
+        raise ArgumentError, "faces: :neutral missing" unless faces[:neutral]
+        raise ArgumentError, "faces: :closed missing" unless faces[:closed]
+        @display        = display
+        @led            = led
+        @stdout         = stdout
+        @head           = head
+        @faces          = faces
+        @face_index     = face_index
+        @frame_handlers = frame_handlers
+        @current_face   = faces[:neutral]
+        @robot_handle = Handle.new(dispatcher: self, display: display, led: led, head: head, speaker: speaker)
       end
 
       def handle(frame)
@@ -69,6 +54,7 @@ module StackChan
         ok = handle_text(frame) && ok if frame.key?("text")
         servo = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
         ok = handle_head(frame) && ok if servo
+        ok = run_frame_handlers(frame) && ok
         @stdout.write(ok ? ACK_FRAME : ERROR_FRAME)
         emit_servo_detail if ok && servo
       rescue => e
@@ -84,25 +70,15 @@ module StackChan
         @stdout = saved
       end
 
-      def react_to_touch(zone)
-        face, side, r, g, b = @touch_table[zone]
-        @current_face = face
-        face.redraw(@display)
-        @led.flash_side(side, r, g, b)
-      end
-
-      private
-
-      def handle_face(frame)
-        face = @face_table[frame["F"]]
+      def show_face(name)
+        face = @faces[name]
         return false unless face
         @current_face = face
         face.redraw(@display)
         true
       end
 
-      def handle_text(frame)
-        text = frame["text"]
+      def draw_subtitle(text)
         return false unless text
         text = text[0, SUBTITLE_MAX_CHARS]
         @display.draw_rect(0, SUBTITLE_BAND_Y, 320, SUBTITLE_BAND_HEIGHT,
@@ -112,17 +88,62 @@ module StackChan
         true
       end
 
+      def move_head(yaw_left, yaw_right, pitch_up, time_ms, velocity)
+        yaw_raw   = nil
+        pitch_raw = nil
+
+        if yaw_left
+          return false unless yaw_left >= 0 && yaw_left <= 100
+          yaw_raw = Head::SERVO_YAW_ZERO - (yaw_left * Head::YAW_RANGE_RAW / 100)
+        elsif yaw_right
+          return false unless yaw_right >= 0 && yaw_right <= 100
+          yaw_raw = Head::SERVO_YAW_ZERO + (yaw_right * Head::YAW_RANGE_RAW / 100)
+        end
+
+        if pitch_up
+          return false unless pitch_up >= 0 && pitch_up <= 100
+          pitch_raw = Head::SERVO_PITCH_ZERO + (pitch_up * Head::PITCH_RANGE_RAW / 100)
+        end
+
+        return false unless yaw_raw || pitch_raw
+        return true if @head.nil?
+        @head.apply(yaw_raw: yaw_raw, pitch_raw: pitch_raw, time_ms: time_ms, velocity: velocity)
+        true
+      end
+
+      private
+
+      def handle_face(frame)
+        name = @face_index[frame["F"]]
+        return false unless name
+        show_face(name)
+      end
+
+      def run_frame_handlers(frame)
+        ok = true
+        keys = frame.keys
+        i = 0
+        while i < keys.size
+          handler = @frame_handlers[keys[i]]
+          ok = handler.call(@robot_handle, frame[keys[i]]) && ok if handler
+          i += 1
+        end
+        ok
+      end
+
+      def handle_text(frame)
+        draw_subtitle(frame["text"])
+      end
+
       def handle_torque(frame)
         case frame["torque"]
         when "on"
           @head.enable_torque(true) if @head
-          @current_face = @neutral_face
-          @neutral_face.redraw(@display)
+          show_face(:neutral)
           @stdout.write(ACK_FRAME)
         when "off"
           @head.enable_torque(false) if @head
-          @current_face = @closed_face
-          @closed_face.redraw(@display)
+          show_face(:closed)
           @stdout.write(ACK_FRAME)
         else
           @stdout.write(ERROR_FRAME)
@@ -174,34 +195,13 @@ module StackChan
       end
 
       def handle_head(frame)
-        yaw_raw   = nil
-        pitch_raw = nil
-
-        if frame.key?("YL")
-          mag = frame["YL"].to_i
-          return false unless mag >= 0 && mag <= 100
-          yaw_raw = Head::SERVO_YAW_ZERO - (mag * Head::YAW_RANGE_RAW / 100)
-        elsif frame.key?("YR")
-          mag = frame["YR"].to_i
-          return false unless mag >= 0 && mag <= 100
-          yaw_raw = Head::SERVO_YAW_ZERO + (mag * Head::YAW_RANGE_RAW / 100)
-        end
-
-        if frame.key?("PU")
-          mag = frame["PU"].to_i
-          return false unless mag >= 0 && mag <= 100
-          pitch_raw = Head::SERVO_PITCH_ZERO + (mag * Head::PITCH_RANGE_RAW / 100)
-        end
-
-        return false unless yaw_raw || pitch_raw
-        return true if @head.nil?
-        @head.apply(
-          yaw_raw:   yaw_raw,
-          pitch_raw: pitch_raw,
-          time_ms:   (frame["T"] || "0").to_i,
-          velocity:  (frame["V"] || "0").to_i,
+        move_head(
+          frame.key?("YL") ? frame["YL"].to_i : nil,
+          frame.key?("YR") ? frame["YR"].to_i : nil,
+          frame.key?("PU") ? frame["PU"].to_i : nil,
+          (frame["T"] || "0").to_i,
+          (frame["V"] || "0").to_i
         )
-        true
       end
 
       def emit_servo_detail

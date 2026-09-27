@@ -1,7 +1,7 @@
 module StackChan
   class Robot
     class Remote
-      EXPOSED = [:command, :servo, :led, :face, :text, :torque, :read_pos]
+      BUILT_INS = [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free]
 
       class Lines < Array
         def write(s)
@@ -9,8 +9,12 @@ module StackChan
         end
       end
 
-      def initialize(dispatcher)
+      attr_reader :exposed
+
+      def initialize(dispatcher, remote_handlers: {})
         @dispatcher = dispatcher
+        @handlers   = remote_handlers
+        @exposed    = BUILT_INS + remote_handlers.keys
       end
 
       def command(frame)
@@ -42,6 +46,19 @@ module StackChan
 
       def read_pos
         command({ "read" => "pos" })
+      end
+
+      def stack_free
+        free = Machine.respond_to?(:stack_high_water_mark) ? Machine.stack_high_water_mark : "unknown"
+        lines = Lines.new
+        lines.write("<stack_free:#{free}>\n")
+        lines
+      end
+
+      def method_missing(name, *args)
+        handler = @handlers[name]
+        raise NoMethodError, "undefined method '#{name}' for StackChan::Robot::Remote" unless handler
+        handler.call(@dispatcher.robot_handle, *args)
       end
     end
   end

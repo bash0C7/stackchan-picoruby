@@ -6,7 +6,7 @@ class TextDispatchTest < Picotest::Test
   def setup
     @display = FakeDisplay.new
     @led     = FakeLed.new
-    @dispatcher = StackChan::Robot::Dispatcher.new(
+    @dispatcher = RobotTables.dispatcher(
       display: @display, led: @led, stdout: NullSink.new
     )
   end

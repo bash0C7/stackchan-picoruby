@@ -51,14 +51,17 @@ class DrbChannelTest < Picotest::Test
     @yaw = FakeServo.new
     @pitch = FakeServo.new
     @display = FakeDisplay.new
-    @dispatcher = StackChan::Robot::Dispatcher.new(
+    @dispatcher = RobotTables.dispatcher(
       display: @display, led: (@led = FakeLed.new), stdout: nil,
       head: StackChan::Robot::Head.new(@yaw, @pitch)
     )
     @port = Port.new
+    @front = StackChan::Robot::Remote.new(@dispatcher, remote_handlers: {
+      wave: ->(r, level) { r.head(yaw_left: level, time: 300) },
+    })
     @channel = StackChan::Robot::DrbChannel.new(
       rx_handle: DRX, tx_handle: DTX, cccd_handle: DCCCD,
-      responder: DRbBle::Responder.new(StackChan::Robot::Remote.new(@dispatcher), allow: StackChan::Robot::Remote::EXPOSED)
+      responder: DRbBle::Responder.new(@front, allow: @front.exposed)
     )
     @loop = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
@@ -126,5 +129,40 @@ class DrbChannelTest < Picotest::Test
     subscribe
     assert_equal [".\n"], @remote.led({ L: 1, M: "s", S: "B", R: 10, G: 20, B: 30 })
     assert_equal [[:animate_side, [:both, 10, 20, 30, :solid]]], @led.calls
+  end
+
+  def test_exposed_is_the_built_ins_then_the_remote_handler_names
+    assert_equal [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free, :wave], @front.exposed
+  end
+
+  def test_a_remote_handler_receives_the_handle_and_the_arguments_and_moves_the_head
+    subscribe
+    assert_equal true, @remote.wave(50)
+    assert_equal [[332, 300, 0]], @yaw.writes
+  end
+
+  def test_a_name_that_is_neither_built_in_nor_a_handler_is_not_exposed
+    subscribe
+    err = nil
+    begin
+      @remote.shake
+    rescue => e
+      err = e
+    end
+    assert_equal "NoMethodError: shake is not exposed", err.message
+  end
+
+  def test_a_handler_name_called_on_the_front_without_a_handler_table_raises_no_method_error
+    front = StackChan::Robot::Remote.new(@dispatcher)
+    assert_raise(NoMethodError) { front.wave(50) }
+  end
+
+  def test_stack_free_is_unknown_when_the_machine_has_no_high_water_mark
+    subscribe
+    assert_equal ["<stack_free:unknown>\n"], @remote.stack_free
+  end
+
+  def test_stack_free_returns_the_same_lines_type_as_the_other_built_ins
+    assert_equal StackChan::Robot::Remote::Lines, @front.stack_free.class
   end
 end

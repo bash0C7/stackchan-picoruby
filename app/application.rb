@@ -162,18 +162,41 @@ class StackChanApp < BLE
       pump:    -> { @link.pump }
     )
     @dispatcher = StackChan::Robot::Dispatcher.new(
-      display: display, led: led, head: head, stdout: self
+      display: display, led: led, head: head, speaker: speaker, stdout: self,
+      faces: {
+        neutral:   StackChan::Robot::Face.new,
+        smile:     StackChan::Robot::Face.new(mouth: 8),
+        joy:       StackChan::Robot::Face.new(mouth: 18),
+        surprised: StackChan::Robot::Face.new(mouth: :open),
+        sad:       StackChan::Robot::Face.new(mouth: -8),
+        angry:     StackChan::Robot::Face.new(brows: :angry),
+        closed:    StackChan::Robot::Face.new(eyes: :closed, mouth: :none),
+      },
+      face_index: {
+        "0" => :neutral,
+        "1" => :smile,
+        "2" => :joy,
+        "3" => :surprised,
+        "4" => :sad,
+        "5" => :angry,
+      }
     )
     ticker = StackChan::Robot::Ticker.new(
       display: display, led: led, touch: touch, dispatcher: @dispatcher,
-      notify: ->(frame) { write(frame) }
+      notify: ->(frame) { write(frame) },
+      touch_handlers: {
+        0 => ->(r) { r.face(:surprised); r.led(:both,  [0, 60, 0], flash: 300) },
+        1 => ->(r) { r.face(:angry);     r.led(:right, [60, 0, 0], flash: 300) },
+        2 => ->(r) { r.face(:sad);       r.led(:left,  [0, 0, 60], flash: 300) },
+      },
+      periodic: [[5000, ->(r) { r.blink(150) }]]
     )
+    remote = StackChan::Robot::Remote.new(@dispatcher)
     drb = StackChan::Robot::DrbChannel.new(
       rx_handle:   nus_handle(db, DRB_RX_CHAR_UUID, :value_handle),
       tx_handle:   nus_handle(db, DRB_TX_CHAR_UUID, :value_handle),
       cccd_handle: nus_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
-      responder:   DRbBle::Responder.new(StackChan::Robot::Remote.new(@dispatcher),
-                                         allow: StackChan::Robot::Remote::EXPOSED)
+      responder:   DRbBle::Responder.new(remote, allow: remote.exposed)
     )
     @link = StackChan::Robot::LinkLoop.new(
       port: self,

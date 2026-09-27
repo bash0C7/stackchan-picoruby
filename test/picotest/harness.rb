@@ -31,6 +31,7 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   DAEMON_APP_RB       = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "daemon_app.rb")
   DEVICE_STUBS_RB     = File.join(REPO_ROOT, "test", "picotest", "stubs.rb")
   FACE_GOLDEN_HASH_RB = File.join(REPO_ROOT, "test", "face_golden_hash.rb")
+  ROBOT_TABLES_RB     = File.join(REPO_ROOT, "test", "robot_tables.rb")
   DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s fake_multicore].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
@@ -63,7 +64,7 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
         require "face_golden_hash"
       },
       load_files: lambda {
-        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, FACE_GOLDEN_HASH_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
+        [DEVICE_STUBS_RB, *DEVICE_GEM_MRBLIB, *DRB_MRBLIB, *DRB_BLE_MRBLIB, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, FACE_GOLDEN_HASH_RB, ROBOT_TABLES_RB, *AOT_KERNELS, *DEVICE_FAKES, SCSERVO_RB]
       },
     },
     "pc" => {
