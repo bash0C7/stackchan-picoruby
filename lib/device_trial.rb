@@ -30,7 +30,7 @@ class DeviceTrial
     @root   = root
     @ops    = ops
     @rounds = rounds
-    @report = { "stamp" => stamp, "lock" => lock, "arms" => {}, "darwin" => nil, "verdict" => "incomplete" }
+    @report = { "stamp" => stamp, "lock" => lock, "pc_vm" => nil, "arms" => {}, "darwin" => nil, "verdict" => "incomplete" }
   end
 
   def r2p2    = File.join(@root, "vendor", "R2P2-ESP32")
@@ -42,12 +42,24 @@ class DeviceTrial
   # Base first, trial second, in one session: the timings are only compared
   # inside one run (sessions drift 15-25%).
   def run(arm_names = %w[base trial])
+    run_pc_vm
     arm_names.each { |name| run_arm(name) }
     @report["verdict"] = verdict
     @report
   rescue Stop
     @report["verdict"] = "fail"
     @report
+  end
+
+  def darwin_dir = File.join(@root, "vendor", "R2P2-darwin")
+
+  def run_pc_vm
+    p = @report["pc_vm"] = { "steps" => [] }
+    sha = @lock.fetch("darwin").fetch("R2P2-darwin")
+    step(p, "pin R2P2-darwin") { checkout(darwin_dir, sha) }
+    step(p, "pc:vm_build") { rake(@root, "pc:vm_build") }
+    step(p, "pc:app_bundle") { rake(@root, "pc:app_bundle") }
+    step(p, "pin R2P2-darwin holds") { head_is!(darwin_dir, sha) }
   end
 
   def run_arm(name)
@@ -136,9 +148,9 @@ class DeviceTrial
 
   def verdict
     arms = @report["arms"].values
-    return "incomplete" if arms.empty?
-    all_steps = arms.flat_map { |a| a["steps"] } + (@report["darwin"] ? @report["darwin"]["steps"] : [])
+    all_steps = [@report["pc_vm"], *arms, @report["darwin"]].compact.flat_map { |a| a["steps"] }
     return "fail" unless all_steps.all? { |s| s["ok"] }
+    return "incomplete" if arms.empty?
     answers = (arms + [@report["darwin"]].compact).flat_map { |a| a["human"].values.map { |h| h["answer"] } }
     return "fail" if answers.include?("n")
     return "incomplete" unless answers.all? { |v| v == "y" } && @report["arms"].key?("trial") && @report["darwin"]
@@ -315,6 +327,10 @@ class DeviceTrial
       out << "\n"
     end
     out << "- darwin: R2P2-darwin `#{@lock.dig('darwin', 'R2P2-darwin').to_s[0, 7]}`\n" if @lock["darwin"]
+    if (p = @report["pc_vm"])
+      out << "\n## pc_vm\n\n| step | ok | detail |\n|---|---|---|\n"
+      p["steps"].each { |s| out << "| #{s['name']} | #{s['ok'] ? 'ok' : 'FAIL'} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
+    end
     @report["arms"].each do |name, r|
       out << "\n## #{name}\n\n| step | ok | detail |\n|---|---|---|\n"
       r["steps"].each { |s| out << "| #{s['name']} | #{s['ok'] ? 'ok' : 'FAIL'} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }

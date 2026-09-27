@@ -10,7 +10,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
     attr_reader :calls, :heads, :dirty
-    attr_accessor :boot_log, :cli_out, :answers, :on_rake
+    attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake
 
     def initialize
       @calls = []
@@ -21,6 +21,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       @cli_out = {}
       @boot_log = {}
       @on_rake = {}
+      @fail_rake = {}
       @fetched = {}
     end
 
@@ -50,6 +51,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       @calls << [:rake, dir, *tasks, env]
       hook = @on_rake[tasks.first]
       hook.call(dir, env) if hook
+      return [false, "boom", 0] if @fail_rake[tasks.first]
       [true, "done", 0]
     end
 
@@ -123,11 +125,37 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def test_every_tree_is_pinned_before_the_first_build
     trial.run(%w[trial])
-    first_rake = @ops.calls.index { |c| c[0] == :rake }
+    first_rake = @ops.calls.index { |c| c[0] == :rake && c[2] == "r2p2:setup" }
     pins = @ops.calls[0...first_rake].select { |c| c[0] == :git && c[2] == "checkout" }.map { |c| [c[1], c.last] }
     arm = LOCK["arms"]["trial"]
     assert_include pins, [r2p2, arm["R2P2-ESP32"]]
     arm["repos"].each { |name, sha| assert_include pins, [cache(name), sha] }
+  end
+
+  def test_the_pc_vm_is_built_once_from_the_pinned_r2p2_darwin_before_the_first_arm_setup
+    r = trial.run
+    darwin = File.join(ROOT, "vendor", "R2P2-darwin")
+    sha = LOCK["darwin"]["R2P2-darwin"]
+    vm_builds = @ops.calls.each_index.select { |i| @ops.calls[i][0] == :rake && @ops.calls[i][2] == "pc:vm_build" }
+    assert_equal 1, vm_builds.size
+    assert_equal ROOT, @ops.calls[vm_builds.first][1]
+    pin = @ops.calls.index([:git, darwin, "checkout", "--quiet", "--detach", sha])
+    bundle = @ops.calls.index { |c| c[0] == :rake && c[2] == "pc:app_bundle" }
+    first_setup = @ops.calls.index { |c| c[0] == :rake && c[2] == "r2p2:setup" }
+    assert_operator pin, :<, vm_builds.first
+    assert_operator vm_builds.first, :<, bundle
+    assert_operator bundle, :<, first_setup
+    assert_equal 1, @ops.calls.count { |c| c[0] == :rake && c[2] == "pc:app_bundle" }
+    assert_equal ["pin R2P2-darwin", "pc:vm_build", "pc:app_bundle", "pin R2P2-darwin holds"],
+                 r["pc_vm"]["steps"].map { |s| s["name"] }
+  end
+
+  def test_a_failing_pc_vm_build_fails_the_verdict_before_any_arm
+    @ops.fail_rake["pc:vm_build"] = true
+    r = trial.run
+    assert_equal "fail", r["verdict"]
+    assert_equal "pc:vm_build", r["pc_vm"]["steps"].find { |s| !s["ok"] }["name"]
+    assert_empty r["arms"]
   end
 
   def test_a_moved_cache_keeps_its_old_commit_on_a_branch

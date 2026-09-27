@@ -37,14 +37,17 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
 
 ## Run (dev / host)
 
-Build the deployment VM once (shared gem baked in). `vendor/R2P2-darwin` is
+Build the deployment VM once. `vendor/R2P2-darwin` is
 fetched via `rake vendor:r2p2_darwin:setup` from the repo root (see the
 top-level README); it vendors picoruby itself (`port-darwin` branch — BLE +
 mbedtls + io-console + machine darwin ports) internally. From the repo root:
 
 ```sh
-bundle exec rake pc:vm_build   # vendor/R2P2-darwin/build/host/bin/picoruby, Stackchan::BLE / Stackchan::AI compiled in
+bundle exec rake pc:vm_build   # vendor/R2P2-darwin/build/host/bin/picoruby
 ```
+
+The VM carries no StackChan code: the daemon loads `picoruby-stackchan-shared`
+(`Stackchan::BLE` / `Stackchan::AI`) as source from the checkout it runs from.
 
 Then package that VM into `~/Applications/StackchanPico.app` (from the repo
 root; required once, and again after every `pc:vm_build`, so real-mode BLE
