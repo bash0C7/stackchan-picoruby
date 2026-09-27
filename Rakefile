@@ -225,7 +225,7 @@ end
 
 def in_r2p2(cmd)
   abort "vendor/R2P2-ESP32 not found — run `rake vendor:setup` first" unless Dir.exist?(R2P2_ROOT)
-  sh %Q{bash -c '. #{ESP_IDF_EXPORT} && export #{aot_build_env} && cd #{R2P2_ROOT} && #{cmd}'}
+  sh %Q{bash -c '. #{ESP_IDF_EXPORT} && export #{r2p2_build_env} && cd #{R2P2_ROOT} && #{cmd}'}
 end
 
 def r2p2_build_cmd(*targets, port: nil)
@@ -319,9 +319,10 @@ end
 AOT_ESP32_DIR     = File.expand_path("build/aot/esp32", __dir__)
 AOT_MULTICORE_DIR = File.expand_path("build/aot/picoruby-multicore", __dir__)
 
-def aot_build_env
-  gems = [File.join(AOT_ESP32_DIR, "gems", "picoruby-stackchan_aot"), File.join(AOT_ESP32_DIR, "picoruby-kernel_registry")]
-  %Q{STACKCHAN_AOT_GEMS="#{gems.join(':')}" STACKCHAN_MULTICORE_DIR="#{AOT_MULTICORE_DIR}"}
+def r2p2_build_env
+  gems = [File.join(AOT_ESP32_DIR, "gems", "picoruby-stackchan_aot"), File.join(AOT_ESP32_DIR, "picoruby-kernel_registry"),
+          File.expand_path("mrbgems/picoruby-stackchan-protocol", __dir__)]
+  %Q{R2P2_GEM_DIRS="#{gems.join(':')}" STACKCHAN_MULTICORE_DIR="#{AOT_MULTICORE_DIR}"}
 end
 
 namespace :aot do

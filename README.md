@@ -38,8 +38,9 @@ The macOS side is the orchestrator. It sends control frames (face, LED, servo
 position, audio) and reads single-byte ACK or ERR replies plus detail frames.
 
 Control frames are key-value, comma-delimited, parsed by the FrameParser in
-the `picoruby-stackchan-protocol` gem. Audio is sent as a length-prefixed
-`<A:nbytes>` frame followed by raw mu-law bytes in MTU-sized writes.
+the `mrbgems/picoruby-stackchan-protocol` gem. Audio is sent as a
+length-prefixed `<A:nbytes>` frame followed by raw mu-law bytes in
+MTU-sized writes.
 
 ## Code layout
 
@@ -62,10 +63,12 @@ vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Mac-side PicoRuby VM
                       StackChan from a physical iPhone.
 ```
 
-Four more hardware-driver mrbgems (LCD, PY32 I/O expander, servo, frame
-protocol) are separate `bash0C7/picoruby-*` repos fetched straight from
-GitHub by the firmware's own build_config (`conf.gem github:`) — no local
-clone or vendoring needed for those.
+Three more hardware-driver mrbgems (LCD, PY32 I/O expander, servo) are
+separate `bash0C7/picoruby-*` repos fetched straight from GitHub by the
+firmware's own build_config (`conf.gem github:`) — no local clone or
+vendoring needed for those. The BLE frame protocol gem
+(`mrbgems/picoruby-stackchan-protocol`) lives in this repo and is handed to
+the same build_config as a gem dir (`R2P2_GEM_DIRS`).
 
 All StackChan business logic lives in a single autostart payload:
 
@@ -410,11 +413,13 @@ and build_configs each time.
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
 | [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
-| [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
 
 The WS2812, Si12T, AW88298 and dRuby-over-BLE gems are mrbgems in this
-repo's `mrbgems/` bundled into `app.mrb` at compile time.
+repo's `mrbgems/` bundled into `app.mrb` at compile time. The BLE frame
+protocol gem (`mrbgems/picoruby-stackchan-protocol`, `FrameParser` /
+`FrameCodec` / `FrameText`) is also in this repo, but is instead handed to
+the firmware build directly as a gem dir (`R2P2_GEM_DIRS`).
 
 ### Staying reproducible
 

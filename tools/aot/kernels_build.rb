@@ -7,7 +7,7 @@
 #   tools/aot/kernels_build.rb <esp32|host>
 #
 # Output under build/aot/<board>/. The last stdout line is the ":"-separated
-# gem dirs for STACKCHAN_AOT_GEMS. Needs tools/aot/setup.sh first.
+# gem dirs the Rakefile folds into R2P2_GEM_DIRS. Needs tools/aot/setup.sh first.
 require "digest"
 require "fileutils"
 
