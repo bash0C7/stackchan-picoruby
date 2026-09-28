@@ -26,13 +26,15 @@ def run(*args)
   ok
 end
 
-def wait_until_connected
+def wait_until_connected(cli: STACKCHAN, sleep_fn: ->(s) { sleep(s) })
   loop do
-    out = `#{STACKCHAN} status`
-    return true if out.include?("ble_connected: true") || out.include?("ble_connected=>true")
-    puts "[#{Time.now.strftime('%H:%M:%S')}] waiting for BLE connection..."
+    system(cli, "connect")
+    code = $?.exitstatus
+    return true if code == 0
+    return false unless code == 8
+    puts "[#{Time.now.strftime('%H:%M:%S')}] robot busy, retrying connect..."
     $stdout.flush
-    sleep 3
+    sleep_fn.call(3)
   end
 end
 
@@ -60,30 +62,32 @@ def rest_state
   run("torque", "off")
 end
 
-wait_until_connected
-run("torque", "on")
+if __FILE__ == $0
+  wait_until_connected or abort "[ambient_demo] stackchan connect failed"
+  run("torque", "on")
 
-trap("INT")  { rest_state; exit 0 }
-trap("TERM") { rest_state; exit 0 }
+  trap("INT")  { rest_state; exit 0 }
+  trap("TERM") { rest_state; exit 0 }
 
-now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-next_led  = now
-next_face = now
-next_move = now
-
-loop do
   now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  if now >= next_led
-    random_led
-    next_led = now + rand(LED_INTERVAL_RANGE)
+  next_led  = now
+  next_face = now
+  next_move = now
+
+  loop do
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    if now >= next_led
+      random_led
+      next_led = now + rand(LED_INTERVAL_RANGE)
+    end
+    if now >= next_face
+      random_face
+      next_face = now + rand(FACE_INTERVAL_RANGE)
+    end
+    if now >= next_move
+      random_move
+      next_move = now + rand(MOVE_INTERVAL_RANGE)
+    end
+    sleep 1
   end
-  if now >= next_face
-    random_face
-    next_face = now + rand(FACE_INTERVAL_RANGE)
-  end
-  if now >= next_move
-    random_move
-    next_move = now + rand(MOVE_INTERVAL_RANGE)
-  end
-  sleep 1
 end

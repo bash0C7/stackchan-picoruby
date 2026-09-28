@@ -5,6 +5,7 @@ class MacBootTest < Test::Unit::TestCase
   ROOT = File.expand_path('..', __dir__)
   APP = File.join(ROOT, 'pc', 'stackchan-pico', 'app')
   CONTROLLER = 'mrbgems/picoruby-stackchan-controller/mrblib'
+  MAC_APP = 'apps/mac/app.rb'
 
   def controller_files
     Dir.chdir(File.join(ROOT, CONTROLLER)) do
@@ -71,5 +72,76 @@ class MacBootTest < Test::Unit::TestCase
         assert File.exist?(File.join(ROOT, path)), "#{boot} loads missing #{path}"
       end
     end
+  end
+  def serve_call
+    found = []
+    walk = lambda do |n|
+      next unless n
+      found << n if n.is_a?(Prism::CallNode) && n.name == :serve && n.receiver&.slice == 'App'
+      n.compact_child_nodes.each { |c| walk.call(c) }
+    end
+    walk.call(parse('boot_daemon.rb'))
+    found
+  end
+
+  def nodes_of(node, *types)
+    found = []
+    walk = lambda do |n|
+      next unless n
+      found << n if types.any? { |t| n.is_a?(t) }
+      n.compact_child_nodes.each { |c| walk.call(c) }
+    end
+    walk.call(node)
+    found
+  end
+
+  def test_boot_daemon_loads_the_mac_app_once_after_every_controller_file
+    loads = load_paths(parse('boot_daemon.rb'))
+    assert_equal 1, loads.count(MAC_APP)
+    last_gem = loads.rindex { |p| p.start_with?(CONTROLLER) }
+    assert_operator loads.index(MAC_APP), :>, last_gem
+  end
+
+  def test_boot_daemon_serves_the_app_with_the_sidecar_from_the_fourth_argument
+    calls = serve_call
+    assert_equal 1, calls.size
+    keys = calls.first.arguments.arguments.first.elements.map { |e| e.key.unescaped }
+    assert_equal %w[port host name_prefix sidecar_uri], keys
+    body = parse('boot_daemon.rb').statements.body
+    assert_operator body.index { |n| n.slice.include?(calls.first.slice) },
+                    :>, body.index { |n| load_paths(n).include?(MAC_APP) }
+    assert_match(/ARGV\[3\]/, File.read(File.join(APP, 'boot_daemon.rb')))
+  end
+
+  def test_the_mac_app_is_exactly_one_app_assignment_of_a_controller
+    tree = Prism.parse_file(File.join(ROOT, MAC_APP))
+    assert_empty tree.errors
+    body = tree.value.statements.body
+    assert_equal 1, body.size
+    node = body.first
+    assert_kind_of Prism::ConstantWriteNode, node
+    assert_equal :App, node.name
+    assert_kind_of Prism::CallNode, node.value
+    assert_equal 'StackChan', node.value.receiver.slice
+    assert_equal :controller, node.value.name
+    assert_kind_of Prism::BlockNode, node.value.block
+  end
+
+  def test_the_mac_app_has_no_require_global_or_instance_variable_or_class
+    tree = Prism.parse_file(File.join(ROOT, MAC_APP)).value
+    requires = nodes_of(tree, Prism::CallNode).select { |n| %i[require require_relative load].include?(n.name) && n.receiver.nil? }
+    assert_empty requires.map(&:slice)
+    globals = nodes_of(tree, Prism::GlobalVariableReadNode, Prism::GlobalVariableWriteNode,
+                       Prism::GlobalVariableOperatorWriteNode, Prism::GlobalVariableOrWriteNode,
+                       Prism::GlobalVariableAndWriteNode, Prism::GlobalVariableTargetNode)
+    assert_empty globals.map(&:slice)
+    ivars = nodes_of(tree, Prism::InstanceVariableReadNode, Prism::InstanceVariableWriteNode,
+                     Prism::InstanceVariableOperatorWriteNode, Prism::InstanceVariableOrWriteNode,
+                     Prism::InstanceVariableAndWriteNode, Prism::InstanceVariableTargetNode)
+    assert_empty ivars.map(&:slice)
+    defs = nodes_of(tree, Prism::ClassNode, Prism::ModuleNode, Prism::DefNode, Prism::SingletonClassNode)
+    assert_empty defs.map(&:slice)
+    consts = nodes_of(tree, Prism::ConstantWriteNode, Prism::ConstantPathWriteNode)
+    assert_equal ['App'], consts.map { |n| n.respond_to?(:name) ? n.name.to_s : n.slice }
   end
 end

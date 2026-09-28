@@ -792,6 +792,7 @@ namespace :pc do
         sidecar_port: (ENV["STACKCHAN_SIDECAR_PORT"] || ENV["SIDECAR_PORT"] || "8788").to_i,
         prefix:       ENV["PREFIX"] || "StackChan",
         ble_fake:     ENV["BLE_FAKE"] == "1",
+        allow_busy:   ENV["ALLOW_BUSY"] == "1",
         stub:         ENV["STUB"] == "1",
         logdir:       ENV["STACKCHAN_LOGDIR"] || "/tmp/stackchan-pico",
         ns:           ENV["NS"] },
@@ -799,7 +800,7 @@ namespace :pc do
     )
   end
 
-  desc "(re)start the PC-side backends under launchd. STUB=1 / BLE_FAKE=1 / PREFIX= / STACKCHAN_PORT= / STACKCHAN_SIDECAR_PORT= / NS="
+  desc "(re)start the PC-side backends under launchd. STUB=1 / BLE_FAKE=1 / ALLOW_BUSY=1 / PREFIX= / STACKCHAN_PORT= / STACKCHAN_SIDECAR_PORT= / STACKCHAN_LOGDIR= / NS="
   task :up do
     status = pc_lifecycle.up
     puts "[pc:up] backends running — #{status.inspect}"

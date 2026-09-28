@@ -1,6 +1,7 @@
 root = ARGV[0] || "."
 port = (ARGV[1] || "8787").to_i
 name_prefix = ARGV[2] || "StackChan"
+sidecar_port = (ARGV[3] || "8788").to_i
 load "#{root}/mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol.rb"
 load "#{root}/mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_codec.rb"
 load "#{root}/mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_parser.rb"
@@ -22,18 +23,14 @@ load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/
 
 if name_prefix == "fake"
   load "#{root}/pc/stackchan-pico/app/fake_ble.rb"
-  ble = FakeBleClient.new
 else
   load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/radio.rb"
-  ble = StackChan::Controller::Central.new(name_prefix: name_prefix)
 end
+load "#{root}/apps/mac/app.rb"
 
-log = ->(line) { $stderr.write("[stackchand] #{line}\n"); $stderr.flush }
-link = StackChan::Controller::Link.new(central: ble, log: log)
-daemon = StackChan::Controller::Daemon.new(link: link, central: ble, port: port, log: log)
 begin
-  daemon.start
-  daemon.join
+  App.serve(port: port, host: "127.0.0.1", name_prefix: name_prefix,
+            sidecar_uri: "druby://127.0.0.1:#{sidecar_port}")
 rescue => e
   $stderr.write("[stackchand] FATAL #{e.class}: #{e.message}\n")
   $stderr.flush

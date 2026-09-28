@@ -14,10 +14,10 @@ module LaunchAgent
   end
 
   # launchd is an acceptable responsible process for TCC; a shell fork/exec is not.
-  def self.daemon_job(root:, vm_app:, port:, prefix:, ble_fake:, logdir:, ns: nil)
+  def self.daemon_job(root:, vm_app:, port:, sidecar_port:, prefix:, ble_fake:, logdir:, ns: nil)
     args = [File.join(vm_app, "Contents", "MacOS", "picoruby"),
             File.join(root, "pc", "stackchan-pico", "app", "boot_daemon.rb"),
-            root, port.to_s, ble_fake ? "fake" : prefix]
+            root, port.to_s, ble_fake ? "fake" : prefix, sidecar_port.to_s]
     job(daemon_label(ns), args, logdir, "daemon")
   end
 

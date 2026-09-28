@@ -12,7 +12,7 @@ LOG=${LOG:-/tmp/stackchan-picoruby-debug/baseline.log}
 # so one recovery here would hang the whole run. `rake pc:up` is the
 # deterministic rebuild instead: it boots both launchd jobs out, waits for
 # launchd to release them, bootstraps them again, and only returns once the
-# daemon answers status with ble_connected. Nothing is left to retry after it.
+# daemon's status shows its first connect to the robot. Nothing is left to retry after it.
 recover() {
   if bundle exec rake pc:up >>$LOG 2>&1; then
     echo "recovered (rake pc:up)" | tee -a $LOG; return 0

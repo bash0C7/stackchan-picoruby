@@ -18,7 +18,7 @@ class PcLifecycleTest < Test::Unit::TestCase
     @holder = nil
     @loaded = false
     @ports_ok = true
-    @status = { ble_connected: true }
+    @status = { link: "held", connects: 1 }
     @bootstrap_result = ["", true]
     # A real (empty) binary at the expected path, so the app-bundle check in
     # `up` is genuinely exercised rather than stubbed out.
@@ -150,11 +150,35 @@ end
     assert_raise(PcLifecycle::Error) { subject.up }
   end
 
-  # "listening" is not "connected": a daemon that answers DRb but has no link
-  # must not be reported as a successful bring-up.
-  def test_up_fails_when_the_daemon_is_not_ble_connected
+  def test_up_fails_when_the_daemon_never_connected
+    error = assert_raise(PcLifecycle::Error) { subject.send(:check_status, { link: "released", connects: 0 }) }
+    assert_match(/has not connected to the robot/, error.message)
+  end
+
+  def test_a_link_released_after_its_first_connect_passes
+    status = { link: "released", connects: 1, releases: 1 }
+    assert_equal status, subject.send(:check_status, status)
+  end
+
+  def test_a_busy_robot_fails_without_allow_busy
+    error = assert_raise(PcLifecycle::Error) { subject.send(:check_status, { link: "busy", connects: 0 }) }
+    assert_match(/robot is held by another controller: /, error.message)
+  end
+
+  def test_a_busy_robot_passes_with_allow_busy
+    status = { link: "busy", connects: 0 }
+    assert_equal status, subject(allow_busy: true).send(:check_status, status)
+  end
+
+  def test_up_hands_the_sidecar_port_to_the_daemon
     needs_plutil
-    @status = { ble_connected: false }
+    subject(sidecar_port: 8798).up
+    assert_match(/<string>8798<\/string>/, File.read(File.join(DIR, "com.bash0c7.stackchan-it-daemon.plist")))
+  end
+
+  def test_up_fails_when_the_status_shows_no_connect
+    needs_plutil
+    @status = { link: "released", connects: 0 }
     assert_raise(PcLifecycle::Error) { subject.up }
   end
 
