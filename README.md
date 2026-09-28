@@ -54,13 +54,11 @@ vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch c-primitives-verified.
                       upstream-PR-track picoruby-ble-esp32-port) carries the
                       StackChan-specific in-tree gems (picoruby-ble-bridge,
                       picoruby-i2s) alongside picoruby-ble itself.
-vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Mac-side PicoRuby VM
-                      build harness (vendors picoruby's port-darwin branch
-                      internally). See pc/stackchan-pico/README.md. Also
-                      holds the iOS control app
-                      (vendor/R2P2-darwin/examples/ios/stackchan) — a BLE
-                      central written in Ruby, verified against a physical
-                      StackChan from a physical iPhone.
+vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch claude/external-app. Apple
+                      platform: builds the Mac PicoRuby VM and the iOS /
+                      watchOS apps from this repo's apps/ and build_config/
+                      (vendors picoruby's port-darwin branch internally). See
+                      pc/stackchan-pico/README.md.
 ```
 
 Three more hardware-driver mrbgems (LCD, PY32 I/O expander, servo) are
@@ -166,6 +164,20 @@ bundle exec rake pc:up                 # start the backends under launchd
 pc/stackchan-pico/bin/stackchan status
 pc/stackchan-pico/bin/stackchan face joy
 ```
+
+The iPhone and Apple Watch apps are `apps/ios` and `apps/watchos`: one
+`App = StackChan.controller do |c| … end` each, one button per action. They
+build on a Mac with Xcode and XcodeGen through `vendor/R2P2-darwin`:
+
+```bash
+bundle exec rake ios:all               # Simulator: lib -> gen -> build -> run
+bundle exec rake ios:device:all        # the connected iPhone (DEVELOPMENT_TEAM in apps/ios/project.yml)
+bundle exec rake watchos:device:all    # the connected Apple Watch
+```
+
+Launched with `-StackchanTrial "connect;face joy"` an app runs those actions,
+prints each output line as `[trial] <line>`, then `[trial] end`, and exits;
+`rake trial:darwin` judges the apps that way.
 
 Re-run `pc:app_bundle` after every `pc:vm_build`: the bundle is ad-hoc signed, and
 the signature binds to the exact bytes of the binary.
@@ -433,7 +445,7 @@ and build_configs each time.
 | Repo | Ref | Role | Pinned by |
 |---|---|---|---|
 | [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `c-primitives-verified` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`) |
-| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
+| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `claude/external-app` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
 | [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
