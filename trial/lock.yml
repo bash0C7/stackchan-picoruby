@@ -22,8 +22,8 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: 5f3ac9f1ab47cca586ee43df7e2ec60a5c6efa2e   # claude/stackchan-controller-engine
-    R2P2-ESP32: 850e9e8b009f17643fa1cc9cb16b4f684e69197f           # claude/stackchan-robot-engine
+    stackchan-picoruby: c9beabc442e625a64cb03a773f48aff382274301   # claude/esp32-build-config
+    R2P2-ESP32: 97166052a334fcc959bcdf6fe7da4c35792f80a6           # claude/external-build-config
     picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
     repos:
       picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # claude/aot-glyph16
