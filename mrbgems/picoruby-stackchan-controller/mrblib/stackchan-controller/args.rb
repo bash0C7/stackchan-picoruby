@@ -1,9 +1,9 @@
 module StackChan
   class Controller
     class Args
-      attr_reader :words
+      attr_reader :words, :text
 
-      def initialize(words)
+      def initialize(words, flags: [])
         @words =
           if words.nil?
             []
@@ -12,24 +12,24 @@ module StackChan
           else
             words.dup
           end
-        @flags = []
+        @flags       = flags
+        @positionals = []
+        @opts        = {}
+        @set         = []
+        parse
+        @text = words.is_a?(String) ? words : @positionals.join(" ")
       end
 
       def [](i)
-        positionals[i]
+        @positionals[i]
       end
 
       def size
-        positionals.size
+        @positionals.size
       end
 
       def opt(key)
-        return nil if @flags.include?(key)
-        i = @words.index("--#{key}")
-        return nil unless i
-        value = @words[i + 1]
-        return nil if value.nil? || option?(value)
-        value
+        @opts[key]
       end
 
       def int(key)
@@ -43,30 +43,34 @@ module StackChan
       end
 
       def flag?(key)
-        @flags << key unless @flags.include?(key)
-        @words.include?("--#{key}")
+        raise ArgumentError, "flag?: --#{key} is not a declared flag" unless @flags.include?(key)
+        @set.include?(key)
       end
 
       private
 
-      def option?(word)
-        word.is_a?(String) && word.length > 2 && word[0, 2] == "--"
-      end
-
-      def positionals
-        out = []
+      def parse
         i = 0
         while i < @words.size
           w = @words[i]
-          if option?(w)
-            nxt = @words[i + 1]
-            i += (@flags.include?(w[2, w.length - 2]) || nxt.nil? || option?(nxt)) ? 1 : 2
+          if w.is_a?(String) && w.length > 2 && w[0, 2] == "--"
+            body = w[2, w.length - 2]
+            if body.include?("=")
+              k, v = body.split("=", 2)
+              @opts[k] = v
+              i += 1
+            elsif @flags.include?(body)
+              @set << body
+              i += 1
+            else
+              @opts[body] = @words[i + 1]
+              i += 2
+            end
           else
-            out << w
+            @positionals << w
             i += 1
           end
         end
-        out
       end
     end
   end

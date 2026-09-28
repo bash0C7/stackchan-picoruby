@@ -29,6 +29,7 @@ class ControllerDslTest < Picotest::Test
       c.action(:face, label: "Face") { |s, a| s.face(a[0].to_sym); "OK face=#{a[0]}" }
       c.action(:chatty) { |s, a| s.chat(a[0], speak: false) }
       c.action(:probe) { |s, _a| s.remote(:echo, "x") }
+      c.action(:parse, flags: ["no-speak"]) { |_s, a| [a[0].inspect, a.flag?("no-speak").inspect, a.text] }
       c.on_touch { |_s, zone| seen[:touch] << zone }
       c.on_reply { |_s, text| seen[:reply] << text }
       c.every(1000) { |_s| seen[:every] << FakeClock.now }
@@ -99,7 +100,7 @@ class ControllerDslTest < Picotest::Test
   end
 
   def test_actions_lists_the_button_built_ins_then_the_declared_actions_in_order
-    assert_equal [[:connect, nil], [:status, nil], [:stop, nil], [:face, "Face"], [:chatty, nil], [:probe, nil]], @app.actions
+    assert_equal [[:connect, nil], [:status, nil], [:stop, nil], [:face, "Face"], [:chatty, nil], [:probe, nil], [:parse, nil]], @app.actions
     assert_equal @app.actions, @daemon.actions
   end
 
@@ -260,7 +261,7 @@ class ControllerDslTest < Picotest::Test
   end
 
   def test_connect_connects_once
-    assert_equal({ status: :ok, out: "connected.", message: nil }, @app.act(:connect, []))
+    assert_equal({ status: :ok, out: "Connected; RX value_handle bound", message: nil }, @app.act(:connect, []))
     assert_equal 1, @daemon.status[:connects]
     assert_equal [], @radio.rx_frames
   end
@@ -278,8 +279,83 @@ class ControllerDslTest < Picotest::Test
     assert_equal :error, @app.act(:calibrate, ["bogus"])[:status]
   end
 
+  def test_a_declared_flag_before_the_text_is_a_flag
+    assert_equal ["\"hi\"", "true", "hi"], @app.act(:parse, ["--no-speak", "hi"])[:out]
+  end
+
+  def test_a_declared_flag_after_the_text_is_a_flag
+    assert_equal ["\"hi\"", "true", "hi"], @app.act(:parse, ["hi", "--no-speak"])[:out]
+  end
+
+  def test_an_undeclared_option_takes_the_next_word
+    assert_equal ["nil", "false", ""], @app.act(:parse, ["--x", "joy"])[:out]
+    assert_equal :error, @app.act(:face, ["--x", "joy"])[:status]
+  end
+
+  def test_a_bridge_string_is_one_text
+    assert_equal ["\"hello\"", "false", "hello  world"], @app.act(:parse, "hello  world")[:out]
+  end
+
+  def test_asking_for_an_undeclared_flag_raises
+    a = StackChan::Controller::Args.new(["hi", "--loud"])
+    assert_raise(ArgumentError, "flag?: --loud is not a declared flag") { a.flag?("loud") }
+  end
+
+  def test_args_key_equals_value
+    a = StackChan::Controller::Args.new(["--time=500", "hi"])
+    assert_equal 500, a.int("time")
+    assert_equal "hi", a[0]
+  end
+
+  def test_args_text
+    assert_equal "hello  world", StackChan::Controller::Args.new("hello  world").text
+    assert_equal "hello world", StackChan::Controller::Args.new(["hello", "world", "--gain", "2"]).text
+    assert_equal "", StackChan::Controller::Args.new(nil).text
+  end
+
+  def test_an_action_named_like_a_kernel_method_is_rejected
+    [:puts, :sleep_ms].each do |name|
+      assert_equal "action: #{name.inspect} is already a method of the controller",
+                   builder_error { |c| c.action(name) { |_s, _a| } }
+    end
+  end
+
+  def test_no_built_in_is_a_real_method_of_the_controller
+    StackChan::Controller::BUILTINS.each do |name|
+      assert_false StackChan::Controller.method_defined?(name)
+    end
+  end
+
+  def test_flags_must_be_an_array_of_strings
+    assert_equal "action: flags must be an Array of Strings, got [:x]",
+                 builder_error { |c| c.action(:a, flags: [:x]) { |_s, _a| } }
+    assert_equal "action: flags must be an Array of Strings, got \"x\"",
+                 builder_error { |c| c.action(:a, flags: "x") { |_s, _a| } }
+  end
+
+  def test_label_must_be_a_string
+    assert_equal "action: label must be a String, got 1", builder_error { |c| c.action(:a, label: 1) { |_s, _a| } }
+  end
+
+  def test_calls_before_wire_raise_wire_first
+    fresh = StackChan.controller { |c| c.action(:a) { |_s, _a| } }
+    assert_raise(StackChan::Controller::Error, "wire first") { fresh.act(:a, []) }
+    assert_raise(StackChan::Controller::Error, "wire first") { fresh.tick }
+    assert_raise(StackChan::Controller::Error, "wire first") { fresh.a }
+  end
+
+  def test_speak_audio_over_druby_takes_raw_bytes_even_when_they_look_like_hex
+    assert_equal "OK speak_audio bytes=4", @app.act(:speak_audio, ["7f7f"])[:out]
+    assert_equal ["7f7f"], audio_writes_after("<A:4>\n")
+  end
+
+  def test_speak_audio_from_the_bridge_that_is_not_hex_is_an_error
+    assert_equal :error, @app.__send__(:speak_audio, "zz")[:status]
+    assert_equal [], @radio.rx_frames
+  end
+
   def test_args_positionals_and_options
-    a = StackChan::Controller::Args.new(["hi", "--gain", "1.5", "--rate", "200", "--no-speak"])
+    a = StackChan::Controller::Args.new(["hi", "--gain", "1.5", "--rate", "200", "--no-speak"], flags: ["no-speak", "loud"])
     assert_equal "hi", a[0]
     assert_equal 1, a.size
     assert_equal 1.5, a.float("gain")
@@ -288,13 +364,6 @@ class ControllerDslTest < Picotest::Test
     assert_false a.flag?("loud")
     assert_nil a.opt("time")
     assert_nil a.int("time")
-  end
-
-  def test_args_flag_is_removed_from_positionals
-    a = StackChan::Controller::Args.new(["--no-speak", "hi"])
-    assert_true a.flag?("no-speak")
-    assert_equal "hi", a[0]
-    assert_equal 1, a.size
   end
 
   def test_args_from_a_string_or_nil

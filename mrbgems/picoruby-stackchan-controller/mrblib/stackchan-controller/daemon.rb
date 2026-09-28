@@ -6,6 +6,7 @@ module StackChan
       FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
       SHUTDOWN_WAIT_MS = 1000
       LISTEN_CAP = 16
+      CONNECTED_LINE = "Connected; RX value_handle bound"
 
       attr_reader :session, :reply_handlers
 
@@ -213,14 +214,14 @@ module StackChan
         case key
         when :connect
           with_link {}
-          "connected."
+          CONNECTED_LINE
         when :status
           status
         when :stop
           stop
           "daemon stopped"
         when :raw
-          raw_send(Args.new(arg).words.join(" "))
+          raw_send(arg.is_a?(String) ? arg : Args.new(arg).words.join(" "))
         when :calibrate
           calibrate(Args.new(arg))
         when :speak_audio
@@ -229,7 +230,7 @@ module StackChan
           "OK speak_audio bytes=#{ulaw.bytesize}"
         else
           blk = @actions[key][:blk]
-          args = Args.new(arg)
+          args = Args.new(arg, flags: @actions[key][:flags])
           with_link { blk.call(@session, args) }
         end
       end
@@ -250,8 +251,10 @@ module StackChan
       end
 
       def audio_bytes(arg)
-        data = arg.is_a?(Array) ? arg[0].to_s : arg.to_s
-        hex?(data) ? [data].pack("H*") : data
+        return arg[0].to_s if arg.is_a?(Array)
+        data = arg.to_s
+        raise ArgumentError, "speak_audio: a String argument must be hex" unless hex?(data)
+        [data].pack("H*")
       end
 
       def hex?(s)

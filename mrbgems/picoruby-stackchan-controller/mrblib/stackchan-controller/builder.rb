@@ -5,7 +5,7 @@ module StackChan
         @controller = controller
       end
 
-      def action(name, label: nil, &handler)
+      def action(name, label: nil, flags: [], &handler)
         require_block(:action, handler)
         raise ArgumentError, "action: name must be a Symbol, got #{name.inspect}" unless name.is_a?(Symbol)
         raise ArgumentError, "action: #{name.inspect} is a built-in action" if BUILTINS.include?(name)
@@ -13,7 +13,11 @@ module StackChan
           raise ArgumentError, "action: #{name.inspect} is already a method of the controller"
         end
         raise ArgumentError, "action: #{name.inspect} is already declared" if @controller.declared.key?(name)
-        @controller.declared[name] = { label: label, blk: handler }
+        raise ArgumentError, "action: label must be a String, got #{label.inspect}" unless label.nil? || label.is_a?(String)
+        unless flags.is_a?(Array) && flags.all? { |f| f.is_a?(String) }
+          raise ArgumentError, "action: flags must be an Array of Strings, got #{flags.inspect}"
+        end
+        @controller.declared[name] = { label: label, flags: flags, blk: handler }
       end
 
       def on_touch(&handler)

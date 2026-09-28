@@ -50,7 +50,7 @@ module StackChan
     end
 
     def act(name, arg = nil)
-      @daemon.act(name, arg)
+      wired.act(name, arg)
     end
 
     def actions
@@ -58,7 +58,7 @@ module StackChan
     end
 
     def tick(_arg = nil)
-      @daemon.tick
+      wired.tick
     end
 
     def respond_to_missing?(name, include_private = false)
@@ -78,6 +78,11 @@ module StackChan
 
     private
 
+    def wired
+      raise Error, "wire first" unless @daemon
+      @daemon
+    end
+
     def action?(name)
       BUILTINS.include?(name) || @declared.key?(name)
     end
@@ -90,6 +95,9 @@ module StackChan
       elsif !value.nil?
         @out.call(value.to_s)
       end
+    end
+    BUILTINS.each do |name|
+      raise NameError, "built-in action #{name.inspect} is a method of Controller" if method_defined?(name)
     end
   end
 end

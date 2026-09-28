@@ -296,7 +296,7 @@
 **Interfaces:**
 - `StackChan.controller { |c| … }` → `StackChan::Controller` (not wired). It raises `ArgumentError` without a block.
 - Builder calls:
-  - `c.action(name, label: nil) { |s, arg| }`: `name` is a Symbol and not a built-in.
+  - `c.action(name, label: nil, flags: []) { |s, arg| }`: `name` is a Symbol, not a built-in and not a method of a `Controller` instance (Kernel's private methods such as `puts` and `sleep_ms` included). `label` is nil or a String. `flags` is an Array of Strings: the `--key` words that take no value for this action.
   - `c.on_touch { |s, zone| }`
   - `c.on_reply { |s, text| }`
   - `c.every(ms) { |s| }`: positive Integer.
@@ -305,15 +305,21 @@
 - Built-in actions, never re-declared (an `action` with one of these names raises): `:connect, :status, :stop, :raw, :calibrate, :speak_audio`.
   - `calibrate` takes a phase in `arg[0]`: `"begin"` → torque off; `"sample" n` → `{yaw_raw:, pitch_raw:}` as the median of `n` `read_pos`; `"end"` → torque on.
   - `status` does not touch the link and does not count as use.
-- `StackChan::Controller::Args.new(words)`: `[i]`, `size`, `opt(key)` (`--key value`), `int(key)`, `float(key)`, `flag?(key)` (`--key` alone, removed from positionals). The Mac CLI sends a plain Array of Strings over DRb; iOS (step 4) passes a String or nil. `Args.new` accepts both.
+- `StackChan::Controller::Args.new(words, flags: [])` parses once, in `initialize`, so no reader depends on the order of the others:
+  - A `--key` named in `flags` is boolean. Any other `--key` takes the next word as its value, as today's `parse_kw` in `cli.rb` does (`face --x joy` has no positional). `--key=value` is also accepted.
+  - `[i]` and `size` read the positionals; `opt(key)`, `int(key)`, `float(key)` read the values; `flag?(key)` reads a declared flag and raises `ArgumentError` for a key the action did not declare.
+  - `text`: the whole String when the input is a String (the step 4 bridge passes the user's text unsplit, and `[i]` would split it on whitespace), the positionals joined by `" "` when it is an Array. Text actions (`say`, `chat`, `subtitle`) read `text`, not `[0]`.
+  - The Mac CLI sends a plain Array of Strings over DRb; iOS (step 4) passes a String or nil. `Args.new` accepts both.
 - `Controller`:
-  - `#wire(central:, voice: nil, clock:, log:)` → `Daemon`.
+  - `#wire(central:, voice: nil, clock:, log:, port: 8787, host: "127.0.0.1", out: ->(line) { puts line })` → `Daemon`. `out` is where a forwarded action prints.
   - `#act(name, arg)` → `{status: :ok|:busy|:error|:unknown, out:, message:}`. It rescues `Busy` into `:busy` and `StandardError` (the engine's errors and `DRb::DRbConnError`) into `:error`, so the CLI never parses exception class names out of DRb messages. A name that is neither built-in nor declared is `:unknown`.
   - `#actions` → `[[name, label], …]`: the built-ins that make sense as buttons (`connect`, `status`, `stop`), then the app's actions in declaration order.
   - `#respond_to_missing?` / `#method_missing(name, arg = nil)` forward action names to `act` and print the result as the CLI does (`out` lines, `busy: …`, `error: …`) before returning it. The step 4 bridge calls `App.__send__(method, arg)` with a String, drops the return value and shows the captured stdout.
   - `#tick(arg = nil)` delegates to `Daemon#tick`, for the step 4 bridge's periodic call.
-  - The built-in `speak_audio` takes the μ-law bytes as a String or as a hex String (the step 4 bridge sends hex).
-  - The Builder rejects action names that are `Controller` methods (`tick`, `wire`, `serve`, `act`, `actions`).
+  - `#act`, `#tick` and a forwarded action raise `Controller::Error, "wire first"` before `wire`.
+  - The built-in `connect` answers `Connected; RX value_handle bound`: the step 4 Swift UI decides that connect succeeded by `result.contains("Connected; RX value_handle bound")` (R2P2-darwin `examples/ios/stackchan/Sources/ContentView.swift:133`, the line iOS `app.rb:363,371` prints).
+  - The built-in `speak_audio` decides by transport: a String argument comes from the step 4 bridge and is hex (anything else is `:error`); an Array comes over DRb and carries the raw μ-law bytes in `[0]`.
+  - The Builder rejects action names that are `Controller` methods (`tick`, `wire`, `serve`, `act`, `actions`). Loading the gem raises if a built-in name is itself a method of `Controller`, since `method_missing` would never see it.
   - `#serve(port:, host:, name_prefix:, sidecar_uri:)` is the Mac adapter: builds `Radio`/`Central` (or `FakeBleClient` for `fake`), wires, `DRb.start_service(uri, daemon)`, starts the tick Task, joins.
 - `Daemon` dRuby front: `act(name, args)`, `actions`, `status`, `stop`, `remote(msg, args)`, `poll_touch`. The old `face`, `led`, … methods are gone. `status` merges `link.status` with `host`, `port`, `ble_connected`, `last_face`, `last_action`.
 
@@ -345,13 +351,14 @@
 ```ruby
 App = StackChan.controller do |c|
   c.hold 10_000
-  c.action(:face)     { |s, a| "OK face=#{a[0]}" if s.face(a[0].to_sym) }
+  c.action(:face)     { |s, a| s.face(a[0].to_sym); "OK face=#{a[0]}" }
   c.action(:led)      { |s, a| next "led: side color mode required" if a.size < 3; s.led(a[0].to_sym, a[1].to_sym, mode: a[2].to_sym); "OK led=#{a[0]}/#{a[1]}/#{a[2]}" }
   c.action(:servo)    { |s, a| "servo detail=#{s.servo(yaw_left: a.int('yaw-left'), yaw_right: a.int('yaw-right'), pitch_up: a.int('pitch-up'), time_ms: a.int('time'), velocity: a.int('velocity')).inspect}" }
   c.action(:torque)   { |s, a| s.torque(a[0] == "on"); "OK torque=#{a[0] == 'on' ? 'on' : 'off'}" }
   c.action(:selftest) { |s, _| s.selftest; "OK selftest" }
-  c.action(:say)      { |s, a| s.say(a[0], gain: a.float("gain"), rate: a.int("rate")) }
-  c.action(:chat)     { |s, a| r = s.chat(a[0], speak: !a.flag?("no-speak")); r ? "reply=#{r}" : "reply=(none)" }
+  c.action(:say)      { |s, a| s.say(a.text, gain: a.float("gain"), rate: a.int("rate")) }
+  c.action(:chat, flags: ["no-speak"]) { |s, a| r = s.chat(a.text, speak: !a.flag?("no-speak")); r ? "reply=#{r}" : "reply=(none)" }
+  c.action(:subtitle) { |s, a| s.text(a.text); "OK subtitle" }
   c.action(:demo)     { |s, a| … today's verb_demo sequence with block locals and sleep_ms … }
   c.on_reply { |s, text| s.text(text, face: :smile) }
 end
