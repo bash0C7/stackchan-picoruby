@@ -1,9 +1,42 @@
 class DaemonWithBleTest < Picotest::Test
-  class InterleavingBle
+  class ScriptedCentral
+    attr_accessor :on_unsolicited
     attr_reader :log
 
-    def initialize(raise_on: nil)
+    def initialize
       @log = []
+      @connected = false
+    end
+
+    def connect
+      @connected = true
+      self
+    end
+
+    def connected?
+      @connected
+    end
+
+    def lost?
+      false
+    end
+
+    def drain
+      @log << [:drain]
+    end
+
+    def reset_link
+      @connected = false
+    end
+
+    def keepalive
+      self
+    end
+  end
+
+  class InterleavingBle < ScriptedCentral
+    def initialize(raise_on: nil)
+      super()
       @raise_on = raise_on
     end
 
@@ -26,10 +59,11 @@ class DaemonWithBleTest < Picotest::Test
     end
   end
 
-  class HeldBle
+  class HeldBle < ScriptedCentral
     attr_accessor :release
 
     def initialize
+      super
       @release = false
     end
 
@@ -38,6 +72,28 @@ class DaemonWithBleTest < Picotest::Test
       Task.pass until @release
       self
     end
+  end
+
+  class FailingDrainBle < ScriptedCentral
+    def initialize
+      super
+      @failures = 1
+    end
+
+    def drain
+      if @failures > 0
+        @failures -= 1
+        raise "boom"
+      end
+      super
+    end
+  end
+
+  def build_daemon(central)
+    @logs = []
+    log = ->(line) { @logs << line }
+    link = StackChan::Controller::Link.new(central: central, clock: -> { FakeClock.now }, log: log)
+    StackChan::Controller::Daemon.new(link: link, central: central, log: log)
   end
 
   def run_two_face_calls(daemon, first, second)
@@ -52,15 +108,19 @@ class DaemonWithBleTest < Picotest::Test
     t2.join
   end
 
+  def setup
+    FakeClock.reset(0)
+  end
+
   def test_a_second_caller_starts_only_after_the_first_body_ends
     ble = InterleavingBle.new
-    run_two_face_calls(StackChan::Controller::Daemon.new(ble: ble), "joy", "sad")
-    assert_equal [[:start, "<F:2>\n"], [:end, "<F:2>\n"], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
+    run_two_face_calls(build_daemon(ble), "joy", "sad")
+    assert_equal [[:start, "<F:2>\n"], [:end, "<F:2>\n"], [:drain], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
   end
 
   def test_a_second_caller_is_parked_on_the_token_while_the_first_holds_it
     ble = HeldBle.new
-    daemon = StackChan::Controller::Daemon.new(ble: ble)
+    daemon = build_daemon(ble)
     t1 = Task.new(name: "first") { daemon.face("joy") }
     t2 = Task.new(name: "second") { daemon.face("sad") }
     i = 0
@@ -68,7 +128,7 @@ class DaemonWithBleTest < Picotest::Test
       Task.pass
       i += 1
     end
-    waiting = daemon.instance_variable_get(:@ble_token).num_waiting
+    waiting = daemon.instance_variable_get(:@token).num_waiting
     ble.release = true
     t1.join
     t2.join
@@ -77,7 +137,39 @@ class DaemonWithBleTest < Picotest::Test
 
   def test_a_second_caller_starts_only_after_the_first_body_raises
     ble = InterleavingBle.new(raise_on: "<F:2>\n")
-    run_two_face_calls(StackChan::Controller::Daemon.new(ble: ble), "joy", "sad")
-    assert_equal [[:start, "<F:2>\n"], [:raise, "<F:2>\n"], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
+    run_two_face_calls(build_daemon(ble), "joy", "sad")
+    assert_equal [[:start, "<F:2>\n"], [:raise, "<F:2>\n"], [:drain], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
+  end
+
+  def test_a_tick_waits_for_the_action_that_holds_the_token
+    ble = InterleavingBle.new
+    daemon = build_daemon(ble)
+    daemon.face("neutral")
+    ble.log.clear
+    t1 = Task.new(name: "action") { daemon.face("joy") }
+    t2 = Task.new(name: "tick") { daemon.tick }
+    t1.join
+    t2.join
+    assert_equal [[:drain], [:start, "<F:2>\n"], [:end, "<F:2>\n"], [:drain]], ble.log
+  end
+
+  def test_a_raising_tick_is_logged_and_the_next_tick_still_runs
+    ble = FailingDrainBle.new
+    daemon = build_daemon(ble)
+    daemon.instance_variable_get(:@link).act {}
+    daemon.tick
+    daemon.tick
+    assert_equal [[:drain]], ble.log
+    assert_true @logs.include?("tick RuntimeError: boom")
+    assert_equal 1, daemon.instance_variable_get(:@token).size
+  end
+
+  def test_status_reports_the_link_next_to_ble_connected
+    daemon = build_daemon(InterleavingBle.new)
+    daemon.face("joy")
+    status = daemon.status
+    assert_equal "held", status[:link]
+    assert_true status[:ble_connected]
+    assert_equal 1, status[:connects]
   end
 end

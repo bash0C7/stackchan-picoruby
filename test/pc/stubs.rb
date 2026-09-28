@@ -137,6 +137,7 @@ unless Object.const_defined?(:Task)
 end
 
 class FakeStoppableBle
+  attr_accessor :on_unsolicited
   attr_reader :disconnect_calls
 
   def initialize

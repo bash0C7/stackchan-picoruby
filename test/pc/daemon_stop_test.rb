@@ -2,8 +2,9 @@ class DaemonStopTest < Picotest::Test
   def setup
     DRb.reset_stop_service_calls
     @ble = FakeStoppableBle.new
-    @daemon = StackChan::Controller::Daemon.new(ble: @ble)
-    @daemon.instance_variable_set(:@keepalive_task, Task.new(name: "keepalive") {})
+    link = StackChan::Controller::Link.new(central: @ble, clock: -> { FakeClock.now }, log: ->(line) {})
+    @daemon = StackChan::Controller::Daemon.new(link: link, central: @ble, log: ->(line) {})
+    @daemon.instance_variable_set(:@tick_task, Task.new(name: "tick") {})
   end
 
   def test_stop_answers_the_caller

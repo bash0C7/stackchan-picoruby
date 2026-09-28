@@ -14,6 +14,7 @@ load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/nus.rb"
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/central.rb"
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb"
+load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/link.rb"
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb"
 
 if name_prefix == "fake"
@@ -24,7 +25,9 @@ else
   ble = StackChan::Controller::Central.new(name_prefix: name_prefix)
 end
 
-daemon = StackChan::Controller::Daemon.new(ble: ble, port: port)
+log = ->(line) { $stderr.write("[stackchand] #{line}\n"); $stderr.flush }
+link = StackChan::Controller::Link.new(central: ble, log: log)
+daemon = StackChan::Controller::Daemon.new(link: link, central: ble, port: port, log: log)
 begin
   daemon.start
   daemon.join

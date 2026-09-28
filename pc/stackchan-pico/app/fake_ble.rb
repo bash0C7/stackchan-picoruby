@@ -22,6 +22,24 @@ class FakeBleClient
     @connected
   end
 
+  def lost?
+    false
+  end
+
+  def drain
+    self
+  end
+
+  def reset_link
+    @connected = false
+  end
+
+  def keepalive
+    raise StackChan::Controller::ConnectionError, "not connected" unless @connected
+    write_frame("<read:pos>\n")
+    self
+  end
+
   def send
     raise StackChan::Controller::ConnectionError, "not connected" unless @connected
     b = StackChan::Controller::SendBuilder.new
