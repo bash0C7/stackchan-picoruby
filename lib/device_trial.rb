@@ -65,14 +65,30 @@ class DeviceTrial
   end
 
   def darwin_dir = File.join(@root, "vendor", "R2P2-darwin")
+  def darwin_picoruby = File.join(darwin_dir, "vendor", "picoruby")
+
+  def pin_darwin(r)
+    lock = @lock.fetch("darwin")
+    step(r, "pin R2P2-darwin") { checkout(darwin_dir, lock.fetch("R2P2-darwin")) }
+    step(r, "pin R2P2-darwin picoruby") do
+      checkout(darwin_picoruby, lock.fetch("picoruby"))
+      git!(darwin_picoruby, "submodule", "update", "--init", "--recursive")
+      lock.fetch("picoruby")[0, 7]
+    end
+  end
+
+  def darwin_pins_hold!
+    lock = @lock.fetch("darwin")
+    head_is!(darwin_dir, lock.fetch("R2P2-darwin"))
+    head_is!(darwin_picoruby, lock.fetch("picoruby"))
+  end
 
   def run_pc_vm
     p = @report["pc_vm"] = { "steps" => [] }
-    sha = @lock.fetch("darwin").fetch("R2P2-darwin")
-    step(p, "pin R2P2-darwin") { checkout(darwin_dir, sha) }
+    pin_darwin(p)
     step(p, "pc:vm_build") { rake(@root, "pc:vm_build") }
     step(p, "pc:app_bundle") { rake(@root, "pc:app_bundle") }
-    step(p, "pin R2P2-darwin holds") { head_is!(darwin_dir, sha) }
+    step(p, "pin R2P2-darwin holds") { darwin_pins_hold! }
   end
 
   def run_arm(name)
@@ -150,13 +166,12 @@ class DeviceTrial
 
   def run_darwin
     d = @report["darwin"] = { "steps" => [], "timings" => {} }
-    sha = @lock.fetch("darwin").fetch("R2P2-darwin")
     wt = worktree("trial")
-    step(d, "pin R2P2-darwin") { checkout(darwin_dir, sha) }
+    pin_darwin(d)
     APPS.each_key do |platform|
       %W[#{platform}:device:lib #{platform}:gen #{platform}:device:build].each { |t| step(d, t) { rake(wt, t) } }
     end
-    step(d, "pin R2P2-darwin holds") { head_is!(darwin_dir, sha) }
+    step(d, "pin R2P2-darwin holds") { darwin_pins_hold! }
     step(d, "quiet wait") { @quiet = quiet_wait_s(wt, @lock.fetch("arms").fetch("trial")); "#{@quiet} s" }
     APPS.each do |platform, device|
       step(d, "#{device} trial") do

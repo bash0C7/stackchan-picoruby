@@ -275,7 +275,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_operator vm_builds.first, :<, bundle
     assert_operator bundle, :<, first_setup
     assert_equal 1, @ops.calls.count { |c| c[0] == :rake && c[2] == "pc:app_bundle" }
-    assert_equal ["pin R2P2-darwin", "pc:vm_build", "pc:app_bundle", "pin R2P2-darwin holds"],
+    assert_equal ["pin R2P2-darwin", "pin R2P2-darwin picoruby", "pc:vm_build", "pc:app_bundle", "pin R2P2-darwin holds"],
                  r["pc_vm"]["steps"].map { |s| s["name"] }
   end
 
@@ -436,7 +436,7 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def test_darwin_passes_on_the_machine_answers_alone
     r = run_darwin_only
-    assert_equal ["pin R2P2-darwin", "ios:device:lib", "ios:gen", "ios:device:build", "watchos:device:lib",
+    assert_equal ["pin R2P2-darwin", "pin R2P2-darwin picoruby", "ios:device:lib", "ios:gen", "ios:device:build", "watchos:device:lib",
                   "watchos:gen", "watchos:device:build", "pin R2P2-darwin holds", "quiet wait", "iPhone trial",
                   "Watch trial", "hand-off Mac → iPhone → Watch → Mac"], r["darwin"]["steps"].map { |s| s["name"] }
     assert r["darwin"]["steps"].all? { |s| s["ok"] }
@@ -864,4 +864,21 @@ end
     assert_equal 2.5, DeviceTrial.median([4, 1, 2, 3])
     assert_nil DeviceTrial.median([])
   end
+def darwin_picoruby = File.join(ROOT, "vendor", "R2P2-darwin", "vendor", "picoruby")
+
+def test_the_mac_vm_builds_on_the_locked_darwin_picoruby
+  r = trial.run(%w[base])
+  assert_include r["pc_vm"]["steps"].map { |s| s["name"] }, "pin R2P2-darwin picoruby"
+  assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
+  pin = @ops.calls.index { |c| c[0] == :git && c[1] == darwin_picoruby && c[2] == "checkout" }
+  build = @ops.calls.index { |c| c[0] == :rake && c[2] == "pc:vm_build" }
+  assert_operator pin, :<, build
+end
+
+def test_a_darwin_picoruby_moved_during_the_build_fails_the_pin_check
+  @ops.on_rake["pc:vm_build"] = ->(_d, _e) { @ops.heads[darwin_picoruby] = "0" * 40 }
+  r = trial.run(%w[base])
+  assert_equal "fail", r["verdict"]
+  assert_match(/picoruby is at "0{40}"/, r["pc_vm"]["steps"].find { |s| !s["ok"] }["detail"])
+end
 end
