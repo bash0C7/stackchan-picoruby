@@ -61,11 +61,15 @@ module StackChan
     end
 
     def run
+      serve(Boot, Peripheral)
+    end
+
+    def serve(boot, peripheral_class)
       sleep_ms 5000
-      devices = Boot.run
+      devices = boot.run
       sleep_ms 3000
       puts "[application] BLE peripheral starting (infinite advertise)"
-      peripheral = Peripheral.new(
+      peripheral = peripheral_class.new(
         self,
         display: devices[:display], led: devices[:led], head: devices[:head],
         touch: devices[:touch], speaker: devices[:speaker]
