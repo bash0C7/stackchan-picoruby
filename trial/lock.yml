@@ -23,8 +23,8 @@ arms:
       - "[application] BLE peripheral starting"
   trial:
     stackchan-picoruby: 7b163bb8d98b3920b83045fc651e0a3ce2607a5a   # claude/no-raise-at-gem-init
-    R2P2-ESP32: 10c0804175f56605a51fdf98a9e156e43aa20881           # claude/no-raise-at-gem-init
-    picoruby: 679cef324a22188a01520bbf09ae69741b4af815
+    R2P2-ESP32: b27f39f163bd6ea3509fad7481d5622bdb448688           # claude/ble-peripheral-disconnect
+    picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
     repos:
       picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # claude/aot-glyph16
       picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # claude/simplify

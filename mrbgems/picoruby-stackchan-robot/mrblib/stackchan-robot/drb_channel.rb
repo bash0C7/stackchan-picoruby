@@ -11,11 +11,13 @@ module StackChan
 
       def service(port)
         cccd = port.take_write(@cccd_handle)
+        active = !cccd.nil?
         if cccd
           @notify = (cccd == LinkLoop::CCCD_NOTIFY)
           @responder.reset unless @notify
         end
         while (data = port.take_write(@rx_handle))
+          active = true
           chunks = DRbBle.chunks(@responder.feed(data))
           i = 0
           while @notify && i < chunks.size
@@ -23,6 +25,7 @@ module StackChan
             i += 1
           end
         end
+        active
       end
 
       def disconnected

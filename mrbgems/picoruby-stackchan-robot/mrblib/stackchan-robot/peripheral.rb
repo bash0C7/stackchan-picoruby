@@ -55,7 +55,9 @@ module StackChan
           on_rx: ->(data) { consume_rx(data) },
           clock: -> { Machine.uptime_us },
           log: ->(line) { puts line },
-          drb: drb
+          drb: drb,
+          audio: @audio,
+          release_after: robot.release_after
         )
         super(:peripheral, db.profile_data)
       end
@@ -74,6 +76,10 @@ module StackChan
 
       def take_write(handle)
         pop_write_value(handle)
+      end
+
+      def disconnect_central
+        disconnect
       end
 
       def send_notification(handle, frame)

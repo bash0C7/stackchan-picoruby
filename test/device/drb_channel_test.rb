@@ -25,6 +25,10 @@ class DrbChannelTest < Picotest::Test
     def tick(_now); end
   end
 
+  class NullAudio
+    def reset; end
+  end
+
   class CentralLink
     def initialize(port, loop_)
       @port = port
@@ -66,7 +70,7 @@ class DrbChannelTest < Picotest::Test
     @loop = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: NullTicker.new, on_packet: ->(_p) {}, on_rx: ->(_d) {},
-      clock: -> { 0 }, log: ->(_l) {}, drb: @channel
+      clock: -> { 0 }, log: ->(_l) {}, drb: @channel, audio: NullAudio.new
     )
     DRbBle.register("drbble://stackchan", CentralLink.new(@port, @loop), timeout_ms: 200)
     @remote = DRb::DRbObject.new_with_uri("drbble://stackchan")
@@ -104,6 +108,15 @@ class DrbChannelTest < Picotest::Test
     subscribe
     @remote.face(2)
     assert_equal [], @port.notifies.select { |n| n[0] == TX }
+  end
+
+  def test_service_reports_whether_the_central_wrote_to_the_drb_pair
+    assert_equal false, @channel.service(@port)
+    @port.queue_write(DCCCD, "\x01\x00")
+    assert_equal true, @channel.service(@port)
+    @port.queue_write(DRX, "\x00\x00")
+    assert_equal true, @channel.service(@port)
+    assert_equal false, @channel.service(@port)
   end
 
   def test_disconnect_drops_a_partial_request

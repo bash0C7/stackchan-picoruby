@@ -27,4 +27,6 @@ StackChan.robot do |bot|
   bot.on_touch(:left)  { |r| r.face(:sad);       r.led(:left,  [0, 0, 60], flash: 300) }
 
   bot.every(5000) { |r| r.blink(150) }
+
+  bot.release_after 15_000
 end.run

@@ -21,6 +21,7 @@ module StackChan
 
     attr_reader :faces, :face_index, :boot_handlers, :touch_handlers,
                 :frame_handlers, :remote_handlers, :periodic
+    attr_accessor :release_after
 
     def initialize
       @faces           = {}
@@ -30,6 +31,7 @@ module StackChan
       @frame_handlers  = {}
       @remote_handlers = {}
       @periodic        = []
+      @release_after   = nil
     end
 
     def validate

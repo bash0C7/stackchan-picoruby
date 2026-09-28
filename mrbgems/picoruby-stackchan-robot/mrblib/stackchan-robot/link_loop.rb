@@ -4,7 +4,7 @@ module StackChan
       TICK_MS = 20
       CCCD_NOTIFY = "\x01\x00"
 
-      def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb:)
+      def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb:, audio:, release_after: nil)
         @port        = port
         @rx_handle   = rx_handle
         @tx_handle   = tx_handle
@@ -15,8 +15,11 @@ module StackChan
         @clock       = clock
         @log         = log
         @drb         = drb
+        @audio       = audio
+        @release_after_us = release_after && release_after * 1000
         @notify_enabled = false
         @rx_at = nil
+        @active_at = nil
       end
 
       def tick
@@ -25,7 +28,8 @@ module StackChan
         @on_packet.call(event) if event.is_a?(String)
         poll_cccd
         drain_rx
-        @drb.service(@port)
+        @active_at = @clock.call if @drb.service(@port)
+        release_if_idle
         @ticker.tick(@clock.call / 1000)
       end
 
@@ -47,7 +51,9 @@ module StackChan
       def disconnected
         @notify_enabled = false
         @rx_at = nil
+        @active_at = nil
         @drb.disconnected
+        @audio.reset
       end
 
       private
@@ -55,6 +61,7 @@ module StackChan
       def poll_cccd
         cccd = @port.take_write(@cccd_handle)
         return unless cccd
+        @active_at = @clock.call
         @notify_enabled = (cccd == CCCD_NOTIFY)
         @log.call("[application] notify #{@notify_enabled ? 'enabled' : 'disabled'}")
       end
@@ -63,9 +70,18 @@ module StackChan
         data = @port.take_write(@rx_handle)
         while data
           @rx_at = @clock.call
+          @active_at = @rx_at
           @on_rx.call(data)
+          @active_at = @clock.call if @active_at
           data = @port.take_write(@rx_handle)
         end
+      end
+
+      def release_if_idle
+        return unless @release_after_us && @active_at
+        return if @clock.call - @active_at < @release_after_us
+        @active_at = nil
+        @port.disconnect_central
       end
 
       def stamp_ack

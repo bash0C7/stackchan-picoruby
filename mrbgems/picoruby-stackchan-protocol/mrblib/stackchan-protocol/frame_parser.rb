@@ -23,6 +23,10 @@ module StackchanProtocol
       frames
     end
 
+    def reset
+      @buffer = String.new
+    end
+
     private
 
     def decode(raw)

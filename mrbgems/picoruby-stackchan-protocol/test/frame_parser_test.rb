@@ -49,6 +49,13 @@ class FrameParserPartialTest < Picotest::Test
     frames = p.feed("G:255,B:0,M:s>")
     assert_equal [{ "L" => "1", "R" => "0", "G" => "255", "B" => "0", "M" => "s" }], frames
   end
+
+  def test_reset_drops_a_partial_frame
+    p = StackchanProtocol::FrameParser.new
+    p.feed("<A:12")
+    p.reset
+    assert_equal [{ "F" => "1" }], p.feed("<F:1>\n")
+  end
 end
 
 class FrameParserMultiTest < Picotest::Test

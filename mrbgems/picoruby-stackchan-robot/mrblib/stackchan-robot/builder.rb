@@ -57,6 +57,13 @@ module StackChan
         @robot.periodic << [ms, handler]
       end
 
+      def release_after(ms)
+        unless ms.is_a?(Integer) && ms > 0
+          raise ArgumentError, "release_after: must be a positive Integer of ms, got #{ms.inspect}"
+        end
+        @robot.release_after = ms
+      end
+
       private
 
       def require_block(name, handler)

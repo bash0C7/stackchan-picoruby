@@ -121,6 +121,57 @@ class AudioReceiverTest < Picotest::Test
     assert_equal 3212, spk.i2s.written.bytesize
   end
 
+  def test_reset_drops_a_partial_audio_header_so_the_next_frame_dispatches
+    notifies = []
+    dispatched = []
+    rx = receiver(speaker: make_speaker, parser: StackchanProtocol::FrameParser.new,
+                  notify: ->(msg) { notifies << msg })
+    rx.consume("<A:12") { |f| dispatched << f }
+    rx.reset
+    rx.consume("<F:1>\n") { |f| dispatched << f }
+
+    assert_equal [], notifies
+    assert_equal [{ "F" => "1" }], dispatched
+  end
+
+  def test_a_reset_during_the_audio_wait_ends_it_unplayed_and_leaves_the_next_frame_to_dispatch
+    spk = make_speaker
+    Machine.delays.clear
+    port_queue = ["<F:1>\n"]
+    dispatched = []
+    rx = nil
+    rx = receiver(speaker: spk, parser: StackchanProtocol::FrameParser.new,
+                  drain: -> { port_queue.shift },
+                  pump:  -> { rx.reset })
+    done = rx.consume("<A:8000>\n") { |f| dispatched << f }
+    while (data = port_queue.shift)
+      rx.consume(data) { |f| dispatched << f }
+    end
+
+    assert_equal false, done
+    assert_equal StackChan::Robot::AudioReceiver::DRAIN_STEP_MS, total_delay_ms
+    assert_equal 0, spk.i2s.written.bytesize
+    assert_equal [{ "F" => "1" }], dispatched
+  end
+
+  def test_the_audio_after_a_reset_waits_and_plays_in_full
+    spk = make_speaker
+    pending_resets = [true]
+    drain_queue = []
+    rx = nil
+    rx = receiver(speaker: spk, parser: StackchanProtocol::FrameParser.new,
+                  drain: -> { drain_queue.shift },
+                  pump:  -> { rx.reset if pending_resets.shift })
+    rx.consume("<A:6>\n")
+    Machine.delays.clear
+    drain_queue << "\x01\x02\x03\x04\x05\x06"
+    done = rx.consume("<A:6>\n")
+
+    assert_equal true, done
+    assert_equal 3000, total_delay_ms
+    assert_equal 3212, spk.i2s.written.bytesize
+  end
+
   def test_drain_multiple_chunks_concatenated
     spk = make_speaker
     drain_queue = ["\x01\x02\x03", "\x04\x05\x06"]

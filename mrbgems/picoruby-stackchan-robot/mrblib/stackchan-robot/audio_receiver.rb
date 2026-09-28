@@ -11,6 +11,12 @@ module StackChan
         @notify  = notify
         @drain   = drain
         @pump    = pump
+        @aborted = false
+      end
+
+      def reset
+        @parser.reset
+        @aborted = true
       end
 
       def consume(rx_data)
@@ -19,7 +25,9 @@ module StackChan
             n = frame["A"].to_i
             next if n <= 0
             @notify.call("<A:ready>\n")
+            @aborted = false
             ulaw = wait_and_drain(receive_t_ms(n))
+            return false if @aborted
             play(ulaw) if @speaker
             return true
           else
@@ -44,6 +52,7 @@ module StackChan
           Machine.delay_ms(step)
           waited += step
           @pump.call
+          return buf if @aborted
           while (chunk = @drain.call)
             buf << chunk
           end

@@ -269,6 +269,27 @@ class RobotDslTest < Picotest::Test
     end
   end
 
+  def test_release_after_is_stored_on_the_robot
+    robot = StackChan.robot { |bot| base_faces(bot); bot.release_after 15_000 }
+    assert_equal 15_000, robot.release_after
+  end
+
+  def test_without_release_after_the_robot_never_releases
+    robot = StackChan.robot { |bot| base_faces(bot) }
+    assert_nil robot.release_after
+  end
+
+  def test_release_after_with_a_non_positive_period_raises
+    assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.release_after 0 } }
+    assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.release_after(-1) } }
+  end
+
+  def test_release_after_with_a_non_integer_period_raises
+    assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.release_after 1.5 } }
+    assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.release_after "15000" } }
+    assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.release_after nil } }
+  end
+
   def test_each_handler_kind_without_a_block_raises
     assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.on_boot } }
     assert_raise(ArgumentError) { StackChan.robot { |bot| base_faces(bot); bot.on_touch(:back) } }

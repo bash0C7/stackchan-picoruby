@@ -4,7 +4,7 @@ class LinkLoopTest < Picotest::Test
   CCCD = 0x15
 
   class FakePort
-    attr_reader :pops, :event_popped_count, :notifies
+    attr_reader :pops, :event_popped_count, :notifies, :releases
 
     def initialize
       @events = []
@@ -13,6 +13,7 @@ class LinkLoopTest < Picotest::Test
       @event_popped_count = 0
       @notifies = []
       @on_event_popped = nil
+      @releases = 0
     end
 
     def queue_event(ev)
@@ -45,11 +46,38 @@ class LinkLoopTest < Picotest::Test
     def send_notification(handle, frame)
       @notifies << [handle, frame]
     end
+
+    def disconnect_central
+      @releases += 1
+    end
   end
 
   class NullDrb
-    def service(_port); end
+    attr_accessor :active
+
+    def initialize
+      @active = false
+    end
+
+    def service(_port)
+      was = @active
+      @active = false
+      was
+    end
+
     def disconnected; end
+  end
+
+  class FakeAudio
+    attr_reader :resets
+
+    def initialize
+      @resets = 0
+    end
+
+    def reset
+      @resets += 1
+    end
   end
 
   class FakeTicker
@@ -71,6 +99,7 @@ class LinkLoopTest < Picotest::Test
     @rx      = []
     @logs    = []
     @now     = 5_000_000
+    @audio   = FakeAudio.new
     @link = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: @ticker,
@@ -79,7 +108,27 @@ class LinkLoopTest < Picotest::Test
       clock: -> { @now },
       log: ->(line) { @logs << line },
       drb: NullDrb.new,
+      audio: @audio,
     )
+  end
+
+  def releasing_link(release_after:, drb: NullDrb.new, on_rx: ->(data) { @rx << data })
+    StackChan::Robot::LinkLoop.new(
+      port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
+      ticker: @ticker,
+      on_packet: ->(pkt) { @packets << pkt },
+      on_rx: on_rx,
+      clock: -> { @now },
+      log: ->(line) { @logs << line },
+      drb: drb,
+      audio: @audio,
+      release_after: release_after,
+    )
+  end
+
+  def rx_tick(link)
+    @port.queue_write(RX, "<F:1>\n")
+    link.tick
   end
 
   def subscribe
@@ -202,6 +251,7 @@ class LinkLoopTest < Picotest::Test
       clock: -> { @now },
       log: ->(line) { @logs << line },
       drb: NullDrb.new,
+      audio: @audio,
     )
     @port.queue_write(CCCD, "\x01\x00")
     @port.queue_write(RX, "<F:2>\n")
@@ -211,5 +261,122 @@ class LinkLoopTest < Picotest::Test
     silent.tick
     silent.write("<touch:1>\n")
     assert_equal [], stamp_lines
+  end
+
+  def test_the_release_fires_once_release_after_ms_after_the_last_rx
+    link = releasing_link(release_after: 1000)
+    rx_tick(link)
+    @now += 999_999
+    link.tick
+    assert_equal 0, @port.releases
+    @now += 1
+    link.tick
+    assert_equal 1, @port.releases
+    @now += 5_000_000
+    link.tick
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_rx_restarts_the_release_timer
+    link = releasing_link(release_after: 1000)
+    rx_tick(link)
+    @now += 800_000
+    rx_tick(link)
+    @now += 800_000
+    link.tick
+    assert_equal 0, @port.releases
+    @now += 200_000
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_drb_rx_restarts_the_release_timer
+    drb = NullDrb.new
+    link = releasing_link(release_after: 1000, drb: drb)
+    rx_tick(link)
+    @now += 800_000
+    drb.active = true
+    link.tick
+    @now += 800_000
+    link.tick
+    assert_equal 0, @port.releases
+    @now += 200_000
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_the_timer_restarts_when_a_long_rx_handler_returns
+    link = releasing_link(release_after: 1000, on_rx: ->(_data) { @now += 20_000_000 })
+    rx_tick(link)
+    @now += 999_999
+    link.tick
+    assert_equal 0, @port.releases
+  end
+
+  def test_a_disconnect_inside_an_rx_handler_leaves_no_central_to_release
+    link = nil
+    link = releasing_link(release_after: 1000, on_rx: ->(_data) { @now += 20_000_000; link.disconnected })
+    rx_tick(link)
+    @now += 1_000_000
+    link.tick
+    assert_equal 0, @port.releases
+  end
+
+  def test_a_cccd_write_alone_starts_the_release_timer
+    link = releasing_link(release_after: 1000)
+    @port.queue_write(CCCD, "\x01\x00")
+    link.tick
+    @now += 1_000_000
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_no_release_while_no_central_is_connected
+    link = releasing_link(release_after: 1000)
+    link.tick
+    @now += 10_000_000
+    link.tick
+    assert_equal 0, @port.releases
+    rx_tick(link)
+    @now += 1_000_000
+    link.tick
+    link.disconnected
+    @now += 10_000_000
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_the_next_central_is_released_again
+    link = releasing_link(release_after: 1000)
+    rx_tick(link)
+    @now += 1_000_000
+    link.tick
+    link.disconnected
+    rx_tick(link)
+    @now += 1_000_000
+    link.tick
+    assert_equal 2, @port.releases
+  end
+
+  def test_a_dropped_central_is_not_released_after_the_disconnect
+    link = releasing_link(release_after: 1000)
+    rx_tick(link)
+    link.disconnected
+    @now += 1_000_000
+    link.tick
+    assert_equal 0, @port.releases
+  end
+
+  def test_without_release_after_the_link_is_never_released
+    rx_tick(@link)
+    @now += 3_600_000_000
+    @link.tick
+    assert_equal 0, @port.releases
+  end
+
+  def test_disconnected_resets_the_audio_receiver
+    @link.disconnected
+    assert_equal 1, @audio.resets
   end
 end

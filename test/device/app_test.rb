@@ -55,6 +55,10 @@ class AppTest < Picotest::Test
     assert_equal StackChan::Robot, RobotApp.robot.class
   end
 
+  def test_the_app_releases_an_idle_central_after_15_s
+    assert_equal 15_000, RobotApp.robot.release_after
+  end
+
   def test_face_index_0_draws_neutral
     @wiring.dispatcher.handle({ "F" => "0" })
     assert_face_drawn(:neutral)
