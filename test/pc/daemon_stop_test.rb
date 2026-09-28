@@ -2,7 +2,7 @@ class DaemonStopTest < Picotest::Test
   def setup
     DRb.reset_stop_service_calls
     @ble = FakeStoppableBle.new
-    @daemon = Stackchan::Daemon.new(ble: @ble)
+    @daemon = StackChan::Controller::Daemon.new(ble: @ble)
     @daemon.instance_variable_set(:@keepalive_task, Task.new(name: "keepalive") {})
   end
 

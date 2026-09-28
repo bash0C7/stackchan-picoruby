@@ -18,13 +18,14 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
                                           │                          └─ say + afconvert → mu-law (say)
 ```
 
-- **CLI / daemon**: PicoRuby (`app/cli_app.rb`, `app/daemon_app.rb`). Tasks are
+- **CLI / daemon**: PicoRuby (`StackChan::Controller::CLI`, `StackChan::Controller::Daemon`
+  in `mrbgems/picoruby-stackchan-controller`). Tasks are
   timesliced: the drb accept loop and the keepalive are Tasks, a one-token
   `Task::Queue` serialises BLE access, and touch events wait in an Array the CLI
   polls.
-- **BLE**: `app/ble_client.rb`. `NusResolver` (UUID→handle, frame classify),
-  `StackchanRadio` (the `BLE` subclass) and `StackchanCentral` (verb-facing
-  wrapper) are host-tested in `test/pc` (`SUITE=pc bundle exec rake test` from
+- **BLE**: `StackChan::Controller::Nus` (UUID→handle, frame classify),
+  `StackChan::Controller::Radio` (the `BLE` subclass) and
+  `StackChan::Controller::Central` (verb-facing wrapper) are host-tested in `test/pc` (`SUITE=pc bundle exec rake test` from
   the repo root) against a `BLE` stub and `FakeRadio`. They implement
   scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio, and
   reconnect. `scan` re-powers the controller and the port flushes in-flight
@@ -46,7 +47,8 @@ mbedtls + io-console + machine darwin ports) internally. From the repo root:
 bundle exec rake pc:vm_build   # vendor/R2P2-darwin/build/host/bin/picoruby
 ```
 
-The VM carries no StackChan code: the daemon loads `picoruby-stackchan-protocol`
+The VM carries no StackChan code: the daemon loads `picoruby-stackchan-controller`,
+`picoruby-stackchan-protocol`
 (`StackchanProtocol::FrameParser`, `Stackchan::BLE::FrameCodec`, `Stackchan::AI::FrameText`)
 and `picoruby-stackchan-shared` (`Stackchan::BLE::SendBuilder`, the `Stackchan::BLE::Error`
 hierarchy) as source from the checkout it runs from.
@@ -123,7 +125,7 @@ pc/stackchan-pico/bin/stackchan connect
   touch notifications. Reconnect after a **peripheral-side reset** (ESP32 reboots, resumes
   advertising) works via `with_ble`'s reconnect. Reconnect after an
   **ACK-timeout with the peripheral still connected is NOT reliable**:
-  `StackchanCentral#disconnect` (`app/ble_client.rb`) only clears local
+  `StackChan::Controller::Central#disconnect` only clears local
   state — the darwin central port has no API to actively close a GAP
   connection (see the top-level README's Dependencies / picoruby fork
   entry) — so the ESP32 peripheral never re-advertises and the following

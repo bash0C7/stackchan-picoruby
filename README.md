@@ -81,7 +81,10 @@ mrbgems/             picoruby-stackchan-robot (the engine: DSL, cold-boot
                      rendering, audio receive, tick loop, dRuby front),
                      picoruby-stackchan-led (WS2812 ring), picoruby-si12t
                      (head touch), picoruby-aw88298 (amp + mu-law playback),
-                     picoruby-drb-ble (dRuby over BLE) and
+                     picoruby-drb-ble (dRuby over BLE),
+                     picoruby-stackchan-controller (the Mac-side BLE
+                     central, daemon, CLI and calibration, which the PC
+                     loads as source) and
                      picoruby-stackchan-shared (send builder and BLE error
                      hierarchy, which the PC daemon loads as source). The
                      device-side gems are prepended to the app by the
@@ -101,7 +104,6 @@ pc/sidecar/                The CRuby sidecar process, bridged to the
 
 test/                      Host tests (picotest on a host PicoRuby VM, reusing
                            vendor/R2P2-ESP32's own picoruby submodule).
-lib/ruby_class_extract.rb  prism-AST loader for the pc app class bodies.
 lib/deploy/                host-side picomodem uploader.
 Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
                            task wrappers.
@@ -111,8 +113,8 @@ Host tests run the device-side logic on a host PicoRuby VM through picotest.
 The device suite loads the robot gem (all but its `< BLE` peripheral) with
 fakes for the display, LEDs, servos and touch, and evaluates
 `apps/robot/app.rb` with its requires stripped and `Robot#run` stubbed, so the
-app's handlers are exercised without the device. The pc suite extracts the
-class bodies of `pc/stackchan-pico/app/*.rb` with a prism AST. Device interaction (build, flash, deploy, capture) goes through the
+app's handlers are exercised without the device. The pc suite loads the
+controller gem's mrblib against a `BLE` stub and `FakeRadio`. Device interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
 ## Setting up a new machine
@@ -300,7 +302,7 @@ The BLE link itself is not one of these. A full pass over every verb — status,
 face, led, torque, servo on both axes, read-back, say, selftest, stop and head
 touch — completes without a single ACK timeout or retry.
 
-- There is no retry path: `ble_client.rb` raises `TimeoutError` on an ACK
+- There is no retry path: `StackChan::Controller::Central` raises `TimeoutError` on an ACK
   timeout and the CLI command fails rather than the frame being resent once.
   This is a gap in the code, not an observed symptom; it has no effect until a
   frame is actually dropped.
@@ -501,8 +503,8 @@ onto upstream picoruby/picoruby's `master`:
 - `port-darwin` — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
   role can receive a GAP disconnect but cannot initiate one (this port has
-  no such API) — `StackchanCentral#disconnect` in
-  `pc/stackchan-pico/app/ble_client.rb` is therefore a local-state-only
+  no such API) — `StackChan::Controller::Central#disconnect` in
+  `mrbgems/picoruby-stackchan-controller` is therefore a local-state-only
   no-op; reconnect-from-ACK-timeout relies on the peripheral's own
   supervision timeout, not on the central closing the link.
 

@@ -19,7 +19,7 @@ class CliCalibrateTest < Picotest::Test
     end
   end
 
-  class ScriptedCLI < Stackchan::CLI
+  class ScriptedCLI < StackChan::Controller::CLI
     attr_reader :lines, :prompts
 
     def initialize(daemon)

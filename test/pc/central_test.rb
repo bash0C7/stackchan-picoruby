@@ -1,4 +1,4 @@
-class StackchanCentralTest < Picotest::Test
+class CentralTest < Picotest::Test
   RX   = 0x11
   TX   = 0x14
   CCCD = 0x16
@@ -8,17 +8,17 @@ class StackchanCentralTest < Picotest::Test
 
   def nus_services
     [{ characteristics: [
-      { uuid128: NusResolver.rx_uuid, value_handle: RX, descriptors: [] },
-      { uuid128: NusResolver.tx_uuid, value_handle: TX,
-        descriptors: [{ uuid128: NusResolver.cccd_uuid, handle: CCCD }] },
-      { uuid128: NusResolver.drb_rx_uuid, value_handle: DRX, descriptors: [] },
-      { uuid128: NusResolver.drb_tx_uuid, value_handle: DTX,
-        descriptors: [{ uuid128: NusResolver.cccd_uuid, handle: DCCCD }] },
+      { uuid128: StackChan::Controller::Nus.rx_uuid, value_handle: RX, descriptors: [] },
+      { uuid128: StackChan::Controller::Nus.tx_uuid, value_handle: TX,
+        descriptors: [{ uuid128: StackChan::Controller::Nus.cccd_uuid, handle: CCCD }] },
+      { uuid128: StackChan::Controller::Nus.drb_rx_uuid, value_handle: DRX, descriptors: [] },
+      { uuid128: StackChan::Controller::Nus.drb_tx_uuid, value_handle: DTX,
+        descriptors: [{ uuid128: StackChan::Controller::Nus.cccd_uuid, handle: DCCCD }] },
     ] }]
   end
 
   def build_central(radio)
-    StackchanCentral.new(
+    StackChan::Controller::Central.new(
       name_prefix: "StackChan",
       radio: radio,
       log_fn: ->(line) { @logs << line },
@@ -36,7 +36,7 @@ class StackchanCentralTest < Picotest::Test
   end
 
   def ack_timeout_polls
-    StackchanCentral::ACK_TIMEOUT_MS / StackchanCentral::POLLING_UNIT_MS
+    StackChan::Controller::Central::ACK_TIMEOUT_MS / StackChan::Controller::Central::POLLING_UNIT_MS
   end
 
   def test_connect_subscribes_tx_and_settles_200ms
@@ -46,7 +46,7 @@ class StackchanCentralTest < Picotest::Test
     assert_equal [[CCCD, "\x01\x00"], [DCCCD, "\x01\x00"]], radio.descriptor_writes
     total = 0
     FakeClock.sleeps[sleeps_before, FakeClock.sleeps.size].each { |ms| total += ms }
-    assert_equal StackchanCentral::SUBSCRIBE_SETTLE_MS, total
+    assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, total
     assert_equal 1, radio.connect_and_discover_calls
   end
 
@@ -85,7 +85,7 @@ class StackchanCentralTest < Picotest::Test
     assert_equal ack_timeout_polls, FakeClock.sleeps.size
     total = 0
     FakeClock.sleeps.each { |ms| total += ms }
-    assert_equal StackchanCentral::ACK_TIMEOUT_MS, total
+    assert_equal StackChan::Controller::Central::ACK_TIMEOUT_MS, total
     assert_equal ["[t] <F:2> ack=timeout"], @logs
   end
 
@@ -167,6 +167,6 @@ class StackchanCentralTest < Picotest::Test
 
   def test_await_audio_done_times_out_after_the_budget
     assert_raise(Stackchan::BLE::TimeoutError) { @central.await_audio_done(240) }
-    assert_equal 30_000 / StackchanCentral::POLLING_UNIT_MS, FakeClock.sleeps.size
+    assert_equal 30_000 / StackChan::Controller::Central::POLLING_UNIT_MS, FakeClock.sleeps.size
   end
 end

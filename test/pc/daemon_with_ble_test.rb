@@ -54,13 +54,13 @@ class DaemonWithBleTest < Picotest::Test
 
   def test_a_second_caller_starts_only_after_the_first_body_ends
     ble = InterleavingBle.new
-    run_two_face_calls(Stackchan::Daemon.new(ble: ble), "joy", "sad")
+    run_two_face_calls(StackChan::Controller::Daemon.new(ble: ble), "joy", "sad")
     assert_equal [[:start, "<F:2>\n"], [:end, "<F:2>\n"], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
   end
 
   def test_a_second_caller_is_parked_on_the_token_while_the_first_holds_it
     ble = HeldBle.new
-    daemon = Stackchan::Daemon.new(ble: ble)
+    daemon = StackChan::Controller::Daemon.new(ble: ble)
     t1 = Task.new(name: "first") { daemon.face("joy") }
     t2 = Task.new(name: "second") { daemon.face("sad") }
     i = 0
@@ -77,7 +77,7 @@ class DaemonWithBleTest < Picotest::Test
 
   def test_a_second_caller_starts_only_after_the_first_body_raises
     ble = InterleavingBle.new(raise_on: "<F:2>\n")
-    run_two_face_calls(Stackchan::Daemon.new(ble: ble), "joy", "sad")
+    run_two_face_calls(StackChan::Controller::Daemon.new(ble: ble), "joy", "sad")
     assert_equal [[:start, "<F:2>\n"], [:raise, "<F:2>\n"], [:start, "<F:4>\n"], [:end, "<F:4>\n"]], ble.log
   end
 end

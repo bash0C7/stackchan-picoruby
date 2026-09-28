@@ -44,7 +44,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - AOT kernels (`aot/kernels/*.rb`): spinel → suppify で 1 つの mrbgem にして firmware に入れる Ruby。`ulaw_decode` は picoruby-multicore で core 1、`glyph16` は core 0 から直接呼ぶ。spinel runtime は 1 組で thread-safe でないので、core 1 の kernel 実行中に core 0 で kernel を呼ばない。手順と制約は `aot/README.md`。
 - Application (`apps/robot/app.rb`、`upload_appmrb` で deploy): `require` 列と `StackChan.robot do |bot| … end.run` 1 つだけの DSL ファイル。顔の定義・face index・touch 反応・周期処理を書く。`$` とトップレベルの `@` と定数は置かない。
 - Robot engine (`mrbgems/picoruby-stackchan-robot`): DSL (`StackChan.robot` / `Builder`)、cold-boot (`StackChan::Robot::Boot`)、BLE peripheral (`StackChan::Robot::Peripheral < BLE`)、dispatcher・ticker・audio・dRuby front。`Robot#run` は `serve(Boot, Peripheral)` で、`sleep_ms 5000` → boot → `sleep_ms 3000` → peripheral → on_boot handler → advertise の順に進み戻らない (順序は `test/device/robot_run_test.rb` が fake で固定する)。class body で device 定数 (`ILI9342` / `I2C` / `BLE` 等) を読まない。例外は `peripheral.rb` の `< BLE` だけで、host の device suite はこの 1 ファイルを読まない。
-- PC (`pc/stackchan-pico`): PicoRuby の CLI `stackchan <verb>` + launchd daemon (BLE central)。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
+- PC (`pc/stackchan-pico`): PicoRuby の CLI `stackchan <verb>` + launchd daemon (BLE central)。class 本体は `mrbgems/picoruby-stackchan-controller` (`StackChan::Controller::{Nus, Radio, Central, Daemon, CLI, Calibration}`) にあり、`boot_daemon.rb` / `boot_cli.rb` が source で `load` する。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
 - 核心は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink は装飾。
 
 ## ハードウェア (CoreS3)
@@ -101,13 +101,13 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 
 ```
 bundle exec rake test                 # picotest: device / pc / shared + 各 driver gem (host picoruby VM)
-SUITE=pc FILTER=stackchan_central bundle exec rake test
+SUITE=pc FILTER=central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
 bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb)。picoruby を更新した後に
 ```
 
 - device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + robot gem の mrblib (`peripheral.rb` を除く) + scservo source + `apps/robot/app.rb` を VM に注入する (`test/picotest/harness.rb`)。app は CRuby 側で prism が top-level `require` を落とし、`RobotApp.robot` に包み、`StackChan::Robot#run` を self を返す stub に差し替えて読ませる (`test/device/app_test.rb` が fake に wire して検証する)。picoruby-drb は mrblib を source で、AOT kernel は `aot/kernels` の Ruby を、multicore は `test/fake_multicore.rb` を注入する。
-- pc suite は `ble_client.rb` / `cli_app.rb` / `daemon_app.rb` を同様に抽出し、`test/pc/stubs.rb` の stub と `test/pc/fake_radio.rb` で回す。`PICOTEST_VM=` で別 VM。
+- pc suite は controller gem (`mrbgems/picoruby-stackchan-controller`) の mrblib を source で注入し、`test/pc/stubs.rb` の stub と `test/pc/fake_radio.rb` で回す。`PICOTEST_VM=` で別 VM。
 - pc suite は CRuby と host VM の両方で走る。host VM には実物の `Task` があり `DRb` は無い。`Task` を stub するなら `unless Object.const_defined?(:Task)` で囲む。host VM の Task は picotest が yield しない限り body を走らせないので、両方で同じ観測になる。
 - face geometry golden は `spec/golden/face_<name>.dump`。更新は `rake face:register_golden FACE=<name>`。
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。

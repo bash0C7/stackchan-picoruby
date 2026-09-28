@@ -1,4 +1,4 @@
-class StackchanRadioTest < Picotest::Test
+class RadioTest < Picotest::Test
   class FakeReport
     def initialize(name)
       @name = name
@@ -10,7 +10,7 @@ class StackchanRadioTest < Picotest::Test
   end
 
   def setup
-    @radio = StackchanRadio.new(name_prefix: "StackChan")
+    @radio = StackChan::Controller::Radio.new(name_prefix: "StackChan")
   end
 
   def notification_packet(handle, value)

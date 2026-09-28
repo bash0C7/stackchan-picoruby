@@ -1,4 +1,4 @@
-class StackchanCentralDrbTest < Picotest::Test
+class CentralDrbTest < Picotest::Test
   RX = 0x11; TX = 0x14; CCCD = 0x16
   DRX = 0x21; DTX = 0x24; DCCCD = 0x26
 
@@ -36,20 +36,20 @@ class StackchanCentralDrbTest < Picotest::Test
 
   def services(with_drb: true)
     chars = [
-      { uuid128: NusResolver.rx_uuid, value_handle: RX, descriptors: [] },
-      { uuid128: NusResolver.tx_uuid, value_handle: TX,
-        descriptors: [{ uuid128: NusResolver.cccd_uuid, handle: CCCD }] },
+      { uuid128: StackChan::Controller::Nus.rx_uuid, value_handle: RX, descriptors: [] },
+      { uuid128: StackChan::Controller::Nus.tx_uuid, value_handle: TX,
+        descriptors: [{ uuid128: StackChan::Controller::Nus.cccd_uuid, handle: CCCD }] },
     ]
     if with_drb
-      chars << { uuid128: NusResolver.drb_rx_uuid, value_handle: DRX, descriptors: [] }
-      chars << { uuid128: NusResolver.drb_tx_uuid, value_handle: DTX,
-                 descriptors: [{ uuid128: NusResolver.cccd_uuid, handle: DCCCD }] }
+      chars << { uuid128: StackChan::Controller::Nus.drb_rx_uuid, value_handle: DRX, descriptors: [] }
+      chars << { uuid128: StackChan::Controller::Nus.drb_tx_uuid, value_handle: DTX,
+                 descriptors: [{ uuid128: StackChan::Controller::Nus.cccd_uuid, handle: DCCCD }] }
     end
     [{ characteristics: chars }]
   end
 
   def build(radio)
-    StackchanCentral.new(name_prefix: "StackChan", radio: radio, log_fn: ->(_l) {}).connect
+    StackChan::Controller::Central.new(name_prefix: "StackChan", radio: radio, log_fn: ->(_l) {}).connect
   end
 
   def setup
@@ -74,7 +74,7 @@ class StackchanCentralDrbTest < Picotest::Test
     assert_equal [s], central.remote.echo(s)
     drb_writes = radio.writes.select { |w| w[0] == DRX }
     assert_true drb_writes.length >= 3
-    paced = FakeClock.sleeps.select { |ms| ms == StackchanCentral::POLLING_UNIT_MS }
+    paced = FakeClock.sleeps.select { |ms| ms == StackChan::Controller::Central::POLLING_UNIT_MS }
     assert_true paced.length >= drb_writes.length - 1
   end
 
