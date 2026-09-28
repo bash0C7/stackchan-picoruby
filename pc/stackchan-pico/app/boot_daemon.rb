@@ -16,6 +16,8 @@ load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb"
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/link.rb"
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/session.rb"
+load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/args.rb"
+load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/builder.rb"
 load "#{root}/mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb"
 
 if name_prefix == "fake"

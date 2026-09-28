@@ -10,7 +10,7 @@ module StackChan
       attr_reader :session, :reply_handlers
 
       def initialize(link:, central:, voice: nil, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788",
-                     clock: -> { Machine.board_millis }, log: nil)
+                     clock: -> { Machine.board_millis }, log: nil, actions: {})
         @link           = link
         @ble            = central
         @port           = port
@@ -26,6 +26,7 @@ module StackChan
         @every          = []
         @listen         = []
         @acting         = 0
+        @actions        = actions
         @link.on_lost   = -> { @listen.clear }
         start_touch_reader
       end
@@ -99,6 +100,25 @@ module StackChan
           last_face:     @session.state[:last_face],
           last_action:   @session.state[:last_action],
         }.merge(@link.status)
+      end
+
+      def actions
+        Controller.listing(@actions)
+      end
+
+      def act(name, arg = nil)
+        key = name.to_s.to_sym
+        unless BUILTINS.include?(key) || @actions.key?(key)
+          return { status: :unknown, out: nil, message: "unknown action: #{key}" }
+        end
+        begin
+          { status: :ok, out: perform(key, arg), message: nil }
+        rescue Busy => e
+          { status: :busy, out: nil, message: e.message }
+        rescue StandardError => e
+          log "act #{key} #{e.class}: #{e.message}"
+          { status: :error, out: nil, message: e.message }
+        end
       end
 
       def tick
@@ -188,6 +208,62 @@ module StackChan
       end
 
       private
+
+      def perform(key, arg)
+        case key
+        when :connect
+          with_link {}
+          "connected."
+        when :status
+          status
+        when :stop
+          stop
+          "daemon stopped"
+        when :raw
+          raw_send(Args.new(arg).words.join(" "))
+        when :calibrate
+          calibrate(Args.new(arg))
+        when :speak_audio
+          ulaw = audio_bytes(arg)
+          with_link { @session.speak_audio(ulaw) }
+          "OK speak_audio bytes=#{ulaw.bytesize}"
+        else
+          blk = @actions[key][:blk]
+          args = Args.new(arg)
+          with_link { blk.call(@session, args) }
+        end
+      end
+
+      def calibrate(args)
+        case args[0]
+        when "begin"
+          with_link { @session.torque(false) }
+          "OK calibrate begin"
+        when "sample"
+          sample_pose((args[1] || "3").to_i)
+        when "end"
+          with_link { @session.torque(true) }
+          "OK calibrate end"
+        else
+          raise ArgumentError, "calibrate: begin | sample N | end"
+        end
+      end
+
+      def audio_bytes(arg)
+        data = arg.is_a?(Array) ? arg[0].to_s : arg.to_s
+        hex?(data) ? [data].pack("H*") : data
+      end
+
+      def hex?(s)
+        return false if s.empty? || s.bytesize.odd?
+        i = 0
+        while i < s.bytesize
+          b = s.getbyte(i)
+          return false unless (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102)
+          i += 1
+        end
+        true
+      end
 
       def with_link
         @token.pop
