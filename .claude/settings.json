@@ -10,6 +10,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PROJECT_DIR:-.}/tools/hooks/japanese_reply_guard.rb\""
+          }
+        ]
+      }
     ]
   }
 }

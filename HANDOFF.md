@@ -28,12 +28,12 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 The device reports App version `2f18720`, so it is running this tree.
 
-Tests pass: 379 picotest across device, pc, shared and the three driver gems,
+Tests pass: 476 picotest across device, pc, shared, aot, drb-ble and the three driver gems,
 with no failures, crashes or skips, plus the CRuby host tests, where ten cases
 are omitted on machines without `plutil`. Both workflows are green on the tip
 of `main`.
 
-`rake test` now runs `rigor:check` first, a host-side type analysis that fails
+`rake test` runs `rigor:check` first, a host-side type analysis that fails
 on any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
 to have run, and installs its own gemset into `vendor/rigor-tool` on first use.
 Seventeen diagnostics are frozen in the snapshot; eight of them are false
@@ -42,42 +42,118 @@ declare. `docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmw
 demand, so trigger it with `gh workflow run firmware.yml` after changing
 anything it covers.
 
+## In flight: one branch, one PR, one trial
+
+Everything below `main` is on `claude/ecstatic-allen-s6qki1` (PR #11 → `main`).
+It carries, in commit order: dRuby over BLE, the AOT kernels (`ulaw_decode`,
+`glyph16`), picoruby-multicore on core 1, the deterministic QEMU boot gate, and
+DSL steps 1–5 (protocol gem folded in, robot engine + `apps/robot/app.rb`,
+controller engine + `apps/mac/app.rb`, `apps/ios` + `apps/watchos`, the
+firmware gem list in `build_config/esp32-stackchan.rb`).
+
+The other repos it needs are pinned in `trial/lock.yml`'s trial arm:
+
+| repo | branch | sha |
+|---|---|---|
+| R2P2-ESP32 | `claude/external-build-config` | `9716605` |
+| picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
+| R2P2-darwin | `claude/external-app` | `7a02219` |
+| picoruby-ili9342 | `claude/aot-glyph16` | `6adc482` |
+| picoruby-py32-io-expander | `claude/simplify` | `8f8b3d3` |
+| picoruby-scservo | `claude/simplify` | `1e3a18b` |
+| suppify | `claude/string-arg-length` | `a5449a3` |
+
+The base arm is `main` as it is. Verified in a Linux container: `picotest:run`
+and `test:host` green, `r2p2:qemu_check` PASS, `r2p2:build` (image
+`0x247a70`), CI `firmware.yml` and `deps.yml` on the pinned tree; the trial dry
+run (pin → setup → pins → gate → build → pins) on the tree before the gem list
+was trimmed. Nothing of it has run on the robot, the Mac VM,
+an iPhone or a Watch.
+
 ## Next
 
-### 1. The daemon has no defence against a client hanging up
+### 1. Run the trial on the Mac
 
-`rake pc:up` failed about a quarter of the time with "daemon on 8787 is
-listening but did not answer status". The cause is not a slow daemon. Its port
-check connected to the drb port and closed immediately; the daemon, blocked in
-its own startup and running cooperative Tasks, could not service that connection
-until it unblocked, and then wrote to a socket whose peer was gone and died of
-SIGPIPE. Measured at 4 failures in 15 bring-ups, and 0 in 15 once the check asks
-the kernel who is listening instead of connecting.
+On the Mac with the robot on USB, an iPhone and a paired Watch:
 
-What remains is the daemon side of it. Its PicoRuby VM cannot trap SIGPIPE --
-`Signal.list` carries no `PIPE` and every `Signal.trap` form raises
-`SystemStackError` -- so any client that hangs up mid-call can still kill it,
-and launchd restarts it. Closing that means `SO_NOSIGPIPE` or an ignored SIGPIPE
-in picoruby's socket layer, which is upstream work rather than a change here.
+1. `git checkout claude/ecstatic-allen-s6qki1`; `rake vendor:setup` if
+   `vendor/` is absent (it clones R2P2-ESP32 and R2P2-darwin at the Rakefile's
+   refs; the trial pins them to the lock).
+2. Cheapest first check that the Mac side runs at all: `BLE_FAKE=1 rake pc:up`,
+   then `stackchan face joy` must print `OK face=joy`. `rake pc:down` after.
+3. `rake rigor:snapshot` (Ruby 4): `rigor.baseline.json` still names files
+   that moved, so `rake test` fails at `rigor:check` until it is retaken.
+4. `/stackchan-device-trial`, which runs `rake trial:run` (both arms, ~45 min).
+   Then `rake trial:touch` (touch the back of the head when
+   `[trial] >>> touch the back of the head` appears), `rake trial:answer`
+   (servo moved, subtitle intact, audio without gaps), `rake trial:darwin`
+   (needs `DEVELOPMENT_TEAM`), `rake trial:answer`.
+5. `trial/results/<stamp>.md` must read `verdict: pass`.
 
-This also accounts for the SIGPIPE recorded as a one-off after a `selftest`. It
-was never a one-off.
+What the trial arm checks by machine, beyond boot / face / LED / servo /
+`remote` / `say` and their timings: the task stack left after every robot
+handler kind (stops below 1,024 B), `selftest` detail, a head touch,
+`calibrate` JSON, `chat` against the STUB sidecar, the robot releasing an idle
+Mac and the Mac reconnecting on its next action, a hand-off between two Mac
+daemons (the second must be refused with exit 8 while the first holds the
+robot), and in `trial:darwin` each app's trial-mode console
+(`Connected; RX value_handle bound`, `OK face=joy`, the selftest detail) and the
+hand-off Mac → iPhone → Watch → Mac.
 
-### 2. The lineage that will not boot
+Where it is most likely to fail first, none of it compiled or run here: the
+Swift in `apps/{ios,watchos}/Sources`, XcodeGen expanding `${R2P2_DARWIN}`,
+the iOS / Watch VM libs built from `build_config/darwin-stackchan-*.rb`,
+`devicectl --console` carrying the apps' `[trial]` lines and passing
+`-StackchanTrial`, the Mac rediscovering the robot within 15 s after a
+release, launchd (`pc:up` with `ALLOW_BUSY`, the second daemon's plist; the
+`plutil` tests are omitted off the Mac), and `gets` from a pipe in
+`calibrate`. `c.hold 10_000` / `bot.release_after 15_000` are first guesses;
+the trial's reconnect timings decide them.
+
+Known risk on the robot: the base arm's firmware (picoruby `7258676`) starts
+its picoruby task with 248 B of the 8 KB stack left, so a base-arm boot can
+reboot with `stack overflow in task picoruby_task`. The run checks each arm's
+boot log for that line and stops there, so a base arm that overflows ends the
+whole run with `verdict: fail` before the trial arm is flashed; run it again.
+The trial arm's picoruby loads its gems without raising and starts with
+2,072 B (gdb under deterministic QEMU); the firmware gem list carries only
+what the robot uses, which leaves that figure unchanged and the image at
+`0x247a70`.
+
+### 2. After `verdict: pass`
+
+Merge PR #11. Then bring each related repo's branch to its `main` (the sha in
+the table), point the Rakefile's `R2P2_ESP32_REF` / `R2P2_DARWIN_REF` and the
+build config's gem refs back at `main`, move the lock's base arm to the new
+`main`, and archive `bash0C7/picoruby-stackchan-protocol` on GitHub (nothing
+here refers to it).
+
+### 3. The daemon has no defence against a client hanging up
+
+Any client that hangs up mid-call can kill the daemon: its PicoRuby VM cannot
+trap SIGPIPE (`Signal.list` carries no `PIPE` and every `Signal.trap` form
+raises `SystemStackError`), so a peer gone while the daemon writes to it takes
+the process down, and launchd restarts it. Closing that means `SO_NOSIGPIPE`
+or an ignored SIGPIPE in picoruby's socket layer, which is upstream work
+rather than a change here.
+
+### 4. The lineage that will not boot
 
 `c-primitives-verified` and `stackchan-integration` in the R2P2-ESP32 fork
 differ by exactly one line, the picoruby submodule pointer: `7258676`, which
 boots, against `568b4b88`, the lineage rebased onto upstream master, which
 overflows the 8 KB picoruby task stack during its own startup and boot-loops.
+`7258676` itself starts with 248 B left (item 1), so the rebased lineage
+needs only a little more startup depth to cross the line.
 Switching is a one-line bump once that is resolved. Land shared changes on
 both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
-already runs — the vendored tree carries `nimble_owner.c`, there is no btstack
-component, and the sdkconfig fragment is `bt_nimble` — and it was driven end to
-end over every verb. What the boot loop blocks is adopting that port rebased
+runs — the vendored tree carries `nimble_owner.c`, there is no btstack
+component, and the sdkconfig fragment is `bt_nimble` — and every verb drives it
+end to end. What the boot loop blocks is adopting that port rebased
 onto upstream master. Its plan is in the vault under
 `02_dev_docs/picoruby-ble-esp32-port/plans/`.
 
-### 3. What the dependency guard does not reach
+### 5. What the dependency guard does not reach
 
 `--pins-only` checks pins and nothing else, so a rotted gem ref or an edited
 vendored tree passes at push time and is caught only by a full run.

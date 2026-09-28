@@ -6,7 +6,6 @@ require "stackchan/voice/wav"
 class WavTest < Test::Unit::TestCase
   W = Stackchan::Voice::Wav
 
-  # Build a minimal mono PCM16 WAV around `pcm`, at the expected rate by default.
   def build_wav(pcm, rate: W::SAMPLE_RATE, channels: 1, bits: 16, audio_format: 1)
     byte_rate   = rate * channels * bits / 8
     block_align = channels * bits / 8
@@ -30,10 +29,9 @@ class WavTest < Test::Unit::TestCase
     assert_equal pcm, data
   end
 
-  def test_skips_unknown_chunks_before_data
+  def test_skips_a_list_chunk_that_afconvert_can_emit_before_data
     pcm = [42].pack("s<*")
     wav = build_wav(pcm)
-    # Inject a LIST chunk after fmt (afconvert sometimes emits extra chunks).
     insert_at = wav.index("data")
     list = "LIST" + [4].pack("V") + "INFO"
     wav = wav.byteslice(0, insert_at) + list + wav.byteslice(insert_at..-1)

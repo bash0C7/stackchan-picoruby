@@ -6,7 +6,7 @@ It runs on the host over `app/ lib/ mrbgems/ pc/ test/ test-host/`.
 ## Why it is not in the Gemfile
 
 `rigortype` requires `prism >= 1.0`. This repo is pinned to `prism ~> 0.30`, the version
-picoruby vendors and `lib/ruby_class_extract.rb` parses against. Bundler cannot resolve
+picoruby vendors and the test harness, `lib/qemu_gate.rb` and the `test-host/` source checks parse against. Bundler cannot resolve
 both, so rigor gets its own gemset under `vendor/rigor-tool/` (gitignored) and never enters
 `Gemfile`. `rake rigor:setup` installs it; `RIGOR_VERSION` pins which one.
 
@@ -81,7 +81,7 @@ Two constraints on that list, both learned by hitting them:
 The picoruby paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must
 have run. That costs nothing: `rake test` already needs the same tree to build the picotest VM.
 
-This repo's own four gems carry hand-written `sig/` in the upstream picoruby layout
+This repo's own five gems carry hand-written `sig/` in the upstream picoruby layout
 (`mrbgems/picoruby-<gem>/sig/*.rbs`), also listed in `signature_paths`. They are hand-written
 rather than generated: `rigor sig-gen` emits only the methods it can fully type and says
 nothing about the rest — 5 of `frame_codec.rb`'s 10 — writes them to a mirrored

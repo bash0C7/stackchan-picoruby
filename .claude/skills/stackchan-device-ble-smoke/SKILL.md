@@ -1,6 +1,6 @@
 ---
 name: stackchan-device-ble-smoke
-description: Deploy application.rb, then send one face + LED frame over BLE from the Mac and assert the ACK (~20-40 s). FACE=, COLOR=, MODE=, SIDE= env.
+description: Deploy apps/robot/app.rb, then send one face + LED frame over BLE from the Mac and assert the ACK (~20-40 s). FACE=, COLOR=, MODE=, SIDE= env.
 ---
 
 Run in a haiku subagent (300000ms timeout), reporting the `[smoke]` line verbatim:

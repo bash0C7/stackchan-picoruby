@@ -12,6 +12,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - 長い rake (setup / build_flash / full_rebuild) は subagent (haiku) の foreground で 1 chain task として回し、log は `/tmp/stackchan-picoruby-debug/` に tee する。
 - spec / plan / review / 調査レポートは Obsidian vault の `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ObsidianVault/02_dev_docs/stackchan-picoruby/{specs,plans,review}/` に置く。PR #427 関連は隣の `picoruby-ble-esp32-port/`。repo の `docs/` は commit する必要のあるものだけ。記事・WIP メモは esa (team `ksbrb`、カテゴリ `ｽﾀｯｸﾁｬﾝ`)。
 - 日付・経緯・「以前は」を doc やコメントに残さない。現在の挙動を現在形で書く。経緯は git log に任せる。
+- コメントを書かない。コードは How、テストは What (テスト名)、コミットログは Why を担う。残すのは toolchain が読むもの (magic comment、suppify の `#:` 型注釈、rigor/steep 指示) と `# REQUIRED FOR PY32 COLD-BOOT` だけ。
 
 ## 検証と報告の規律
 
@@ -38,10 +39,15 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 
 ## 構成
 
-- Firmware (`build_flash` が必要): LCD / PY32 / servo / `StackchanProtocol::FrameParser` の gem。R2P2-ESP32 の build_config が GitHub から fetch する。
-- Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。pure-Ruby の `stackchan-led` / `si12t` は Rakefile が `app.mrb` compile 時に application.rb の前に連結する。C を含む `aw88298` は firmware の build_config (`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`) に入れて `build_flash` する。C gem の形は upstream と同じ `src/<gem>.c` → `src/mruby/<gem>.c`。
-- Application (`app/application.rb`、`upload_appmrb` で deploy): 顔・dispatcher・BLE・cold-boot。1 ファイルのまま維持する。テストは prism で class 本体だけ抽出する (`lib/ruby_class_extract.rb`) ので、class body の top-level に `< BLE` 以外の device-only 参照を置かない。
-- PC (`pc/stackchan-pico`): PicoRuby の CLI `stackchan <verb>` + launchd daemon (BLE central)。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
+- Firmware (`build_flash` が必要): firmware の gem 一覧は `build_config/esp32-stackchan.rb` にあり、`r2p2_build_env` が `R2P2_BUILD_CONFIG` (絶対 path) として R2P2-ESP32 に渡す。LCD / PY32 / servo の gem はこの config の `conf.gem github:` で fetch し、protocol gem (`StackchanProtocol::FrameParser` / `FrameCodec` / `FrameText`、`mrbgems/picoruby-stackchan-protocol`)・AOT kernel・picoruby-multicore は gem dir で入れる。picoruby-multicore の `ports/esp32/multicore.c` は ESP-IDF の include が要るので `R2P2_EXTRA_SRCS` で IDF component の source に足す。R2P2-ESP32 自身の default config は StackChan の gem を持たず、R2P2-ESP32 に StackChan の名前を書かない (`test-host/platform_trees_test.rb`)。
+- Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。どれも pure Ruby で、`stackchan-led` / `si12t` / `aw88298` / `drb-ble` / `stackchan-robot` は Rakefile が `app.mrb` compile 時に app の前に連結する (先頭に app の top-level `require` を置く)。`stackchan-controller` は firmware に入らず、Mac の daemon / CLI は source で `load` し、iOS / watchOS は VM に gem として build する (依存は `mrbgem.rake` に宣言し、mrblib は build と同じ sort 順で読める)。
+- AOT kernels (`aot/kernels/*.rb`): spinel → suppify で 1 つの mrbgem にして firmware に入れる Ruby。`ulaw_decode` は picoruby-multicore で core 1、`glyph16` は core 0 から直接呼ぶ。spinel runtime は 1 組で thread-safe でないので、core 1 の kernel 実行中に core 0 で kernel を呼ばない。手順と制約は `aot/README.md`。
+- Application (`apps/robot/app.rb`、`upload_appmrb` で deploy): `require` 列と `StackChan.robot do |bot| … end.run` 1 つだけの DSL ファイル。顔の定義・face index・touch 反応・周期処理を書く。`$` とトップレベルの `@` と定数は置かない。
+- Robot engine (`mrbgems/picoruby-stackchan-robot`): DSL (`StackChan.robot` / `Builder`)、cold-boot (`StackChan::Robot::Boot`)、BLE peripheral (`StackChan::Robot::Peripheral < BLE`)、dispatcher・ticker・audio・dRuby front。`Robot#run` は `serve(Boot, Peripheral)` で、`sleep_ms 5000` → boot → `sleep_ms 3000` → peripheral → on_boot handler → advertise の順に進み戻らない (順序は `test/device/robot_run_test.rb` が fake で固定する)。class body で device 定数 (`ILI9342` / `I2C` / `BLE` 等) を読まない。例外は `peripheral.rb` の `< BLE` だけで、host の device suite はこの 1 ファイルを読まない。
+- Mac application (`apps/mac/app.rb`): `App = StackChan.controller do |c| … end` 1 つだけの DSL ファイル。`c.action` が CLI の verb になり (`face` / `led` / `servo` / `torque` / `selftest` / `say` / `chat` / `demo`)、`c.hold` と `c.on_reply` を書く。
+- Apple applications (`apps/ios`, `apps/watchos`): `app.rb` は `App = StackChan.controller do |c| … end` 1 つだけ。bridge は `App.__send__(method, String)` を呼んで stdout を返すだけなので、controller は最初の call で platform の central に自分で wire し、`actions` は引数付きで呼ばれると `name<TAB>label` を 1 action 1 行で出す。Swift (`Sources/`) はその行から 1 action 1 ボタンを作り (`connect` は toolbar、`stop` は出さない)、iOS は text field の中身を引数に渡し、Speak は AVSpeech の μ-law hex を built-in `speak_audio` に渡す。`-StackchanTrial "<verb args>;…"` で起動すると VM が開いた後に各行を順に呼び、出力の各行を `[trial] <line>`、最後に `[trial] end` を出して exit 0。VM は `build_config/darwin-stackchan-{ios,watchos}-{sim,device}.rb` (この repo の gem を path で入れる)、Mac VM は `build_config/darwin-stackchan-pc.rb`。`rake ios:*` / `watchos:*` が `vendor/R2P2-darwin` の `<platform>:app:*` を `APP_DIR` 等の env で呼び、`project.yml` は platform を `${R2P2_DARWIN}` で指す。Swift と Xcode build はこの container で検証できない。
+- Controller engine (`mrbgems/picoruby-stackchan-controller`): `StackChan.controller` DSL (`Builder` / `Args`)、BLE central (`Nus` / `Radio` / `Central`)、link の状態機械 (`Link`: `released → held → quiet`、接続できなければ `busy`)、`Session` (verb・touch・reply)、`Daemon` (action table を dRuby front に出す)、`CLI`、`Calibration`、`SendBuilder` と error 階層。built-in verb は `connect` / `status` / `stop` / `raw` / `calibrate` / `remote` / `touch` / `tui`。
+- PC glue (`pc/stackchan-pico`): launchd と process の接着だけ。`boot_daemon.rb` が controller gem と `apps/mac/app.rb` を source で `load` して `App.serve`、`boot_cli.rb` が CLI を起動、`bin/stackchan` と plist、`fake_ble.rb` (`BLE_FAKE=1`)、`drb_eintr_retry.rb`。AI と TTS は CRuby sidecar (`pc/sidecar`) に隔離し dRuby で橋渡し。
 - 核心は **BLE 経由でサーボに絶対位置 (normalized 0..100 + 方向 key) を指定して期待通り動かすこと**。Face / LED / blink は装飾。
 
 ## ハードウェア (CoreS3)
@@ -59,7 +65,7 @@ system I2C (SDA=12 / SCL=11) で:
 4. ILI9342 の `rst_pin` / `bl_pin` は expander 経由なので未配線 GPIO を渡す。
 5. cold-boot 後 `sleep_ms 3000` で必ず yield してから `BLE.new` → `start`。yield しないと advertising が RF に出ない (log は正常に見える)。
 
-`application.rb` の PY32 init 区間の `puts` (`# REQUIRED FOR PY32 COLD-BOOT` マーカー) は削除禁止。bytecode layout 依存の crash を抑えている。
+`mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/boot.rb` の PY32 init 区間の `puts` (`# REQUIRED FOR PY32 COLD-BOOT` マーカー) は削除禁止。bytecode layout 依存の crash を抑えている。
 
 SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus を `max_transfer_sz`
 未指定 + DMA 有効で作るので、esp_driver_spi が DMA descriptor 1 個分で頭打ちにする。超えると
@@ -68,15 +74,17 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 ## BLE プロトコル
 
 - yaw: `<YL:0..100>` / `<YR:0..100>` (排他、YL 優先)、pitch: `<PU:0..100>` (上のみ)、timing: `<T:ms>` か `<V:speed>` のどちらか。
-- 稀: `<torque:on|off>`、`<selftest:run>`、`<read:pos>` (`calibrate` だけが使う)。
+- 稀: `<torque:on|off>`、`<selftest:run>`、`<read:pos>` (`calibrate` と controller の keepalive が使う)。
+- dRuby over BLE: NUS service 内の第 2 pair (`6e400004` write / `6e400005` notify) に DRb の TCP stream をそのまま 180 B chunk で流す (`mrbgems/picoruby-drb-ble`)。front は `StackChan::Robot::Remote` で、各 call は text frame 1 個として同じ `Dispatcher` を通り、text link が notify するはずの行を Array で返す。firmware は `picoruby-drb` と `picoruby-multicore` を持つ前提。CLI は `stackchan remote servo YL=50 PU=30 T=500`。
 - cold-boot は torque OFF + `Face::Closed`。操作者が正面に合わせて `<torque:on>`。
 - 位置コマンドの detail `<YL_actual:N,PU_actual:N>` は **受信時点の姿勢** (移動後ではない)。`unknown` = キャリブレーション要。移動後の値が要るなら `<read:pos>` を使うか、次の位置コマンドの detail を読む。CLI の `raw` verb は device の detail を捨てて `OK raw` しか返さないので、`stackchan raw '<read:pos>'` では値が取れない。
 - audio は半二重: `<A:N>` → device `<A:ready>` → `T = N*1000/8000 + 3000 ms` 静止 → RX queue drain → I2S 再生。PC は 1.5 s 待ってから blast、`N/8000 + 2 s` 待つ。
-- CLI: `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan calibrate --align-only`。face 名は `angry / closed / joy / neutral / sad / smile / surprised`。exit 6 = calibration needed、7 = verify fail。
+- CLI: `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan calibrate --align-only`。face 名は `angry / closed / joy / neutral / sad / smile / surprised`。exit 6 = calibration needed、7 = verify fail、8 = busy (robot が別の central に握られているか届かない。次の action でだけ再接続を試す)。`stackchan status` は `link=held connects=1 releases=0 last_connect_ms=… hold_ms=10000 ble_connected=true …` の key=value 1 行。`stackchan touch listen --count N --timeout SEC` は `touch zone=N (back|right|left)` を出し、N 回で exit 0、timeout か link 解放で exit 1。
 
 ### BLE 実装 notes
 
-- heartbeat tick は約 1 秒。Mac の idle 切断は 15〜20 秒なので 10 秒以内に notify か write を流す。
+- heartbeat tick は約 1 秒。Mac の idle 切断は 15〜20 秒、robot は最後の RX から `release_after` (15 s) で central を切る。
+- controller は link を使う間だけ握る。最初の action で接続して `held`、held の間だけ 7 s ごとに `<read:pos>` の keepalive、最後の action から `c.hold` ms で `quiet` (keepalive を止め、robot の release を待つ)。切断 packet (`[0x3E,0x01,0x05]`) を drain で見たら `released` にし、次の action が再接続する。接続できなければ `busy` (exit 8) で、再試行は次の action まで待つ。link が生きたままの ACK timeout は link を捨てない。`touch listen` の poll 中は hold を延長する。
 - event drain は「`pop` の結果に関わらず毎 tick `_event_popped` を呼ぶ」。`BLE#start` は override しない。
 - Mac scan で見えない時は先に `sudo pkill bluetoothd`。別 central で再現するかで環境要因を切り分ける。
 - BLE 検証中に serial monitor を並走させない (port open の DTR/RTS で device が reset する)。
@@ -96,14 +104,14 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 ## テスト
 
 ```
-bundle exec rake test                 # picotest: device / pc / shared + 各 driver gem (host picoruby VM)
-SUITE=pc FILTER=stackchan_central bundle exec rake test
+bundle exec rake test                 # picotest: device / pc / aot / drb-ble / stackchan-protocol / stackchan-led / si12t / aw88298 (host picoruby VM)
+SUITE=pc FILTER=central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
-bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb、C gem 込み)。picoruby を更新した後に
+bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb)。picoruby を更新した後に
 ```
 
-- device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + 抽出した application class + scservo source を VM に注入する (`test/picotest/harness.rb`)。C gem は host VM に compile されているので `require` で届く。
-- pc suite は `ble_client.rb` / `cli_app.rb` / `daemon_app.rb` を同様に抽出し、`test/pc/stubs.rb` の stub と `test/pc/fake_radio.rb` で回す。`PICOTEST_VM=` で別 VM。
+- device suite は fakes (`test/fake_*.rb`) + stub (`test/picotest/stubs.rb`) + robot gem の mrblib (`peripheral.rb` を除く) + scservo source + `apps/robot/app.rb` を VM に注入する (`test/picotest/harness.rb`)。app は CRuby 側で prism が top-level `require` を落とし、`RobotApp.robot` に包み、`StackChan::Robot#run` を self を返す stub に差し替えて読ませる (`test/device/app_test.rb` が fake に wire して検証する)。picoruby-drb は mrblib を source で、AOT kernel は `aot/kernels` の Ruby を、multicore は `test/fake_multicore.rb` を注入する。
+- pc suite は controller gem (`mrbgems/picoruby-stackchan-controller`) の mrblib と `apps/mac/app.rb` をそのまま source で注入し (抽出も書き換えもしない)、`apps/ios/app.rb` / `apps/watchos/app.rb` は `ios_app_test.rb` / `watchos_app_test.rb` が `App` の定数名だけ変えて `load` し、`test/pc/stubs.rb` の stub と `test/pc/fake_radio.rb` の `FakeRadio` (link 切断・接続拒否を起こせる) / `FakeRobotRadio` で回す。時計は注入する。`PICOTEST_VM=` で別 VM。
 - pc suite は CRuby と host VM の両方で走る。host VM には実物の `Task` があり `DRb` は無い。`Task` を stub するなら `unless Object.const_defined?(:Task)` で囲む。host VM の Task は picotest が yield しない限り body を走らせないので、両方で同じ観測になる。
 - face geometry golden は `spec/golden/face_<name>.dump`。更新は `rake face:register_golden FACE=<name>`。
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
@@ -111,19 +119,25 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 
 ## ビルド・deploy
 
+- firmware・gem・app・BLE link を変える branch (この repo と、R2P2-ESP32 / picoruby-ili9342 / suppify / R2P2-darwin の対応 branch) は、`trial/lock.yml` に sha を書いて `/stackchan-device-trial` を通し、`trial/results/` の report が `verdict: pass` になるまで merge しない。
+
 | 用途 | 手段 |
 |---|---|
 | app だけ変えた | `/stackchan-device-iterate` (picomodem upload、flash に優しい) |
+| iOS / watchOS app を変えた | Mac で `rake ios:device:all` / `watchos:device:all` (Simulator は `ios:all` / `watchos:all`)。merge 前は `rake trial:darwin` |
 | firmware / gem / sdkconfig を変えた | `/stackchan-device-build-flash` → `/stackchan-device-cold-recovery`、または `/stackchan-device-full-rebuild` |
 | 初回・target 切替 | `/stackchan-device-setup` |
 | 復旧 | cold-recovery → full-rebuild → 人手 (USB 抜き差し / download mode) |
+| merge 前の実機実績 | `/stackchan-device-trial` (`trial/lock.yml` の commit を base / trial の 2 arm で実機に載せる。upload する app は arm の `app:`、無ければ `app/application.rb`) |
 
+- firmware を焼く task (`r2p2:flash` / `build_flash` / `build_flash_appmrb`、それを呼ぶ `full_rebuild` と trial) は先に `r2p2:qemu_check` を通す。同じ tree を UART console 付き QEMU で起動し、app の require・bundle した gem (robot engine の `Peripheral < BLE` を含む)・`run` を空にした `StackChan::Robot` で app ファイル全体 (`StackChan.robot` block の評価) を読ませたうえで boot log から verdict を出す。QEMU は `-icount shift=2,align=off,sleep=off -seed 1 -rtc clock=vm` で走らせるので、同じ image なら shell prompt までの serial 出力は毎回同じになり、verdict はそこまでの log だけで決まる。FAIL なら flash せず、PASS のあと clean build してから flash する。QEMU が見るのは boot・gem load・DSL の評価までで、cold-boot 本体・I2C デバイス・LCD・サーボ・スピーカー・BLE 無線は見ない (そこは `/stackchan-device-trial`)。
+- `rake qemu:setup` は QEMU (`esp_develop_9.2.2_20250817`) を sha256 で pin して `build/qemu/` に展開する。macOS は `brew install libgcrypt glib pixman sdl2 libslirp` が要る。QEMU `9.0.0` は PSRAM を見つけない (`quad_psram: PSRAM ID read error`)。eFuse drive は `nvram.esp32s3.efuse` (`esp32c3.efuse` は QEMU 9.2.2 に拒否される) に `BLK_VERSION_MAJOR=1` (byte 64 = `0x01`) を乗せないと boot が eFuse チェックで spin する。build と gate の `PICORB_VM` は一致させる。
 - `.rb` の直接 upload は禁止。必ず host で picorbc compile した `.mrb` を上げる (on-device compile は codegen stack overflow)。
 - `main_task.rb` は `/home/app.mrb` を無条件に `load` し、このアプリは戻らないので `$shell.start` に到達しない。抜ける keypress も無い。`upload_appmrb` はこのため先に `wipe_storage` を通す。`upload_mrb` (`DST=`) は app.mrb を壊さずに wipe できないので、autostart 中の device への helper upload は wipe → helper → app.mrb の順になる。
 - device 側に一時的な `puts` を足さない。cold boot で Guru Meditation の boot loop に入ることがあり (原因未特定、`Loading app.mrb` 直後で panic)、そうなると USB CDC が再列挙し続けて esptool も繋がらない。復旧は人間による USB 抜き差しだけで、抜き差し直後の 1 回しか esptool が通らないので、その 1 回を何に使うか決めてから頼む。
 - smoke や upload の前に boot log で device の素性を確かめる。`boot: Partition Table:` の storage offset が `0x410000` か、`App version` がこの repo の build か、`[application] boot` / `[boot] step:` marker があるか。違えば別 tree の firmware なので `/stackchan-device-full-rebuild`。実機への上書き deploy は承認済み。
 - firmware build は必ず clean build (`clean_picoruby_build` 依存を外さない)。undefined symbol が出たら source tree を grep し、無ければ object の陳腐化。
-- `build_config/xtensa-esp-picoruby.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem` の gem は `build/repos/` に `--depth 1` で cache され、以後 pull されない。ずれは `tools/check_deps_pushed.sh` が検出し、戻れる形の commit 列 (`git branch keep-<sha>` → `fetch --depth 1` → `checkout --detach`) を出す。`rm -rf` は使わない — shallow clone なので消したら元の commit は戻らない。
+- `build_config/esp32-stackchan.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem` の gem は `build/repos/` に `--depth 1` で cache され、以後 pull されない。ずれは `tools/check_deps_pushed.sh` が検出し、戻れる形の commit 列 (`git branch keep-<sha>` → `fetch --depth 1` → `checkout --detach`) を出す。`rm -rf` は使わない — shallow clone なので消したら元の commit は戻らない。
 - sdkconfig fragment を編集しても `idf.py build` は再適用しない。`ensure_sdkconfig_fresh` が rake 側で処理する。CoreS3 は `sdkconfigs/cores3` (Quad PSRAM)。BLE-only build は coex を全部 `n` にしないと `coex_schm_lock` で panic する。
 - `idf.py flash` は storage 区画も焼くので `/home/app.mrb` が消える。flash 後は upload し直す。
 - storage erase は `rake r2p2:wipe_storage` を通す (offset は partition table 依存、手打ちしない)。

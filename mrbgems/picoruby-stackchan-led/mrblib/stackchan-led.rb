@@ -1,4 +1,3 @@
-# 12-pixel WS2812 ring via PY32IOExpander; each half has an Animator.
 class StackchanLed
   PIXEL_COUNT  = 12
   LED_DATA_PIN = 13
@@ -31,8 +30,6 @@ class StackchanLed
       apply_immediately
     end
 
-    # apply_color is three I2C transactions on the bus the touch sensor shares,
-    # so write only when the colour changes.
     def tick(now_ms)
       return unless dynamic?
       @phase_start_ms ||= now_ms
@@ -66,7 +63,7 @@ class StackchanLed
     end
 
     def apply_color_if_changed(r, g, b)
-      rgb = [r, g, b]
+      rgb = (r << 16) | (g << 8) | b
       return if @last_applied == rgb
       @last_applied = rgb
       apply_color(r, g, b)
@@ -75,23 +72,14 @@ class StackchanLed
 
   def initialize(py32)
     @py32 = py32
-    @brightness = 100
     @buffer = Array.new(PIXEL_COUNT) { [0, 0, 0] }
+    @flash_left_until = nil
+    @flash_right_until = nil
     @py32.set_direction(LED_DATA_PIN, true)
     @py32.set_pull_mode(LED_DATA_PIN, true)
     @py32.set_drive_mode(LED_DATA_PIN, false)
     @py32.set_led_count(PIXEL_COUNT)
     show
-  end
-
-  def fill(r, g, b)
-    @buffer = Array.new(PIXEL_COUNT) { [r, g, b] }
-    self
-  end
-
-  def set_rgb(i, r, g, b)
-    @buffer[i] = [r, g, b]
-    self
   end
 
   def fill_range(start_idx, end_idx, r, g, b)
@@ -103,26 +91,8 @@ class StackchanLed
     self
   end
 
-  def fill_left(r, g, b)
-    fill_range(LEFT_RANGE.first, LEFT_RANGE.last, r, g, b)
-  end
-
-  def fill_right(r, g, b)
-    fill_range(RIGHT_RANGE.first, RIGHT_RANGE.last, r, g, b)
-  end
-
-  def clear
-    fill(0, 0, 0)
-  end
-
-  def brightness=(v)
-    @brightness = clamp(v, 0, 100)
-    self
-  end
-
   def show
-    pixels = @buffer.map { |rgb| apply_brightness(rgb[0], rgb[1], rgb[2]) }
-    @py32.write_led_ram(pixels)
+    @py32.write_led_ram(@buffer)
     @py32.refresh_leds
     self
   end
@@ -139,38 +109,24 @@ class StackchanLed
     else
       raise ArgumentError, "unknown side: #{side.inspect}"
     end
+    @flash_left_until = nil unless side == :right
+    @flash_right_until = nil unless side == :left
     self
   end
 
-  # One-shot pulse: solid color now, off after duration_ms.
   def flash_side(side, r, g, b, duration_ms = 300)
     animate_side(side, r, g, b, :solid)
-    @flash_until ||= { left: nil, right: nil }
-    end_ms = (Machine.uptime_us / 1000) + duration_ms
-    case side
-    when :both
-      @flash_until[:left]  = end_ms
-      @flash_until[:right] = end_ms
-    when :left
-      @flash_until[:left] = end_ms
-    when :right
-      @flash_until[:right] = end_ms
-    end
+    end_ms = Machine.uptime_us / 1000 + duration_ms
+    @flash_left_until = end_ms unless side == :right
+    @flash_right_until = end_ms unless side == :left
     self
   end
 
   def tick(now_ms)
     left_animator.tick(now_ms)
     right_animator.tick(now_ms)
-    return unless @flash_until
-    if @flash_until[:left] && now_ms >= @flash_until[:left]
-      @flash_until[:left] = nil
-      animate_side(:left, 0, 0, 0, :off)
-    end
-    if @flash_until[:right] && now_ms >= @flash_until[:right]
-      @flash_until[:right] = nil
-      animate_side(:right, 0, 0, 0, :off)
-    end
+    animate_side(:left, 0, 0, 0, :off) if @flash_left_until && now_ms >= @flash_left_until
+    animate_side(:right, 0, 0, 0, :off) if @flash_right_until && now_ms >= @flash_right_until
   end
 
   private
@@ -181,13 +137,5 @@ class StackchanLed
 
   def right_animator
     @right_animator ||= Animator.new(self, pixel_range: RIGHT_RANGE)
-  end
-
-  def apply_brightness(r, g, b)
-    [r * @brightness / 100, g * @brightness / 100, b * @brightness / 100]
-  end
-
-  def clamp(v, lo, hi)
-    v < lo ? lo : (v > hi ? hi : v)
   end
 end

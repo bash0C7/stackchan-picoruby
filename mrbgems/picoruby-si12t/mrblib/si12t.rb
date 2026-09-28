@@ -1,5 +1,3 @@
-# Si12T 3-zone head touch, I2C 0x68 on the system bus.
-# OUTPUT1 (0x10): 2 bits per zone, 0..3 (NONE/LOW/MID/HIGH).
 class Si12T
   ADDR        = 0x68
   REG_CTRL1   = 0x08
@@ -17,17 +15,14 @@ class Si12T
 
   def init_sensor
     ENABLE_REGS.each { |r| @i2c.write(ADDR, r, 0x00) }
-    @i2c.write(ADDR, REG_CTRL2, 0x0F)   # S/W reset + sleep enable
+    @i2c.write(ADDR, REG_CTRL2, 0x0F)
     @i2c.write(ADDR, REG_CTRL2, 0x07)
-    @i2c.write(ADDR, REG_CTRL1, 0x22)   # auto mode, FTC, response 4(2+2)
-    SENS_REGS.each { |r| @i2c.write(ADDR, r, 0x33) }  # TYPE_LOW / LEVEL_3
+    @i2c.write(ADDR, REG_CTRL1, 0x22)
+    SENS_REGS.each { |r| @i2c.write(ADDR, r, 0x33) }
   end
 
-  # [z0, z1, z2] intensities 0..3; [0,0,0] on a failed/empty read.
   def read_zones
-    raw  = @i2c.read(ADDR, 1, REG_OUTPUT1)
-    byte = raw && raw.bytes[0]
-    return [0, 0, 0] unless byte
+    byte = @i2c.read(ADDR, 1, REG_OUTPUT1).getbyte(0)
     z = []
     i = 0
     while i < ZONE_COUNT
@@ -37,11 +32,9 @@ class Si12T
     z
   end
 
-  # Rising-edge: returns the active zone index ONCE on touch onset (highest
-  # intensity; lowest index on a tie), nil while held and until release.
   def poll
     zones   = read_zones
-    touched = zones.any? { |v| v > 0 }
+    touched = zones[0] > 0 || zones[1] > 0 || zones[2] > 0
     if touched && !@prev_touched
       @prev_touched = true
       best_i = 0

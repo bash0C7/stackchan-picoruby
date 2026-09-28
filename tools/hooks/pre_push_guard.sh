@@ -35,6 +35,9 @@ esac
 
 # A blocked tool call shows the hook's stderr and nothing else, so the reason the
 # push was refused has to arrive there — on the way through, not as an exit code.
-report=$("$(dirname "$0")/../check_deps_pushed.sh" --pins-only 2>&1) && exit 0
-printf '%s\n' "$report" | grep -v ' ok$' >&2
-exit 2
+if ! report=$("$(dirname "$0")/../check_deps_pushed.sh" --pins-only 2>&1); then
+  printf '%s\n' "$report" | grep -v ' ok$' >&2
+  exit 2
+fi
+ruby "$(dirname "$0")/../test_must_fail_on_revert.rb" >/dev/null || exit 2
+exit 0

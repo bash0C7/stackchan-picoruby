@@ -1,0 +1,33 @@
+module StackChan
+  class Controller
+    class SendBuilder
+      type color_name = :red | :green | :blue | :yellow | :cyan | :magenta | :white | :off
+
+      LED_COLORS: Hash[color_name, Array[Integer]]
+
+      @frames: Hash[untyped, String]
+
+      def initialize: () -> void
+      def face: (Stackchan::BLE::FrameCodec::face_name name) -> String
+
+      def led: (
+        color_name color,
+        ?side: Stackchan::BLE::FrameCodec::side,
+        ?mode: Stackchan::BLE::FrameCodec::led_mode
+      ) -> String
+
+      def head: (
+        ?yaw_left: Integer?,
+        ?yaw_right: Integer?,
+        ?pitch_up: Integer?,
+        ?time_ms: Integer?,
+        ?velocity: Integer?
+      ) -> String
+
+      def torque: (on: bool) -> String
+      def selftest: () -> String
+      def read_pos: () -> String
+      def to_frames: () -> Array[String]
+    end
+  end
+end

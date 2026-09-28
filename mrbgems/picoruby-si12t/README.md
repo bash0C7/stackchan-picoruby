@@ -6,6 +6,10 @@ Si12T 3-zone capacitive touch sensor (I2C 0x68).
 
 ```ruby
 touch = Si12T.new(i2c)
-touch.read_zones            # => [z0, z1, z2] intensities 0..3
-touch.poll_rising_edge      # => zone index once on touch onset, else nil
+touch.read_zones
+touch.poll
 ```
+
+`read_zones` returns the three zone intensities, each 0..3. `poll` returns the zone index
+once when a touch starts (the highest intensity, the lowest index on a tie) and nil while the
+touch is held and until it is released. Both raise what `I2C#read` raises.

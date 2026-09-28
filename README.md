@@ -37,9 +37,10 @@ advertises the Nordic UART Service, and listens for control frames.
 The macOS side is the orchestrator. It sends control frames (face, LED, servo
 position, audio) and reads single-byte ACK or ERR replies plus detail frames.
 
-Control frames are key-value, semicolon-delimited, parsed by the FrameParser in
-the `picoruby-stackchan-protocol` gem. Audio is sent as a length-prefixed
-`<A:nbytes>` frame followed by raw mu-law bytes in MTU-sized writes.
+Control frames are key-value, comma-delimited, parsed by the FrameParser in
+the `mrbgems/picoruby-stackchan-protocol` gem. Audio is sent as a
+length-prefixed `<A:nbytes>` frame followed by raw mu-law bytes in
+MTU-sized writes.
 
 ## Code layout
 
@@ -53,36 +54,53 @@ vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch c-primitives-verified.
                       upstream-PR-track picoruby-ble-esp32-port) carries the
                       StackChan-specific in-tree gems (picoruby-ble-bridge,
                       picoruby-i2s) alongside picoruby-ble itself.
-vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Mac-side PicoRuby VM
-                      build harness (vendors picoruby's port-darwin branch
-                      internally). See pc/stackchan-pico/README.md. Also
-                      holds the iOS control app
-                      (vendor/R2P2-darwin/examples/ios/stackchan) — a BLE
-                      central written in Ruby, verified against a physical
-                      StackChan from a physical iPhone.
+vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch claude/external-app. Apple
+                      platform: builds the Mac PicoRuby VM and the iOS /
+                      watchOS apps from this repo's apps/ and build_config/
+                      (vendors picoruby's port-darwin branch internally). See
+                      pc/stackchan-pico/README.md.
 ```
 
-Four more hardware-driver mrbgems (LCD, PY32 I/O expander, servo, frame
-protocol) are separate `bash0C7/picoruby-*` repos fetched straight from
-GitHub by the firmware's own build_config (`conf.gem github:`) — no local
-clone or vendoring needed for those.
+The firmware's gem list is `build_config/esp32-stackchan.rb`; the `r2p2:*`
+tasks hand it to R2P2-ESP32 as `R2P2_BUILD_CONFIG`, and R2P2-ESP32's own
+default config names no StackChan gem. Three hardware-driver mrbgems (LCD,
+PY32 I/O expander, servo) are separate `bash0C7/picoruby-*` repos that config
+fetches straight from GitHub (`conf.gem github:`) — no local clone or
+vendoring needed for those. The BLE frame protocol gem
+(`mrbgems/picoruby-stackchan-protocol`), the AOT kernels and
+picoruby-multicore go in as gem dirs; multicore's ESP32 port is compiled by
+the IDF component through `R2P2_EXTRA_SRCS`.
 
-All StackChan business logic lives in a single autostart payload:
+The robot's behaviour is one DSL file; the engine gem does everything else:
 
 ```
-app/application.rb   Face rendering, head-touch reactions, the command
-                     dispatcher, the BLE peripheral, audio receive, and the
-                     cold-boot init sequence.
-mrbgems/             picoruby-stackchan-led (WS2812 ring), picoruby-si12t
-                     (head touch), picoruby-aw88298 (amp + mu-law decode in C),
-                     and picoruby-stackchan-shared (frame codec, used by the
-                     PC side too). The two pure-Ruby drivers are prepended to
-                     application.rb by the Rakefile before compiling app.mrb;
-                     aw88298 is compiled into the firmware.
+apps/robot/app.rb    The autostart payload: requires and one
+                     `StackChan.robot do |bot| ... end.run` naming the faces,
+                     the face index, the head-touch reactions and the blink.
+mrbgems/             picoruby-stackchan-robot (the engine: DSL, cold-boot
+                     init sequence, BLE peripheral, command dispatcher, face
+                     rendering, audio receive, tick loop, dRuby front),
+                     picoruby-stackchan-led (WS2812 ring), picoruby-si12t
+                     (head touch), picoruby-aw88298 (amp + mu-law playback),
+                     picoruby-drb-ble (dRuby over BLE),
+                     picoruby-stackchan-controller (the Mac-side engine:
+                     `StackChan.controller` DSL, BLE central, link
+                     hold/keepalive/reconnect, daemon, CLI, calibration,
+                     send builder and error hierarchy, which the Mac loads
+                     as source). The device-side gems are prepended to the
+                     app by the Rakefile before compiling app.mrb.
+apps/mac/app.rb      The Mac's behaviour: one `StackChan.controller do |c|
+                     ... end` naming the CLI's actions (face, led, servo,
+                     torque, selftest, say, chat, demo), the link hold time
+                     and the reply handler.
+aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
+                     firmware: mu-law decode on core 1, glyph expansion on
+                     core 0. See aot/README.md.
 
-pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
-                           PicoRuby — CLI + launchd-managed daemon + BLE central.
-                           See pc/stackchan-pico/README.md.
+pc/stackchan-pico/         Launchd and process glue for the macOS side: the
+                           `stackchan` wrapper and the boot files that load the
+                           controller gem and apps/mac/app.rb into the PicoRuby
+                           daemon and CLI. See pc/stackchan-pico/README.md.
 pc/stackchan/              CRuby support library for the AI/voice sidecar
                            only (Apple Foundation Model + say/afconvert
                            cannot run under PicoRuby).
@@ -91,17 +109,19 @@ pc/sidecar/                The CRuby sidecar process, bridged to the
 
 test/                      Host tests (picotest on a host PicoRuby VM, reusing
                            vendor/R2P2-ESP32's own picoruby submodule).
-lib/ruby_class_extract.rb  prism-AST loader for application.rb class bodies.
 lib/deploy/                host-side picomodem uploader.
 Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
                            task wrappers.
 ```
 
-Host tests run the device-side logic on a host PicoRuby VM through picotest. A
-CRuby orchestrator extracts the class bodies from `application.rb` with a prism
-AST so the device classes can be exercised without the device;
-`pc/stackchan-pico/app/ble_client.rb` is extracted the same way for the pc
-suite. Device interaction (build, flash, deploy, capture) goes through the
+Host tests run the device-side logic on a host PicoRuby VM through picotest.
+The device suite loads the robot gem (all but its `< BLE` peripheral) with
+fakes for the display, LEDs, servos and touch, and evaluates
+`apps/robot/app.rb` with its requires stripped and `Robot#run` stubbed, so the
+app's handlers are exercised without the device. The pc suite loads the
+controller gem's mrblib and `apps/mac/app.rb` as they are, against a `BLE`
+stub, `FakeRadio` (which can drop the link and refuse connects) and
+`FakeRobotRadio`, with an injected clock. Device interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
 ## Setting up a new machine
@@ -122,13 +142,13 @@ bundle exec rake vendor:setup          # clone both build trees and the picoruby
 
 ```bash
 bundle exec rake r2p2:setup            # 10-20 min; first time, and after a target switch
-bundle exec rake r2p2:build_flash_appmrb SRC=app/application.rb
+bundle exec rake r2p2:build_flash_appmrb SRC=apps/robot/app.rb
 ```
 
 `r2p2:setup` rebuilds the host mruby and runs `idf.py set-target esp32s3`.
 Skipping it leaves the target at the default `esp32`, which fails to link with an
 IRAM overflow. The second command builds the firmware and bakes
-`app/application.rb` into the littlefs storage partition as `/home/app.mrb`, so
+`apps/robot/app.rb` into the littlefs storage partition as `/home/app.mrb`, so
 the robot autostarts it. Both need the CoreS3 attached over USB-C.
 
 Day-to-day iteration on the application alone does not reflash the firmware — use
@@ -148,6 +168,20 @@ pc/stackchan-pico/bin/stackchan status
 pc/stackchan-pico/bin/stackchan face joy
 ```
 
+The iPhone and Apple Watch apps are `apps/ios` and `apps/watchos`: one
+`App = StackChan.controller do |c| … end` each, one button per action. They
+build on a Mac with Xcode and XcodeGen through `vendor/R2P2-darwin`:
+
+```bash
+bundle exec rake ios:all               # Simulator: lib -> gen -> build -> run
+bundle exec rake ios:device:all        # the connected iPhone (DEVELOPMENT_TEAM in apps/ios/project.yml)
+bundle exec rake watchos:device:all    # the connected Apple Watch
+```
+
+Launched with `-StackchanTrial "connect;face joy"` an app runs those actions,
+prints each output line as `[trial] <line>`, then `[trial] end`, and exits;
+`rake trial:darwin` judges the apps that way.
+
 Re-run `pc:app_bundle` after every `pc:vm_build`: the bundle is ad-hoc signed, and
 the signature binds to the exact bytes of the binary.
 
@@ -159,8 +193,8 @@ idempotent and recreates the launchd jobs each time.
 
 ```bash
 bundle exec rake picotest:build        # host picoruby VM from build_config/picoruby-test.rb
-bundle exec rake test                  # picotest: device / pc / shared suites
-bundle exec rake test:host             # CRuby-only tools and the class extractor
+bundle exec rake test                  # picotest: device / pc suites and each gem's own
+bundle exec rake test:host             # CRuby-only tools
 ```
 
 `rake test` reads the source of `picoruby-scservo`, which is fetched from GitHub at
@@ -168,10 +202,10 @@ firmware-build time rather than vendored here. It finds it in the firmware build
 build once first, or point `SCSERVO_RB` at your own clone of `picoruby-scservo`.
 
 The test VM builds as `host-picotest` and the firmware's own host tools build as
-`host`, so a firmware build cannot reach it. They shared `build/host` until CI
-built both in one job and every suite came up `uninitialized constant Picotest`:
-mruby does not treat MRUBY_CONFIG as a dependency of objects it has already
-built, so whichever config ran last simply kept what the other had left.
+`host`, so a firmware build cannot reach it. They are separate because mruby
+does not treat MRUBY_CONFIG as a dependency of objects it has already built:
+with one build directory, whichever config ran last keeps what the other
+left, and every suite fails with `uninitialized constant Picotest`.
 
 ### Optional
 
@@ -181,9 +215,12 @@ checkout before first use, and again after any Ruby ABI change.
 
 ## Quickstart (macOS side)
 
-A single CLI `stackchan` drives the robot. See
+A single CLI `stackchan` drives the robot. Its verbs are the actions declared
+in `apps/mac/app.rb` plus the built-ins `connect`, `status`, `stop`, `raw`,
+`calibrate`, `remote`, `touch` and `tui`; `stackchan` with no verb lists them,
+which needs the daemon running. See
 [pc/stackchan-pico/README.md](pc/stackchan-pico/README.md) for the full
-architecture, env vars, and verb list. `bundle exec rake pc:up` starts both
+architecture, env vars, link lifecycle and exit codes. `bundle exec rake pc:up` starts both
 backends — the CRuby AI/voice sidecar and the PicoRuby daemon, which owns
 the BLE connection — under launchd, recreating them every time it runs;
 `rake pc:down` stops the backends and removes their launchd plists. The CLI
@@ -193,19 +230,26 @@ StackChan by default:
 ```bash
 bundle exec rake pc:up                                   # (re)start the backends under launchd
 pc/stackchan-pico/bin/stackchan connect                  # explicit: bring the link up
-pc/stackchan-pico/bin/stackchan status                   # observe only
+pc/stackchan-pico/bin/stackchan status                   # one key=value line: link=held connects=1 ...
 pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
 pc/stackchan-pico/bin/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 pc/stackchan-pico/bin/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 pc/stackchan-pico/bin/stackchan torque on                # off lets you move the head by hand
 pc/stackchan-pico/bin/stackchan say "ぼくスタックチャンだよ"   # speaks + shows subtitle on LCD (first 19 chars)
 pc/stackchan-pico/bin/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
-pc/stackchan-pico/bin/stackchan touch listen             # stream `<touch:N>` events as the head sensor fires
+pc/stackchan-pico/bin/stackchan touch listen --count 1 --timeout 30   # prints `touch zone=0 (back)` per tap
 pc/stackchan-pico/bin/stackchan demo                     # scripted intro: speak + face + servo + LED cycling
-pc/stackchan-pico/bin/stackchan tui                      # interactive servo/face REPL
+pc/stackchan-pico/bin/stackchan tui                      # one action per line
 pc/stackchan-pico/bin/stackchan calibrate --align-only   # torque off → operator aligns forward → torque on
-pc/stackchan-pico/bin/stackchan stop                     # explicit: tear the link down
+pc/stackchan-pico/bin/stackchan stop                     # the daemon exits
 ```
+
+The daemon holds the BLE link only while it is in use: the first action
+connects, a keepalive runs while actions keep coming, and `c.hold` ms
+(10 s in `apps/mac/app.rb`) after the last one the keepalive stops and the
+robot releases the link. The next action reconnects. When the robot is held
+by another central (another Mac, the iOS app) or cannot be reached, the verb
+prints `busy: …` and exits 8.
 
 ### Touch reactions
 
@@ -222,12 +266,15 @@ link is idle). Per zone:
 
 The PC side only sees the `<touch:N>` BLE notify, so `touch listen` is the
 right verb when you want a CLI side-effect (printing events) on top of the
-on-device visual feedback.
+on-device visual feedback. It prints `touch zone=N (back|right|left)` per
+tap, exits 0 after `--count` taps, and exits 1 on `--timeout` seconds or when
+the link is released.
 
 ### Interactive servo console
 
-`stackchan tui` — interactive servo TUI with short commands
-(`yl 50`, `pu 30`, `fwd`, `ton` / `toff`, `face joy`, …).
+`stackchan tui` reads one action per line with its arguments, the same words
+as on the command line (`face joy`, `servo --yaw-left 50 --time 500`,
+`torque off`); `h` lists the verbs and `q` quits.
 
 ### Calibration
 
@@ -254,7 +301,7 @@ gracefully — LEDs off, face neutral, servo centered, torque off.
 
 `phrase_announcer.rb` picks one of five fixed phrases at random and speaks it
 every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
-0.05 was inaudible over room noise, 0.3 clipped the 1W speaker).
+0.05 is inaudible over room noise, 0.3 clips the 1W speaker).
 
 Run both in the background and stop them together when done:
 
@@ -289,7 +336,7 @@ The BLE link itself is not one of these. A full pass over every verb — status,
 face, led, torque, servo on both axes, read-back, say, selftest, stop and head
 touch — completes without a single ACK timeout or retry.
 
-- There is no retry path: `ble_client.rb` raises `TimeoutError` on an ACK
+- There is no retry path: `StackChan::Controller::Central` raises `TimeoutError` on an ACK
   timeout and the CLI command fails rather than the frame being resent once.
   This is a gap in the code, not an observed symptom; it has no effect until a
   frame is actually dropped.
@@ -302,8 +349,8 @@ touch — completes without a single ACK timeout or retry.
   PicoRuby VM cannot trap that: `Signal.list` carries no `PIPE`, and every
   `Signal.trap` form raises `SystemStackError`. launchd restarts the process,
   so the damage is a dropped connection rather than a dead robot. `rake pc:up`
-  no longer triggers it — its port check asks the kernel who is listening
-  instead of connecting — but the daemon still has no defence of its own.
+  checks the port by asking the kernel who is listening, not by connecting, so
+  it does not trigger this; the daemon itself has no defence.
 
 ## Audio path
 
@@ -315,8 +362,8 @@ heartbeat to pick it up, blasts the bytes in MTU-sized writes, then waits
 `N/8000 + 2 s` for playback to finish. The device, on receiving `<A:N>`,
 replies `<A:ready>`, sleeps `T = (N × 1000 / 8000) + 3000 ms` (main task fully
 static during this window), drains the receive queue, and plays the buffer. The
-phase separation prevents the btstack FreeRTOS thread and the PicoRuby main
-task from racing on the mruby heap.
+phase separation prevents the NimBLE host thread and the PicoRuby main task
+from racing on the mruby heap.
 
 That window is sized from an assumed 8000 bytes/s blast, while the PC paces at a
 nominal 9000 bytes/s and measures slower than that. Long clips can therefore
@@ -336,35 +383,24 @@ speaker is being overdriven, and the fix is amplitude, not the codec.
 
 A `face` command over BLE takes 0.16 s (neutral) to 0.21 s (joy), median of
 eight rounds. `led` travels the same path and draws nothing: 0.18 s. The faces
-sit at that floor, so the LCD repaint no longer stands out above the BLE round
-trip.
+sit at that floor, close to the BLE round trip.
 
 Numbers drift 15-25% between sessions; only compare runs from the same
 session. `ROUNDS=8 tools/face_profile.zsh` produces the table.
 
-| face | seconds | with the primitives in Ruby |
-|---|---|---|
-| neutral | 0.16 | 0.42 |
-| surprised | 0.16 | 0.42 |
-| angry | 0.17 | 0.55 |
-| smile | 0.18 | 0.56 |
-| sad | 0.18 | 0.52 |
-| joy | 0.21 | 0.67 |
-| `led` (floor) | 0.18 | 0.19 |
+| face | seconds |
+|---|---|
+| neutral | 0.16 |
+| surprised | 0.16 |
+| angry | 0.17 |
+| smile | 0.18 |
+| sad | 0.18 |
+| joy | 0.21 |
+| `led` (floor) | 0.18 |
 
-Both columns are medians of the same eight-round run, measured in one session
-either side of the firmware change, so they are comparable. The device-side
-ACK in the daemon log moved the same way: 344-624 ms down to 100-164 ms.
-
-A rebuild from the same sources, measured later in that session, gave 0.17-0.21 s
-against a 0.19 s floor: the ordering across faces is stable, individual faces move
-by about 0.02 s between runs.
-
-What went away is the time PicoRuby spent interpreting Bresenham and
-midpoint-ellipse loops. `picoruby-ili9342` issues the address window, RAMWR
-and pixel stream from C, one call per shape. Neither pixel count nor
-`SPI#write` count ever explained the cost (cutting the calls from ~400 to 10
-was worth 7-9%); primitive count did.
+Drawing cost follows primitive count; `picoruby-ili9342` issues the address
+window, RAMWR and pixel stream from C, one call per shape. Neither pixel
+count nor `SPI#write` count explains it.
 
 Two device-only constraints bind anything that goes back onto the draw path in
 Ruby:
@@ -412,18 +448,18 @@ and build_configs each time.
 | Repo | Ref | Role | Pinned by |
 |---|---|---|---|
 | [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `c-primitives-verified` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`) |
-| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Mac-side PicoRuby VM build harness | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
+| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `claude/external-app` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
-| [bash0C7/picoruby-stackchan-protocol](https://github.com/bash0C7/picoruby-stackchan-protocol) | tag `v0.1.0` | BLE frame protocol (`FrameParser`) | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
 
-The WS2812 and Si12T drivers are mrbgems in this repo's `mrbgems/` bundled
-into `app.mrb` at compile time. `picoruby-aw88298` has a C part, so the
-firmware build_config fetches it from this repo:
-`conf.gem github: 'bash0C7/stackchan-picoruby', path: 'mrbgems/picoruby-aw88298'`.
+The WS2812, Si12T, AW88298 and dRuby-over-BLE gems are mrbgems in this
+repo's `mrbgems/` bundled into `app.mrb` at compile time. The BLE frame
+protocol gem (`mrbgems/picoruby-stackchan-protocol`, `FrameParser` /
+`FrameCodec` / `FrameText`) is also in this repo, but is instead a gem dir
+in `build_config/esp32-stackchan.rb`.
 
 ### Staying reproducible
 
@@ -482,12 +518,14 @@ Adds on top of upstream:
 - `sdkconfigs/bt_nimble`: BLE enablement with the ROM coex hook disabled, which
   avoids a `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with
   IDF v5.4 and ESP32-S3.
-- `build_config/xtensa-esp-picoruby.rb` (on the `c-primitives-verified` branch):
-  wires the 4 standalone driver gems above plus `picoruby-ble` /
-  `picoruby-ble-uart` / `picoruby-i2s`.
+- `R2P2_BUILD_CONFIG` names an external picoruby build config in place of
+  `build_config/xtensa-esp-picoruby.rb`, `R2P2_GEM_DIRS` adds gem dirs to the
+  default config, and `R2P2_EXTRA_SRCS` adds C sources to the IDF component.
+  The default config carries `picoruby-ble` and `picoruby-i2s`, whose ESP32
+  ports the component compiles.
 - Points its `components/picoruby-esp32/picoruby` submodule at `7258676` on the
-  picoruby fork's `stackchan-integration` branch below. The branch head has moved
-  past that commit onto a lineage that boot-loops on this board; see HANDOFF.
+  picoruby fork's `stackchan-integration` branch below. The branch head is on
+  the rebased lineage, which boot-loops on this board; see HANDOFF.
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby)
 
@@ -500,9 +538,9 @@ onto upstream picoruby/picoruby's `master`:
   `picoruby-ble-bridge`).
 - `port-darwin` — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
-  role can receive a GAP disconnect but cannot initiate one (no such API
-  exists in this port yet) — `StackchanCentral#disconnect` in
-  `pc/stackchan-pico/app/ble_client.rb` is therefore a local-state-only
+  role can receive a GAP disconnect but cannot initiate one (this port has
+  no such API) — `StackChan::Controller::Central#disconnect` in
+  `mrbgems/picoruby-stackchan-controller` is therefore a local-state-only
   no-op; reconnect-from-ACK-timeout relies on the peripheral's own
   supervision timeout, not on the central closing the link.
 

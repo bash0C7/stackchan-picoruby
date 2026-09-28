@@ -1,23 +1,19 @@
 class FakeUART
   attr_reader :writes
   attr_accessor :read_queue
-  attr_accessor :pending_rx   # bytes that drain_rx should consume
-  attr_accessor :read_queue_after_writes  # hash: { write_count => [{ bytes: [...] }, ...] }
+  attr_accessor :pending_rx
+  attr_accessor :read_queue_after_writes
 
-  def initialize(echo: false)
+  def initialize
     @writes      = []
-    @read_queue  = []           # each element: { bytes: [..], delay_ms: 0 } or :timeout
-    @pending_rx  = []           # flat array of bytes consumed by readpartial(n)
-    @echo        = echo         # when true, TX bytes loop back on RX (half-duplex sim).
-                                # false = no loopback (ESP32-S3 UART1); pass echo: true for half-duplex tests
-    @read_queue_after_writes = {} # indexed by write count; values are arrays of queue items
+    @read_queue  = []
+    @pending_rx  = []
+    @read_queue_after_writes = {}
   end
 
   def write(bytes)
     byte_array = bytes.is_a?(String) ? bytes.bytes : bytes
     @writes << byte_array
-    # echo: true loops TX bytes back on RX (half-duplex TTL bus).
-    @pending_rx.concat(byte_array) if @echo
     if @read_queue_after_writes && (queued = @read_queue_after_writes[@writes.length])
       queued.each { |item| @read_queue << item }
     end

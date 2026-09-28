@@ -1,6 +1,3 @@
-# Host stub for PY32IOExpander, exercising only the LED-path methods that
-# StackchanLed#initialize / #show call. Records write_led_ram payloads so
-# tests can assert the post-brightness pixel buffer pushed to the device.
 class FakePy32
   attr_reader :calls, :last_pixels
 
@@ -26,8 +23,8 @@ class FakePy32
   end
 
   def write_led_ram(pixels)
-    @last_pixels = pixels
-    @calls << [:write_led_ram, [pixels]]
+    @last_pixels = pixels.map { |p| p.dup }
+    @calls << [:write_led_ram, [pixels.map { |p| p.dup }]]
   end
 
   def refresh_leds

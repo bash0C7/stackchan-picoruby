@@ -36,6 +36,7 @@ class PcLifecycle
     sidecar = LaunchAgent.sidecar_job(root: @c[:root], ruby: @c[:ruby], port: @c[:sidecar_port],
                                       stub: @c[:stub], logdir: @c[:logdir], ns: @c[:ns])
     daemon  = LaunchAgent.daemon_job(root: @c[:root], vm_app: @c[:vm_app], port: @c[:port],
+                                     sidecar_port: @c[:sidecar_port],
                                      prefix: @c[:prefix], ble_fake: @c[:ble_fake],
                                      logdir: @c[:logdir], ns: @c[:ns])
 
@@ -55,10 +56,7 @@ class PcLifecycle
       raise Error, "daemon on #{@c[:port]} is listening but did not answer status within " \
                    "#{STATUS_WAIT_S}s (see #{@c[:logdir]}/daemon.log)"
     end
-    unless status[:ble_connected]
-      raise Error, "daemon is listening but not connected to the robot: #{status.inspect}"
-    end
-    status
+    check_status(status)
   end
 
   def down
@@ -97,6 +95,17 @@ class PcLifecycle
       File.unlink(path) if File.exist?(path)
       raise Error, "launchctl bootstrap failed for #{label} (#{path}): #{out.to_s.strip}"
     end
+  end
+
+  def check_status(status)
+    if status[:link] == "busy"
+      return status if @c[:allow_busy]
+      raise Error, "robot is held by another controller or unreachable: #{status.inspect}"
+    end
+    unless status[:connects].to_i >= 1
+      raise Error, "daemon is listening but has not connected to the robot: #{status.inspect}"
+    end
+    status
   end
 
   def domain(label)

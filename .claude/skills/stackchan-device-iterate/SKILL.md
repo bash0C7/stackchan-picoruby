@@ -1,9 +1,9 @@
 ---
 name: stackchan-device-iterate
-description: The standard "I changed application.rb, did it work?" loop — upload, reset, capture boot, analyze any panic (~50 s).
+description: The standard "I changed apps/robot/app.rb or the robot engine gem, did it work?" loop — upload, reset, capture boot, analyze any panic (~50 s).
 ---
 
-1. `stackchan-device-upload-app` with `SRC=app/application.rb` (or the given SRC)
+1. `stackchan-device-upload-app` with `SRC=apps/robot/app.rb` (or the given SRC)
 2. `stackchan-device-reset`
 3. `stackchan-device-capture-boot` with `SECONDS=25`
 4. Panic in the log → `stackchan-device-crash-analyze`
