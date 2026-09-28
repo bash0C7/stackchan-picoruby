@@ -25,8 +25,7 @@ App = StackChan.controller do |c|
   end
 
   c.action(:selftest) do |s, _a|
-    s.selftest
-    "OK selftest"
+    "OK selftest detail=#{s.selftest.inspect}"
   end
 
   c.action(:say) do |s, a|

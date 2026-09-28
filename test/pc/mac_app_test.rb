@@ -54,7 +54,7 @@ class MacAppTest < Picotest::Test
   end
 
   def test_selftest
-    assert_equal ok("OK selftest"), act("selftest")
+    assert_equal ok("OK selftest detail=\"<YL_actual:0,PU_actual:0>\\n\""), act("selftest")
     assert_equal ["<selftest:run>\n"], @radio.rx_frames
   end
 

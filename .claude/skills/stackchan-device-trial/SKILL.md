@@ -9,10 +9,11 @@ Needs the CoreS3 on USB, the Mac's Bluetooth, and ESP-IDF (`ESP_IDF_EXPORT` if n
 
        bundle exec rake trial:run 2>&1 | tee /tmp/stackchan-picoruby-debug/trial-run.log; echo "rake exit=${PIPESTATUS[0]}"
 
-   The subagent has no TTY, so the operator questions stay unanswered.
-2. Ask the operator in the main context: `bundle exec rake trial:answer` (servo moved, subtitle intact, audio without gaps, remote moved — per arm).
-3. With the trial firmware still on the robot and a paired iPhone + Apple Watch: `DEVELOPMENT_TEAM=<team> bundle exec rake trial:darwin`, then `rake trial:answer` again.
-4. Commit `trial/results/<stamp>.md` and `.json`. Merge only on `verdict: pass`.
+   The subagent has no TTY, so the operator questions stay unanswered and the trial arm's `touch listen` step stays `incomplete`.
+2. In the main context, with the trial arm still on the robot: `bundle exec rake trial:touch` (`STAMP=` picks a report other than the latest). The operator touches the back of the head when `[trial] >>> touch the back of the head` appears; the step passes on the CLI's `touch zone=N` and fails on a timeout (30 s).
+3. Ask the operator in the main context: `bundle exec rake trial:answer` (servo moved, subtitle intact, audio without gaps, remote moved — per arm).
+4. With the trial firmware still on the robot and a paired iPhone + Apple Watch: `DEVELOPMENT_TEAM=<team> bundle exec rake trial:darwin`, then `rake trial:answer` again.
+5. Commit `trial/results/<stamp>.md` and `.json`. Merge only on `verdict: pass`.
 
 - A step marked FAIL stops the run; its detail names the tree, marker or command. `pins hold ...` = something moved a checkout (fix the tree, do not edit the lock to match it). `boot` = read the boot log it names with `stackchan-device-crash-analyze`.
 - A FAIL under `pc_vm` = the Mac VM (`pc:vm_build` / `pc:app_bundle` at the locked R2P2-darwin) did not build; no arm runs.

@@ -70,8 +70,8 @@
   - Any `Task` stub stays inside `unless Object.const_defined?(:Task)`.
   - Engine code sleeps only through `sleep_ms` and reads time only through an injected `clock:` (default `-> { Machine.board_millis }`), so `FakeClock` drives every timing test.
 - **Wire unchanged:** every verb that exists today writes the same frames in the same order: `<F:n>`, `<L:…>`, `<YL:…>`, `<torque:…>`, `<selftest:run>`, `<read:pos>`, `<text:…>`, `<F:1,text:…>`, `<A:n>` + chunks. Keepalive stays `<read:pos>`.
-- **CLI unchanged for existing verbs:** same verb names and the same stdout lines the trial and tools parse: `OK say bytes=N`, `servo detail="<YL_actual:…>"`, `reply=…`, `OK raw`, `OK selftest`, exit 6/7 from calibrate. `led` with missing arguments still prints its usage line and exits 0. `say` keeps `write_without_ack` for the subtitle, so its timing does not change. New: exit 8 means busy.
-- **Changed CLI lines, listed in the PR:** `status` becomes one `key=value` line; `touch listen` prints `touch zone=N (back|right|left)` without the Japanese labels.
+- **CLI unchanged for existing verbs:** same verb names and the same stdout lines the trial and tools parse: `OK say bytes=N`, `servo detail="<YL_actual:…>"`, `reply=…`, `OK raw`, the `OK selftest` prefix, exit 6/7 from calibrate. `led` with missing arguments still prints its usage line and exits 0. `say` keeps `write_without_ack` for the subtitle, so its timing does not change. New: exit 8 means busy.
+- **Changed CLI lines, listed in the PR:** `status` becomes one `key=value` line; `touch listen` prints `touch zone=N (back|right|left)` without the Japanese labels; `selftest` prints `OK selftest detail="<YL_actual:…>"` (the detail frame in `servo detail=`'s inspect form, after the unchanged `OK selftest` prefix).
 - **One central at a time:**
   - Only an action may call `Central#connect`. Keepalive, `every`, `poll_touch` and the tick never connect.
   - Every link loss resets the central's dRuby inbox, dRuby send stamp, text inbox and resolved handles, and the daemon's touch queue.
@@ -355,7 +355,7 @@ App = StackChan.controller do |c|
   c.action(:led)      { |s, a| next "led: side color mode required" if a.size < 3; s.led(a[0].to_sym, a[1].to_sym, mode: a[2].to_sym); "OK led=#{a[0]}/#{a[1]}/#{a[2]}" }
   c.action(:servo)    { |s, a| "servo detail=#{s.servo(yaw_left: a.int('yaw-left'), yaw_right: a.int('yaw-right'), pitch_up: a.int('pitch-up'), time_ms: a.int('time'), velocity: a.int('velocity')).inspect}" }
   c.action(:torque)   { |s, a| s.torque(a[0] == "on"); "OK torque=#{a[0] == 'on' ? 'on' : 'off'}" }
-  c.action(:selftest) { |s, _| s.selftest; "OK selftest" }
+  c.action(:selftest) { |s, _| "OK selftest detail=#{s.selftest.inspect}" }
   c.action(:say)      { |s, a| s.say(a.text, gain: a.float("gain"), rate: a.int("rate")) }
   c.action(:chat, flags: ["no-speak"]) { |s, a| r = s.chat(a.text, speak: !a.flag?("no-speak")); r ? "reply=#{r}" : "reply=(none)" }
   c.action(:subtitle) { |s, a| s.text(a.text); "OK subtitle" }
@@ -395,7 +395,7 @@ The exact line strings (the `led` usage line included) are copied from today's `
     - `led both green solid`
     - `servo --yaw-left 50 --pitch-up 30 --time 500` → `<YL:50,PU:30,T:500>` and `servo detail="<YL_actual:0,PU_actual:0>\n"`
     - `torque on`
-    - `selftest`
+    - `selftest` → `<selftest:run>` and `OK selftest detail="<YL_actual:0,PU_actual:0>\n"`
     - `say`, via `OK say bytes=`
     - `chat こんにちは` → `<F:1,text:stub返答:こんにちは>`, then `say`'s `<text:…>` subtitle, then `<A:n>`, as today (`daemon_app.rb:103-107, 119-120`), and `reply=stub返答:こんにちは`
     - `led both` → no frame and `led: side color mode required`, exit 0
@@ -415,21 +415,23 @@ The exact line strings (the `led` usage line included) are copied from today's `
 
 ### Task 8: The trial drives the controller and checks it by machine
 
-**Files:** `lib/device_trial.rb`, `lib/device_trial_ops.rb`, `test-host/device_trial_test.rb`, `trial/lock.yml` (trial arm `controller: true`)
+**Files:** `lib/device_trial.rb`, `lib/device_trial_ops.rb`, `test-host/device_trial_test.rb`, `trial/lock.yml` (trial arm `controller: true`), `Rakefile` (`trial:touch`), `.claude/skills/stackchan-device-trial/SKILL.md`, `apps/mac/app.rb` + `test/pc/mac_app_test.rb` (selftest detail)
 
 **Interfaces:**
 - **ops:**
-  - `cli(root, *args, env: {}, stdin: nil)`: `Open3.capture2e(env, cli, *args, stdin_data: stdin.to_s)`, returning the output and `status.exitstatus`, so a step can tell exit 8 from exit 1.
+  - `cli(root, *args, env: {}, stdin: nil)`: `Open3.capture2e(env, cli, *args, stdin_data: stdin.to_s)`, returning `[ok, output, seconds, status.exitstatus]`, so a step can tell exit 8 from exit 1.
   - `sleep(seconds)`.
   - `notice(text)`: prints `[trial] >>> text` for the operator.
-  - The fake ops in the test record all three.
+  - `now`: monotonic seconds, for the gap between Mac A's call and Mac B's.
+  - `tty?`: whether a person is at stdin, for the touch step.
+  - The fake ops in the test record `sleep`, `notice` and `now`, and script `tty?` and the clock.
 - **Timings** come from the arm itself. `release_after` is parsed from the arm's app file (`/release_after\s+([\d_]+)/` on `ops.read(File.join(wt, arm["app"]))`); `hold` comes from the `hold_ms=` field of `stackchan status`. `quiet_wait_s = (hold + release_after) / 1000 + 5` (both in ms). After an action at T the robot has released by T + hold + release_after at the latest, because the last keepalive comes before T + hold.
 - **New steps** run in the trial arm only when `arm["controller"]`, after `measure` and before `stack high-water`. The touch step runs the robot's `on_touch` handler, so the stack reading now comes after every robot handler kind:
 
 | step | drives | machine check |
 |---|---|---|
-| `selftest detail` | `stackchan selftest` | output matches `DETAIL` |
-| `touch listen` | `notice("touch the back of the head")`, then `cli touch listen --count 1 --timeout 30` | exit 0 and `touch zone=\d`. Without a TTY on stdin the step is `incomplete` (as the questions are), not a stop |
+| `selftest detail` | `stackchan selftest` | exit 0 and the output (`OK selftest detail="<…>"`) matches `DETAIL` |
+| `touch listen` | `notice("touch the back of the head")`, then `cli touch listen --count 1 --timeout 30` | exit 0 and `touch zone=\d`. Without a TTY on stdin the step is `incomplete` (as the questions are), not a stop; `rake trial:touch` runs it afterwards |
 | `calibrate` | `cli calibrate --no-torque-toggle --format json --samples 3`, `stdin: "\n" * 5` | exit 0; the last output line parses as JSON (the prompts are on stdout before it); `servo_yaw_zero`/`servo_pitch_zero` are Integers; `forward_verify` deltas ≤ 3 |
 | `chat (sidecar STUB)` | `rake pc:down`, `sleep quiet_wait_s`, `rake pc:up` with `STUB=1`, then `cli chat こんにちは`; after the arm, `pc:down` and `pc:up` without `STUB` so the Mac is left on the real sidecar | output is exactly `reply=stub返答:こんにちは`. The reply was spoken, so `<A:done>` came back; the CLI would otherwise fail |
 | `release and reconnect` | `cli face neutral`; `status` → `connects` c0; `sleep quiet_wait_s`; `status` → `link` (the tick drains in `:quiet`, so `released` here means the release packet arrived); timed `cli face joy`; `status` | the face is OK and `connects == c0 + 1`. Detail: `release seen: yes/no, reconnect + face N.NN s` |
@@ -437,7 +439,8 @@ The exact line strings (the `led` usage line included) are copied from today's `
 
 The `pc:up` in the chat row passes `env: {"STUB" => "1"}`. The rest of the arm then runs against the STUB sidecar; the audio question refers to the earlier `say`.
 
-- **`verdict`:** unchanged. The new steps are steps; they add no questions. `verdict` still needs the operator's answers (servo moved, subtitle intact, audio without gaps) and `trial:darwin` (`device_trial.rb:159-167`), so step 3's merge gate still includes those; replacing them by machine checks is step 4's `trial:darwin` work and is stated in the PR and HANDOFF.
+- **`rake trial:touch`** (like `trial:answer`: the latest report, or `STAMP=`): runs the `touch listen` step against the robot as it stands (the trial arm is the last one flashed, so its firmware and its worktree's daemon), replaces the report's `touch listen` step with the result and recomputes `verdict`. Without a TTY it stays `incomplete`. The operator flow is `trial:run` → `trial:touch` (touch the head when prompted) → `trial:answer`, written in `.claude/skills/stackchan-device-trial/SKILL.md`.
+- **`verdict`:** unchanged, except that a step recorded as `incomplete` (`ok: nil`) keeps it `incomplete` instead of failing it. The new steps are steps; they add no questions. `verdict` still needs the operator's answers (servo moved, subtitle intact, audio without gaps) and `trial:darwin` (`device_trial.rb:159-167`), so step 3's merge gate still includes those; replacing them by machine checks is step 4's `trial:darwin` work and is stated in the PR and HANDOFF.
 - **`markdown`:** the new timing series appear in the table (the base arm cells show `—`).
 
 - [ ] Step 1: Failing test-host tests:
@@ -458,6 +461,8 @@ The `pc:up` in the chat row passes `env: {"STUB" => "1"}`. The rest of the arm t
   - The base arm (no `controller`) calls none of these.
   - `quiet_wait_s` is computed from the arm's app file and `status`, in seconds: `hold_ms=10000` + `release_after 15_000` → 30.
   - The touch step without a TTY is `incomplete`; the chat step restores the real sidecar after the arm.
+  - `run_touch` (behind `trial:touch`) on a report left `incomplete` listens on the trial worktree and moves the verdict to `pass` on `touch zone=N`, to `fail` on exit 1, and leaves it `incomplete` without a TTY.
+  - `selftest` without a detail line stops the arm.
 - [ ] Step 2: Implement. `test:host` green. Commit.
 
 ### Task 9: Docs, pins, dry run, CI, PR

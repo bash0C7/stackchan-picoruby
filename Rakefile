@@ -858,6 +858,16 @@ namespace :trial do
     write_trial_report(t)
   end
 
+  desc "Listen for one head touch on the robot as it stands (the trial arm) and record it in the latest or STAMP= report"
+  task :touch do
+    json = ENV["STAMP"] ? File.join(TRIAL_RESULTS, "#{ENV['STAMP']}.json") : latest_trial_json
+    abort "[trial] no report #{json}" unless File.exist?(json)
+    t = trial_session(File.basename(json, ".json"))
+    t.report.merge!(JSON.parse(File.read(json)))
+    t.run_touch
+    write_trial_report(t)
+  end
+
   desc "Ask the questions the latest report left unanswered (it ran without a TTY)"
   task :answer do
     json = latest_trial_json

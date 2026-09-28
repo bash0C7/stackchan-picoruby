@@ -168,6 +168,15 @@ class DeviceTrial
     d
   end
 
+  def run_touch
+    steps = @report["arms"].fetch("trial")["steps"]
+    touched = touch_step(worktree("trial"))
+    i = steps.index { |s| s["name"] == touched["name"] }
+    i ? steps[i] = touched : steps << touched
+    @report["verdict"] = verdict
+    @report
+  end
+
   # Asks every question the run left unanswered (it ran without a TTY).
   def answer
     (@report["arms"].values + [@report["darwin"]].compact).each do |part|
@@ -318,12 +327,14 @@ class DeviceTrial
 
   def controller(r, wt, arm)
     step(r, "quiet wait") { @quiet = quiet_wait_s(wt, arm); "#{@quiet} s" }
-    step(r, "selftest") do
+    step(r, "selftest detail") do
       out = cli!(wt, "selftest")
-      raise Stop, "no `OK selftest` in #{out.inspect}" unless out.include?("OK selftest")
-      "OK selftest"
+      raise Stop, "no detail line in #{out.inspect}" unless out =~ DETAIL
+      out[DETAIL]
     end
-    touch(r, wt)
+    touched = touch_step(wt)
+    r["steps"] << touched
+    raise Stop, touched["detail"] if touched["ok"] == false
     step(r, "calibrate") { calibrate(wt) }
     step(r, "chat (sidecar STUB)") do
       rake(wt, "pc:down")
@@ -345,18 +356,14 @@ class DeviceTrial
     line.split.to_h { |kv| k, v = kv.split("=", 2); [k, v.to_s] }
   end
 
-  def touch(r, wt)
-    unless @ops.tty?
-      r["steps"] << { "name" => "touch listen", "ok" => nil, "detail" => "incomplete: no TTY, nobody to touch the head" }
-      return
-    end
-    step(r, "touch listen") do
-      @ops.notice("touch the back of the head")
-      _, out, _, code = @ops.cli(wt, "touch", "listen", "--count", "1", "--timeout", "30")
-      zone = out[/touch zone=\d.*/]
-      raise Stop, "touch listen exit #{code}:\n#{out}" unless code == 0 && zone
-      zone.strip
-    end
+  def touch_step(wt)
+    name = "touch listen"
+    return { "name" => name, "ok" => nil, "detail" => "incomplete: no TTY, nobody to touch the head" } unless @ops.tty?
+    @ops.notice("touch the back of the head")
+    _, out, _, code = @ops.cli(wt, "touch", "listen", "--count", "1", "--timeout", "30")
+    zone = out[/touch zone=\d.*/]
+    return { "name" => name, "ok" => false, "detail" => "touch listen exit #{code}:\n#{out}" } unless code == 0 && zone
+    { "name" => name, "ok" => true, "detail" => zone.strip }
   end
 
   def calibrate(wt)

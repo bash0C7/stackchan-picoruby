@@ -1,5 +1,6 @@
 require 'test/unit'
 require 'yaml'
+require 'json'
 require 'device_trial'
 
 class DeviceTrialTest < Test::Unit::TestCase
@@ -124,7 +125,7 @@ class DeviceTrialTest < Test::Unit::TestCase
         return BUSY if r[:holder] == :a
         r[:holder] = :b
         "OK face=#{args[1]}\n"
-      when "selftest" then "OK selftest\n"
+      when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n"
       when "touch" then "[touch] listening (Ctrl-C to exit)...\ntouch zone=1 (back)\n"
       when "calibrate" then CALIBRATION
       when "chat" then r[:stub] ? "reply=stub返答:#{args[1]}\n" : "reply=こんにちは！元気だよ\n"
@@ -370,7 +371,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal 3, t.report["arms"]["trial"]["timings"]["face joy"].size
   end
 
-  CONTROLLER_STEPS = ["quiet wait", "selftest", "touch listen", "calibrate", "chat (sidecar STUB)",
+  CONTROLLER_STEPS = ["quiet wait", "selftest detail", "touch listen", "calibrate", "chat (sidecar STUB)",
                       "release and reconnect", "hand-off Mac A → Mac B → Mac A"].freeze
   HANDOFF_UP = { "NS" => "handoff", "STACKCHAN_PORT" => "8797", "STACKCHAN_SIDECAR_PORT" => "8798",
                  "STACKCHAN_LOGDIR" => "/tmp/stackchan-pico-handoff", "STUB" => "1", "ALLOW_BUSY" => "1" }.freeze
@@ -400,7 +401,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     r = trial.run(%w[trial])
     assert_equal [], r["arms"]["trial"]["steps"].reject { |s| s["ok"] }
     assert_equal "30 s", step(r, "trial", "quiet wait")["detail"]
-    assert_equal "OK selftest", step(r, "trial", "selftest")["detail"]
+    assert_equal "<YL_actual:50,PU_actual:29>", step(r, "trial", "selftest detail")["detail"]
     assert_equal "touch zone=1 (back)", step(r, "trial", "touch listen")["detail"]
     assert_equal "yaw_zero 2048, pitch_zero 2050, verify delta 1/-2", step(r, "trial", "calibrate")["detail"]
     assert_equal "reply=stub返答:こんにちは", step(r, "trial", "chat (sidecar STUB)")["detail"]
@@ -450,6 +451,58 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "touch listen", failed(r, "trial")["name"]
     assert_match(/exit 1/, failed(r, "trial")["detail"])
   end
+
+def test_selftest_without_a_detail_line_stops_the_arm
+  @ops.cli_out["selftest"] = "OK selftest\n"
+  r = trial.run(%w[trial])
+  assert_equal "selftest detail", failed(r, "trial")["name"]
+end
+
+def run_without_a_tty
+  @ops.tty = false
+  t = trial
+  t.run
+  t.run_darwin
+  assert_equal "incomplete", t.report["verdict"]
+  later = trial
+  later.report.merge!(JSON.parse(JSON.generate(t.report)))
+  later
+end
+
+def touch_steps(report) = report["arms"]["trial"]["steps"].select { |s| s["name"] == "touch listen" }
+
+def test_trial_touch_listens_on_the_trial_arm_and_completes_the_verdict
+  later = run_without_a_tty
+  @ops.tty = true
+  @ops.calls.clear
+  later.run_touch
+  assert_equal [[:notice, "touch the back of the head"],
+                [:cli, wt("trial"), %w[touch listen --count 1 --timeout 30], {}, nil]], @ops.calls
+  assert_equal [{ "name" => "touch listen", "ok" => true, "detail" => "touch zone=1 (back)" }], touch_steps(later.report)
+  assert_equal "pass", later.report["verdict"]
+  assert_match(/\| touch listen \| ok \| touch zone=1 \(back\) \|/, later.markdown)
+end
+
+def test_trial_touch_that_times_out_fails_the_verdict
+  later = run_without_a_tty
+  @ops.tty = true
+  @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
+  later.run_touch
+  steps = touch_steps(later.report)
+  assert_equal 1, steps.size
+  assert_equal false, steps.first["ok"]
+  assert_match(/exit 1/, steps.first["detail"])
+  assert_equal "fail", later.report["verdict"]
+end
+
+def test_trial_touch_without_a_tty_leaves_it_incomplete
+  later = run_without_a_tty
+  @ops.calls.clear
+  later.run_touch
+  assert_empty @ops.calls.select { |c| c[0] == :cli }
+  assert_nil touch_steps(later.report).first["ok"]
+  assert_equal "incomplete", later.report["verdict"]
+end
 
   def test_touch_without_a_tty_is_incomplete_and_the_arm_goes_on
     @ops.tty = false
