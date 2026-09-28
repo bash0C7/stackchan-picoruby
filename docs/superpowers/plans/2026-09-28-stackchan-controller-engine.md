@@ -215,7 +215,7 @@
   - Calls `central.drain` in `:held` and `:quiet`. If `central.lost?` → `lost!` and return.
   - Returns in `:quiet`.
   - If `hold && now − @last_action_at ≥ hold` → `state = :quiet`, log `hold over`, return.
-  - If `now − @last_sent_at ≥ keepalive_ms` → `central.keepalive`, then `@last_sent_at = now`. A `ConnectionError`/`TimeoutError` → `lost!` and nothing else.
+  - If `now − @last_sent_at ≥ keepalive_ms` → `@last_sent_at = now`, then `central.keepalive`, so a keepalive that raises keeps the 7 s pace. A `ConnectionError` → `lost!`. A `TimeoutError` → `lost!` if `central.lost?`; otherwise `state = :quiet`, because the darwin port never cancels the connection, the robot still holds this Mac, and a scan would cost `CONNECT_TIMEOUT_MS` and end in `Busy`. Neither reconnects.
 - `lost!` → `central.reset_link`; `state = :released`; `@releases += 1`; the daemon's touch queue is cleared.
 - `status` → `{ link: state.to_s, connects:, releases:, last_connect_ms:, hold_ms: }`.
 - In `:quiet`, `act` does not rescan first: the robot may still hold the link (it has not reached `release_after`), and while it holds a central it does not advertise, so a scan would cost `CONNECT_TIMEOUT_MS` and fail. The release packet is drained by the tick or by `act` itself, so a released link is `:released` before the action's first frame.
@@ -231,7 +231,8 @@
 - [ ] Step 1: Failing tests in `link_test.rb`, with `FakeClock` and `FakeRobotRadio`, `hold: 10_000`, 250 ms ticks:
   - Exactly one `<read:pos>` is written in [0, 10 s) after an action, at 7 s, and none after 10 s; the state is `:quiet` from 10 s.
   - An action at 12 s restarts it: the next keepalive is at 19 s.
-  - A keepalive that times out leaves `:released`, and `connect_and_discover_calls` does not grow over 60 s of ticks.
+  - A keepalive that times out on a link not known lost leaves `:quiet` (no release counted); one whose link drops leaves `:released`. In both, `connect_and_discover_calls` does not grow over 60 s of ticks.
+  - A keepalive the robot answers with `?` still runs every 7 s.
   - With the fake robot's `release_after 15_000`, the link is `:released` by 22.25 s (the last keepalive at 7 s + 15 s + one tick), seen by packet.
   - After a release seen by packet, the next `act` calls `connect_and_discover` before its frame and costs zero ACK timeouts. The descriptor (CCCD) writes precede the frame in `rx_frames` order.
   - After `drop_link(event: false)` during `:quiet`, the next `act` raises `TimeoutError` after one `ACK_TIMEOUT_MS` and writes its frame once; it does not rescan while the link is not known lost.

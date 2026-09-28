@@ -171,7 +171,8 @@ class FakeRobotRadio < FakeRadio
 
   def answer(frame)
     if frame.start_with?("<read:pos>")
-      schedule_notification(TX, "<yaw_raw:2048,pitch_raw:2048>\n")
+      schedule_notification(TX, ".\n")
+      schedule_notification(TX, "<yaw_raw:2048,pitch_raw:2048>\n", after_polls: 3)
     elsif frame.start_with?("<A:")
       @audio_left = frame[3, frame.length - 3].to_i
       schedule_notification(TX, "<A:ready>\n")

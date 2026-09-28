@@ -159,6 +159,11 @@ class CentralLinkLossTest < Picotest::Test
     assert_equal ["<selftest:run>\n", "<F:2>\n"], @radio.rx_frames
   end
 
+  def test_the_robot_acks_read_pos_before_the_reading
+    @central.raw_send("<read:pos>\n")
+    assert_equal ["[t] <read:pos> ack=0ms detail=0ms"], @logs
+  end
+
   def test_keepalive_sends_read_pos_and_keeps_the_reading
     @central.keepalive
     assert_equal ["<read:pos>\n"], @radio.rx_frames

@@ -54,12 +54,19 @@ module StackChan
           return
         end
         return if now - @last_sent_at < @keepalive_ms
+        @last_sent_at = now
         begin
           @central.keepalive
-          @last_sent_at = now
-        rescue ConnectionError, TimeoutError => e
+        rescue ConnectionError => e
           @log.call("keepalive #{e.class}: #{e.message}")
           lost!
+        rescue TimeoutError => e
+          @log.call("keepalive #{e.class}: #{e.message}")
+          if @central.lost?
+            lost!
+          else
+            @state = :quiet
+          end
         end
       end
 

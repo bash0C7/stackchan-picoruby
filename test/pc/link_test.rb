@@ -25,10 +25,34 @@ class LinkTest < Picotest::Test
     end
   end
 
-  def build(hold: 10_000)
+  class RejectingReadPosRadio < StampedRobotRadio
+    def answer(frame)
+      if frame.start_with?("<read:pos>")
+        @stamps << [FakeClock.now, frame]
+        schedule_notification(TX, "?\n")
+        return
+      end
+      super
+    end
+  end
+
+  class DropOnReadPosRadio < StampedRobotRadio
+    def answer(frame)
+      if frame.start_with?("<read:pos>")
+        @stamps << [FakeClock.now, frame]
+        drop_link(event: true)
+        return
+      end
+      super
+    end
+  end
+
+  TX = FakeRobotRadio::TX
+
+  def build(hold: 10_000, radio: nil)
     FakeClock.reset(0)
     @logs = []
-    @radio = StampedRobotRadio.new
+    @radio = radio || StampedRobotRadio.new
     @central = StackChan::Controller::Central.new(name_prefix: "StackChan", radio: @radio, log_fn: ->(line) {})
     @link = StackChan::Controller::Link.new(central: @central, clock: -> { FakeClock.now }, hold: hold, log: ->(line) { @logs << line })
     @central.on_unsolicited = ->(frame) { @link.touches << frame }
@@ -84,13 +108,51 @@ class LinkTest < Picotest::Test
     assert_equal 1, @radio.connect_and_discover_calls
   end
 
-  def test_a_keepalive_timeout_releases_and_never_reconnects
+  def test_a_keepalive_timeout_on_a_link_not_known_lost_goes_quiet_and_never_reconnects
     t0 = act_frame("<F:2>\n")
     @radio.drop_link(event: false)
     tick_until(t0 + 60_000)
-    assert_equal :released, @link.state
+    assert_equal :quiet, @link.state
+    assert_equal 0, @link.status[:releases]
     assert_equal 1, @radio.connect_and_discover_calls
     assert_equal [[RX, "<read:pos>\n"]], @radio.writes_after_drop
+  end
+
+  def test_a_keepalive_that_sees_the_link_drop_releases_it
+    build(radio: DropOnReadPosRadio.new)
+    t0 = act_frame("<F:2>\n")
+    tick_until(t0 + 60_000)
+    assert_equal :released, @link.state
+    assert_equal [7_000], read_pos_offsets(t0)
+    assert_equal 1, @radio.connect_and_discover_calls
+  end
+
+  def test_a_rejected_keepalive_keeps_its_seven_second_pace
+    build(hold: nil, radio: RejectingReadPosRadio.new)
+    daemon = StackChan::Controller::Daemon.new(link: @link, central: @central, log: ->(line) { @logs << line })
+    daemon.instance_variable_get(:@link).act { @central.raw_send("<F:2>\n") }
+    t0 = FakeClock.now
+    while FakeClock.now < t0 + 30_000
+      sleep_ms TICK_MS
+      daemon.tick
+    end
+    assert_equal [7_000, 14_000, 21_000, 28_000], read_pos_offsets(t0)
+    assert_equal :held, @link.state
+  end
+
+  def test_an_action_drains_a_release_no_tick_has_seen
+    @radio.release_after(15_000)
+    t0 = act_frame("<F:2>\n")
+    tick_until(t0 + 21_750)
+    assert_equal :quiet, @link.state
+    sleep_ms 1_000
+    FakeClock.sleeps.clear
+    @radio.events.clear
+    act_frame("<F:3>\n")
+    assert_equal 2, @radio.connect_and_discover_calls
+    assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
+    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "<F:3>\n"]], @radio.events
+    assert_equal :held, @link.state
   end
 
   def test_the_robot_release_is_seen_by_packet_one_tick_after_its_quiet_time
