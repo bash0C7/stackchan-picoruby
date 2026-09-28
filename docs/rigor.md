@@ -6,7 +6,7 @@ It runs on the host over `app/ lib/ mrbgems/ pc/ test/ test-host/`.
 ## Why it is not in the Gemfile
 
 `rigortype` requires `prism >= 1.0`. This repo is pinned to `prism ~> 0.30`, the version
-picoruby vendors and `lib/ruby_class_extract.rb` parses against. Bundler cannot resolve
+picoruby vendors and the test harness, `lib/qemu_gate.rb` and the `test-host/` source checks parse against. Bundler cannot resolve
 both, so rigor gets its own gemset under `vendor/rigor-tool/` (gitignored) and never enters
 `Gemfile`. `rake rigor:setup` installs it; `RIGOR_VERSION` pins which one.
 
