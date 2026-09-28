@@ -65,8 +65,9 @@ The other repos it needs are pinned in `trial/lock.yml`'s trial arm:
 
 The base arm is `main` as it is. Verified in a Linux container: `picotest:run`
 and `test:host` green, `r2p2:qemu_check` PASS, `r2p2:build` (image
-`0x2575b0`), the trial dry run (pin → setup → pins → gate → build → pins), CI
-`firmware.yml` and `deps.yml`. Nothing of it has run on the robot, the Mac VM,
+`0x247a70`), CI `firmware.yml` and `deps.yml` on the pinned tree; the trial dry
+run (pin → setup → pins → gate → build → pins) on the tree before the gem list
+was trimmed. Nothing of it has run on the robot, the Mac VM,
 an iPhone or a Watch.
 
 ## Next
