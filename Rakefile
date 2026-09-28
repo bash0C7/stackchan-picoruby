@@ -7,6 +7,8 @@ require "tempfile"
 require "yaml"
 require_relative "lib/deploy/picomodem"
 require_relative "lib/qemu_gate"
+require_relative "lib/esp_port"
+require_relative "lib/device_lock"
 
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
 # fork or branch swap needs no edit here.
@@ -217,12 +219,17 @@ SERIAL_LOG_DEFAULT = '/tmp/stackchan-picoruby-debug/serial.log'
 STORAGE_OFFSET = '0x410000'
 STORAGE_SIZE   = '0x100000'
 
+def resolve_espport
+  EspPort.resolve(ioreg_out: EspPort.ioreg, serial: EspPort.serial_from(ENV, __dir__), espport: ENV['ESPPORT'])
+rescue EspPort::Error => e
+  abort "[espport] #{e.message}"
+end
+
 def espport
-  ENV.fetch('ESPPORT') do
-    candidates = Dir.glob('/dev/cu.usbmodem*').sort
-    abort 'ESPPORT not set and no /dev/cu.usbmodem* device found. Plug the CoreS3 in or set ESPPORT=...' if candidates.empty?
-    warn "multiple /dev/cu.usbmodem* devices, using #{candidates.first} (override with ESPPORT=...)" if candidates.size > 1
-    candidates.first
+  @espport ||= begin
+    port = resolve_espport
+    DeviceLock.hold('esp32')
+    ENV['ESPPORT'] = port
   end
 end
 

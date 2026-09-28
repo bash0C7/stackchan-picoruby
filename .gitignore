@@ -20,3 +20,5 @@ pc/*/tmp/
 
 /apps/*/Vendor/
 /apps/*/*.xcodeproj/
+
+/.stackchan-usb-serial
