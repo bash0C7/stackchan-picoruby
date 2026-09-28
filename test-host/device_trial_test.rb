@@ -11,7 +11,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
     attr_reader :calls, :heads, :dirty, :submodules, :files, :robot
-    attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now, :app_out
+    attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now, :app_out, :rake_out
 
     def initialize
       @calls = []
@@ -24,6 +24,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       @on_rake = {}
       @fail_rake = {}
       @app_out = {}
+      @rake_out = {}
       @fetched = {}
       @submodules = {}
       @files = {}
@@ -85,7 +86,8 @@ class DeviceTrialTest < Test::Unit::TestCase
       return [false, "boom", 0] if @fail_rake[tasks.first]
       return [true, app_run(tasks.first, env), 0] if tasks.first.end_with?(":device:run")
       mac_rake(tasks.first, env)
-      [true, "done", 0]
+      out = @rake_out[tasks.first]
+      [true, out ? out.call : "done", 0]
     end
 
     APP_BUSY = "busy: robot is held by another controller or unreachable"
@@ -173,9 +175,13 @@ class DeviceTrialTest < Test::Unit::TestCase
   def cache(name) = File.join(picoruby, "build", "repos", "esp32-picoruby", name)
 
   def boot(arm, extra = "")
-    markers = LOCK["arms"][arm]["boot_markers"].join("\n")
-    "I (61) boot: 2 storage Unknown data 01 82 00410000 00100000\n  0x410000\n" \
-      "I (95) app_init: App version:      #{LOCK['arms'][arm]['R2P2-ESP32'][0, 7]}\n#{markers}\n#{extra}"
+    "segment 1: paddr=001135c0 vaddr=3fc9e600 size\nI (1387) app_init: App version:      0.2.21-30-g#{LOCK['arms'][arm]['R2P2-ESP32'][0, 7]}\n" \
+      "#{LOCK['arms'][arm]['boot_markers'].join("\n")}\n#{extra}"
+  end
+  
+  def identity(arm, version: "0.2.21-30-g#{LOCK['arms'][arm]['R2P2-ESP32'][0, 7]}", storage: "0x410000")
+    "[flash_identity] partition nvs 0x9000 0x6000\n[flash_identity] partition factory 0x10000 0x400000\n" \
+      "[flash_identity] partition storage #{storage} 0x100000\n[flash_identity] app_version #{version}\n[flash_identity] project R2P2-ESP32\n"
   end
 
   def setup
@@ -187,6 +193,8 @@ class DeviceTrialTest < Test::Unit::TestCase
       aot = dir == wt("trial") ? LOCK["arms"]["trial"]["aot"] : {}
       aot.each { |name, sha| @ops.heads[File.join(dir, "build", "aot", name)] = sha }
     end
+    @ops.on_rake["r2p2:build_flash"] = ->(dir, _env) { @flashed = File.basename(dir) }
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity(@flashed) }
     @ops.on_rake["r2p2:reset_and_capture"] = lambda do |dir, env|
       @ops.boot_log[env["SERIAL_LOG"]] = boot(File.basename(dir))
     end
@@ -320,9 +328,29 @@ class DeviceTrialTest < Test::Unit::TestCase
   end
 
   def test_boot_must_come_from_the_locked_firmware
-    @ops.on_rake["r2p2:reset_and_capture"] = ->(dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot(File.basename(dir)).sub(/App version:\s*\S+/, "App version: 2f18720-dirty") }
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity("base", version: "0.2.21-30-g2f18720-dirty") }
     r = trial.run(%w[base])
     assert_match(/App version/, failed(r, "base")["detail"])
+  end
+  
+  def test_the_flash_must_put_storage_where_the_tooling_writes
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity("base", storage: "0x310000") }
+    r = trial.run(%w[base])
+    assert_match(/storage at "0x310000"/, failed(r, "base")["detail"])
+  end
+  
+  def test_a_boot_log_that_lost_the_bootloader_lines_to_the_usb_reconnect_still_passes
+    r = trial.run(%w[base])
+    assert_equal "ok", r["arms"]["base"]["steps"].find { |s| s["name"] == "boot" }.then { |s| s["ok"] ? "ok" : s["detail"] }
+  end
+  
+  def test_the_identity_is_read_off_flash_from_this_tree_before_the_boot_capture
+    trial.run(%w[base])
+    rakes = @ops.calls.select { |c| c[0] == :rake }.map { |c| [c[1], c[2]] }
+    id = rakes.index([ROOT, "r2p2:flash_identity"])
+    cap = rakes.index([wt("base"), "r2p2:reset_and_capture"])
+    assert_operator rakes.index([wt("base"), "r2p2:upload_appmrb"]), :<, id
+    assert_operator id, :<, cap
   end
 
   def test_remote_servo_must_answer_the_detail_line

@@ -638,6 +638,21 @@ namespace :r2p2 do
     end
   end
 
+  desc 'read the partition table and app version off the CoreS3 flash (read-only; the board resets)'
+  task :flash_identity do
+    require_relative 'lib/flash_identity'
+    ensure_no_concurrent_monitor
+    port = espport
+    Dir.mktmpdir do |d|
+      bins = { 'table' => FlashIdentity::PARTITION_TABLE, 'app' => FlashIdentity::APP_HEADER }.map do |name, (addr, size)|
+        out = File.join(d, "#{name}.bin")
+        sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} read_flash #{format('0x%x', addr)} #{format('0x%x', size)} #{out}'"
+        File.binread(out)
+      end
+      puts FlashIdentity.lines(*bins)
+    end
+  end
+
   desc 'host-compile SRC=path/to/foo.rb and upload to DST=/home/path/foo.mrb'
   task :upload_mrb do
     ensure_no_concurrent_monitor
@@ -876,7 +891,8 @@ namespace :trial do
   def trial_session(stamp)
     require_relative "lib/device_trial"
     require_relative "lib/device_trial_ops"
-    ops = DeviceTrialOps.new("/tmp/stackchan-picoruby-debug/trial/#{stamp}")
+    device_env = -> { { "ESPPORT" => resolve_espport, "STACKCHAN_USB_SERIAL" => EspPort.serial_from(ENV, __dir__) } }
+    ops = DeviceTrialOps.new("/tmp/stackchan-picoruby-debug/trial/#{stamp}", device_env: device_env)
     DeviceTrial.new(lock: YAML.safe_load(File.read(TRIAL_LOCK)), root: __dir__, ops: ops, stamp: stamp)
   end
 

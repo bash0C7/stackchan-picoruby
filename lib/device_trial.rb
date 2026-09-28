@@ -12,6 +12,7 @@
 # A question nobody answers (no TTY) stays nil; `rake trial:answer` asks it
 # afterwards, and the verdict stays "incomplete" until every answer is "y".
 require "json"
+require_relative "flash_identity"
 
 class DeviceTrial
   class Stop < StandardError; end
@@ -312,20 +313,23 @@ class DeviceTrial
   # --- device ---------------------------------------------------------------
 
   def check_boot(arm, name)
+    id = FlashIdentity.parse(rake_out(@root, "r2p2:flash_identity"))
+    storage = id["partitions"].dig("storage", "offset")
+    raise Stop, "flash has storage at #{storage.inspect}, not #{STORAGE_OFFSET}" unless storage == STORAGE_OFFSET
+    version = id["app_version"]
+    sha = FlashIdentity.sha_of(version)
+    unless sha && arm.fetch("R2P2-ESP32").start_with?(sha)
+      raise Stop, "flash App version #{version.inspect} is not R2P2-ESP32 #{arm['R2P2-ESP32'][0, 7]}"
+    end
     log = boot_log(name)
     rake(worktree(name), "r2p2:reset_and_capture",
          env: { "SERIAL_LOG" => log, "DURATION" => BOOT_CAPTURE_S.to_s })
     text = @ops.read(log).to_s.encode("UTF-8", invalid: :replace, undef: :replace)
     fault = text[FAULTS]
     raise Stop, "boot log shows #{fault.inspect} (#{log})" if fault
-    raise Stop, "boot log has no storage offset #{STORAGE_OFFSET} (#{log})" unless text.include?(STORAGE_OFFSET)
     missing = arm.fetch("boot_markers").reject { |m| text.include?(m) }
     raise Stop, "boot log lacks #{missing.inspect} (#{log})" unless missing.empty?
-    version = text[/App version:\s*(\S+)/, 1]
-    unless version && version.size >= 7 && arm.fetch("R2P2-ESP32").start_with?(version)
-      raise Stop, "App version #{version.inspect} is not R2P2-ESP32 #{arm['R2P2-ESP32'][0, 7]} (#{log})"
-    end
-    "App version #{version}, #{arm['boot_markers'].size} markers, no fault"
+    "App version #{version}, storage #{storage}, #{arm['boot_markers'].size} markers, no fault"
   end
 
   # Same session, same order for both arms. Faces are interleaved so drift
@@ -505,9 +509,14 @@ class DeviceTrial
   end
 
   def rake(dir, *tasks, env: {}, bundle: true)
+    rake_out(dir, *tasks, env: env, bundle: bundle)
+    "ok"
+  end
+  
+  def rake_out(dir, *tasks, env: {}, bundle: true)
     ok, out, = @ops.rake(dir, *tasks, env: env, bundle: bundle)
     raise Stop, "rake #{tasks.join(' ')} failed in #{dir}:\n#{out.to_s.lines.last(20).join}" unless ok
-    "ok"
+    out.to_s
   end
 
   def cli!(wt, *args)

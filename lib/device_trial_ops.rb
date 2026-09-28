@@ -3,10 +3,14 @@
 require "fileutils"
 require "open3"
 require "bundler"
+require_relative "device_lock"
 
 class DeviceTrialOps
-  def initialize(log_dir)
+  DEVICE_TASKS = %w[r2p2:build_flash r2p2:wipe_storage r2p2:upload_appmrb r2p2:reset_and_capture r2p2:flash_identity].freeze
+
+  def initialize(log_dir, device_env: -> { {} })
     @log_dir = log_dir
+    @device_env = device_env
     @n = 0
     FileUtils.mkdir_p(log_dir)
   end
@@ -23,6 +27,15 @@ class DeviceTrialOps
   # Streams to the terminal and to one log per call; the caller gets the output
   # and the command's own exit status (no pipe in between).
   def rake(dir, *tasks, env: {}, bundle: true)
+    return run_rake(dir, *tasks, env: env, bundle: bundle) unless DEVICE_TASKS.include?(tasks.first)
+    @device_env_value ||= @device_env.call
+    DeviceLock.synchronize("esp32") do
+      key = DeviceLock.env_key("esp32")
+      run_rake(dir, *tasks, env: @device_env_value.merge(key => ENV[key]).merge(env), bundle: bundle)
+    end
+  end
+
+  def run_rake(dir, *tasks, env: {}, bundle: true)
     @n += 1
     log = File.join(@log_dir, format("%02d-%s.log", @n, tasks.first.tr(":", "_")))
     cmd = bundle ? ["bundle", "exec", "rake", *tasks] : ["rake", *tasks]
