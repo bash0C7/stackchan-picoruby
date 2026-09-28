@@ -104,6 +104,17 @@ class ControllerDslTest < Picotest::Test
     assert_equal @app.actions, @daemon.actions
   end
 
+  def test_actions_from_the_bridge_prints_one_name_and_label_line_per_action
+    assert_equal @app.actions, @app.__send__(:actions, "")
+    assert_equal ["connect\tconnect", "status\tstatus", "stop\tstop", "face\tFace", "chatty\tchatty", "probe\tprobe",
+                  "parse\tparse"], @lines
+  end
+
+  def test_actions_from_ruby_prints_nothing
+    @app.actions
+    assert_equal [], @lines
+  end
+
   def test_on_touch_runs_for_a_touch_while_held
     @app.act(:face, ["joy"])
     @radio.touch(1)
@@ -337,11 +348,11 @@ class ControllerDslTest < Picotest::Test
     assert_equal "action: label must be a String, got 1", builder_error { |c| c.action(:a, label: 1) { |_s, _a| } }
   end
 
-  def test_calls_before_wire_raise_wire_first
+  def test_an_unwired_controller_wires_the_platform_central_on_first_use
     fresh = StackChan.controller { |c| c.action(:a) { |_s, _a| } }
-    assert_raise(StackChan::Controller::Error, "wire first") { fresh.act(:a, []) }
-    assert_raise(StackChan::Controller::Error, "wire first") { fresh.tick }
-    assert_raise(StackChan::Controller::Error, "wire first") { fresh.a }
+    fresh.tick
+    assert_equal "released", fresh.act(:status, [])[:out][:link]
+    assert_equal :busy, fresh.act(:a, [])[:status]
   end
 
   def test_speak_audio_over_druby_takes_raw_bytes_even_when_they_look_like_hex

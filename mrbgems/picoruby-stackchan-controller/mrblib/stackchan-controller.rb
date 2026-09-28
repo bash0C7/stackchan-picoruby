@@ -26,7 +26,7 @@ module StackChan
       @periodic       = []
       @hold_ms        = nil
       @daemon         = nil
-      @out            = nil
+      @out            = ->(line) { puts line }
     end
 
     def wire(central:, voice: nil, clock: -> { Machine.board_millis }, log: nil, port: 8787, host: "127.0.0.1",
@@ -53,8 +53,10 @@ module StackChan
       wired.act(name, arg)
     end
 
-    def actions
-      Controller.listing(@declared)
+    def actions(arg = nil)
+      list = Controller.listing(@declared)
+      list.each { |name, label| @out.call("#{name}\t#{label || name}") } unless arg.nil?
+      list
     end
 
     def tick(_arg = nil)
@@ -79,8 +81,9 @@ module StackChan
     private
 
     def wired
-      raise Error, "wire first" unless @daemon
-      @daemon
+      return @daemon if @daemon
+      log = ->(line) { puts line }
+      wire(central: Central.new(log_fn: log), log: log)
     end
 
     def action?(name)
