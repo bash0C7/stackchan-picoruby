@@ -89,21 +89,20 @@ class DaemonWithBleTest < Picotest::Test
     end
   end
 
+  FACE = StackChan.controller { |c| c.action(:face) { |s, a| s.face(a[0].to_sym); "OK face=#{a[0]}" } }.declared
+
   def build_daemon(central)
     @logs = []
     log = ->(line) { @logs << line }
     link = StackChan::Controller::Link.new(central: central, clock: -> { FakeClock.now }, log: log)
-    StackChan::Controller::Daemon.new(link: link, central: central, log: log)
+    StackChan::Controller::Daemon.new(link: link, central: central, log: log, actions: FACE)
   end
 
   def run_two_face_calls(daemon, first, second)
     t1 = Task.new(name: "first") do
-      begin
-        daemon.face(first)
-      rescue StackChan::Controller::DeviceError
-      end
+      daemon.act(:face, [first])
     end
-    t2 = Task.new(name: "second") { daemon.face(second) }
+    t2 = Task.new(name: "second") { daemon.act(:face, [second]) }
     t1.join
     t2.join
   end
@@ -121,8 +120,8 @@ class DaemonWithBleTest < Picotest::Test
   def test_a_second_caller_is_parked_on_the_token_while_the_first_holds_it
     ble = HeldBle.new
     daemon = build_daemon(ble)
-    t1 = Task.new(name: "first") { daemon.face("joy") }
-    t2 = Task.new(name: "second") { daemon.face("sad") }
+    t1 = Task.new(name: "first") { daemon.act(:face, ["joy"]) }
+    t2 = Task.new(name: "second") { daemon.act(:face, ["sad"]) }
     i = 0
     while i < 10
       Task.pass
@@ -144,9 +143,9 @@ class DaemonWithBleTest < Picotest::Test
   def test_a_tick_waits_for_the_action_that_holds_the_token
     ble = InterleavingBle.new
     daemon = build_daemon(ble)
-    daemon.face("neutral")
+    daemon.act(:face, ["neutral"])
     ble.log.clear
-    t1 = Task.new(name: "action") { daemon.face("joy") }
+    t1 = Task.new(name: "action") { daemon.act(:face, ["joy"]) }
     t2 = Task.new(name: "tick") { daemon.tick }
     t1.join
     t2.join
@@ -166,7 +165,7 @@ class DaemonWithBleTest < Picotest::Test
 
   def test_status_reports_the_link_next_to_ble_connected
     daemon = build_daemon(InterleavingBle.new)
-    daemon.face("joy")
+    daemon.act(:face, ["joy"])
     status = daemon.status
     assert_equal "held", status[:link]
     assert_true status[:ble_connected]

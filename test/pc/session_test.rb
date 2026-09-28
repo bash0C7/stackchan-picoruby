@@ -42,12 +42,32 @@ class SessionTest < Picotest::Test
     @link = StackChan::Controller::Link.new(central: @central, clock: -> { FakeClock.now }, hold: hold, log: log)
     @voice = voice
     @daemon = StackChan::Controller::Daemon.new(link: @link, central: @central, voice: voice, sidecar_uri: nil,
-                                                clock: -> { FakeClock.now }, log: log)
+                                                clock: -> { FakeClock.now }, log: log, actions: verbs)
     voice.token = token if voice
+  end
+
+  def verbs
+    StackChan.controller do |c|
+      c.action(:face) { |s, a| s.face(a[0].to_sym); "OK face=#{a[0]}" }
+      c.action(:say) { |s, a| s.say(a[0]) }
+      c.action(:chat, flags: ["no-speak"]) { |s, a| s.chat(a[0], speak: !a.flag?("no-speak")) }
+    end.declared
   end
 
   def setup
     build
+  end
+
+  def face(name)
+    @daemon.act(:face, [name])
+  end
+
+  def say(text)
+    @daemon.act(:say, [text])
+  end
+
+  def chat(text, speak:)
+    @daemon.act(:chat, speak ? [text] : ["--no-speak", text])
   end
 
   def token
@@ -73,33 +93,10 @@ class SessionTest < Picotest::Test
     sizes
   end
 
-  def test_each_daemon_verb_writes_the_same_frame
-    @daemon.face("joy")
-    @daemon.led({ side: :left, color: :red, mode: :blink })
-    @daemon.servo({ yaw_left: 50, pitch_up: 30, time_ms: 500 })
-    @daemon.torque(true)
-    @daemon.selftest
-    @daemon.raw_send("<read:pos>")
-    @daemon.say("hi")
-    assert_equal ["<F:2>\n", "<L:1,R:255,G:0,B:0,S:R,M:b>\n", "<YL:50,PU:30,T:500>\n", "<torque:on>\n",
-                  "<selftest:run>\n", "<read:pos>\n", "<text:hi>\n", "<A:400>\n"], @radio.rx_frames
-  end
-
-  def test_each_daemon_verb_answers_the_same_line
-    assert_equal "OK face=joy", @daemon.face("joy")
-    assert_equal "OK led=left/red/blink", @daemon.led({ side: :left, color: :red, mode: :blink })
-    assert_equal "<YL_actual:0,PU_actual:0>\n", @daemon.servo({ yaw_left: 50 })
-    assert_equal "OK torque=off", @daemon.torque(false)
-    assert_equal "OK selftest", @daemon.selftest
-    assert_equal "OK raw", @daemon.raw_send("<F:0>")
-    assert_equal "OK say bytes=400", @daemon.say("hi")
-    assert_equal({ yaw_raw: 2048, pitch_raw: 2048 }, @daemon.sample_pose(3))
-  end
-
   def test_a_touch_while_held_reaches_on_touch_and_poll_touch_within_one_tick
     seen = []
     @daemon.on_touch { |_s, zone| seen << zone }
-    @daemon.face("joy")
+    face("joy")
     @radio.touch(1)
     tick
     assert_equal [:right], seen
@@ -109,15 +106,15 @@ class SessionTest < Picotest::Test
   def test_a_touch_drained_by_an_action_is_delivered_after_it
     seen = []
     @daemon.on_touch { |_s, zone| seen << [zone, @radio.rx_frames.size] }
-    @daemon.face("joy")
+    face("joy")
     @radio.touch(2)
-    @daemon.face("sad")
+    face("sad")
     assert_equal [[:left, 2]], seen
   end
 
   def test_a_touch_handler_that_sends_a_face_writes_it_without_deadlock
     @daemon.on_touch { |s, _zone| s.face(:joy) }
-    @daemon.face("neutral")
+    face("neutral")
     @radio.touch(0)
     tick
     assert_equal ["<F:0>\n", "<F:2>\n"], @radio.rx_frames
@@ -132,7 +129,7 @@ class SessionTest < Picotest::Test
       raise "boom" if calls == 1
       seen << zone
     end
-    @daemon.face("neutral")
+    face("neutral")
     @radio.touch(0)
     tick
     @radio.touch(2)
@@ -155,9 +152,9 @@ class SessionTest < Picotest::Test
     end
     @voice.during_respond = lambda do
       @radio.touch(1)
-      @daemon.face("sad")
+      face("sad")
     end
-    @daemon.face("neutral")
+    face("neutral")
     @radio.touch(0)
     tick
     assert_equal [:back, :right], seen
@@ -167,20 +164,20 @@ class SessionTest < Picotest::Test
   def test_on_reply_sees_the_reply_before_say_streams
     seen = []
     @daemon.on_reply { |_s, text| seen << [text, @radio.rx_frames.dup] }
-    @daemon.face("neutral")
-    assert_equal "hello", @daemon.chat("hi", { speak: true })
+    face("neutral")
+    assert_equal "hello", chat("hi", speak: true)[:out]
     assert_equal [["hello", ["<F:0>\n"]]], seen
     assert_equal ["<F:0>\n", "<text:hello>\n", "<A:400>\n"], @radio.rx_frames
   end
 
   def test_chat_without_on_reply_sends_no_text_frame
-    @daemon.face("neutral")
-    assert_equal "hello", @daemon.chat("hi", { speak: false })
+    face("neutral")
+    assert_equal "hello", chat("hi", speak: false)[:out]
     assert_equal ["<F:0>\n"], @radio.rx_frames
   end
 
   def test_respond_runs_once_with_the_token_handed_back
-    @daemon.chat("hi", { speak: false })
+    chat("hi", speak: false)
     assert_equal 1, @voice.respond_calls
     assert_equal [[:respond, 1]], @voice.token_sizes
     assert_equal 1, token.size
@@ -194,7 +191,7 @@ class SessionTest < Picotest::Test
     end
     tick_until(5_000)
     assert_equal [], runs
-    @daemon.face("neutral")
+    face("neutral")
     t0 = FakeClock.now
     tick_until(t0 + 30_000)
     assert_equal :quiet, @link.state
@@ -210,7 +207,7 @@ class SessionTest < Picotest::Test
 
   def test_poll_touch_while_quiet_is_released_and_does_not_connect
     assert_equal({ released: true }, @daemon.poll_touch)
-    @daemon.face("neutral")
+    face("neutral")
     tick_until(FakeClock.now + 10_000)
     assert_equal :quiet, @link.state
     assert_equal({ released: true }, @daemon.poll_touch)
@@ -218,7 +215,7 @@ class SessionTest < Picotest::Test
   end
 
   def test_poll_touch_while_held_keeps_the_hold
-    @daemon.face("neutral")
+    face("neutral")
     t0 = FakeClock.now
     tick_until(t0 + 9_000)
     assert_nil @daemon.poll_touch
@@ -227,9 +224,9 @@ class SessionTest < Picotest::Test
   end
 
   def test_say_announces_waits_then_paces_180_byte_chunks_until_done
-    @daemon.face("neutral")
+    face("neutral")
     FakeClock.sleeps.clear
-    assert_equal "OK say bytes=400", @daemon.say("hello")
+    assert_equal "OK say bytes=400", say("hello")[:out]
     assert_equal [180, 180, 40], audio_writes_after("<A:400>\n")
     assert_equal [1500, 20, 20, 20], FakeClock.sleeps
     assert_equal [[:synthesize, 1]], @voice.token_sizes
@@ -246,9 +243,9 @@ class SessionTest < Picotest::Test
     end
     @voice.during_synthesize = lambda do
       @radio.drop_link(event: true)
-      @daemon.face("joy")
+      face("joy")
     end
-    @daemon.face("neutral")
+    face("neutral")
     t0 = FakeClock.now
     tick_until(t0 + 1_500)
     assert_equal 1, runs
@@ -258,13 +255,13 @@ class SessionTest < Picotest::Test
     assert_true @logs.any? { |l| l.start_with?("every StackChan::Controller::LinkChanged") }
   end
 
-  def test_a_chat_whose_link_is_lost_while_the_voice_thinks_raises_and_stays_released
-    @daemon.face("neutral")
+  def test_a_chat_whose_link_is_lost_while_the_voice_thinks_is_an_error_and_stays_released
+    face("neutral")
     @voice.during_respond = lambda do
       @radio.drop_link(event: true)
       tick
     end
-    assert_raise(StackChan::Controller::LinkChanged) { @daemon.chat("hi", { speak: false }) }
+    assert_equal({ status: :error, out: nil, message: "link changed while the token was handed back" }, chat("hi", speak: false))
     assert_equal :released, @link.state
     assert_equal 1, token.size
   end
@@ -274,7 +271,7 @@ class SessionTest < Picotest::Test
     runs = 0
     @daemon.on_touch { |_s, zone| seen << zone }
     @daemon.every(1000) { |_s| runs += 1 }
-    @daemon.face("neutral")
+    face("neutral")
     t0 = FakeClock.now
     during = nil
     @voice.during_respond = lambda do
@@ -282,24 +279,24 @@ class SessionTest < Picotest::Test
       tick_until(t0 + 20_000)
       during = [seen.dup, runs, @link.state, @radio.rx_frames.select { |f| f == "<read:pos>\n" }.size]
     end
-    @daemon.chat("hi", { speak: false })
+    chat("hi", speak: false)
     assert_equal [[], 0, :held, 2], during
     assert_equal [:right], seen
   end
 
   def test_a_loss_clears_touches_nobody_polled
-    @daemon.face("neutral")
+    face("neutral")
     @radio.touch(1)
     tick
     @radio.drop_link(event: true)
     tick
     assert_equal :released, @link.state
-    @daemon.face("joy")
+    face("joy")
     assert_nil @daemon.poll_touch
   end
 
   def test_touches_nobody_polls_are_capped
-    @daemon.face("neutral")
+    face("neutral")
     i = 0
     while i < 100
       @radio.touch(i % 3)
@@ -313,16 +310,16 @@ class SessionTest < Picotest::Test
 
   def test_a_touch_handler_raising_a_script_error_still_hands_back_the_token
     @daemon.on_touch { |_s, _zone| raise NotImplementedError, "nope" }
-    @daemon.face("neutral")
+    face("neutral")
     @radio.touch(0)
-    assert_raise(NotImplementedError) { @daemon.face("joy") }
+    assert_raise(NotImplementedError) { face("joy") }
     assert_equal 1, token.size
-    assert_equal "OK face=sad", @daemon.face("sad")
+    assert_equal "OK face=sad", face("sad")[:out]
   end
 
-  def test_say_without_a_voice_raises_argument_error
+  def test_say_without_a_voice_is_an_error
     build(voice: nil)
-    assert_raise(ArgumentError) { @daemon.say("hello") }
+    assert_equal :error, say("hello")[:status]
     assert_equal 1, token.size
   end
 end

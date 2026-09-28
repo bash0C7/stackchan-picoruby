@@ -1,21 +1,21 @@
 module StackChan
   class Controller
     class CLI
-      VERBS = %w[connect status stop say chat face led servo torque selftest raw remote touch demo tui calibrate].freeze
+      BUILTIN_VERBS = %w[connect status stop raw calibrate remote touch tui]
+      TOUCH_POLL_MS = 200
+      TUI_HELP = "commands: <verb> [args] (one action per line) / h / q"
 
       def self.run(argv, host: "127.0.0.1", port: 8787)
         verb, *args = argv
-        unless verb && VERBS.include?(verb)
-          usage
-          return 1
-        end
         DRb.start_service
         daemon = attach(host, port)
         if daemon.nil?
           out NOT_RUNNING_MESSAGE
           return verb == "status" ? 0 : 1
         end
-        new(daemon).dispatch(verb, args)
+        cli = new(daemon)
+        return cli.usage if verb.nil?
+        cli.dispatch(verb, args)
       end
 
       NOT_RUNNING_MESSAGE =
@@ -32,40 +32,35 @@ module StackChan
         nil
       end
 
-      def self.usage
-        out "Usage: stackchan <verb> [args]"
-        out "Verbs: #{VERBS.join(', ')}"
-      end
-
       def self.out(s)
         $stdout.write(s + "\n")
         $stdout.flush
       end
 
-      def initialize(daemon)
+      def initialize(daemon, clock: -> { Machine.board_millis })
         @daemon = daemon
+        @clock  = clock
       end
 
       def dispatch(verb, args)
         case verb
-        when "connect"  then out "connected."; out @daemon.status.inspect
-        when "status"   then out @daemon.status.inspect
-        when "stop"     then @daemon.stop; out "daemon stopped"
-        when "demo"     then verb_demo(args)
-        when "tui"      then verb_tui
-        when "calibrate" then return verb_calibrate(args)
-        when "say"      then verb_say(args)
-        when "chat"     then verb_chat(args)
-        when "face"     then out @daemon.face(args[0])
-        when "led"      then verb_led(args)
-        when "servo"    then verb_servo(args)
-        when "torque"   then out @daemon.torque(args[0] == "on")
-        when "selftest" then out @daemon.selftest
-        when "raw"      then out @daemon.raw_send(args.join(" "))
-        when "remote"   then verb_remote(args)
-        when "touch"    then verb_touch(args)
+        when "calibrate" then verb_calibrate(args)
+        when "remote"    then verb_remote(args)
+        when "touch"     then verb_touch(args)
+        when "tui"       then verb_tui
+        else                  report(@daemon.act(verb, args))
         end
-        0
+      end
+
+      def usage
+        names = BUILTIN_VERBS.dup
+        @daemon.actions.each do |pair|
+          name = pair[0].to_s
+          names << name unless names.include?(name)
+        end
+        out "Usage: stackchan <verb> [args]"
+        out "Verbs: #{names.join(', ')}"
+        1
       end
 
       private
@@ -74,52 +69,37 @@ module StackChan
         self.class.out(s)
       end
 
-      def verb_say(args)
-        text = args[0]
-        opts = parse_kw(args)
-        gain = opts["gain"] && opts["gain"].to_f
-        rate = opts["rate"] && opts["rate"].to_i
-        out @daemon.say(text, gain, rate)
-      end
-
-      def verb_chat(args)
-        no_speak = false
-        idx = args.index("--no-speak")
-        if idx
-          args.delete_at(idx)
-          no_speak = true
+      def report(result)
+        case result[:status]
+        when :ok
+          print_out(result[:out])
+          0
+        when :busy
+          out "busy: #{result[:message]}"
+          8
+        when :unknown
+          usage
+        else
+          out "error: #{result[:message]}"
+          1
         end
-        text = args[0]
-        reply = @daemon.chat(text, { speak: !no_speak })
-        out(reply ? "reply=#{reply}" : "reply=(none)")
       end
 
-      def verb_led(args)
-        side, color, mode = args[0], args[1], args[2]
-        unless side && color && mode
-          out "led: side color mode required"
-          return
+      def print_out(value)
+        if value.is_a?(Array)
+          value.each { |line| out line.to_s.chomp }
+        elsif value.is_a?(Hash)
+          out value.map { |k, v| "#{k}=#{v}" }.join(" ")
+        elsif !value.nil?
+          out value.to_s
         end
-        out @daemon.led(side: side.to_sym, color: color.to_sym, mode: mode.to_sym)
-      end
-
-      def verb_servo(args)
-        opts = parse_kw(args)
-        detail = @daemon.servo(
-          yaw_left:  opts["yaw-left"]  && opts["yaw-left"].to_i,
-          yaw_right: opts["yaw-right"] && opts["yaw-right"].to_i,
-          pitch_up:  opts["pitch-up"]  && opts["pitch-up"].to_i,
-          time_ms:   opts["time"]      && opts["time"].to_i,
-          velocity:  opts["velocity"]  && opts["velocity"].to_i,
-        )
-        out "servo detail=#{detail.inspect}"
       end
 
       def verb_remote(args)
         msg = args.shift
         unless msg
           out "remote <command|face|servo|led|text|torque|read_pos> [KEY=VALUE ... | ARG ...]"
-          return
+          return 0
         end
         call_args = args
         if !args.empty? && args.all? { |a| a.include?("=") }
@@ -131,101 +111,60 @@ module StackChan
           call_args = [frame]
         end
         @daemon.remote(msg, call_args).each { |line| out line.chomp }
+        0
       end
 
       def verb_touch(args)
         sub = args.shift
         unless sub == "listen"
           out "touch <listen>"
-          return
+          return 0
         end
+        opts = parse_kw(args)
+        count = opts["count"] && opts["count"].to_i
+        timeout_ms = opts["timeout"] && (opts["timeout"].to_f * 1000).to_i
+        connected = @daemon.act(:connect, [])
+        return report(connected) unless connected[:status] == :ok
         out "[touch] listening (Ctrl-C to exit)..."
-        loop do
+        seen = 0
+        started = @clock.call
+        while true
           event = @daemon.poll_touch
           if event && event[:zone]
             out "touch zone=#{event[:zone]} (#{event[:name]})"
+            seen += 1
+            return 0 if count && seen >= count
+          elsif event && event[:released]
+            out "[touch] released"
+            return 1
+          elsif timeout_ms && @clock.call - started >= timeout_ms
+            out "[touch] timed out"
+            return 1
           else
-            sleep 0.2
+            sleep_ms TOUCH_POLL_MS
           end
         end
       end
-
-      DEMO_SPEECH_RATE = 250
-      DEMO_INTRO_LINE = "ぼくスタックチャン！"
-      DEMO_OUTRO_LINE = "タッチしてみて"
-      DEMO_FACES = %w[joy smile surprised joy smile]
-      DEMO_LR_COLORS = [[:red,:blue],[:yellow,:magenta],[:green,:cyan],[:cyan,:red],[:magenta,:yellow],[:white,:green]]
-      DEMO_LR_MODES  = [[:blink,:breathing],[:breathing,:solid],[:solid,:blink]]
-      DEMO_POSES = [
-        { yaw_left: 60, pitch_up: 30, time_ms: 800 },
-        { yaw_right: 60, pitch_up: 30, time_ms: 800 },
-        { yaw_left: 0, pitch_up: 60, time_ms: 800 },
-        { yaw_right: 60, pitch_up: 0, time_ms: 800 },
-        { yaw_left: 60, pitch_up: 0, time_ms: 800 },
-      ]
-      DEMO_STEP_S = 1.2
-
-      def verb_demo(args)
-        opts = parse_kw(args)
-        duration = (opts["duration"] && opts["duration"].to_f) || 10.0
-        steps = (duration / DEMO_STEP_S).to_i
-        out "[demo] start"
-        @daemon.led({ side: :left,  color: :red,  mode: :blink })
-        @daemon.led({ side: :right, color: :blue, mode: :breathing })
-        sleep 1.5
-        @daemon.say(DEMO_INTRO_LINE, nil, DEMO_SPEECH_RATE)
-        sleep 0.5
-        i = 0
-        while i < steps
-          @daemon.face(DEMO_FACES[i % DEMO_FACES.size])
-          lc, rc = DEMO_LR_COLORS[i % DEMO_LR_COLORS.size]
-          lm, rm = DEMO_LR_MODES[i % DEMO_LR_MODES.size]
-          @daemon.led({ side: :left,  color: lc, mode: lm })
-          @daemon.led({ side: :right, color: rc, mode: rm })
-          @daemon.servo(DEMO_POSES[i % DEMO_POSES.size])
-          sleep DEMO_STEP_S
-          i += 1
-        end
-        @daemon.face("neutral")
-        @daemon.led({ side: :both, color: :off, mode: :off })
-        @daemon.servo({ yaw_left: 0, pitch_up: 0, time_ms: 800 })
-        sleep 0.7
-        @daemon.say(DEMO_OUTRO_LINE, nil, DEMO_SPEECH_RATE)
-        out "[demo] done"
-      end
-
-      TUI_HELP = "commands: yl N / yr N / pu N / fwd / ton / toff / face NAME / t MS / h / q"
 
       def verb_tui
         out TUI_HELP
-        move_ms = 800
-        loop do
-          $stdout.write("\nstackchan> "); $stdout.flush
-          line = gets
-          break if line.nil?
-          parts = line.strip.split(" ")
-          cmd = parts[0]
-          arg = parts[1]
-          next if cmd.nil? || cmd == ""
-          case cmd
-          when "yl"   then tui_move({ yaw_left: arg.to_i, time_ms: move_ms })
-          when "yr"   then tui_move({ yaw_right: arg.to_i, time_ms: move_ms })
-          when "pu"   then tui_move({ pitch_up: arg.to_i, time_ms: move_ms })
-          when "fwd"  then tui_move({ yaw_left: 0, pitch_up: 0, time_ms: move_ms })
-          when "ton"  then out @daemon.torque(true)
-          when "toff" then out @daemon.torque(false)
-          when "face" then (arg ? out(@daemon.face(arg)) : out("  face requires a name"))
-          when "t"    then move_ms = arg.to_i; out "  move duration = #{move_ms} ms"
-          when "h", "help" then out TUI_HELP
+        while (line = read_line("\nstackchan> "))
+          words = line.strip.split(" ")
+          verb = words.shift
+          next if verb.nil?
+          case verb
           when "q", "quit", "exit" then break
-          else out "  unknown: #{cmd} (h for help)"
+          when "h", "help"         then usage
+          else                          report(@daemon.act(verb, words))
           end
         end
+        0
       end
 
-      def tui_move(pose)
-        detail = @daemon.servo(pose)
-        out "  detail: #{detail.inspect}" if detail
+      def read_line(prompt)
+        $stdout.write(prompt)
+        $stdout.flush
+        gets
       end
 
       def verb_calibrate(args)
@@ -252,11 +191,17 @@ module StackChan
 
       def calibrate_align(skip_torque)
         unless skip_torque
-          out "[1/3] <torque:off>..."; @daemon.torque(false); out "  ACK"
+          out "[1/3] <torque:off>..."
+          _, code = calibrate_step(["begin"])
+          return code if code
+          out "  ACK"
         end
         prompt_enter("[2/3] Align FORWARD (LCD facing operator), press Enter (Ctrl-C aborts)...")
         unless skip_torque
-          out "[3/3] <torque:on>..."; @daemon.torque(true); out "  ACK"
+          out "[3/3] <torque:on>..."
+          _, code = calibrate_step(["end"])
+          return code if code
+          out "  ACK"
         end
         out "[done] Ready for operation."
         0
@@ -264,28 +209,28 @@ module StackChan
 
       def calibrate_full(samples, fmt, engage, skip_torque)
         unless skip_torque
-          out "[1/6] <torque:off>..."; @daemon.torque(false); out "  ACK"
+          out "[1/6] <torque:off>..."
+          _, code = calibrate_step(["begin"])
+          return code if code
+          out "  ACK"
         end
         poses = {}
-        begin
-          Calibration::POSE_PROMPTS.each do |pair|
-            prompt_enter(pair[1])
-            p = @daemon.sample_pose(samples)
-            poses[pair[0]] = p
-            out "  reading yaw_raw=#{p[:yaw_raw]} pitch_raw=#{p[:pitch_raw]}"
-          end
-        rescue => e
-          unless e.message.include?(Calibration::UNKNOWN_POSITION)
-            out "[FAIL] #{e.message}"
-            return 1
-          end
-          out "[FAIL] #{e.message} (manual calibration needed)"
-          return 6
+        i = 0
+        while i < Calibration::POSE_PROMPTS.size
+          pair = Calibration::POSE_PROMPTS[i]
+          prompt_enter(pair[1])
+          reading, code = calibrate_step(["sample", samples.to_s])
+          return code if code
+          poses[pair[0]] = reading
+          out "  reading yaw_raw=#{reading[:yaw_raw]} pitch_raw=#{reading[:pitch_raw]}"
+          i += 1
         end
         anchors = Calibration.compute_anchors(poses)
         outcome = Calibration.classify_verify(anchors[:forward_verify])
         if engage && !skip_torque
-          @daemon.torque(true); out "[engage] <torque:on> sent."
+          _, code = calibrate_step(["end"])
+          return code if code
+          out "[engage] <torque:on> sent."
         end
         out ""
         out Calibration.format(anchors, fmt)
@@ -294,6 +239,19 @@ module StackChan
         when :warn then out "[WARN] verify delta exceeded #{Calibration::PASS_TOLERANCE}; review before paste."; 0
         when :fail then out "[FAIL] verify delta exceeded #{Calibration::FAIL_TOLERANCE}; incomplete."; 7
         end
+      end
+
+      def calibrate_step(words)
+        result = @daemon.act(:calibrate, words)
+        return [result[:out], nil] if result[:status] == :ok
+        return [nil, report(result)] if result[:status] == :busy
+        message = result[:message].to_s
+        if message.include?(Calibration::UNKNOWN_POSITION)
+          out "[FAIL] #{message} (manual calibration needed)"
+          return [nil, 6]
+        end
+        out "[FAIL] #{message}"
+        [nil, 1]
       end
 
       def prompt_enter(msg)

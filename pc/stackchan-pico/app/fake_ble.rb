@@ -1,3 +1,14 @@
+class FakeBleRemote
+  def method_missing(name, *args)
+    $stderr.write("[fake_ble] remote #{name} #{args.inspect}\n"); $stderr.flush
+    ["<#{name}:fake>\n"]
+  end
+
+  def respond_to_missing?(_name, _include_private = false)
+    true
+  end
+end
+
 class FakeBleClient
   attr_accessor :on_unsolicited
   attr_reader :last_detail_frame
@@ -62,6 +73,11 @@ class FakeBleClient
 
   def await_audio_done(n)
     self
+  end
+
+  def remote
+    raise StackChan::Controller::ConnectionError, "not connected" unless @connected
+    FakeBleRemote.new
   end
 
   private

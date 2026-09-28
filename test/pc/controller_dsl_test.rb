@@ -224,8 +224,8 @@ class ControllerDslTest < Picotest::Test
 
   def test_send_prints_a_hash_as_key_value_pairs
     @app.__send__(:status, "")
-    assert_true @lines[0].start_with?("ble_connected=false ")
-    assert_true @lines[0].include?(" link=released ")
+    assert_true @lines[0].start_with?("link=released connects=0 releases=0 ")
+    assert_true @lines[0].include?(" ble_connected=false ")
   end
 
   def test_the_controller_responds_to_action_names_only

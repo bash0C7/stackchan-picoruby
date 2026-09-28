@@ -94,13 +94,13 @@ module StackChan
       end
 
       def status
-        {
+        @link.status.merge(
           ble_connected: @ble.connected?,
-          host:          @host,
-          port:          @port,
           last_face:     @session.state[:last_face],
           last_action:   @session.state[:last_action],
-        }.merge(@link.status)
+          host:          @host,
+          port:          @port,
+        )
       end
 
       def actions
@@ -137,62 +137,8 @@ module StackChan
         end
       end
 
-      def face(name)
-        with_link { @session.face(name) }
-        "OK face=#{name}"
-      end
-
-      def led(opts)
-        with_link { @session.led(opts[:side], opts[:color], mode: opts[:mode]) }
-        "OK led=#{opts[:side]}/#{opts[:color]}/#{opts[:mode]}"
-      end
-
-      def servo(opts)
-        with_link do
-          @session.servo(yaw_left: opts[:yaw_left], yaw_right: opts[:yaw_right], pitch_up: opts[:pitch_up],
-                         time_ms: opts[:time_ms], velocity: opts[:velocity])
-        end
-      end
-
-      def torque(on)
-        with_link { @session.torque(on) }
-        "OK torque=#{on ? 'on' : 'off'}"
-      end
-
-      def selftest
-        with_link { @session.selftest }
-        "OK selftest"
-      end
-
-      def say(text, gain = nil, rate = nil)
-        with_link { @session.say(text, gain: gain, rate: rate) }
-      end
-
-      def chat(text, opts)
-        with_link { @session.chat(text, speak: opts[:speak]) }
-      end
-
-      def raw_send(frame)
-        payload = frame.end_with?("\n") ? frame : "#{frame}\n"
-        with_link { @ble.raw_send(payload) }
-        "OK raw"
-      end
-
       def remote(msg, args = [])
         with_link { @session.remote(msg, *args) }
-      end
-
-      def sample_pose(n)
-        readings = []
-        i = 0
-        while i < n
-          readings << with_link { @session.read_pos }
-          i += 1
-        end
-        {
-          yaw_raw:   Calibration.median(readings.map { |r| r[:yaw_raw] }),
-          pitch_raw: Calibration.median(readings.map { |r| r[:pitch_raw] }),
-        }
       end
 
       def poll_touch
@@ -221,7 +167,10 @@ module StackChan
           stop
           "daemon stopped"
         when :raw
-          raw_send(arg.is_a?(String) ? arg : Args.new(arg).words.join(" "))
+          frame = arg.is_a?(String) ? arg : Args.new(arg).words.join(" ")
+          payload = frame.end_with?("\n") ? frame : "#{frame}\n"
+          with_link { @ble.raw_send(payload) }
+          "OK raw"
         when :calibrate
           calibrate(Args.new(arg))
         when :speak_audio
@@ -248,6 +197,19 @@ module StackChan
         else
           raise ArgumentError, "calibrate: begin | sample N | end"
         end
+      end
+
+      def sample_pose(n)
+        readings = []
+        i = 0
+        while i < n
+          readings << with_link { @session.read_pos }
+          i += 1
+        end
+        {
+          yaw_raw:   Calibration.median(readings.map { |r| r[:yaw_raw] }),
+          pitch_raw: Calibration.median(readings.map { |r| r[:pitch_raw] }),
+        }
       end
 
       def audio_bytes(arg)

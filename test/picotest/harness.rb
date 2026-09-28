@@ -33,6 +33,7 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
+  PC_FAKE_BLE_RB      = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "fake_ble.rb")
   # picoruby-drb is not in the host VM: suites that need it load its mrblib as
   # source (Marshal is compiled in), then the drbble transport gem.
   # The AOT kernels' Ruby source stands in for the compiled kernels.
@@ -46,6 +47,7 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   CONTROLLER_MRBLIB = [File.join(CONTROLLER_GEM_DIR, "mrblib", "stackchan-controller.rb"),
                         *Dir[File.join(CONTROLLER_GEM_DIR, "mrblib", "stackchan-controller", "*.rb")].sort]
   ROBOT_APP_RB = File.join(REPO_ROOT, "apps", "robot", "app.rb")
+  MAC_APP_RB = File.join(REPO_ROOT, "apps", "mac", "app.rb")
   EXTRACTED_ROBOT_APP_RB = "/tmp/_extracted_robot_app.rb"
 
   SUITES = {
@@ -76,6 +78,8 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
         # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
         files = [*DRB_MRBLIB, PC_STUBS_RB, *PROTOCOL_MRBLIB, *CONTROLLER_MRBLIB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
+        files << PC_FAKE_BLE_RB
+        files << MAC_APP_RB
         files
       },
     },
