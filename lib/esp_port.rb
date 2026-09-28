@@ -16,6 +16,10 @@ module EspPort
     end
   end
 
+  def serial_of(ioreg_out, port) = devices(ioreg_out).find { |_, p| p == port }&.first
+
+  def port_of(ioreg_out, serial) = devices(ioreg_out).find { |s, _| s.casecmp?(serial.to_s) }&.last
+
   def serial_from(env, root)
     s = env["STACKCHAN_USB_SERIAL"].to_s.strip
     return s unless s.empty?

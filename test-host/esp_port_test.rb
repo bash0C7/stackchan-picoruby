@@ -79,4 +79,16 @@ class EspPortTest < Test::Unit::TestCase
       assert_equal "", EspPort.serial_from({}, File.join(root, "none"))
     end
   end
+
+  def test_a_reset_board_is_found_again_by_its_serial_under_a_new_port
+    before = both
+    after = device(DUALKEY, "/dev/cu.usbmodem101", "00100000") + device(CORES3, "/dev/cu.usbmodem2101", "02100000")
+    serial = EspPort.serial_of(before, "/dev/cu.usbmodem1101")
+    assert_equal "/dev/cu.usbmodem2101", EspPort.port_of(after, serial)
+  end
+
+  def test_a_board_that_dropped_off_usb_is_not_replaced_by_the_one_left
+    only_dualkey = device(DUALKEY, "/dev/cu.usbmodem101", "00100000")
+    assert_nil EspPort.port_of(only_dualkey, EspPort.serial_of(both, "/dev/cu.usbmodem1101"))
+  end
 end

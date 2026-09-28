@@ -151,6 +151,16 @@ IRAM overflow. The second command builds the firmware and bakes
 `apps/robot/app.rb` into the littlefs storage partition as `/home/app.mrb`, so
 the robot autostarts it. Both need the CoreS3 attached over USB-C.
 
+Every task that opens the serial port finds the CoreS3 by its USB serial number,
+not by port name: port names follow the USB socket, and every ESP32-S3 enumerates
+under the same product name. Put the CoreS3's serial in `.stackchan-usb-serial`
+(gitignored) or `STACKCHAN_USB_SERIAL`; `rake r2p2:boards` lists the boards on USB
+without opening any port. With several ESP32-S3 boards attached and no serial
+set, the tasks stop rather than pick one. They also take the
+`~/.cache/r2p2-device-locks/esp32.lock` that
+[R2P2-dev-harness](https://github.com/bash0C7/R2P2-dev-harness) takes, so
+sessions driving boards from either repository wait for each other.
+
 Day-to-day iteration on the application alone does not reflash the firmware — use
 the `/stackchan-device-iterate` skill, which uploads only `app.mrb`.
 

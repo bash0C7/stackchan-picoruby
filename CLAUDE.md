@@ -127,7 +127,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 | iOS / watchOS app を変えた | Mac で `rake ios:device:all` / `watchos:device:all` (Simulator は `ios:all` / `watchos:all`)。merge 前は `rake trial:darwin` |
 | firmware / gem / sdkconfig を変えた | `/stackchan-device-build-flash` → `/stackchan-device-cold-recovery`、または `/stackchan-device-full-rebuild` |
 | 初回・target 切替 | `/stackchan-device-setup` |
-| 復旧 | cold-recovery → full-rebuild → 人手 (USB 抜き差し / download mode) |
+| 復旧 | `rake r2p2:boards` → cold-recovery → full-rebuild → 人手 (CoreS3 の USB serial が `r2p2:boards` に無い時だけ) |
 | merge 前の実機実績 | `/stackchan-device-trial` (`trial/lock.yml` の commit を base / trial の 2 arm で実機に載せる。upload する app は arm の `app:`、無ければ `app/application.rb`) |
 
 - firmware を焼く task (`r2p2:flash` / `build_flash` / `build_flash_appmrb`、それを呼ぶ `full_rebuild` と trial) は先に `r2p2:qemu_check` を通す。同じ tree を UART console 付き QEMU で起動し、app の require・bundle した gem (robot engine の `Peripheral < BLE` を含む)・`run` を空にした `StackChan::Robot` で app ファイル全体 (`StackChan.robot` block の評価) を読ませたうえで boot log から verdict を出す。QEMU は `-icount shift=2,align=off,sleep=off -seed 1 -rtc clock=vm` で走らせるので、同じ image なら shell prompt までの serial 出力は毎回同じになり、verdict はそこまでの log だけで決まる。FAIL なら flash せず、PASS のあと clean build してから flash する。QEMU が見るのは boot・gem load・DSL の評価までで、cold-boot 本体・I2C デバイス・LCD・サーボ・スピーカー・BLE 無線は見ない (そこは `/stackchan-device-trial`)。
@@ -135,13 +135,15 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - `.rb` の直接 upload は禁止。必ず host で picorbc compile した `.mrb` を上げる (on-device compile は codegen stack overflow)。
 - `main_task.rb` は `/home/app.mrb` を無条件に `load` し、このアプリは戻らないので `$shell.start` に到達しない。抜ける keypress も無い。`upload_appmrb` はこのため先に `wipe_storage` を通す。`upload_mrb` (`DST=`) は app.mrb を壊さずに wipe できないので、autostart 中の device への helper upload は wipe → helper → app.mrb の順になる。
 - device 側に一時的な `puts` を足さない。cold boot で Guru Meditation の boot loop に入ることがあり (原因未特定、`Loading app.mrb` 直後で panic)、そうなると USB CDC が再列挙し続けて esptool も繋がらない。復旧は人間による USB 抜き差しだけで、抜き差し直後の 1 回しか esptool が通らないので、その 1 回を何に使うか決めてから頼む。
-- smoke や upload の前に boot log で device の素性を確かめる。`boot: Partition Table:` の storage offset が `0x410000` か、`App version` がこの repo の build か、`[application] boot` / `[boot] step:` marker があるか。違えば別 tree の firmware なので `/stackchan-device-full-rebuild`。実機への上書き deploy は承認済み。
+- smoke や upload の前に device の素性を確かめる。storage offset (`0x410000`) と `App version` は `rake r2p2:flash_identity` で flash から読む (read-only、板は reset する)。reset 後は USB Serial/JTAG が再列挙するので、boot log に bootloader の `Partition Table:` や `App version` が載るかは再接続の速さ次第で、そこからは判定しない。boot log では `[application] boot` / `[boot] step:` marker と fault を見る。違えば別 tree の firmware なので `/stackchan-device-full-rebuild`。実機への上書き deploy は承認済み。
 - firmware build は必ず clean build (`clean_picoruby_build` 依存を外さない)。undefined symbol が出たら source tree を grep し、無ければ object の陳腐化。
 - `build_config/esp32-stackchan.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem` の gem は `build/repos/` に `--depth 1` で cache され、以後 pull されない。ずれは `tools/check_deps_pushed.sh` が検出し、戻れる形の commit 列 (`git branch keep-<sha>` → `fetch --depth 1` → `checkout --detach`) を出す。`rm -rf` は使わない — shallow clone なので消したら元の commit は戻らない。
 - sdkconfig fragment を編集しても `idf.py build` は再適用しない。`ensure_sdkconfig_fresh` が rake 側で処理する。CoreS3 は `sdkconfigs/cores3` (Quad PSRAM)。BLE-only build は coex を全部 `n` にしないと `coex_schm_lock` で panic する。
 - `idf.py flash` は storage 区画も焼くので `/home/app.mrb` が消える。flash 後は upload し直す。
 - storage erase は `rake r2p2:wipe_storage` を通す (offset は partition table 依存、手打ちしない)。
 - autostart 中の Ctrl-C で shell は戻らない。wipe で復旧する。
+- 板は USB serial で選ぶ。CoreS3 の serial は gitignore された `.stackchan-usb-serial` (か `STACKCHAN_USB_SERIAL=`) に置き、port は rake ごとに `ioreg` で serial から引く (port を開かない)。ESP32-S3 は全部同じ製品名 `USB JTAG/serial debug unit` で列挙され、`usbmodemNNN` は差した口の locationID で決まるので、glob も製品名も port 名の保存も板を特定しない。ESP32-S3 が複数あって serial が無い時、serial が USB に無い時、`ESPPORT=` が serial の port と食い違う時、rake は推測せず止まる。reset 後に port が戻らなければ同じ serial を探し直し、別の板は採らない。`rake r2p2:boards` が serial と port の対応・CoreS3 の印・lock の持ち主を port を開かずに出す。
+- serial を開く rake は R2P2-dev-harness と共通の `~/.cache/r2p2-device-locks/esp32.lock` を取る (同じ形式、持ち主の pid が死んでいれば奪う)。別 session が持っていれば待つ。trial は device を触る step ごとに取り、子の rake には `ESPPORT` と serial を env で明示的に渡す (`Bundler.with_unbundled_env` は起動時の環境に戻すので、後から `ENV` に入れた値は子に届かない)。
 - serial port を触る rake は `ensure_no_concurrent_monitor` を呼ぶ。serial capture は `bin/capture-with-pty`、生 `cat` は禁止。
 - boot 失敗は cold-boot 全体の log を取り `LoadError|cannot load|NameError|Guru Meditation` を最初の異常から読む。
 - picoruby-uart: unit は `:ESP32_UART0..2`、`write` は String のみ、`read` は timeout を無視するので `readpartial` で poll。

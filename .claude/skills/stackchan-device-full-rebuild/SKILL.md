@@ -11,4 +11,4 @@ Run in a haiku subagent (foreground, 600000ms timeout), reporting exit code and 
 - `[r2p2:qemu_check] FAIL` = the QEMU boot gate stopped this before it ever flashed; read the QEMU log path it prints (`/tmp/stackchan-picoruby-debug/qemu-*.log`).
 - No `Hash of data verified` = flash failed; see `stackchan-device-build-flash`.
 - `/home/app.mrb started but never returned` = upload failed; run `stackchan-device-wipe` then retry.
-- USB / esptool / port errors need a human USB replug.
+- USB / esptool / port errors: run `bundle exec rake r2p2:boards`; a replug is for the CoreS3 serial missing from that list.

@@ -638,6 +638,17 @@ namespace :r2p2 do
     end
   end
 
+  desc 'list the ESP32-S3 boards on USB by serial and port without opening any port, and name the CoreS3'
+  task :boards do
+    serial = EspPort.serial_from(ENV, __dir__)
+    EspPort.devices(EspPort.ioreg).each do |s, port|
+      puts "#{s}  #{port}#{'  <- CoreS3' if s.casecmp?(serial)}"
+    end
+    puts "CoreS3 serial: #{serial.empty? ? '(unset: STACKCHAN_USB_SERIAL= or .stackchan-usb-serial)' : serial}"
+    lock = File.join(DeviceLock.dir, 'esp32.lock', 'owner')
+    puts "esp32 lock: #{File.exist?(lock) ? "held by #{File.read(lock).strip}" : 'free'}"
+  end
+
   desc 'read the partition table and app version off the CoreS3 flash (read-only; the board resets)'
   task :flash_identity do
     require_relative 'lib/flash_identity'

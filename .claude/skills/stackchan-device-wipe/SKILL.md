@@ -7,4 +7,4 @@ Run in a haiku subagent (60000ms timeout):
 
     bundle exec rake r2p2:wipe_storage 2>&1 | tee /tmp/stackchan-picoruby-debug/wipe.log
 
-`Erase operation completed successfully` = cleared. No settle sleep needed; the next upload resets the board itself. If the erase fails the board is off USB or in download mode: ask for a replug.
+`Erase operation completed successfully` = cleared. No settle sleep needed; the next upload resets the board itself. If the erase fails, run `bundle exec rake r2p2:boards` first; a replug is for the CoreS3 serial missing from that list.
