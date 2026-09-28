@@ -6,6 +6,7 @@ description: The standard "I changed apps/robot/app.rb or the robot engine gem, 
 1. `stackchan-device-upload-app` with `SRC=apps/robot/app.rb` (or the given SRC)
 2. `stackchan-device-reset`
 3. `stackchan-device-capture-boot` with `SECONDS=25`
-4. Panic in the log → `stackchan-device-crash-analyze`
+4. `stackchan-device-reset` (the capture leaves the chip in ROM download mode, not advertising)
+5. Panic in the log → `stackchan-device-crash-analyze`
 
 Report: upload ok / reset ok / boot markers found / panic and its analysis. The upload wipes storage itself, so an upload failure is USB, cable or a syntax error rather than something a wipe fixes; a repeating panic is a debugging task, not another iteration.

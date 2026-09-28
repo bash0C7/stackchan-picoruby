@@ -26,6 +26,7 @@ class DeviceTrial
              "マイコンとパソコンとスマートフォンをルビーでひとつなぎにした話をします。"
   MULTICORE_CHUNK = 2046
   BOOT_CAPTURE_S = 25
+  BOOT_READY_S = 20
   DETAIL = /<Y[LR]_actual:\d+,PU_actual:\d+>/
   STACK_FLOOR = 1024
   STUB_REPLY = "reply=stub返答:こんにちは"
@@ -344,6 +345,8 @@ class DeviceTrial
     raise Stop, "boot log shows #{fault.inspect} (#{log})" if fault
     missing = arm.fetch("boot_markers").reject { |m| text.include?(m) }
     raise Stop, "boot log lacks #{missing.inspect} (#{log})" unless missing.empty?
+    rake(@root, "r2p2:reset")
+    @ops.sleep(BOOT_READY_S)
     "App version #{version}, storage #{storage}, #{arm['boot_markers'].size} markers, no fault"
   end
 

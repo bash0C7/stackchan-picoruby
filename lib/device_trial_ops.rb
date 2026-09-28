@@ -6,7 +6,7 @@ require "bundler"
 require_relative "device_lock"
 
 class DeviceTrialOps
-  DEVICE_TASKS = %w[r2p2:build_flash r2p2:wipe_storage r2p2:upload_appmrb r2p2:reset_and_capture r2p2:flash_identity].freeze
+  DEVICE_TASKS = %w[r2p2:build_flash r2p2:wipe_storage r2p2:upload_appmrb r2p2:reset_and_capture r2p2:flash_identity r2p2:reset].freeze
 
   def initialize(log_dir, device_env: -> { {} })
     @log_dir = log_dir

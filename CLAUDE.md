@@ -144,6 +144,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - autostart 中の Ctrl-C で shell は戻らない。wipe で復旧する。
 - 板は USB serial で選ぶ。CoreS3 の serial は gitignore された `.stackchan-usb-serial` (か `STACKCHAN_USB_SERIAL=`) に置き、port は rake ごとに `ioreg` で serial から引く (port を開かない)。ESP32-S3 は全部同じ製品名 `USB JTAG/serial debug unit` で列挙され、`usbmodemNNN` は差した口の locationID で決まるので、glob も製品名も port 名の保存も板を特定しない。ESP32-S3 が複数あって serial が無い時、serial が USB に無い時、`ESPPORT=` が serial の port と食い違う時、rake は推測せず止まる。reset 後に port が戻らなければ同じ serial を探し直し、別の板は採らない。`rake r2p2:boards` が serial と port の対応・CoreS3 の印・lock の持ち主を port を開かずに出す。
 - serial を開く rake は R2P2-dev-harness と共通の `~/.cache/r2p2-device-locks/esp32.lock` を取る (同じ形式、持ち主の pid が死んでいれば奪う)。別 session が持っていれば待つ。trial は device を触る step ごとに取り、子の rake には `ESPPORT` と serial を env で明示的に渡す (`Bundler.with_unbundled_env` は起動時の環境に戻すので、後から `ENV` に入れた値は子に届かない)。
+- boot log の capture (`r2p2:capture_resilient` / `reset_and_capture`、`bin/capture-with-pty`) は閉じる時に chip を ROM の download mode に残す。USB は列挙されたままで advertising だけが消える。capture の後に BLE を使うなら `r2p2:reset` を撃ち、起動 (約 15 秒で `HCI WORKING — advertising`) を待つ。trial の boot step はこれを自分で行う。
 - serial port を触る rake は `ensure_no_concurrent_monitor` を呼ぶ。serial capture は `bin/capture-with-pty`、生 `cat` は禁止。
 - boot 失敗は cold-boot 全体の log を取り `LoadError|cannot load|NameError|Guru Meditation` を最初の異常から読む。
 - picoruby-uart: unit は `:ESP32_UART0..2`、`write` は String のみ、`read` は timeout を無視するので `readpartial` で poll。

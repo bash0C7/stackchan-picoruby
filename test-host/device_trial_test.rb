@@ -613,7 +613,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   def test_quiet_wait_is_hold_plus_release_after_plus_five_seconds
     assert_equal 30, trial.quiet_wait_s(wt("trial"), LOCK["arms"]["trial"])
     trial.run(%w[trial])
-    assert_equal [30], @ops.calls.select { |c| c[0] == :sleep }.map(&:last).uniq
+    assert_equal [30], @ops.calls.select { |c| c[0] == :sleep && c != [:sleep, DeviceTrial::BOOT_READY_S] }.map(&:last).uniq
   end
 
   def test_quiet_wait_follows_the_arm_app_and_the_status_line
@@ -633,7 +633,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_empty step_names(r, "base") & CONTROLLER_STEPS
     verbs = @ops.calls.select { |c| c[0] == :cli }.map { |c| c[2].first }.uniq
     assert_empty verbs & %w[status selftest touch calibrate chat]
-    assert_empty @ops.calls.select { |c| %i[sleep notice now].include?(c[0]) }
+    assert_empty @ops.calls.select { |c| %i[sleep notice now].include?(c[0]) && c != [:sleep, DeviceTrial::BOOT_READY_S] }
     assert_equal ["pc:up"], @ops.calls.select { |c| c[0] == :rake && c[1] == wt("base") && c[2].start_with?("pc:") }.map { |c| c[2] }
   end
 
@@ -864,21 +864,36 @@ end
     assert_equal 2.5, DeviceTrial.median([4, 1, 2, 3])
     assert_nil DeviceTrial.median([])
   end
-def darwin_picoruby = File.join(ROOT, "vendor", "R2P2-darwin", "vendor", "picoruby")
 
-def test_the_mac_vm_builds_on_the_locked_darwin_picoruby
-  r = trial.run(%w[base])
-  assert_include r["pc_vm"]["steps"].map { |s| s["name"] }, "pin R2P2-darwin picoruby"
-  assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
-  pin = @ops.calls.index { |c| c[0] == :git && c[1] == darwin_picoruby && c[2] == "checkout" }
-  build = @ops.calls.index { |c| c[0] == :rake && c[2] == "pc:vm_build" }
-  assert_operator pin, :<, build
-end
+  def darwin_picoruby = File.join(ROOT, "vendor", "R2P2-darwin", "vendor", "picoruby")
 
-def test_a_darwin_picoruby_moved_during_the_build_fails_the_pin_check
-  @ops.on_rake["pc:vm_build"] = ->(_d, _e) { @ops.heads[darwin_picoruby] = "0" * 40 }
-  r = trial.run(%w[base])
-  assert_equal "fail", r["verdict"]
-  assert_match(/picoruby is at "0{40}"/, r["pc_vm"]["steps"].find { |s| !s["ok"] }["detail"])
-end
+  def test_the_mac_vm_builds_on_the_locked_darwin_picoruby
+    r = trial.run(%w[base])
+    assert_include r["pc_vm"]["steps"].map { |s| s["name"] }, "pin R2P2-darwin picoruby"
+    assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
+    pin = @ops.calls.index { |c| c[0] == :git && c[1] == darwin_picoruby && c[2] == "checkout" }
+    build = @ops.calls.index { |c| c[0] == :rake && c[2] == "pc:vm_build" }
+    assert_operator pin, :<, build
+  end
+
+  def test_a_darwin_picoruby_moved_during_the_build_fails_the_pin_check
+    @ops.on_rake["pc:vm_build"] = ->(_d, _e) { @ops.heads[darwin_picoruby] = "0" * 40 }
+    r = trial.run(%w[base])
+    assert_equal "fail", r["verdict"]
+    assert_match(/picoruby is at "0{40}"/, r["pc_vm"]["steps"].find { |s| !s["ok"] }["detail"])
+  end
+
+  def test_the_board_is_reset_out_of_the_capture_s_download_mode_and_given_time_to_advertise_before_pc_up
+    trial.run(%w[base])
+    seq = @ops.calls.filter_map do |c|
+      case c
+      in [:rake, dir, "r2p2:reset_and_capture", *] then :capture if dir == wt("base")
+      in [:rake, ROOT, "r2p2:reset", *] then :reset
+      in [:sleep, DeviceTrial::BOOT_READY_S] then :ready
+      in [:rake, dir, "pc:up", *] then :up if dir == wt("base")
+      else nil
+      end
+    end
+    assert_equal %i[capture reset ready up], seq.first(4)
+  end
 end
