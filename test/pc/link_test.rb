@@ -207,6 +207,49 @@ class LinkTest < Picotest::Test
     assert_equal 0, @link.status[:releases]
   end
 
+  def test_an_action_whose_link_is_lost_during_its_block_stays_released
+    act_frame("<F:2>\n")
+    @link.act { @link.lost! }
+    assert_equal :released, @link.state
+  end
+
+  def test_an_action_whose_block_drains_a_drop_ends_released
+    act_frame("<F:2>\n")
+    @link.act do
+      @radio.drop_link(event: true)
+      @central.drain
+    end
+    assert_equal :released, @link.state
+  end
+
+  def test_the_generation_counts_connects
+    assert_equal 0, @link.generation
+    act_frame("<F:2>\n")
+    @radio.drop_link(event: true)
+    @link.tick
+    act_frame("<F:3>\n")
+    assert_equal 2, @link.generation
+  end
+
+  def test_a_tick_that_may_not_expire_the_hold_keeps_the_keepalive
+    t0 = act_frame("<F:2>\n")
+    while FakeClock.now < t0 + 15_000
+      sleep_ms TICK_MS
+      @link.tick(expire: false)
+    end
+    assert_equal :held, @link.state
+    assert_equal [7_000, 14_000], read_pos_offsets(t0)
+  end
+
+  def test_a_loss_calls_on_lost
+    calls = 0
+    @link.on_lost = -> { calls += 1 }
+    act_frame("<F:2>\n")
+    @radio.drop_link(event: true)
+    @link.tick
+    assert_equal 1, calls
+  end
+
   def test_a_connection_error_in_the_block_is_not_retried
     act_frame("<F:2>\n")
     runs = 0

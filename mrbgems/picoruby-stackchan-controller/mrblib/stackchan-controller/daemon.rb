@@ -5,6 +5,7 @@ module StackChan
       TOUCH_ZONE_NAMES = { 0 => :back, 1 => :right, 2 => :left }
       FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
       SHUTDOWN_WAIT_MS = 1000
+      LISTEN_CAP = 16
 
       attr_reader :session, :reply_handlers
 
@@ -24,7 +25,8 @@ module StackChan
         @reply_handlers = []
         @every          = []
         @listen         = []
-        @dispatching    = false
+        @acting         = 0
+        @link.on_lost   = -> { @listen.clear }
         start_touch_reader
       end
 
@@ -44,12 +46,17 @@ module StackChan
       end
 
       def unlocked
+        generation = @link.generation
         @token.push(true)
         begin
-          yield
+          result = yield
         ensure
           @token.pop
         end
+        if @link.generation != generation || @link.state == :released
+          raise LinkChanged, "link changed while the token was handed back"
+        end
+        result
       end
 
       def start
@@ -98,7 +105,7 @@ module StackChan
         @token.pop
         begin
           begin
-            @link.tick
+            @link.tick(expire: @acting == 0)
           rescue StandardError => e
             log "tick #{e.class}: #{e.message}"
           end
@@ -184,31 +191,33 @@ module StackChan
 
       def with_link
         @token.pop
+        @acting += 1
         begin
           @link.act { yield }
         ensure
-          dispatch_touches
-          @token.push(true)
+          begin
+            @acting -= 1
+            dispatch_touches
+          ensure
+            @token.push(true)
+          end
         end
       end
 
       def dispatch_touches
-        return if @dispatching
-        @dispatching = true
-        begin
-          while (zone = @link.touches.shift)
-            name = TOUCH_ZONE_NAMES[zone]
-            @listen << { zone: zone, name: name }
-            @touch_handlers.each do |h|
-              guarded("on_touch") { h.call(@session, name) }
-            end
+        return unless @acting == 0
+        while (zone = @link.touches.shift)
+          name = TOUCH_ZONE_NAMES[zone]
+          @listen << { zone: zone, name: name }
+          @listen.shift while @listen.size > LISTEN_CAP
+          @touch_handlers.each do |h|
+            handler("on_touch") { h.call(@session, name) }
           end
-        ensure
-          @dispatching = false
         end
       end
 
       def run_every
+        return unless @acting == 0
         now = @clock.call
         @every.each do |e|
           unless @link.state == :held
@@ -219,8 +228,17 @@ module StackChan
             e[:last_at] = now
           elsif now - e[:last_at] >= e[:ms]
             e[:last_at] = now
-            guarded("every") { e[:blk].call(@session) }
+            handler("every") { e[:blk].call(@session) }
           end
+        end
+      end
+
+      def handler(what)
+        @acting += 1
+        begin
+          guarded(what) { yield }
+        ensure
+          @acting -= 1
         end
       end
 

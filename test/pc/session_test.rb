@@ -3,7 +3,7 @@ class SessionTest < Picotest::Test
   AUDIO = "\x7f" * 400
 
   class StubVoice
-    attr_accessor :token, :during_respond, :audio
+    attr_accessor :token, :during_respond, :during_synthesize, :audio
     attr_reader :respond_calls, :token_sizes
 
     def initialize(reply: "hello", audio: AUDIO)
@@ -13,10 +13,14 @@ class SessionTest < Picotest::Test
       @token_sizes = []
       @token = nil
       @during_respond = nil
+      @during_synthesize = nil
     end
 
     def synthesize(_text, _gain = nil, _rate = nil)
       @token_sizes << [:synthesize, @token.size]
+      hook = @during_synthesize
+      @during_synthesize = nil
+      hook.call if hook
       @audio
     end
 
@@ -229,6 +233,91 @@ class SessionTest < Picotest::Test
     assert_equal [180, 180, 40], audio_writes_after("<A:400>\n")
     assert_equal [1500, 20, 20, 20], FakeClock.sleeps
     assert_equal [[:synthesize, 1]], @voice.token_sizes
+  end
+
+  def test_a_handler_whose_link_is_replaced_while_it_waits_for_the_voice_stops_writing
+    runs = 0
+    @daemon.every(1000) do |s|
+      runs += 1
+      if runs == 1
+        s.face(:sad)
+        s.say("x")
+      end
+    end
+    @voice.during_synthesize = lambda do
+      @radio.drop_link(event: true)
+      @daemon.face("joy")
+    end
+    @daemon.face("neutral")
+    t0 = FakeClock.now
+    tick_until(t0 + 1_500)
+    assert_equal 1, runs
+    assert_equal ["<F:0>\n", "<F:4>\n", "<F:2>\n"], @radio.rx_frames
+    assert_equal [], @radio.writes_after_drop
+    assert_equal 2, @radio.connect_and_discover_calls
+    assert_true @logs.any? { |l| l.start_with?("every StackChan::Controller::LinkChanged") }
+  end
+
+  def test_a_chat_whose_link_is_lost_while_the_voice_thinks_raises_and_stays_released
+    @daemon.face("neutral")
+    @voice.during_respond = lambda do
+      @radio.drop_link(event: true)
+      tick
+    end
+    assert_raise(StackChan::Controller::LinkChanged) { @daemon.chat("hi", { speak: false }) }
+    assert_equal :released, @link.state
+    assert_equal 1, token.size
+  end
+
+  def test_ticks_while_the_voice_thinks_keep_the_link_alive_and_hold_back_handlers
+    seen = []
+    runs = 0
+    @daemon.on_touch { |_s, zone| seen << zone }
+    @daemon.every(1000) { |_s| runs += 1 }
+    @daemon.face("neutral")
+    t0 = FakeClock.now
+    during = nil
+    @voice.during_respond = lambda do
+      @radio.touch(1)
+      tick_until(t0 + 20_000)
+      during = [seen.dup, runs, @link.state, @radio.rx_frames.select { |f| f == "<read:pos>\n" }.size]
+    end
+    @daemon.chat("hi", { speak: false })
+    assert_equal [[], 0, :held, 2], during
+    assert_equal [:right], seen
+  end
+
+  def test_a_loss_clears_touches_nobody_polled
+    @daemon.face("neutral")
+    @radio.touch(1)
+    tick
+    @radio.drop_link(event: true)
+    tick
+    assert_equal :released, @link.state
+    @daemon.face("joy")
+    assert_nil @daemon.poll_touch
+  end
+
+  def test_touches_nobody_polls_are_capped
+    @daemon.face("neutral")
+    i = 0
+    while i < 100
+      @radio.touch(i % 3)
+      i += 1
+    end
+    tick
+    polled = 0
+    polled += 1 while @daemon.poll_touch
+    assert_equal StackChan::Controller::Daemon::LISTEN_CAP, polled
+  end
+
+  def test_a_touch_handler_raising_a_script_error_still_hands_back_the_token
+    @daemon.on_touch { |_s, _zone| raise NotImplementedError, "nope" }
+    @daemon.face("neutral")
+    @radio.touch(0)
+    assert_raise(NotImplementedError) { @daemon.face("joy") }
+    assert_equal 1, token.size
+    assert_equal "OK face=sad", @daemon.face("sad")
   end
 
   def test_say_without_a_voice_raises_argument_error

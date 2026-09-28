@@ -5,5 +5,6 @@ module StackChan
     class DeviceError < Error; end
     class ConnectionError < Error; end
     class Busy < ConnectionError; end
+    class LinkChanged < Error; end
   end
 end

@@ -14,5 +14,8 @@ module StackChan
 
     class Busy < ConnectionError
     end
+
+    class LinkChanged < Error
+    end
   end
 end

@@ -4,6 +4,7 @@ module StackChan
       BUSY_MESSAGE = "robot is held by another controller or unreachable"
 
       attr_reader :state, :touches
+      attr_accessor :on_lost
 
       def initialize(central:, clock: -> { Machine.board_millis }, hold: nil, keepalive_ms: 7_000, log:)
         @central         = central
@@ -18,6 +19,11 @@ module StackChan
         @last_connect_ms = nil
         @last_action_at  = nil
         @last_sent_at    = nil
+        @on_lost         = nil
+      end
+
+      def generation
+        @connects
       end
 
       def act
@@ -35,11 +41,12 @@ module StackChan
           lost! if @central.lost?
           raise e
         end
-        used!
+        lost! if @state != :released && @central.lost?
+        used! unless @state == :released
         result
       end
 
-      def tick
+      def tick(expire: true)
         return if @state == :released || @state == :busy
         @central.drain
         if @central.lost?
@@ -48,7 +55,7 @@ module StackChan
         end
         return if @state == :quiet
         now = @clock.call
-        if @hold && now - @last_action_at >= @hold
+        if expire && @hold && now - @last_action_at >= @hold
           @state = :quiet
           @log.call("hold over")
           return
@@ -75,6 +82,8 @@ module StackChan
         @state = :released
         @releases += 1
         @touches.clear
+        cb = @on_lost
+        cb.call if cb
       end
 
       def listening!
