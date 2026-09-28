@@ -22,7 +22,7 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: c9beabc442e625a64cb03a773f48aff382274301   # claude/ecstatic-allen-s6qki1
+    stackchan-picoruby: 5a67b951a15d7aade6b88a3d4a0124804002cad4   # claude/ecstatic-allen-s6qki1
     R2P2-ESP32: 97166052a334fcc959bcdf6fe7da4c35792f80a6           # claude/external-build-config
     picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
     repos:
