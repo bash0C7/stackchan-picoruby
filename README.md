@@ -61,12 +61,15 @@ vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch claude/external-app. Apple
                       pc/stackchan-pico/README.md.
 ```
 
-Three more hardware-driver mrbgems (LCD, PY32 I/O expander, servo) are
-separate `bash0C7/picoruby-*` repos fetched straight from GitHub by the
-firmware's own build_config (`conf.gem github:`) — no local clone or
+The firmware's gem list is `build_config/esp32-stackchan.rb`; the `r2p2:*`
+tasks hand it to R2P2-ESP32 as `R2P2_BUILD_CONFIG`, and R2P2-ESP32's own
+default config names no StackChan gem. Three hardware-driver mrbgems (LCD,
+PY32 I/O expander, servo) are separate `bash0C7/picoruby-*` repos that config
+fetches straight from GitHub (`conf.gem github:`) — no local clone or
 vendoring needed for those. The BLE frame protocol gem
-(`mrbgems/picoruby-stackchan-protocol`) lives in this repo and is handed to
-the same build_config as a gem dir (`R2P2_GEM_DIRS`).
+(`mrbgems/picoruby-stackchan-protocol`), the AOT kernels and
+picoruby-multicore go in as gem dirs; multicore's ESP32 port is compiled by
+the IDF component through `R2P2_EXTRA_SRCS`.
 
 The robot's behaviour is one DSL file; the engine gem does everything else:
 
@@ -448,15 +451,15 @@ and build_configs each time.
 | [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `claude/external-app` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | R2P2-ESP32's `build_config/xtensa-esp-picoruby.rb` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
 
 The WS2812, Si12T, AW88298 and dRuby-over-BLE gems are mrbgems in this
 repo's `mrbgems/` bundled into `app.mrb` at compile time. The BLE frame
 protocol gem (`mrbgems/picoruby-stackchan-protocol`, `FrameParser` /
-`FrameCodec` / `FrameText`) is also in this repo, but is instead handed to
-the firmware build directly as a gem dir (`R2P2_GEM_DIRS`).
+`FrameCodec` / `FrameText`) is also in this repo, but is instead a gem dir
+in `build_config/esp32-stackchan.rb`.
 
 ### Staying reproducible
 
@@ -515,9 +518,11 @@ Adds on top of upstream:
 - `sdkconfigs/bt_nimble`: BLE enablement with the ROM coex hook disabled, which
   avoids a `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with
   IDF v5.4 and ESP32-S3.
-- `build_config/xtensa-esp-picoruby.rb` (on the `c-primitives-verified` branch):
-  wires the 4 standalone driver gems above plus `picoruby-ble` /
-  `picoruby-ble-uart` / `picoruby-i2s`.
+- `R2P2_BUILD_CONFIG` names an external picoruby build config in place of
+  `build_config/xtensa-esp-picoruby.rb`, `R2P2_GEM_DIRS` adds gem dirs to the
+  default config, and `R2P2_EXTRA_SRCS` adds C sources to the IDF component.
+  The default config carries `picoruby-ble` and `picoruby-i2s`, whose ESP32
+  ports the component compiles.
 - Points its `components/picoruby-esp32/picoruby` submodule at `7258676` on the
   picoruby fork's `stackchan-integration` branch below. The branch head is on
   the rebased lineage, which boot-loops on this board; see HANDOFF.

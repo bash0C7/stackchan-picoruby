@@ -219,13 +219,10 @@ class DepsGuardTest < Test::Unit::TestCase
   # be built from a commit the build_config stopped naming. `git:` takes a URL,
   # which is what lets this run against a repository on disk.
   def write_build_config(root, body)
-    firmware = File.join(root, "vendor", "R2P2-ESP32")
-    config = File.join(firmware, "components", "picoruby-esp32", "build_config")
-    FileUtils.mkdir_p(config)
-    File.write(File.join(config, "xtensa-esp-picoruby.rb"), body)
-    git(firmware, "add", "-A")
-    git(firmware, "commit", "-q", "-m", "name a gem")
-    publish(firmware)
+    File.write(File.join(root, "build_config", "esp32-stackchan.rb"), body)
+    git(root, "add", "build_config")
+    git(root, "commit", "-q", "-m", "name a gem")
+    publish(root)
   end
 
   def stage_gem_clone(root, source, at)
@@ -314,6 +311,10 @@ class DepsGuardTest < Test::Unit::TestCase
   def new_full_tree(name)
     root = new_tree(name)
     new_repo(root)
+    FileUtils.mkdir_p(File.join(root, "build_config"))
+    File.write(File.join(root, "build_config", "esp32-stackchan.rb"), "# no gems\n")
+    git(root, "add", "build_config")
+    git(root, "commit", "-q", "-m", "build_config")
     publish(root)
     firmware = File.join(root, "vendor", "R2P2-ESP32")
     config = File.join(firmware, "components", "picoruby-esp32", "build_config")

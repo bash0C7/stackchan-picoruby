@@ -39,7 +39,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 
 ## 構成
 
-- Firmware (`build_flash` が必要): LCD / PY32 / servo の gem は R2P2-ESP32 の build_config が GitHub から fetch する。protocol gem (`StackchanProtocol::FrameParser` / `FrameCodec` / `FrameText`) は `mrbgems/picoruby-stackchan-protocol` にあり、firmware build には `R2P2_GEM_DIRS` で gem dir として渡す。
+- Firmware (`build_flash` が必要): firmware の gem 一覧は `build_config/esp32-stackchan.rb` にあり、`r2p2_build_env` が `R2P2_BUILD_CONFIG` (絶対 path) として R2P2-ESP32 に渡す。LCD / PY32 / servo の gem はこの config の `conf.gem github:` で fetch し、protocol gem (`StackchanProtocol::FrameParser` / `FrameCodec` / `FrameText`、`mrbgems/picoruby-stackchan-protocol`)・AOT kernel・picoruby-multicore は gem dir で入れる。picoruby-multicore の `ports/esp32/multicore.c` は ESP-IDF の include が要るので `R2P2_EXTRA_SRCS` で IDF component の source に足す。R2P2-ESP32 自身の default config は StackChan の gem を持たず、R2P2-ESP32 に StackChan の名前を書かない (`test-host/platform_trees_test.rb`)。
 - Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。どれも pure Ruby で、`stackchan-led` / `si12t` / `aw88298` / `drb-ble` / `stackchan-robot` は Rakefile が `app.mrb` compile 時に app の前に連結する (先頭に app の top-level `require` を置く)。`stackchan-controller` は firmware に入らず、Mac の daemon / CLI は source で `load` し、iOS / watchOS は VM に gem として build する (依存は `mrbgem.rake` に宣言し、mrblib は build と同じ sort 順で読める)。
 - AOT kernels (`aot/kernels/*.rb`): spinel → suppify で 1 つの mrbgem にして firmware に入れる Ruby。`ulaw_decode` は picoruby-multicore で core 1、`glyph16` は core 0 から直接呼ぶ。spinel runtime は 1 組で thread-safe でないので、core 1 の kernel 実行中に core 0 で kernel を呼ばない。手順と制約は `aot/README.md`。
 - Application (`apps/robot/app.rb`、`upload_appmrb` で deploy): `require` 列と `StackChan.robot do |bot| … end.run` 1 つだけの DSL ファイル。顔の定義・face index・touch 反応・周期処理を書く。`$` とトップレベルの `@` と定数は置かない。
@@ -137,7 +137,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - device 側に一時的な `puts` を足さない。cold boot で Guru Meditation の boot loop に入ることがあり (原因未特定、`Loading app.mrb` 直後で panic)、そうなると USB CDC が再列挙し続けて esptool も繋がらない。復旧は人間による USB 抜き差しだけで、抜き差し直後の 1 回しか esptool が通らないので、その 1 回を何に使うか決めてから頼む。
 - smoke や upload の前に boot log で device の素性を確かめる。`boot: Partition Table:` の storage offset が `0x410000` か、`App version` がこの repo の build か、`[application] boot` / `[boot] step:` marker があるか。違えば別 tree の firmware なので `/stackchan-device-full-rebuild`。実機への上書き deploy は承認済み。
 - firmware build は必ず clean build (`clean_picoruby_build` 依存を外さない)。undefined symbol が出たら source tree を grep し、無ければ object の陳腐化。
-- `build_config/xtensa-esp-picoruby.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem` の gem は `build/repos/` に `--depth 1` で cache され、以後 pull されない。ずれは `tools/check_deps_pushed.sh` が検出し、戻れる形の commit 列 (`git branch keep-<sha>` → `fetch --depth 1` → `checkout --detach`) を出す。`rm -rf` は使わない — shallow clone なので消したら元の commit は戻らない。
+- `build_config/esp32-stackchan.rb` に gem を足したら `r2p2:setup` が必要。`conf.gem` の gem は `build/repos/` に `--depth 1` で cache され、以後 pull されない。ずれは `tools/check_deps_pushed.sh` が検出し、戻れる形の commit 列 (`git branch keep-<sha>` → `fetch --depth 1` → `checkout --detach`) を出す。`rm -rf` は使わない — shallow clone なので消したら元の commit は戻らない。
 - sdkconfig fragment を編集しても `idf.py build` は再適用しない。`ensure_sdkconfig_fresh` が rake 側で処理する。CoreS3 は `sdkconfigs/cores3` (Quad PSRAM)。BLE-only build は coex を全部 `n` にしないと `coex_schm_lock` で panic する。
 - `idf.py flash` は storage 区画も焼くので `/home/app.mrb` が消える。flash 後は upload し直す。
 - storage erase は `rake r2p2:wipe_storage` を通す (offset は partition table 依存、手打ちしない)。

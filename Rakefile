@@ -11,10 +11,7 @@ require_relative "lib/qemu_gate"
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
 # fork or branch swap needs no edit here.
 R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP32.git"
-# c-primitives-verified, not stackchan-integration: the latter's picoruby submodule
-# is on the lineage rebased onto upstream master, which overflows the picoruby task
-# stack during its own startup and boot-loops. See HANDOFF.
-R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/stackchan-robot-engine"
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/external-build-config"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
@@ -321,16 +318,11 @@ def deploy_application_and_wait(label)
   sleep wait
 end
 
-# AOT kernels (aot/), picoruby-multicore, and picoruby-stackchan-protocol go
-# into every firmware build: aot:esp32 generates the kernels, r2p2_build_env
-# hands all three gem dirs to R2P2-ESP32.
-AOT_ESP32_DIR     = File.expand_path("build/aot/esp32", __dir__)
-AOT_MULTICORE_DIR = File.expand_path("build/aot/picoruby-multicore", __dir__)
+ESP32_BUILD_CONFIG = File.expand_path("build_config/esp32-stackchan.rb", __dir__)
+AOT_MULTICORE_DIR  = File.expand_path("build/aot/picoruby-multicore", __dir__)
 
 def r2p2_build_env
-  gems = [File.join(AOT_ESP32_DIR, "gems", "picoruby-stackchan_aot"), File.join(AOT_ESP32_DIR, "picoruby-kernel_registry"),
-          File.expand_path("mrbgems/picoruby-stackchan-protocol", __dir__)]
-  %Q{R2P2_GEM_DIRS="#{gems.join(':')}" STACKCHAN_MULTICORE_DIR="#{AOT_MULTICORE_DIR}"}
+  %Q{R2P2_BUILD_CONFIG="#{ESP32_BUILD_CONFIG}" R2P2_EXTRA_SRCS="#{File.join(AOT_MULTICORE_DIR, "ports", "esp32", "multicore.c")}"}
 end
 
 namespace :aot do

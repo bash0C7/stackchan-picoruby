@@ -30,11 +30,10 @@ class NoDeviceRegexpTest < Test::Unit::TestCase
   end
 
   def repo_local_r2p2_gem_dirs
-    build_env = rakefile[/def r2p2_build_env\n(.*?)^end\n/m, 1]
-    assert_not_nil build_env, 'r2p2_build_env not found in Rakefile'
-    dirs = build_env.scan(%r{File\.expand_path\("(mrbgems/[^"]+)", __dir__\)}).flatten
+    config = File.read(File.join(ROOT, 'build_config', 'esp32-stackchan.rb'))
+    dirs = config.scan(%r{conf\.gem gemdir: File\.expand_path\('\.\./(mrbgems/[^']+)', __dir__\)}).flatten
     assert_include dirs, 'mrbgems/picoruby-stackchan-protocol',
-      "r2p2_build_env no longer hands the protocol gem to R2P2-ESP32; update this test's device file list"
+      "build_config/esp32-stackchan.rb no longer names the protocol gem; update this test's device file list"
     dirs.map { |d| File.join(ROOT, d) }
   end
 
