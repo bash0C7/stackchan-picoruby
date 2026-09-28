@@ -23,7 +23,7 @@ arms:
       - "[application] BLE peripheral starting"
   trial:
     stackchan-picoruby: 7b163bb8d98b3920b83045fc651e0a3ce2607a5a   # claude/no-raise-at-gem-init
-    R2P2-ESP32: b27f39f163bd6ea3509fad7481d5622bdb448688           # claude/ble-peripheral-disconnect
+    R2P2-ESP32: 850e9e8b009f17643fa1cc9cb16b4f684e69197f           # claude/stackchan-robot-engine
     picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
     repos:
       picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # claude/aot-glyph16
@@ -38,6 +38,7 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
     remote: true
+    stack_check: true
     app: apps/robot/app.rb
 
 # iOS / watchOS apps, run against the trial arm's firmware.

@@ -14,7 +14,7 @@ R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP
 # c-primitives-verified, not stackchan-integration: the latter's picoruby submodule
 # is on the lineage rebased onto upstream master, which overflows the picoruby task
 # stack during its own startup and boot-loops. See HANDOFF.
-R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/ble-peripheral-disconnect"
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/stackchan-robot-engine"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"

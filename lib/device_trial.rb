@@ -22,6 +22,7 @@ class DeviceTrial
   MULTICORE_CHUNK = 2046
   BOOT_CAPTURE_S = 25
   DETAIL = /<Y[LR]_actual:\d+,PU_actual:\d+>/
+  STACK_FLOOR = 1024
 
   attr_reader :report
 
@@ -107,6 +108,15 @@ class DeviceTrial
     end
 
     measure(r, wt, arm)
+    if arm["stack_check"]
+      step(r, "stack high-water") do
+        out = cli!(wt, "remote", "stack_free")
+        free = out[/<stack_free:(\d+)>/, 1]
+        raise Stop, "no stack reading in #{out.inspect}" unless free
+        raise Stop, "#{free} B free, below #{STACK_FLOOR} B" if free.to_i < STACK_FLOOR
+        "#{free} B free"
+      end
+    end
     ask(r, name, arm)
     step(r, "torque off") { cli!(wt, "torque", "off") }
   end

@@ -98,6 +98,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.cli_out["remote face"] = ".\n"
     @ops.cli_out["say"] = "OK say bytes=9000"
     @ops.cli_out["raw"] = "OK raw"
+    @ops.cli_out["remote stack_free"] = "<stack_free:2024>\n"
     @ops.answers = %w[y] * 20
   end
 
@@ -231,6 +232,30 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "remote servo detail", failed(r, "trial")["name"]
   end
 
+  def test_the_trial_arm_reports_the_stack_left_after_every_handler_ran
+    r = trial.run(%w[trial])
+    step = r["arms"]["trial"]["steps"].find { |s| s["name"] == "stack high-water" }
+    assert step["ok"]
+    assert_equal "2024 B free", step["detail"]
+  end
+  
+  def test_less_than_a_kilobyte_of_stack_left_stops_the_arm
+    @ops.cli_out["remote stack_free"] = "<stack_free:1023>\n"
+    r = trial.run(%w[trial])
+    assert_equal "stack high-water", failed(r, "trial")["name"]
+  end
+  
+  def test_a_firmware_without_the_stack_reading_stops_the_arm
+    @ops.cli_out["remote stack_free"] = "<stack_free:unknown>\n"
+    r = trial.run(%w[trial])
+    assert_equal "stack high-water", failed(r, "trial")["name"]
+  end
+  
+  def test_an_arm_without_stack_check_does_not_ask_for_it
+    r = trial.run(%w[base])
+    refute_includes step_names(r, "base"), "stack high-water"
+  end
+  
   def test_say_must_span_more_than_two_multicore_chunks
     @ops.cli_out["say"] = "OK say bytes=3000"
     r = trial.run(%w[trial])
