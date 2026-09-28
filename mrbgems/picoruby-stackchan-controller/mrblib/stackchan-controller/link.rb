@@ -77,6 +77,10 @@ module StackChan
         @touches.clear
       end
 
+      def listening!
+        @last_action_at = @clock.call if @state == :held
+      end
+
       def status
         { link: @state.to_s, connects: @connects, releases: @releases, last_connect_ms: @last_connect_ms, hold_ms: @hold }
       end

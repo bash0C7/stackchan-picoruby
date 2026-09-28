@@ -142,8 +142,8 @@ module StackChan
         out "[touch] listening (Ctrl-C to exit)..."
         loop do
           event = @daemon.poll_touch
-          if event
-            out "touch zone=#{event[:zone]} (#{event[:label]})"
+          if event && event[:zone]
+            out "touch zone=#{event[:zone]} (#{event[:name]})"
           else
             sleep 0.2
           end

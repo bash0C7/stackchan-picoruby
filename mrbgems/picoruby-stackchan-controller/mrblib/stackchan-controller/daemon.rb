@@ -2,26 +2,54 @@ module StackChan
   class Controller
     class Daemon
       TICK_MS = 250
-      TOUCH_ZONE_LABELS = { 0 => "頭のうしろ", 1 => "右側", 2 => "左側" }
+      TOUCH_ZONE_NAMES = { 0 => :back, 1 => :right, 2 => :left }
       FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
-      READY_WAIT_MS = 1500
-      AUDIO_CHUNK = 180
-      CHUNK_PACE_MS = 20
       SHUTDOWN_WAIT_MS = 1000
 
-      def initialize(link:, central:, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788", log: nil)
-        @link          = link
-        @ble           = central
-        @port          = port
-        @host          = host
-        @sidecar_uri   = sidecar_uri
-        @sidecar       = nil
-        @log_fn        = log || ->(line) { $stderr.write("[stackchand] #{line}\n"); $stderr.flush }
-        @robot_state   = { last_face: nil, last_say: nil, last_heard: nil, last_action: nil }
-        @token         = Task::Queue.new
+      attr_reader :session, :reply_handlers
+
+      def initialize(link:, central:, voice: nil, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788",
+                     clock: -> { Machine.board_millis }, log: nil)
+        @link           = link
+        @ble            = central
+        @port           = port
+        @host           = host
+        @clock          = clock
+        @log_fn         = log || ->(line) { $stderr.write("[stackchand] #{line}\n"); $stderr.flush }
+        voice         ||= DRb::DRbObject.new_with_uri(sidecar_uri) if sidecar_uri
+        @session        = Session.new(central: central, engine: self, voice: voice, log: @log_fn)
+        @token          = Task::Queue.new
         @token.push(true)
-        @fallback_audio = nil
+        @touch_handlers = []
+        @reply_handlers = []
+        @every          = []
+        @listen         = []
+        @dispatching    = false
         start_touch_reader
+      end
+
+      def on_touch(&blk)
+        @touch_handlers << blk
+        self
+      end
+
+      def on_reply(&blk)
+        @reply_handlers << blk
+        self
+      end
+
+      def every(ms, &blk)
+        @every << { ms: ms, blk: blk, last_at: nil }
+        self
+      end
+
+      def unlocked
+        @token.push(true)
+        begin
+          yield
+        ensure
+          @token.pop
+        end
       end
 
       def start
@@ -33,11 +61,10 @@ module StackChan
         DRb.start_service("druby://#{@host}:#{@port}", self)
         @server_task    = DRb.thread
         @tick_task      = start_tick
-        @fallback_audio = begin
-          sidecar.synthesize(FALLBACK_CHAT_PHRASE)
+        begin
+          @session.prime(FALLBACK_CHAT_PHRASE)
         rescue StandardError => e
           log "fallback priming failed: #{e.class}: #{e.message}"
-          nil
         end
         log "listening on druby://#{@host}:#{@port}"
         self
@@ -62,84 +89,59 @@ module StackChan
           ble_connected: @ble.connected?,
           host:          @host,
           port:          @port,
-          last_face:     @robot_state[:last_face],
-          last_action:   @robot_state[:last_action],
+          last_face:     @session.state[:last_face],
+          last_action:   @session.state[:last_action],
         }.merge(@link.status)
       end
 
       def tick
         @token.pop
         begin
-          @link.tick
-        rescue StandardError => e
-          log "tick #{e.class}: #{e.message}"
+          begin
+            @link.tick
+          rescue StandardError => e
+            log "tick #{e.class}: #{e.message}"
+          end
+          dispatch_touches
+          run_every
         ensure
           @token.push(true)
         end
       end
 
       def face(name)
-        with_link { @ble.send { |s| s.face(name.to_sym) } }
-        record(:face, last_face: name.to_s)
+        with_link { @session.face(name) }
         "OK face=#{name}"
       end
 
       def led(opts)
-        with_link { @ble.send { |s| s.led(opts[:color], side: opts[:side], mode: opts[:mode]) } }
-        record(:led)
+        with_link { @session.led(opts[:side], opts[:color], mode: opts[:mode]) }
         "OK led=#{opts[:side]}/#{opts[:color]}/#{opts[:mode]}"
       end
 
       def servo(opts)
-        detail = with_link do
-          @ble.send do |s|
-            s.head(yaw_left: opts[:yaw_left], yaw_right: opts[:yaw_right], pitch_up: opts[:pitch_up],
-                   time_ms: opts[:time_ms], velocity: opts[:velocity])
-          end
-          @ble.last_detail_frame
+        with_link do
+          @session.servo(yaw_left: opts[:yaw_left], yaw_right: opts[:yaw_right], pitch_up: opts[:pitch_up],
+                         time_ms: opts[:time_ms], velocity: opts[:velocity])
         end
-        record(:servo)
-        detail
       end
 
       def torque(on)
-        with_link { @ble.send { |s| s.torque(on: on) } }
-        record(:torque)
+        with_link { @session.torque(on) }
         "OK torque=#{on ? 'on' : 'off'}"
       end
 
       def selftest
-        with_link { @ble.send { |s| s.selftest } }
-        record(:selftest)
+        with_link { @session.selftest }
         "OK selftest"
       end
 
       def say(text, gain = nil, rate = nil)
-        log "[checkpoint] synth_start"
-        ulaw = sidecar.synthesize(text, gain, rate)
-        log "[checkpoint] synth_done bytes=#{ulaw ? ulaw.bytesize : 0}"
-        subtitle = Stackchan::AI::FrameText.build(face_index: nil, text: text)
-        with_link do
-          @ble.write_without_ack(subtitle)
-          log "[checkpoint] subtitle_write_done"
-          stream_audio(ulaw) if ulaw
-        end
-        record(:say, last_say: text)
-        return "NG say: synthesis failed or timed out" unless ulaw
-        "OK say bytes=#{ulaw.bytesize}"
+        with_link { @session.say(text, gain: gain, rate: rate) }
       end
 
       def chat(text, opts)
-        speak = opts[:speak]
-        reply = sidecar.respond(text, @robot_state.dup)
-        record(:chat, last_heard: text)
-        if reply
-          with_link { @ble.raw_send(Stackchan::AI::FrameText.build(face_index: 1, text: reply)) }
-          say(reply) if speak
-        elsif speak && @fallback_audio
-          with_link { stream_audio(@fallback_audio) }
-        end
-        reply
+        with_link { @session.chat(text, speak: opts[:speak]) }
       end
 
       def raw_send(frame)
@@ -149,21 +151,14 @@ module StackChan
       end
 
       def remote(msg, args = [])
-        lines = with_link { @ble.remote.send(msg.to_sym, *args) }
-        record(:remote)
-        lines
+        with_link { @session.remote(msg, *args) }
       end
 
       def sample_pose(n)
         readings = []
         i = 0
         while i < n
-          with_link { @ble.send { |s| s.read_pos } }
-          parsed = Calibration.parse_raw_detail(@ble.last_detail_frame.to_s)
-          if parsed[:yaw_raw].nil? || parsed[:pitch_raw].nil?
-            raise DeviceError, Calibration::UNKNOWN_POSITION
-          end
-          readings << parsed
+          readings << with_link { @session.read_pos }
           i += 1
         end
         {
@@ -173,52 +168,79 @@ module StackChan
       end
 
       def poll_touch
-        @link.touches.shift
+        @token.pop
+        begin
+          held = @link.state == :held
+          @link.listening! if held
+          event = @listen.shift
+          return event if event
+          held ? nil : { released: true }
+        ensure
+          @token.push(true)
+        end
       end
 
       private
-
-      def sidecar
-        @sidecar ||= DRb::DRbObject.new_with_uri(@sidecar_uri)
-      end
-
-      def stream_audio(ulaw)
-        n = ulaw.bytesize
-        @ble.write_without_ack("<A:#{n}>\n")
-        log "[checkpoint] announce_done n=#{n}"
-        sleep_ms READY_WAIT_MS
-        i = 0
-        chunk_count = 0
-        while i < n
-          @ble.write_without_ack(ulaw.byteslice(i, AUDIO_CHUNK))
-          i += AUDIO_CHUNK
-          chunk_count += 1
-          log "[checkpoint] blast_progress i=#{i} n=#{n}" if chunk_count % 100 == 0
-          sleep_ms CHUNK_PACE_MS
-        end
-        log "[checkpoint] blast_done i=#{i} n=#{n}, entering await"
-        @ble.await_audio_done(n)
-      end
-
-      def record(action, extras = {})
-        @robot_state[:last_action] = action.to_s
-        extras.each { |k, v| @robot_state[k] = v }
-      end
 
       def with_link
         @token.pop
         begin
           @link.act { yield }
         ensure
+          dispatch_touches
           @token.push(true)
         end
+      end
+
+      def dispatch_touches
+        return if @dispatching
+        @dispatching = true
+        begin
+          while (zone = @link.touches.shift)
+            name = TOUCH_ZONE_NAMES[zone]
+            @listen << { zone: zone, name: name }
+            @touch_handlers.each do |h|
+              guarded("on_touch") { h.call(@session, name) }
+            end
+          end
+        ensure
+          @dispatching = false
+        end
+      end
+
+      def run_every
+        now = @clock.call
+        @every.each do |e|
+          unless @link.state == :held
+            e[:last_at] = nil
+            next
+          end
+          if e[:last_at].nil?
+            e[:last_at] = now
+          elsif now - e[:last_at] >= e[:ms]
+            e[:last_at] = now
+            guarded("every") { e[:blk].call(@session) }
+          end
+        end
+      end
+
+      def guarded(what)
+        yield
+      rescue ConnectionError => e
+        log "#{what} #{e.class}: #{e.message}"
+        @link.lost!
+      rescue TimeoutError => e
+        log "#{what} #{e.class}: #{e.message}"
+        @link.lost! if @ble.lost?
+      rescue StandardError => e
+        log "#{what} #{e.class}: #{e.message}"
       end
 
       def start_touch_reader
         @ble.on_unsolicited = lambda do |frame|
           zone = Stackchan::BLE::FrameCodec.parse_touch(frame)
           next unless zone
-          @link.touches.push({ zone: zone, label: TOUCH_ZONE_LABELS[zone] })
+          @link.touches.push(zone)
         end
       end
 
