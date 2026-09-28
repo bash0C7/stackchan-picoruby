@@ -59,4 +59,31 @@ class RadioTest < Picotest::Test
     assert_equal first, @radio.connect_calls[0]
     assert_equal first, @radio.target
   end
+  def test_the_darwin_disconnect_packet_invalidates_the_handle_and_reports_once
+    lost = []
+    @radio.on_disconnect = -> { lost << @radio.conn_handle }
+    @radio.instance_variable_set(:@conn_handle, 0x40)
+    @radio.push_pending([0x3E, 0x01, 0x05].pack("C*"))
+    @radio.pop_and_dispatch
+    assert_equal BLE::HCI_CON_HANDLE_INVALID, @radio.conn_handle
+    assert_equal [BLE::HCI_CON_HANDLE_INVALID], lost
+  end
+
+  def test_a_btstack_disconnection_complete_invalidates_the_handle_and_reports_once
+    lost = []
+    @radio.on_disconnect = -> { lost << @radio.conn_handle }
+    @radio.instance_variable_set(:@conn_handle, 0x40)
+    @radio.push_pending([0x05, 0x04, 0x00, 0x40, 0x00, 0x13].pack("C*"))
+    @radio.pop_and_dispatch
+    assert_equal BLE::HCI_CON_HANDLE_INVALID, @radio.conn_handle
+    assert_equal [BLE::HCI_CON_HANDLE_INVALID], lost
+  end
+
+  def test_an_le_connection_complete_is_not_a_disconnect
+    lost = []
+    @radio.on_disconnect = -> { lost << :lost }
+    @radio.push_pending([0x3E, 0x01, 0x01, 0x00, 0x40, 0x00].pack("C*"))
+    @radio.pop_and_dispatch
+    assert_equal [], lost
+  end
 end

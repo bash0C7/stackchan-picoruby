@@ -19,6 +19,8 @@ end
 class BLE
   HCI_CON_HANDLE_INVALID  = 0xffff
   GATT_EVENT_NOTIFICATION = 0xA7
+  HCI_EVENT_LE_META = 0x3E
+  HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
 
   module Utils
     def self.little_endian_to_int16(str)

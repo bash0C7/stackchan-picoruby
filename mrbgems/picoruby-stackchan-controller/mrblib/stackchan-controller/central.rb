@@ -10,6 +10,7 @@ module StackChan
       AUDIO_DONE_BASE_MS        = 3_300
       SUBSCRIBE_ENABLE          = "\x01\x00"
       DRB_URI                   = "drbble://stackchan"
+      KEEPALIVE_FRAME           = "<read:pos>\n"
 
       attr_accessor :on_unsolicited
       attr_reader   :last_detail_frame
@@ -18,6 +19,7 @@ module StackChan
         @name_prefix        = name_prefix
         @radio              = radio || Radio.new(name_prefix: name_prefix)
         @radio.on_notification = method(:handle_notification)
+        @radio.on_disconnect   = method(:link_lost)
         @log_fn             = log_fn   || ->(line) { $stderr.write(line + "\n"); $stderr.flush }
         @rx_handle          = nil
         @tx_handle          = nil
@@ -31,14 +33,40 @@ module StackChan
         @connected          = false
         @on_unsolicited     = nil
         @last_detail_frame  = nil
+        @lost               = false
       end
 
       def connected?
         @connected
       end
 
+      def lost?
+        @lost
+      end
+
+      def link_lost
+        reset_link
+        @lost = true
+      end
+
+      def reset_link
+        @connected         = false
+        @drb_inbox.clear
+        @drb_sent_at       = nil
+        @inbox.clear
+        @last_detail_frame = nil
+        @rx_handle         = nil
+        @tx_handle         = nil
+        @cccd_handle       = nil
+        @drb_rx_handle     = nil
+        @drb_tx_handle     = nil
+        @drb_cccd_handle   = nil
+      end
+
       def connect
+        reset_link
         @radio.connect_and_discover(CONNECT_TIMEOUT_MS)
+        @lost = false
         unless @radio.target
           raise ConnectionError, "no #{@name_prefix} advertiser found"
         end
@@ -47,6 +75,7 @@ module StackChan
         end
         resolve_handles
         subscribe_tx
+        raise_if_lost
         @connected = true
         self
       end
@@ -70,6 +99,12 @@ module StackChan
         self
       end
 
+      def keepalive
+        raise ConnectionError, "not connected" unless @connected
+        write_and_await_ack(KEEPALIVE_FRAME)
+        self
+      end
+
       def write_without_ack(payload)
         raise ConnectionError, "not connected" unless @connected
         write_rx(payload)
@@ -90,6 +125,7 @@ module StackChan
         i = 0
         while true
           drain
+          raise_if_lost
           idx = @inbox.index { |f| f.start_with?("<A:done>") }
           if idx
             @inbox.delete_at(idx)
@@ -125,10 +161,15 @@ module StackChan
 
       def poll
         drain
+        raise_if_lost
         @drb_inbox.shift
       end
 
       private
+
+      def raise_if_lost
+        raise ConnectionError, "link lost" if @lost
+      end
 
       def polls_for(ms)
         (ms + POLLING_UNIT_MS - 1) / POLLING_UNIT_MS
@@ -198,7 +239,7 @@ module StackChan
         status = Nus.classify(first)
         if status == :ack
           t_detail = nil
-          if servo_or_read?(frame)
+          if detail_expected?(frame)
             @last_detail_frame = await_inbox
             t_detail = @last_detail_frame ? Machine.board_millis : :timeout
             if @last_detail_frame && Nus.classify(@last_detail_frame) == :ack
@@ -229,6 +270,7 @@ module StackChan
         i = 0
         while true
           drain
+          raise_if_lost
           return @inbox.shift unless @inbox.empty?
           return nil if i >= polls
           sleep_ms(POLLING_UNIT_MS)
@@ -236,8 +278,8 @@ module StackChan
         end
       end
 
-      def servo_or_read?(frame)
-        frame.include?("YL:") || frame.include?("YR:") || frame.include?("PU:") || frame.start_with?("<read:")
+      def detail_expected?(frame)
+        frame.include?("YL:") || frame.include?("YR:") || frame.include?("PU:") || frame.start_with?("<read:") || frame.start_with?("<selftest:")
       end
     end
   end
