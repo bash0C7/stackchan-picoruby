@@ -52,6 +52,8 @@ class FakeRadio < StackChan::Controller::Radio
 
   def connect_and_discover(_timeout_ms)
     @connect_and_discover_calls += 1
+    @packets.each { |packet| packet_callback(packet) }
+    @packets.clear
     if @failing_connects > 0 || !@advertising
       @failing_connects -= 1 if @failing_connects > 0
       @target = nil
@@ -89,6 +91,7 @@ class FakeRadio < StackChan::Controller::Radio
   end
 
   def write_value_of_characteristic_without_response(_conn_handle, handle, value)
+    raise TypeError, "handle is nil" if handle.nil?
     if @dropped
       @writes_after_drop << [handle, value]
       return false
@@ -98,6 +101,7 @@ class FakeRadio < StackChan::Controller::Radio
   end
 
   def write_characteristic_descriptor_using_descriptor_handle(_conn_handle, handle, value)
+    raise TypeError, "handle is nil" if handle.nil?
     @descriptor_writes << [handle, value]
   end
 end

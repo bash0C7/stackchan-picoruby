@@ -62,6 +62,28 @@ class CentralLinkLossTest < Picotest::Test
     assert_false central.connected?
   end
 
+  def test_remote_after_an_undrained_drop_raises_connection_error
+    @radio.drop_link(event: true)
+    assert_raise(StackChan::Controller::ConnectionError) { @central.remote }
+    assert_equal [], @radio.writes_after_drop
+  end
+
+  def test_send_chunk_after_a_drained_drop_raises_connection_error
+    @radio.drop_link(event: true)
+    @central.drain
+    assert_raise(StackChan::Controller::ConnectionError) { @central.send_chunk("a") }
+    assert_equal [], @radio.writes_after_drop
+  end
+
+  def test_a_disconnect_still_queued_at_connect_is_consumed_by_the_scan
+    @radio.drop_link(event: true)
+    @central.connect
+    assert_true @central.connected?
+    assert_false @central.lost?
+    @central.raw_send("<F:2>\n")
+    assert_equal ["<F:2>\n"], @radio.rx_frames
+  end
+
   def test_a_drb_chunk_from_the_old_link_is_gone_after_reconnect
     @radio.schedule_notification(DTX, "stale")
     @central.drain

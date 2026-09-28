@@ -143,14 +143,16 @@ module StackChan
       end
 
       def remote
-        raise ConnectionError, "not connected" unless @connected
         drain
+        raise_if_lost
+        raise ConnectionError, "not connected" unless @connected
         @drb_inbox.clear
         DRbBle.register(DRB_URI, self, timeout_ms: ACK_TIMEOUT_MS)
         DRb::DRbObject.new_with_uri(DRB_URI)
       end
 
       def send_chunk(bytes)
+        raise ConnectionError, "not connected" unless @connected
         if @drb_sent_at
           wait = POLLING_UNIT_MS - (Machine.board_millis - @drb_sent_at)
           sleep_ms(wait) if wait > 0

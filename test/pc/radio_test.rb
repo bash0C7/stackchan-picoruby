@@ -36,8 +36,8 @@ class RadioTest < Picotest::Test
   def test_non_notification_packets_are_returned_but_not_routed
     got = []
     @radio.on_notification = ->(handle, value) { got << [handle, value] }
-    @radio.push_pending("\x05\x00")
-    assert_equal "\x05\x00", @radio.pop_and_dispatch
+    @radio.push_pending("\x60\x00")
+    assert_equal "\x60\x00", @radio.pop_and_dispatch
     assert_equal [], got
   end
 
