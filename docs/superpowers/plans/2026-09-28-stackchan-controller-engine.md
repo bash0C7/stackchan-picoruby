@@ -384,7 +384,7 @@ The exact line strings (the `led` usage line included) are copied from today's `
 - `pc_lifecycle.rb#up`:
   - Requires `status[:connects].to_i >= 1`. Replaces `ble_connected`: under hold, the link may already be quiet or released by the time `status` answers.
   - With `config[:allow_busy]`, `status[:link] == "busy"` also passes.
-  - Otherwise, busy raises `Error, "robot is held by another controller: …"`.
+  - Otherwise, busy raises `Error, "robot is held by another controller or unreachable: …"`. From the Mac a held robot and an absent one are the same (a held robot does not advertise), so the message names both and `ALLOW_BUSY` also accepts no robot at all.
   - `Rakefile pc_lifecycle` reads `allow_busy: ENV["ALLOW_BUSY"] == "1"` and `sidecar_port` is threaded to the daemon job.
 - `tools/ambient_demo.rb` `wait_until_connected` runs `stackchan connect` until it exits 0 (exit 8 = retry after 3 s) instead of matching `ble_connected` in `status`. `tools/latency_baseline.zsh` says `pc:up` waits for the first connect.
 - `pc/stackchan-pico/app/fake_ble.rb` (`BLE_FAKE=1`) gains `lost?`, `reset_link`, `drain`, `keepalive` and `remote`, so `Link` runs on it.
@@ -433,7 +433,7 @@ The exact line strings (the `led` usage line included) are copied from today's `
 | `calibrate` | `cli calibrate --no-torque-toggle --format json --samples 3`, `stdin: "\n" * 5` | exit 0; the last output line parses as JSON (the prompts are on stdout before it); `servo_yaw_zero`/`servo_pitch_zero` are Integers; `forward_verify` deltas ≤ 3 |
 | `chat (sidecar STUB)` | `rake pc:down`, `sleep quiet_wait_s`, `rake pc:up` with `STUB=1`, then `cli chat こんにちは`; after the arm, `pc:down` and `pc:up` without `STUB` so the Mac is left on the real sidecar | output is exactly `reply=stub返答:こんにちは`. The reply was spoken, so `<A:done>` came back; the CLI would otherwise fail |
 | `release and reconnect` | `cli face neutral`; `status` → `connects` c0; `sleep quiet_wait_s`; `status` → `link` (the tick drains in `:quiet`, so `released` here means the release packet arrived); timed `cli face joy`; `status` | the face is OK and `connects == c0 + 1`. Detail: `release seen: yes/no, reconnect + face N.NN s` |
-| `hand-off Mac A → Mac B → Mac A` | `rake pc:up NS=handoff STACKCHAN_PORT=8797 STACKCHAN_SIDECAR_PORT=8798 STACKCHAN_LOGDIR=/tmp/stackchan-pico-handoff STUB=1 ALLOW_BUSY=1`; `sleep quiet_wait_s` (whatever B's start-up connect did has been released); `cli face neutral` on A; at once `cli face joy` with env `STACKCHAN_PORT=8797`, started less than 7 s after A's call returned (the step records the gap and stops if it is not); `sleep quiet_wait_s`; timed `face joy` on B; `sleep quiet_wait_s`; timed `face neutral` on A; `rake pc:down NS=handoff` | B's first `face` exits 8 with `busy:`; B's second and A's last exit 0 with `OK face=`. Each reconnect time is recorded in `timings["hand-off B"]` / `["hand-off A"]` |
+| `hand-off Mac A → Mac B → Mac A` | `cli face neutral` on A, then `status` on A; `rake pc:up NS=handoff STACKCHAN_PORT=8797 STACKCHAN_SIDECAR_PORT=8798 STACKCHAN_LOGDIR=/tmp/stackchan-pico-handoff STUB=1 ALLOW_BUSY=1`; `sleep quiet_wait_s` (whatever B's start-up connect did has been released); `cli face neutral` on A; at once `cli face joy` with env `STACKCHAN_PORT=8797`, started less than 7 s after A's call returned (the step records the gap and stops if it is not); `status` on A; `sleep quiet_wait_s`; timed `face joy` on B; `sleep quiet_wait_s`; timed `face neutral` on A; `rake pc:down NS=handoff` | A's `status` shows `link=held` before B's `pc:up` (A holds the robot, so B's busy is not an absent robot: from the Mac a held robot and an unreachable one look the same, since a held robot does not advertise); B's first `face` exits 8 with `busy:`; A's `status` right after it still shows `link=held`; B's second and A's last exit 0 with `OK face=`. Each reconnect time is recorded in `timings["hand-off B"]` / `["hand-off A"]` |
 
 The `pc:up` in the chat row passes `env: {"STUB" => "1"}`. The rest of the arm then runs against the STUB sidecar; the audio question refers to the earlier `say`.
 
@@ -448,6 +448,7 @@ The `pc:up` in the chat row passes `env: {"STUB" => "1"}`. The rest of the arm t
     - calibrate exits 6
     - `connects` does not grow
     - B is not busy (exit 1 instead of 8)
+    - A's `status` is not `link=held` before B's `pc:up`, or after B's busy
     - B's first call starts 7 s or more after A's
     - B never connects
   - Ordering:

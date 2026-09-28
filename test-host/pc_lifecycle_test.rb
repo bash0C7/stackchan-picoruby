@@ -162,7 +162,7 @@ end
 
   def test_a_busy_robot_fails_without_allow_busy
     error = assert_raise(PcLifecycle::Error) { subject.send(:check_status, { link: "busy", connects: 0 }) }
-    assert_match(/robot is held by another controller: /, error.message)
+    assert_match(/robot is held by another controller or unreachable: /, error.message)
   end
 
   def test_a_busy_robot_passes_with_allow_busy

@@ -94,7 +94,7 @@ class MacAppTest < Picotest::Test
     assert_equal 10_000, App.hold_ms
   end
 
-  def test_the_app_declares_todays_verbs
+  def test_the_app_declares_face_led_servo_torque_selftest_say_chat_and_demo
     names = App.actions.map { |pair| pair[0] }
     assert_equal [:connect, :status, :stop, :face, :led, :servo, :torque, :selftest, :say, :chat, :demo], names
   end

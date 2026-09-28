@@ -100,7 +100,7 @@ class PcLifecycle
   def check_status(status)
     if status[:link] == "busy"
       return status if @c[:allow_busy]
-      raise Error, "robot is held by another controller: #{status.inspect}"
+      raise Error, "robot is held by another controller or unreachable: #{status.inspect}"
     end
     unless status[:connects].to_i >= 1
       raise Error, "daemon is listening but has not connected to the robot: #{status.inspect}"
