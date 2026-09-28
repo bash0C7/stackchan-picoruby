@@ -74,20 +74,26 @@ an iPhone or a Watch.
 
 ### 1. Run the trial on the Mac
 
-On the Mac with the robot on USB, an iPhone and a paired Watch:
+The robot side of the trial runs unattended: the tooling picks the CoreS3 by
+USB serial (`.stackchan-usb-serial`, `rake r2p2:boards`), takes the esp32 lock
+it shares with R2P2-dev-harness, reads the board identity off flash and resets
+out of the capture before BLE. The base arm gets through build, flash, upload
+and boot; it stops at `pc:up`, because the launchd daemon has no Bluetooth
+permission.
 
-1. `git checkout claude/ecstatic-allen-s6qki1`; `rake vendor:setup` if
-   `vendor/` is absent (it clones R2P2-ESP32 and R2P2-darwin at the Rakefile's
-   refs; the trial pins them to the lock).
-2. Cheapest first check that the Mac side runs at all: `BLE_FAKE=1 rake pc:up`,
-   then `stackchan face joy` must print `OK face=joy`. `rake pc:down` after.
-3. `rake rigor:snapshot` (Ruby 4): `rigor.baseline.json` still names files
-   that moved, so `rake test` fails at `rigor:check` until it is retaken.
-4. `/stackchan-device-trial`, which runs `rake trial:run` (both arms, ~45 min).
-   Then `rake trial:touch` (touch the back of the head when
-   `[trial] >>> touch the back of the head` appears), `rake trial:answer`
-   (servo moved, subtitle intact, audio without gaps), `rake trial:darwin`
-   (needs `DEVELOPMENT_TEAM`), `rake trial:answer`.
+1. At the Mac (a person): allow StackchanPico under System Settings › Privacy &
+   Security › Bluetooth, or answer its pending prompt.
+2. `bundle exec rake pc:vm_build pc:app_bundle`, then `rake pc:up` in
+   `build/trial/base` must find the robot without a new prompt. That proves
+   the grant follows the app across rebuilds (`pc:app_bundle` signs with
+   `designated => identifier "com.bash0c7.stackchanpico"`). If it prompts
+   again, TCC keys ad-hoc apps by cdhash regardless, and the app needs a
+   valid signing certificate; every Apple Development certificate on this Mac
+   is revoked. `rake pc:down` after.
+3. `/stackchan-device-trial`, then `rake trial:touch`, `rake trial:answer`.
+4. `rake trial:darwin` needs `DEVELOPMENT_TEAM` and a valid certificate for
+   the iPhone and Watch builds. Both apps already build and run in trial mode
+   on the Simulator (`[trial] end`) against the locked picoruby.
 5. `trial/results/<stamp>.md` must read `verdict: pass`.
 
 What the trial arm checks by machine, beyond boot / face / LED / servo /
