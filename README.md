@@ -82,18 +82,24 @@ mrbgems/             picoruby-stackchan-robot (the engine: DSL, cold-boot
                      picoruby-stackchan-led (WS2812 ring), picoruby-si12t
                      (head touch), picoruby-aw88298 (amp + mu-law playback),
                      picoruby-drb-ble (dRuby over BLE),
-                     picoruby-stackchan-controller (the Mac-side BLE
-                     central, daemon, CLI, calibration, send builder and
-                     error hierarchy, which the PC loads as source). The
-                     device-side gems are prepended to the app by the
-                     Rakefile before compiling app.mrb.
+                     picoruby-stackchan-controller (the Mac-side engine:
+                     `StackChan.controller` DSL, BLE central, link
+                     hold/keepalive/reconnect, daemon, CLI, calibration,
+                     send builder and error hierarchy, which the Mac loads
+                     as source). The device-side gems are prepended to the
+                     app by the Rakefile before compiling app.mrb.
+apps/mac/app.rb      The Mac's behaviour: one `StackChan.controller do |c|
+                     ... end` naming the CLI's actions (face, led, servo,
+                     torque, selftest, say, chat, demo), the link hold time
+                     and the reply handler.
 aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
                      firmware: mu-law decode on core 1, glyph expansion on
                      core 0. See aot/README.md.
 
-pc/stackchan-pico/         Unified macOS-side CLI (`stackchan <verb>`), in
-                           PicoRuby — CLI + launchd-managed daemon + BLE central.
-                           See pc/stackchan-pico/README.md.
+pc/stackchan-pico/         Launchd and process glue for the macOS side: the
+                           `stackchan` wrapper and the boot files that load the
+                           controller gem and apps/mac/app.rb into the PicoRuby
+                           daemon and CLI. See pc/stackchan-pico/README.md.
 pc/stackchan/              CRuby support library for the AI/voice sidecar
                            only (Apple Foundation Model + say/afconvert
                            cannot run under PicoRuby).
@@ -112,7 +118,9 @@ The device suite loads the robot gem (all but its `< BLE` peripheral) with
 fakes for the display, LEDs, servos and touch, and evaluates
 `apps/robot/app.rb` with its requires stripped and `Robot#run` stubbed, so the
 app's handlers are exercised without the device. The pc suite loads the
-controller gem's mrblib against a `BLE` stub and `FakeRadio`. Device interaction (build, flash, deploy, capture) goes through the
+controller gem's mrblib and `apps/mac/app.rb` as they are, against a `BLE`
+stub, `FakeRadio` (which can drop the link and refuse connects) and
+`FakeRobotRadio`, with an injected clock. Device interaction (build, flash, deploy, capture) goes through the
 `stackchan-device-*` skills, which wrap the `r2p2:*` Rakefile tasks.
 
 ## Setting up a new machine
@@ -192,9 +200,12 @@ checkout before first use, and again after any Ruby ABI change.
 
 ## Quickstart (macOS side)
 
-A single CLI `stackchan` drives the robot. See
+A single CLI `stackchan` drives the robot. Its verbs are the actions declared
+in `apps/mac/app.rb` plus the built-ins `connect`, `status`, `stop`, `raw`,
+`calibrate`, `remote`, `touch` and `tui`; `stackchan` with no verb lists them,
+which needs the daemon running. See
 [pc/stackchan-pico/README.md](pc/stackchan-pico/README.md) for the full
-architecture, env vars, and verb list. `bundle exec rake pc:up` starts both
+architecture, env vars, link lifecycle and exit codes. `bundle exec rake pc:up` starts both
 backends — the CRuby AI/voice sidecar and the PicoRuby daemon, which owns
 the BLE connection — under launchd, recreating them every time it runs;
 `rake pc:down` stops the backends and removes their launchd plists. The CLI
@@ -204,19 +215,26 @@ StackChan by default:
 ```bash
 bundle exec rake pc:up                                   # (re)start the backends under launchd
 pc/stackchan-pico/bin/stackchan connect                  # explicit: bring the link up
-pc/stackchan-pico/bin/stackchan status                   # observe only
+pc/stackchan-pico/bin/stackchan status                   # one key=value line: link=held connects=1 ...
 pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
 pc/stackchan-pico/bin/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 pc/stackchan-pico/bin/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 pc/stackchan-pico/bin/stackchan torque on                # off lets you move the head by hand
 pc/stackchan-pico/bin/stackchan say "ぼくスタックチャンだよ"   # speaks + shows subtitle on LCD (first 19 chars)
 pc/stackchan-pico/bin/stackchan chat "おはよう"          # Apple Foundation Model reply + face + subtitle
-pc/stackchan-pico/bin/stackchan touch listen             # stream `<touch:N>` events as the head sensor fires
+pc/stackchan-pico/bin/stackchan touch listen --count 1 --timeout 30   # prints `touch zone=0 (back)` per tap
 pc/stackchan-pico/bin/stackchan demo                     # scripted intro: speak + face + servo + LED cycling
-pc/stackchan-pico/bin/stackchan tui                      # interactive servo/face REPL
+pc/stackchan-pico/bin/stackchan tui                      # one action per line
 pc/stackchan-pico/bin/stackchan calibrate --align-only   # torque off → operator aligns forward → torque on
-pc/stackchan-pico/bin/stackchan stop                     # explicit: tear the link down
+pc/stackchan-pico/bin/stackchan stop                     # the daemon exits
 ```
+
+The daemon holds the BLE link only while it is in use: the first action
+connects, a keepalive runs while actions keep coming, and `c.hold` ms
+(10 s in `apps/mac/app.rb`) after the last one the keepalive stops and the
+robot releases the link. The next action reconnects. When the robot is held
+by another central (another Mac, the iOS app) or cannot be reached, the verb
+prints `busy: …` and exits 8.
 
 ### Touch reactions
 
@@ -233,12 +251,15 @@ link is idle). Per zone:
 
 The PC side only sees the `<touch:N>` BLE notify, so `touch listen` is the
 right verb when you want a CLI side-effect (printing events) on top of the
-on-device visual feedback.
+on-device visual feedback. It prints `touch zone=N (back|right|left)` per
+tap, exits 0 after `--count` taps, and exits 1 on `--timeout` seconds or when
+the link is released.
 
 ### Interactive servo console
 
-`stackchan tui` — interactive servo TUI with short commands
-(`yl 50`, `pu 30`, `fwd`, `ton` / `toff`, `face joy`, …).
+`stackchan tui` reads one action per line with its arguments, the same words
+as on the command line (`face joy`, `servo --yaw-left 50 --time 500`,
+`torque off`); `h` lists the verbs and `q` quits.
 
 ### Calibration
 

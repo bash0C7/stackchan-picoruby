@@ -54,6 +54,7 @@ say which change it tried.
 | DSL step 1: protocol fold-in | `claude/stackchan-protocol-fold` (stackchan-picoruby, R2P2-ESP32) | the line above | host-green and firmware-built without the robot; QEMU gate PASS on this tree; trial dry run all OK (image `0x256cb0`); merges the gate branch; trial pins in this branch’s `trial/lock.yml`; before the run, base moves to `main` once PR #11 has merged |
 | picoruby: no raise while gems load at boot | `claude/no-raise-at-gem-init` (stackchan-picoruby, R2P2-ESP32, picoruby) | the line above | picoruby-uart and picoruby-ble load picoruby-irq / cyw43 with `extern` instead of a `require` that raises LoadError on ESP32; startup free stack of the picoruby task 248 → 2,072 B and 2 → 0 raises during `mrb_open` (gdb high-water mark under deterministic QEMU, fold tree); QEMU gate PASS; trial pins in `trial/lock.yml` |
 | DSL step 2: robot engine + `apps/robot/app.rb`, the robot releases an idle central | `claude/stackchan-robot-engine` (stackchan-picoruby, R2P2-ESP32); picoruby `claude/ble-peripheral-disconnect` | the line above | host-green (picotest, `test:host`); QEMU gate PASS evaluating `apps/robot/app.rb`; `bot.release_after 15_000` over `BLE#disconnect` (NimBLE `ble_gap_terminate`), every disconnect resets audio / dRuby / notify state; `Machine.stack_high_water_mark` reads 2,024 B right after boot under QEMU and the trial arm stops below 1,024 B after every handler kind ran; the rp2040 port of `BLE_peripheral_disconnect` is not compiled here; trial pins in `trial/lock.yml` |
+| DSL step 3: controller engine + `apps/mac/app.rb`, shared gem removed | `claude/stackchan-controller-engine` (stackchan-picoruby) | the line above | host-green (picotest, `test:host`); no firmware, R2P2-ESP32, picoruby or R2P2-darwin change, so both arms build and flash per the lock; the controller holds the link only while in use (`c.hold 10_000`, keepalive only while held, reconnect on the next action, busy = exit 8); trial pins in `trial/lock.yml`, and the trial runs `trial:run` → `trial:touch` → `trial:answer` → `trial:darwin` → `trial:answer`, so the verdict waits on the operator's answers and `trial:darwin`. Unverified: the Mac VM running it (`pc:up BLE_FAKE=1` then `stackchan face joy` is the cheapest first check); launchd (`pc:up` accepting `connects >= 1`, `ALLOW_BUSY`, the second daemon's sidecar-port argv; the `plutil` tests are omitted off the Mac); rediscovery within 15 s after the robot releases; `gets` from a pipe for `calibrate`; `rigor.baseline.json` not retaken (rigor needs Ruby 4; it names moved files); `hold 10_000` chosen before the reconnect cost is measured |
 
 DSL steps 2–6 (`docs/superpowers/specs/2026-09-27-stackchan-dsl-design.md`)
 each get their own branch, stacked on the step before, named when the step
@@ -88,8 +89,8 @@ None of it merges before `/stackchan-device-trial` passes on the robot.
 picoruby, each gem mruby caches under `build/repos/`, suppify / spinel /
 picoruby-multicore, R2P2-darwin — for two arms: `base` (main as it is) and
 `trial` (these branches). `rake trial:run` first pins R2P2-darwin and builds
-the Mac VM and app bundle once for both arms (each arm's daemon loads the
-shared gem as source from its own worktree), then builds each arm with its own
+the Mac VM and app bundle once for both arms (each arm's daemon loads its
+gems as source from its own worktree), then builds each arm with its own
 worktree's tooling, checks the pins before and after the build, uploads the
 arm's `app:` from the lock (`app/application.rb` when absent), checks the
 boot log (markers, App version, no fault), drives torque / face / LED /
