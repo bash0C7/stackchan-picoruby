@@ -803,7 +803,7 @@ namespace :pc do
     mkdir_p macos_dir
     cp vm, File.join(macos_dir, "picoruby")
     cp File.expand_path("pc/stackchan-pico/StackchanPico-Info.plist", __dir__), File.join(app, "Contents", "Info.plist")
-    sh "codesign", "--force", "--deep", "-s", "-", app
+    sh "codesign", "--force", "--deep", "-s", "-", "-r=designated => identifier \"com.bash0c7.stackchanpico\"", app
     puts "[pc:app_bundle] #{app} ready"
   end
 

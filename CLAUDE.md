@@ -100,6 +100,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 - `bootout` は unload 完了前に返る。ポートが空くのと service 登録が消えるのは別のシグナルで、ポートは数ミリ秒で空くのに登録は残る。`launchctl print` が失敗する (= 不在) まで待ってから bootstrap する。
 - **daemon のポートを接続で確認しない。** `wait_for_port` が connect して即 close すると、見捨てられた接続が drb ポートに残る。daemon は起動中 (sidecar priming) にブロックしており、協調 Task なのでそれを処理できず、後で相手のいないソケットへ書いて SIGPIPE で死ぬ。実測で bring-up 15 回中 4 回失敗、接続しない確認 (lsof) に変えて 15 回中 0 回。PicoRuby VM は SIGPIPE を trap できない (`Signal.list` に `PIPE` が無く、`Signal.trap` はどの形でも `SystemStackError`)。したがって「クライアントが切断すると daemon が死ぬ」性質自体は残っており、塞ぐには picoruby の socket 層で `SO_NOSIGPIPE` が要る。
 - Ruby 4.0 は `drb` を default gem から外した。root の `Gemfile` に `gem 'drb'` が要る。host test は verifier を注入して本物の DRb 経路を通らないので、テストは緑のまま実機で LoadError になる。
+- CoreBluetooth の許可 (TCC) は app の designated requirement に付く。`codesign -s -` だけの ad-hoc 署名では requirement が cdhash になり、`pc:vm_build` → `pc:app_bundle` で VM が変わるたびに別の app として扱われ、launchd から起動した daemon は許可ダイアログ待ちのまま scan 結果を 1 件も受け取らない (`no StackChan advertiser found`、状態通知も来ない)。Terminal から走らせた scan は Terminal の許可で動くので切り分けにならない。`pc:app_bundle` は requirement を `identifier "com.bash0c7.stackchanpico"` に固定して署名する。この Mac の Apple Development 証明書は全部失効している。
 
 ## テスト
 
