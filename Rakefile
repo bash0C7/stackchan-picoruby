@@ -18,7 +18,7 @@ R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/stackchan-robot-engine"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
-R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "main"
+R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "claude/external-app"
 R2P2_DARWIN_ROOT = File.expand_path("vendor/R2P2-darwin", __dir__)
 
 namespace :vendor do
@@ -756,13 +756,13 @@ namespace :r2p2 do
 end
 
 namespace :pc do
-  desc "build vendor/R2P2-darwin's picoruby VM with the stackchan-pc config (input to pc:app_bundle)"
+  desc "build vendor/R2P2-darwin's picoruby VM with build_config/darwin-stackchan-pc.rb (input to pc:app_bundle)"
   task :vm_build do
     darwin = R2P2_DARWIN_ROOT
     src    = File.join(darwin, "vendor", "picoruby")
     abort "#{src} not found — run `bundle exec rake vendor:setup` first" unless Dir.exist?(src)
     sh({ "MRUBY_BUILD_DIR" => File.join(darwin, "build"),
-         "MRUBY_CONFIG"    => File.join(darwin, "build_config", "r2p2-stackchan-pc.rb") },
+         "MRUBY_CONFIG"    => File.expand_path("build_config/darwin-stackchan-pc.rb", __dir__) },
        "rake", "-C", src)
   end
 
@@ -815,6 +815,57 @@ namespace :pc do
   end
 end
 
+
+APPLE_APPS = {
+  "ios"     => { scheme: "Stackchan",      bundle: "com.bash0c7.picoruby.Stackchan" },
+  "watchos" => { scheme: "WatchStackchan", bundle: "com.bash0c7.picoruby.WatchStackchan" },
+}.freeze
+
+def apple_app_env(platform)
+  app = APPLE_APPS.fetch(platform)
+  { "APP_DIR"             => File.expand_path("apps/#{platform}", __dir__),
+    "APP_NAME"            => "stackchan",
+    "APP_SCHEME"          => app[:scheme],
+    "APP_BUNDLE"          => app[:bundle],
+    "MRUBY_CONFIG"        => File.expand_path("build_config/darwin-stackchan-#{platform}-sim.rb", __dir__),
+    "MRUBY_CONFIG_DEVICE" => File.expand_path("build_config/darwin-stackchan-#{platform}-device.rb", __dir__) }
+end
+
+def apple_app_rake(platform, task, env = {})
+  abort "#{R2P2_DARWIN_ROOT} not found — run `bundle exec rake vendor:setup` first" unless Dir.exist?(R2P2_DARWIN_ROOT)
+  sh apple_app_env(platform).merge(env), "rake", "-C", R2P2_DARWIN_ROOT, "#{platform}:app:#{task}"
+end
+
+APPLE_APPS.each_key do |platform|
+  namespace platform do
+    { "lib" => "cross-build libmruby.a for the Simulator and stage it under apps/#{platform}/Vendor",
+      "gen" => "generate apps/#{platform}'s Xcode project",
+      "build" => "build apps/#{platform} for the Simulator",
+      "run" => "install and launch apps/#{platform} on a Simulator",
+      "all" => "lib -> gen -> build -> run on the Simulator" }.each do |t, what|
+      desc "#{platform}: #{what} (vendor/R2P2-darwin #{platform}:app:#{t})"
+      task(t) { apple_app_rake(platform, t) }
+    end
+
+    namespace :device do
+      { "lib" => "cross-build libmruby.a for the device and stage it under apps/#{platform}/Vendor",
+        "build" => "build apps/#{platform}, signed, for the connected device",
+        "check" => "link apps/#{platform} for a generic device without signing",
+        "run" => "install and launch apps/#{platform} on the connected device (APP_LAUNCH_ARGS=, APP_CONSOLE=1)",
+        "all" => "lib -> gen -> build -> run on the device" }.each do |t, what|
+        desc "#{platform}: #{what} (vendor/R2P2-darwin #{platform}:app:device:#{t})"
+        task(t) { apple_app_rake(platform, "device:#{t}") }
+      end
+    end
+  end
+end
+
+namespace :ios do
+  desc "ios: launch apps/ios on a frozen Simulator N times and require the VM to open (vendor/R2P2-darwin ios:app:observe)"
+  task :observe do
+    apple_app_rake("ios", "observe", "APP_GOLDEN" => "[Stackchan] VM opened")
+  end
+end
 
 # Device trial (trial/lock.yml): the robot running each arm, built from pinned
 # commits, driven from the Mac, timed in one session. lib/device_trial.rb holds
