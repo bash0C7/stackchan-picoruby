@@ -39,14 +39,20 @@ class DeviceTrialOps
     [ok, out, 0]
   end
 
-  def cli(root, *args)
+  def cli(root, *args, env: {}, stdin: nil)
     cli = File.join(root, "pc", "stackchan-pico", "bin", "stackchan")
-    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    out, status = Bundler.with_unbundled_env { Open3.capture2e(cli, *args) }
-    t = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
-    puts "[trial] stackchan #{args.join(' ')} -> rc=#{status.exitstatus} #{format('%.3f', t)}s"
-    [status.success?, out, t]
+    t0 = now
+    out, status = Bundler.with_unbundled_env { Open3.capture2e(env, cli, *args, stdin_data: stdin.to_s) }
+    t = now - t0
+    envs = env.map { |k, v| "#{k}=#{v} " }.join
+    puts "[trial] #{envs}stackchan #{args.join(' ')} -> rc=#{status.exitstatus} #{format('%.3f', t)}s"
+    [status.success?, out.force_encoding(Encoding::UTF_8), t, status.exitstatus]
   end
+
+  def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  def sleep(seconds) = Kernel.sleep(seconds)
+  def notice(text) = puts("[trial] >>> #{text}")
+  def tty? = $stdin.tty?
 
   def prompt(question)
     return nil unless $stdin.tty?

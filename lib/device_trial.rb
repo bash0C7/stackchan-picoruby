@@ -4,11 +4,15 @@
 # can tell. Everything touching the machine goes through `ops` (Rakefile's
 # DeviceTrialOps), so the order, the pins and the pass rules are host-tested.
 #
-# ops: git(dir, *args) / rake(dir, *tasks, env:, bundle:) / cli(root, *args) -> [ok, output, seconds]
+# ops: git(dir, *args) / rake(dir, *tasks, env:, bundle:) -> [ok, output, seconds]
+#      cli(root, *args, env:, stdin:) -> [ok, output, seconds, exitstatus]
 #      read(path) / exist?(path) / link(target, path) / prompt(question) -> "y" | "n" | nil
+#      sleep(seconds) / notice(text) / now -> seconds / tty?
 #
 # A question nobody answers (no TTY) stays nil; `rake trial:answer` asks it
 # afterwards, and the verdict stays "incomplete" until every answer is "y".
+require "json"
+
 class DeviceTrial
   class Stop < StandardError; end
 
@@ -23,6 +27,13 @@ class DeviceTrial
   BOOT_CAPTURE_S = 25
   DETAIL = /<Y[LR]_actual:\d+,PU_actual:\d+>/
   STACK_FLOOR = 1024
+  STUB_REPLY = "reply=stub返答:こんにちは"
+  VERIFY_TOLERANCE = 3
+  HANDOFF_GAP_S = 7
+  HANDOFF_UP = { "NS" => "handoff", "STACKCHAN_PORT" => "8797", "STACKCHAN_SIDECAR_PORT" => "8798",
+                 "STACKCHAN_LOGDIR" => "/tmp/stackchan-pico-handoff", "STUB" => "1", "ALLOW_BUSY" => "1" }.freeze
+  HANDOFF_DOWN = { "NS" => "handoff" }.freeze
+  MAC_B = { "STACKCHAN_PORT" => "8797" }.freeze
 
   attr_reader :report
 
@@ -67,6 +78,7 @@ class DeviceTrial
     arm = @lock.fetch("arms").fetch(name)
     r = @report["arms"][name] = { "steps" => [], "timings" => {}, "human" => {} }
     wt = worktree(name)
+    @stub_sidecar = false
 
     step(r, "pin trees") { prepare(arm, wt) }
     step(r, "pins hold before setup") { verify(arm, wt, aot: false) }
@@ -108,6 +120,7 @@ class DeviceTrial
     end
 
     measure(r, wt, arm)
+    controller(r, wt, arm) if arm["controller"]
     if arm["stack_check"]
       step(r, "stack high-water") do
         out = cli!(wt, "remote", "stack_free")
@@ -119,6 +132,14 @@ class DeviceTrial
     end
     ask(r, name, arm)
     step(r, "torque off") { cli!(wt, "torque", "off") }
+    restore_sidecar(r, wt)
+  rescue Stop => e
+    begin
+      restore_sidecar(r, wt)
+    rescue Stop
+      nil
+    end
+    raise e
   end
 
   # iOS and watchOS against the trial arm's firmware: device builds of the
@@ -159,11 +180,11 @@ class DeviceTrial
   def verdict
     arms = @report["arms"].values
     all_steps = [@report["pc_vm"], *arms, @report["darwin"]].compact.flat_map { |a| a["steps"] }
-    return "fail" unless all_steps.all? { |s| s["ok"] }
+    return "fail" if all_steps.any? { |s| s["ok"] == false }
     return "incomplete" if arms.empty?
     answers = (arms + [@report["darwin"]].compact).flat_map { |a| a["human"].values.map { |h| h["answer"] } }
     return "fail" if answers.include?("n")
-    return "incomplete" unless answers.all? { |v| v == "y" } && @report["arms"].key?("trial") && @report["darwin"]
+    return "incomplete" unless all_steps.all? { |s| s["ok"] } && answers.all? { |v| v == "y" } && @report["arms"].key?("trial") && @report["darwin"]
     "pass"
   end
 
@@ -284,6 +305,140 @@ class DeviceTrial
     questions.each { |key, q| r["human"][key] = { "question" => q, "answer" => @ops.prompt(q) } }
   end
 
+  # --- controller -----------------------------------------------------------
+
+  def quiet_wait_s(wt, arm)
+    app = File.join(wt, arm.fetch("app", "app/application.rb"))
+    release_after = @ops.read(app).to_s[/release_after\s+([\d_]+)/, 1]
+    raise Stop, "no `release_after` in #{app}" unless release_after
+    hold = status(wt)["hold_ms"].to_s
+    raise Stop, "`stackchan status` has no hold_ms" unless hold.match?(/\A\d+\z/)
+    (hold.to_i + release_after.delete("_").to_i) / 1000 + 5
+  end
+
+  def controller(r, wt, arm)
+    step(r, "quiet wait") { @quiet = quiet_wait_s(wt, arm); "#{@quiet} s" }
+    step(r, "selftest") do
+      out = cli!(wt, "selftest")
+      raise Stop, "no `OK selftest` in #{out.inspect}" unless out.include?("OK selftest")
+      "OK selftest"
+    end
+    touch(r, wt)
+    step(r, "calibrate") { calibrate(wt) }
+    step(r, "chat (sidecar STUB)") do
+      rake(wt, "pc:down")
+      @stub_sidecar = true
+      @ops.sleep(@quiet)
+      rake(wt, "pc:up", env: { "STUB" => "1" })
+      out = cli!(wt, "chat", "こんにちは").strip
+      raise Stop, "want #{STUB_REPLY.inspect}, got #{out.inspect}" unless out == STUB_REPLY
+      out
+    end
+    step(r, "release and reconnect") { release_and_reconnect(r, wt) }
+    step(r, "hand-off Mac A → Mac B → Mac A") { hand_off(r, wt) }
+  end
+
+  def status(wt)
+    out = cli!(wt, "status")
+    line = out.lines.find { |l| l.start_with?("link=") }
+    raise Stop, "no `link=` line in #{out.inspect}" unless line
+    line.split.to_h { |kv| k, v = kv.split("=", 2); [k, v.to_s] }
+  end
+
+  def touch(r, wt)
+    unless @ops.tty?
+      r["steps"] << { "name" => "touch listen", "ok" => nil, "detail" => "incomplete: no TTY, nobody to touch the head" }
+      return
+    end
+    step(r, "touch listen") do
+      @ops.notice("touch the back of the head")
+      _, out, _, code = @ops.cli(wt, "touch", "listen", "--count", "1", "--timeout", "30")
+      zone = out[/touch zone=\d.*/]
+      raise Stop, "touch listen exit #{code}:\n#{out}" unless code == 0 && zone
+      zone.strip
+    end
+  end
+
+  def calibrate(wt)
+    _, out, _, code = @ops.cli(wt, "calibrate", "--no-torque-toggle", "--format", "json", "--samples", "3", stdin: "\n" * 5)
+    raise Stop, "calibrate exit #{code}:\n#{out}" unless code == 0
+    last = out.lines.map(&:strip).reject(&:empty?).last.to_s
+    json = begin
+      JSON.parse(last)
+    rescue JSON::ParserError
+      nil
+    end
+    raise Stop, "the last line is not a JSON object: #{last.inspect}" unless json.is_a?(Hash)
+    yz = json["servo_yaw_zero"]
+    pz = json["servo_pitch_zero"]
+    raise Stop, "zeros are not Integers: #{last}" unless yz.is_a?(Integer) && pz.is_a?(Integer)
+    fv = json["forward_verify"].is_a?(Hash) ? json["forward_verify"] : {}
+    deltas = [fv["yaw_delta"], fv["pitch_delta"]]
+    unless deltas.all? { |d| d.is_a?(Integer) && d.abs <= VERIFY_TOLERANCE }
+      raise Stop, "forward_verify #{fv.inspect} is not within #{VERIFY_TOLERANCE}"
+    end
+    "yaw_zero #{yz}, pitch_zero #{pz}, verify delta #{deltas.join('/')}"
+  end
+
+  def release_and_reconnect(r, wt)
+    cli!(wt, "face", "neutral")
+    c0 = status(wt)["connects"].to_i
+    @ops.sleep(@quiet)
+    seen = status(wt)["link"] == "released"
+    t = face!(wt, "joy", {}, "face joy after the release failed")
+    c1 = status(wt)["connects"].to_i
+    raise Stop, "connects #{c0} -> #{c1}, want #{c0 + 1}" unless c1 == c0 + 1
+    (r["timings"]["release and reconnect"] ||= []) << t
+    format("release seen: %s, reconnect + face %.2f s", seen ? "yes" : "no", t)
+  end
+
+  def hand_off(r, wt)
+    cli!(wt, "face", "neutral")
+    link = status(wt)["link"]
+    raise Stop, "Mac A shows link=#{link} before Mac B starts; want held" unless link == "held"
+    begin
+      rake(wt, "pc:up", env: HANDOFF_UP)
+      @ops.sleep(@quiet)
+      cli!(wt, "face", "neutral")
+      a_done = @ops.now
+      gap = @ops.now - a_done
+      if gap >= HANDOFF_GAP_S
+        raise Stop, format("Mac B's first call starts %.2f s after Mac A's returned; want < %d s", gap, HANDOFF_GAP_S)
+      end
+      _, out, _, code = @ops.cli(wt, "face", "joy", env: MAC_B)
+      raise Stop, "Mac B was not busy: exit #{code}\n#{out}" unless code == 8 && out.include?("busy:")
+      link = status(wt)["link"]
+      raise Stop, "Mac A shows link=#{link} after Mac B's busy; want held" unless link == "held"
+      @ops.sleep(@quiet)
+      tb = face!(wt, "joy", MAC_B, "Mac B never connects")
+      @ops.sleep(@quiet)
+      ta = face!(wt, "neutral", {}, "Mac A does not get the robot back")
+    rescue Stop => e
+      @ops.rake(wt, "pc:down", env: HANDOFF_DOWN)
+      raise e
+    end
+    rake(wt, "pc:down", env: HANDOFF_DOWN)
+    (r["timings"]["hand-off B"] ||= []) << tb
+    (r["timings"]["hand-off A"] ||= []) << ta
+    format("gap %.2f s, B %.2f s, A %.2f s", gap, tb, ta)
+  end
+
+  def face!(wt, face, env, why)
+    ok, out, t, code = @ops.cli(wt, "face", face, env: env)
+    raise Stop, "#{why}: exit #{code}\n#{out}" unless ok && out.include?("OK face=")
+    t
+  end
+
+  def restore_sidecar(r, wt)
+    return unless @stub_sidecar
+    @stub_sidecar = false
+    step(r, "pc:up (real sidecar)") do
+      rake(wt, "pc:down")
+      @ops.sleep(@quiet)
+      rake(wt, "pc:up")
+    end
+  end
+
   # --- plumbing -------------------------------------------------------------
 
   def step(r, name)
@@ -327,6 +482,8 @@ class DeviceTrial
     n.odd? ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2.0
   end
 
+  def mark(s) = s["ok"].nil? ? "incomplete" : (s["ok"] ? "ok" : "FAIL")
+
   def markdown
     out = +"# Device trial #{@report['stamp']}\n\n**verdict: #{@report['verdict']}**\n\n"
     out << "## Pins\n\n"
@@ -339,11 +496,11 @@ class DeviceTrial
     out << "- darwin: R2P2-darwin `#{@lock.dig('darwin', 'R2P2-darwin').to_s[0, 7]}`\n" if @lock["darwin"]
     if (p = @report["pc_vm"])
       out << "\n## pc_vm\n\n| step | ok | detail |\n|---|---|---|\n"
-      p["steps"].each { |s| out << "| #{s['name']} | #{s['ok'] ? 'ok' : 'FAIL'} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
+      p["steps"].each { |s| out << "| #{s['name']} | #{mark(s)} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
     end
     @report["arms"].each do |name, r|
       out << "\n## #{name}\n\n| step | ok | detail |\n|---|---|---|\n"
-      r["steps"].each { |s| out << "| #{s['name']} | #{s['ok'] ? 'ok' : 'FAIL'} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
+      r["steps"].each { |s| out << "| #{s['name']} | #{mark(s)} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
       out << "\n" << r["human"].map { |k, h| "- #{h['question']}: #{h['answer'] || 'unanswered'}" }.join("\n") << "\n" unless r["human"].empty?
     end
     series = @report["arms"].values.flat_map { |r| r["timings"].keys }.uniq
@@ -357,7 +514,7 @@ class DeviceTrial
     end
     if (d = @report["darwin"])
       out << "\n## darwin\n\n| step | ok | detail |\n|---|---|---|\n"
-      d["steps"].each { |s| out << "| #{s['name']} | #{s['ok'] ? 'ok' : 'FAIL'} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
+      d["steps"].each { |s| out << "| #{s['name']} | #{mark(s)} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
       out << "\n" << d["human"].map { |k, h| "- #{h['question']}: #{h['answer'] || 'unanswered'}" }.join("\n") << "\n"
     end
     out

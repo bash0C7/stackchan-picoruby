@@ -39,6 +39,7 @@ arms:
       - "[application] BLE peripheral starting"
     remote: true
     stack_check: true
+    controller: true
     app: apps/robot/app.rb
 
 # iOS / watchOS apps, run against the trial arm's firmware.
