@@ -1,0 +1,69 @@
+name: WatchStackchan
+options:
+  bundleIdPrefix: com.bash0c7.picoruby
+  deploymentTarget:
+    watchOS: "26.0"
+packages:
+  PicoBLEDarwin:
+    path: ${R2P2_DARWIN}/vendor/picoruby/mrbgems/picoruby-ble/ports/darwin/ext
+targets:
+  WatchStackchan:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Sources
+      - path: app.rb
+        buildPhase: resources
+      - path: ${R2P2_DARWIN}/bridge
+        includes:
+          - "picoruby_bridge.c"
+          - "picoruby_bridge.h"
+          - "task_hal_ios.c"
+    dependencies:
+      - package: PicoBLEDarwin
+        embed: true
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/WatchStackchan-Bridging-Header.h
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "$(inherited)"
+          - "PICORB_ALLOC_ESTALLOC"
+          - "PICORB_ALLOC_ALIGN=8"
+          - "MRB_NO_BOXING"
+          - "MRB_INT64"
+          - "MRB_UTF8_STRING"
+          - "PICORB_PLATFORM_POSIX"
+          - "PICORB_PLATFORM_DARWIN"
+          - "MRB_TICK_UNIT=4"
+          - "MRB_TIMESLICE_TICK_COUNT=3"
+          - "MRB_USE_TASK_SCHEDULER=1"
+          - "MRB_USE_VM_SWITCH_DISPATCH=1"
+          - "MRB_BASELINE_PROFILE=1"
+          - "HEAP_SIZE=4194304"
+        HEADER_SEARCH_PATHS:
+          - "${R2P2_DARWIN}/vendor/picoruby/include"
+          - "${R2P2_DARWIN}/vendor/picoruby/mrbgems/mruby-compiler/include"
+          - "${R2P2_DARWIN}/vendor/picoruby/mrbgems/mruby-compiler/lib/prism/include"
+          - "${R2P2_DARWIN}/vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/include"
+          - "${R2P2_DARWIN}/vendor/picoruby/mrbgems/picoruby-mruby/include"
+          - "${R2P2_DARWIN}/build/watchos-stackchan-sim/include"
+          - "${R2P2_DARWIN}/build/watchos-stackchan-device/include"
+          - "${R2P2_DARWIN}/vendor/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
+          - "${R2P2_DARWIN}/bridge"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/lib"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        OTHER_LDFLAGS:
+          - "-lmruby"
+          - "-framework"
+          - "Security"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_WKApplication: "YES"
+        INFOPLIST_KEY_WKWatchOnly: "YES"
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Connect to your Stack-chan robot over Bluetooth."
+        TARGETED_DEVICE_FAMILY: "4"
+        PRODUCT_BUNDLE_IDENTIFIER: com.bash0c7.picoruby.WatchStackchan
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SM5792D355

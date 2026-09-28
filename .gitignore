@@ -17,3 +17,6 @@ pc/*/tmp/
 /.claude/worktrees/
 
 /.rigor/
+
+/apps/*/Vendor/
+/apps/*/*.xcodeproj/
