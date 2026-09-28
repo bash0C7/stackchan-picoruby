@@ -87,16 +87,35 @@
 - [ ] Step 3: QEMU probe for the robot app: requires + device gems + the app source with `StackChan.robot` evaluated and `run` not called (probe defines `StackChan::Robot#run` as a no-op before the app); `r2p2:qemu_check` PASS. Negative: a Regexp in `apps/robot/app.rb` → FAIL.
 - [ ] Step 4: all suites + `test:host` green; commit.
 
-### Task 6: `Machine.stack_high_water_mark` in R2P2-ESP32; the trial checks it
+### Task 6: The robot releases an idle central; every disconnect resets the link state
 
-**Files:**
-- R2P2-ESP32 `components/picoruby-esp32/picoruby-esp32.c` (mruby VM only): after `mrb_open_with_custom_alloc`, define `Machine.stack_high_water_mark` → `uxTaskGetStackHighWaterMark(NULL)` (bytes on ESP-IDF). Generic, no StackChan name. Branch `claude/stackchan-robot-engine` on `claude/stackchan-protocol-fold`.
-- This repo: `lib/qemu_gate.rb` probe prints `QEMU_STACK_FREE=<n>` and the verdict FAILs when it is missing or `< 1024`; `lib/device_trial.rb` step "stack high-water" after every handler kind has run: `stackchan remote stack_free` → FAIL when `< 1024`; `Rakefile` `R2P2_ESP32_REF`, `trial/lock.yml` R2P2-ESP32 pin, `test-host/*`.
+**Files:** `mrblib/stackchan-robot/{builder,link_loop,peripheral,audio_receiver,drb_channel}.rb`, `mrblib/stackchan-robot.rb`, `apps/robot/app.rb`, tests under `test/device/`, `Rakefile` (`R2P2_ESP32_REF`)
 
-- [ ] Step 1: failing host tests: verdict FAILs without / with a low `QEMU_STACK_FREE`; trial step parses `<stack_free:N>` and stops below 1024.
-- [ ] Step 2: C method; firmware builds; QEMU PASS with a printed value.
-- [ ] Step 3: commit both repos; push R2P2-ESP32 branch.
+**Interfaces:**
+- `bot.release_after(ms)`: positive Integer; without it the robot never releases.
+- `LinkLoop` takes `release_after:`; the port answers `disconnect_central`, which the Peripheral implements with `BLE#disconnect` (picoruby `claude/ble-peripheral-disconnect`, 9c4636a).
+- On a tick with a central connected and `clock` − last RX ≥ `release_after`, LinkLoop asks the port to disconnect, once per connection.
+- Every disconnect (the event, whether released or dropped by the central) resets notify state, the latency stamp, the dRuby responder, and the audio receiver, so a partial `<A:n>` never swallows the next central's frames.
+- `apps/robot/app.rb` declares `bot.release_after 15_000`: above the controllers' 7 s keepalive, below the Mac's 15–20 s idle drop, so the robot is the one that decides.
 
-### Task 7: Pins, dry run, CI
+- [ ] Step 1: failing host tests with an injected clock and a fake port:
+  - the release fires exactly once after `release_after` without RX;
+  - RX restarts the timer;
+  - there is no release while no central is connected;
+  - a disconnect mid-audio resets the receiver, so the next frame dispatches;
+  - the `release_after` DSL argument is validated.
+- [ ] Step 2: implement; `R2P2_ESP32_REF` → `claude/ble-peripheral-disconnect`. Commit.
 
-- [ ] `trial/lock.yml` trial arm pins this branch and the R2P2-ESP32 commit; trial dry run (pin → setup → pins → `qemu_check` → build → pins → `sdkconfig.h`) all OK; CI `firmware.yml` green on the branch; HANDOFF "Branches in flight" row for this unit.
+### Task 7: `Machine.stack_high_water_mark` in R2P2-ESP32; the trial checks the tick path
+
+- R2P2-ESP32 `components/picoruby-esp32/picoruby-esp32.c` (mruby VM): after `mrb_open_with_custom_alloc`, define `Machine.stack_high_water_mark` → `uxTaskGetStackHighWaterMark(NULL)` (bytes). It is generic: no StackChan name. Branch `claude/stackchan-robot-engine` on `claude/ble-peripheral-disconnect` (b27f39f).
+- This repo, `lib/device_trial.rb`: a "stack high-water" step, run after every handler kind has run, calls `stackchan remote stack_free` and stops below 1024. `test-host/device_trial_test.rb` covers ok, low and unknown.
+- [ ] QEMU gate PASS with the C method present; host tests green; commit in both repos.
+
+### Task 8: Pins, dry run, CI
+
+- [ ] `trial/lock.yml` trial arm pins this branch, R2P2-ESP32 (the Task 7 commit) and picoruby 9c4636a, with `app: apps/robot/app.rb`.
+- [ ] Trial dry run all OK: pin → setup → pins → `qemu_check` → build → pins → `sdkconfig.h`.
+- [ ] CI `firmware.yml` green.
+- [ ] HANDOFF "Branches in flight" row for this unit.
+- [ ] A PR in stackchan-picoruby, stacked on bash0C7/stackchan-picoruby#14.
