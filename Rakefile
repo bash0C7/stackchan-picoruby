@@ -186,7 +186,7 @@ namespace :picotest do
     Rake::Task["picotest:build"].invoke unless File.executable?(PICORUBY_VM)
   end
 
-  desc "Run the PicoRuby-native suites (device / pc / shared) on the host VM. SUITE=<name>, FILTER=<file substring>"
+  desc "Run the PicoRuby-native suites (device / pc / gems) on the host VM. SUITE=<name>, FILTER=<file substring>"
   task :run => :ensure_vm do
     $LOAD_PATH.unshift File.expand_path("test", __dir__)
     require "picotest/harness"
