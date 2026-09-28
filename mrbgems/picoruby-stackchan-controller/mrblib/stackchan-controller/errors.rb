@@ -1,8 +1,9 @@
-module Stackchan
-  module BLE
+module StackChan
+  class Controller
     class Error < StandardError; end
     class TimeoutError < Error; end
     class DeviceError < Error; end
     class ConnectionError < Error; end
+    class Busy < ConnectionError; end
   end
 end

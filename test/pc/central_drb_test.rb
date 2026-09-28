@@ -57,7 +57,7 @@ class CentralDrbTest < Picotest::Test
   end
 
   def test_a_robot_without_the_pair_does_not_connect
-    assert_raise(Stackchan::BLE::ConnectionError) { build(FakeRadio.new(services: services(with_drb: false))) }
+    assert_raise(StackChan::Controller::ConnectionError) { build(FakeRadio.new(services: services(with_drb: false))) }
   end
 
   def test_remote_call_round_trips

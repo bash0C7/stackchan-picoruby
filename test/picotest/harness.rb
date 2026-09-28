@@ -1,4 +1,4 @@
-# CRuby orchestrator for the picotest suites (device / pc / shared), all on
+# CRuby orchestrator for the picotest suites (device / pc / gems), all on
 # R2P2-ESP32's own host picoruby VM. Each suite lists what CRuby loads to
 # enumerate test classes and what is embedded into the VM script, in order.
 
@@ -33,10 +33,6 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
-  SHARED_MRBLIB = %w[
-    stackchan/ble/errors.rb
-    stackchan/ble/send_builder.rb
-  ].map { |f| File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "mrblib", f) }
   # picoruby-drb is not in the host VM: suites that need it load its mrblib as
   # source (Marshal is compiled in), then the drbble transport gem.
   # The AOT kernels' Ruby source stands in for the compiled kernels.
@@ -72,22 +68,16 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
       cruby: lambda {
         load PC_STUBS_RB
         PROTOCOL_MRBLIB.each { |f| require f }
-        SHARED_MRBLIB.each { |f| require f }
         CONTROLLER_MRBLIB.each { |f| load f }
         load PC_DRB_PATCH_RB
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
       },
       load_files: lambda {
         # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
-        files = [*DRB_MRBLIB, PC_STUBS_RB, *PROTOCOL_MRBLIB, *SHARED_MRBLIB, *CONTROLLER_MRBLIB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
+        files = [*DRB_MRBLIB, PC_STUBS_RB, *PROTOCOL_MRBLIB, *CONTROLLER_MRBLIB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files
       },
-    },
-    "shared" => {
-      dir: File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-shared", "test"),
-      cruby: lambda { PROTOCOL_MRBLIB.each { |f| require f }; SHARED_MRBLIB.each { |f| require f } },
-      load_files: lambda { [*PROTOCOL_MRBLIB, *SHARED_MRBLIB] },
     },
 }
   SUITES["aot"] = {

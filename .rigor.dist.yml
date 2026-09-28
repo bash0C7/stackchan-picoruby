@@ -27,7 +27,7 @@ signature_paths:
   - mrbgems/picoruby-si12t/sig
   - mrbgems/picoruby-stackchan-led/sig
   - mrbgems/picoruby-stackchan-protocol/sig
-  - mrbgems/picoruby-stackchan-shared/sig
+  - mrbgems/picoruby-stackchan-controller/sig
 
   - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-ble/sig
   - vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/picoruby-gpio/sig

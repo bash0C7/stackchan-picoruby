@@ -83,10 +83,8 @@ mrbgems/             picoruby-stackchan-robot (the engine: DSL, cold-boot
                      (head touch), picoruby-aw88298 (amp + mu-law playback),
                      picoruby-drb-ble (dRuby over BLE),
                      picoruby-stackchan-controller (the Mac-side BLE
-                     central, daemon, CLI and calibration, which the PC
-                     loads as source) and
-                     picoruby-stackchan-shared (send builder and BLE error
-                     hierarchy, which the PC daemon loads as source). The
+                     central, daemon, CLI, calibration, send builder and
+                     error hierarchy, which the PC loads as source). The
                      device-side gems are prepended to the app by the
                      Rakefile before compiling app.mrb.
 aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
@@ -172,8 +170,8 @@ idempotent and recreates the launchd jobs each time.
 
 ```bash
 bundle exec rake picotest:build        # host picoruby VM from build_config/picoruby-test.rb
-bundle exec rake test                  # picotest: device / pc / shared suites
-bundle exec rake test:host             # CRuby-only tools and the class extractor
+bundle exec rake test                  # picotest: device / pc suites and each gem's own
+bundle exec rake test:host             # CRuby-only tools
 ```
 
 `rake test` reads the source of `picoruby-scservo`, which is fetched from GitHub at

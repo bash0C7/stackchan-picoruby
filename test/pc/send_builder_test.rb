@@ -1,6 +1,6 @@
-class StackchanSharedTest < Picotest::Test
+class SendBuilderTest < Picotest::Test
   def test_send_builder_keeps_one_frame_per_key_in_first_occurrence_order
-    b = Stackchan::BLE::SendBuilder.new
+    b = StackChan::Controller::SendBuilder.new
     b.face(:smile)
     b.led(:green, side: :both, mode: :solid)
     b.led(:red, side: :left, mode: :blink)
@@ -15,7 +15,7 @@ class StackchanSharedTest < Picotest::Test
   end
 
   def test_send_builder_rewriting_an_earlier_key_keeps_its_first_position
-    b = Stackchan::BLE::SendBuilder.new
+    b = StackChan::Controller::SendBuilder.new
     b.face(:smile)
     b.led(:blue)
     b.face(:sad)
@@ -23,13 +23,14 @@ class StackchanSharedTest < Picotest::Test
   end
 
   def test_send_builder_rejects_an_unknown_led_color
-    assert_raise(ArgumentError) { Stackchan::BLE::SendBuilder.new.led(:rgb) }
+    assert_raise(ArgumentError) { StackChan::Controller::SendBuilder.new.led(:rgb) }
   end
 
-  def test_ble_error_hierarchy
-    assert Stackchan::BLE::TimeoutError.ancestors.include?(Stackchan::BLE::Error)
-    assert Stackchan::BLE::DeviceError.ancestors.include?(Stackchan::BLE::Error)
-    assert Stackchan::BLE::ConnectionError.ancestors.include?(Stackchan::BLE::Error)
-    assert Stackchan::BLE::Error.ancestors.include?(StandardError)
+  def test_error_hierarchy
+    assert StackChan::Controller::TimeoutError.ancestors.include?(StackChan::Controller::Error)
+    assert StackChan::Controller::DeviceError.ancestors.include?(StackChan::Controller::Error)
+    assert StackChan::Controller::ConnectionError.ancestors.include?(StackChan::Controller::Error)
+    assert StackChan::Controller::Busy.ancestors.include?(StackChan::Controller::ConnectionError)
+    assert StackChan::Controller::Error.ancestors.include?(StandardError)
   end
 end

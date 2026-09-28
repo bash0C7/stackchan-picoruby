@@ -1,5 +1,5 @@
-module Stackchan
-  module BLE
+module StackChan
+  class Controller
     class Error < StandardError
     end
 
@@ -10,6 +10,9 @@ module Stackchan
     end
 
     class ConnectionError < Error
+    end
+
+    class Busy < ConnectionError
     end
   end
 end

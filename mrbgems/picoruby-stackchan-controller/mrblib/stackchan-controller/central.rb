@@ -40,10 +40,10 @@ module StackChan
       def connect
         @radio.connect_and_discover(CONNECT_TIMEOUT_MS)
         unless @radio.target
-          raise Stackchan::BLE::ConnectionError, "no #{@name_prefix} advertiser found"
+          raise ConnectionError, "no #{@name_prefix} advertiser found"
         end
         if @radio.conn_handle == BLE::HCI_CON_HANDLE_INVALID
-          raise Stackchan::BLE::ConnectionError, "GATT connect did not complete"
+          raise ConnectionError, "GATT connect did not complete"
         end
         resolve_handles
         subscribe_tx
@@ -57,21 +57,21 @@ module StackChan
       end
 
       def send
-        raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
-        b = Stackchan::BLE::SendBuilder.new
+        raise ConnectionError, "not connected" unless @connected
+        b = SendBuilder.new
         yield b
         b.to_frames.each { |frame| write_and_await_ack(frame) }
         self
       end
 
       def raw_send(frame)
-        raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+        raise ConnectionError, "not connected" unless @connected
         write_and_await_ack(frame)
         self
       end
 
       def write_without_ack(payload)
-        raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+        raise ConnectionError, "not connected" unless @connected
         write_rx(payload)
         self
       end
@@ -84,7 +84,7 @@ module StackChan
       end
 
       def await_audio_done(n)
-        raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+        raise ConnectionError, "not connected" unless @connected
         @inbox.clear
         polls = polls_for(audio_done_timeout_ms(n))
         i = 0
@@ -95,7 +95,7 @@ module StackChan
             @inbox.delete_at(idx)
             return self
           end
-          raise Stackchan::BLE::TimeoutError, "<A:done> timeout" if i >= polls
+          raise TimeoutError, "<A:done> timeout" if i >= polls
           sleep_ms(POLLING_UNIT_MS)
           i += 1
         end
@@ -107,7 +107,7 @@ module StackChan
       end
 
       def remote
-        raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+        raise ConnectionError, "not connected" unless @connected
         drain
         @drb_inbox.clear
         DRbBle.register(DRB_URI, self, timeout_ms: ACK_TIMEOUT_MS)
@@ -138,14 +138,14 @@ module StackChan
         services = @radio.services
         rx = Nus.find_characteristic(services, Nus.rx_uuid)
         tx = Nus.find_characteristic(services, Nus.tx_uuid)
-        raise Stackchan::BLE::ConnectionError, "NUS RX not found" unless rx
-        raise Stackchan::BLE::ConnectionError, "NUS TX not found" unless tx
+        raise ConnectionError, "NUS RX not found" unless rx
+        raise ConnectionError, "NUS TX not found" unless tx
         @rx_handle   = rx[:value_handle]
         @tx_handle   = tx[:value_handle]
         @cccd_handle = Nus.cccd_handle(tx)
         drb_rx = Nus.find_characteristic(services, Nus.drb_rx_uuid)
         drb_tx = Nus.find_characteristic(services, Nus.drb_tx_uuid)
-        raise Stackchan::BLE::ConnectionError, "dRuby pair not found" unless drb_rx && drb_tx
+        raise ConnectionError, "dRuby pair not found" unless drb_rx && drb_tx
         @drb_rx_handle   = drb_rx[:value_handle]
         @drb_tx_handle   = drb_tx[:value_handle]
         @drb_cccd_handle = Nus.cccd_handle(drb_tx)
@@ -192,7 +192,7 @@ module StackChan
         first = await_inbox
         unless first
           @log_fn.call("[t] #{frame.chomp} ack=timeout")
-          raise Stackchan::BLE::TimeoutError, "ACK timeout for #{frame.inspect}"
+          raise TimeoutError, "ACK timeout for #{frame.inspect}"
         end
         t_ack = Machine.board_millis
         status = Nus.classify(first)
@@ -207,7 +207,7 @@ module StackChan
           end
           log_timing(frame, t0, t_ack, t_detail)
           return if first[0, 1] == Stackchan::BLE::FrameCodec::ACK_OK
-          raise Stackchan::BLE::DeviceError, "device rejected #{frame.inspect}"
+          raise DeviceError, "device rejected #{frame.inspect}"
         else
           @last_detail_frame = first
           log_timing(frame, t0, t_ack, nil)

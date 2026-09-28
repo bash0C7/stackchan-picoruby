@@ -23,21 +23,21 @@ class FakeBleClient
   end
 
   def send
-    raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
-    b = Stackchan::BLE::SendBuilder.new
+    raise StackChan::Controller::ConnectionError, "not connected" unless @connected
+    b = StackChan::Controller::SendBuilder.new
     yield b
     b.to_frames.each { |f| write_frame(f) }
     self
   end
 
   def raw_send(frame)
-    raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+    raise StackChan::Controller::ConnectionError, "not connected" unless @connected
     write_frame(frame)
     self
   end
 
   def write_without_ack(payload)
-    raise Stackchan::BLE::ConnectionError, "not connected" unless @connected
+    raise StackChan::Controller::ConnectionError, "not connected" unless @connected
     $stderr.write("[fake_ble] write_without_ack #{payload.inspect}\n"); $stderr.flush
     self
   end

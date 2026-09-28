@@ -54,15 +54,15 @@ class CliCalibrateTest < Picotest::Test
   end
 
   def test_an_unknown_device_position_exits_6
-    error = RuntimeError.new("Stackchan::BLE::DeviceError: device returned unknown raw position")
+    error = RuntimeError.new("StackChan::Controller::DeviceError: device returned unknown raw position")
     cli = ScriptedCLI.new(CalibrationDaemon.new(sample_error: error))
     assert_equal 6, cli.dispatch("calibrate", [])
   end
 
   def test_a_link_failure_during_sampling_is_not_reported_as_calibration_needed
-    error = RuntimeError.new("Stackchan::BLE::ConnectionError: no StackChan advertiser found")
+    error = RuntimeError.new("StackChan::Controller::ConnectionError: no StackChan advertiser found")
     cli = ScriptedCLI.new(CalibrationDaemon.new(sample_error: error))
     assert_equal 1, cli.dispatch("calibrate", [])
-    assert_equal ["[FAIL] Stackchan::BLE::ConnectionError: no StackChan advertiser found"], cli.lines.select { |l| l.start_with?("[FAIL]") }
+    assert_equal ["[FAIL] StackChan::Controller::ConnectionError: no StackChan advertiser found"], cli.lines.select { |l| l.start_with?("[FAIL]") }
   end
 end

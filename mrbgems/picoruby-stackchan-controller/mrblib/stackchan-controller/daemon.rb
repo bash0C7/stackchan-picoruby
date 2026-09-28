@@ -144,7 +144,7 @@ module StackChan
           with_ble { @ble.send { |s| s.read_pos } }
           parsed = Calibration.parse_raw_detail(@ble.last_detail_frame.to_s)
           if parsed[:yaw_raw].nil? || parsed[:pitch_raw].nil?
-            raise Stackchan::BLE::DeviceError, Calibration::UNKNOWN_POSITION
+            raise DeviceError, Calibration::UNKNOWN_POSITION
           end
           readings << parsed
           i += 1
@@ -192,7 +192,7 @@ module StackChan
         @ble_token.pop
         begin
           yield
-        rescue Stackchan::BLE::ConnectionError, Stackchan::BLE::TimeoutError => e
+        rescue ConnectionError, TimeoutError => e
           log "with_ble #{e.class}: #{e.message} — reconnecting"
           reconnect
           yield

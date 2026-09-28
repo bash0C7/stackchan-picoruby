@@ -52,17 +52,17 @@ class CentralTest < Picotest::Test
 
   def test_connect_without_advertiser_raises
     radio = FakeRadio.new(services: nus_services, target: nil)
-    assert_raise(Stackchan::BLE::ConnectionError) { build_central(radio).connect }
+    assert_raise(StackChan::Controller::ConnectionError) { build_central(radio).connect }
   end
 
   def test_connect_without_nus_raises
     radio = FakeRadio.new(services: [])
-    assert_raise(Stackchan::BLE::ConnectionError) { build_central(radio).connect }
+    assert_raise(StackChan::Controller::ConnectionError) { build_central(radio).connect }
   end
 
   def test_not_connected_raises
     central = build_central(FakeRadio.new(services: nus_services))
-    assert_raise(Stackchan::BLE::ConnectionError) { central.raw_send("<F:2>\n") }
+    assert_raise(StackChan::Controller::ConnectionError) { central.raw_send("<F:2>\n") }
   end
 
   def test_raw_send_returns_on_first_drain_without_sleeping
@@ -81,7 +81,7 @@ class CentralTest < Picotest::Test
   end
 
   def test_ack_timeout_after_3000ms_of_polling
-    assert_raise(Stackchan::BLE::TimeoutError) { @central.raw_send("<F:2>\n") }
+    assert_raise(StackChan::Controller::TimeoutError) { @central.raw_send("<F:2>\n") }
     assert_equal ack_timeout_polls, FakeClock.sleeps.size
     total = 0
     FakeClock.sleeps.each { |ms| total += ms }
@@ -91,7 +91,7 @@ class CentralTest < Picotest::Test
 
   def test_error_ack_raises_device_error
     @radio.schedule_notification(TX, "?\n", after_polls: 1)
-    assert_raise(Stackchan::BLE::DeviceError) { @central.raw_send("<F:2>\n") }
+    assert_raise(StackChan::Controller::DeviceError) { @central.raw_send("<F:2>\n") }
   end
 
   def test_servo_frame_waits_for_the_detail_frame
@@ -166,7 +166,7 @@ class CentralTest < Picotest::Test
   end
 
   def test_await_audio_done_times_out_after_the_budget
-    assert_raise(Stackchan::BLE::TimeoutError) { @central.await_audio_done(240) }
+    assert_raise(StackChan::Controller::TimeoutError) { @central.await_audio_done(240) }
     assert_equal 30_000 / StackChan::Controller::Central::POLLING_UNIT_MS, FakeClock.sleeps.size
   end
 end

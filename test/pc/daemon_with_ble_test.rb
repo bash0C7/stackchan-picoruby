@@ -8,7 +8,7 @@ class DaemonWithBleTest < Picotest::Test
     end
 
     def send
-      b = Stackchan::BLE::SendBuilder.new
+      b = StackChan::Controller::SendBuilder.new
       yield b
       frame = b.to_frames[0]
       @log << [:start, frame]
@@ -19,7 +19,7 @@ class DaemonWithBleTest < Picotest::Test
       end
       if frame == @raise_on
         @log << [:raise, frame]
-        raise Stackchan::BLE::DeviceError, "rejected #{frame}"
+        raise StackChan::Controller::DeviceError, "rejected #{frame}"
       end
       @log << [:end, frame]
       self
@@ -34,7 +34,7 @@ class DaemonWithBleTest < Picotest::Test
     end
 
     def send
-      yield Stackchan::BLE::SendBuilder.new
+      yield StackChan::Controller::SendBuilder.new
       Task.pass until @release
       self
     end
@@ -44,7 +44,7 @@ class DaemonWithBleTest < Picotest::Test
     t1 = Task.new(name: "first") do
       begin
         daemon.face(first)
-      rescue Stackchan::BLE::DeviceError
+      rescue StackChan::Controller::DeviceError
       end
     end
     t2 = Task.new(name: "second") { daemon.face(second) }

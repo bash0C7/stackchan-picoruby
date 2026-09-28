@@ -1,5 +1,5 @@
-module Stackchan
-  module BLE
+module StackChan
+  class Controller
     class SendBuilder
       type color_name = :red | :green | :blue | :yellow | :cyan | :magenta | :white | :off
 
@@ -8,12 +8,12 @@ module Stackchan
       @frames: Hash[untyped, String]
 
       def initialize: () -> void
-      def face: (FrameCodec::face_name name) -> String
+      def face: (Stackchan::BLE::FrameCodec::face_name name) -> String
 
       def led: (
         color_name color,
-        ?side: FrameCodec::side,
-        ?mode: FrameCodec::led_mode
+        ?side: Stackchan::BLE::FrameCodec::side,
+        ?mode: Stackchan::BLE::FrameCodec::led_mode
       ) -> String
 
       def head: (
