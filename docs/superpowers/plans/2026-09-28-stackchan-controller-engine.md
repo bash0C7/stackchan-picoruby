@@ -90,7 +90,7 @@
 ## Review Focus
 
 1. **The controller never loops.** `connect_and_discover` is reached only from `Link#act`, at most once per action and always before the action's first frame. Keepalive stops `hold` ms after the last action. A keepalive failure marks the link released and does not reconnect. A busy robot produces exactly one scan per user action.
-2. **Every loss path resets the link:** the disconnect packet `[0x3E,0x01,0x05]`, an ACK timeout, and `Central#connect` itself each clear `@drb_inbox`, `@drb_sent_at`, `@inbox`, `@connected` and the daemon's touch queue. A late dRuby chunk or ACK from the old link never answers a call on the new one. A release seen by packet costs no ACK timeout.
+2. **Every loss path resets the link:** the disconnect packet `[0x3E,0x01,0x05]` and `Central#connect` itself each clear `@drb_inbox`, `@drb_sent_at`, `@inbox`, `@connected` and the daemon's touch queue. A late dRuby chunk or ACK from the old link never answers a call on the new one. A release seen by packet costs no ACK timeout. An ACK timeout on a link that is not known lost leaves the link as it is.
 3. **No replay.** No action block, `voice.respond` or `on_reply` handler runs twice for one call.
 4. **The tick survives.** No handler or link error ends the tick Task.
 5. **Token discipline.** Handlers (`on_touch`, `on_reply`, `every`, action blocks) run while the daemon holds the `Task::Queue` token and never pop it again, so there is no deadlock. Touch handlers run after the drain that queued them, never from inside `handle_notification`.
