@@ -142,30 +142,72 @@ class DeviceTrial
     raise e
   end
 
-  # iOS and watchOS against the trial arm's firmware: device builds of the
-  # stackchan apps at the locked R2P2-darwin, with picoruby-drb-ble from the
-  # trial worktree, then the operator runs them.
+  APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
+  APP_TRIAL = "connect;face joy;selftest"
+  APP_CONNECTED = "[trial] Connected; RX value_handle bound"
+  APP_END = "[trial] end"
+
   def run_darwin
-    d = @report["darwin"] = { "steps" => [], "human" => {} }
+    d = @report["darwin"] = { "steps" => [], "timings" => {} }
     sha = @lock.fetch("darwin").fetch("R2P2-darwin")
-    dir = File.join(@root, "vendor", "R2P2-darwin")
-    gemdir = File.join(worktree("trial"), "mrbgems", "picoruby-drb-ble")
-    step(d, "pin R2P2-darwin") { checkout(dir, sha) }
-    env = { "STACKCHAN_DRB_BLE_GEMDIR" => gemdir }
-    %w[ios:stackchan:device:lib ios:stackchan:gen ios:stackchan:device:build ios:stackchan:device:run
-       watchos:stackchan:device:lib watchos:stackchan:gen watchos:stackchan:device:build watchos:stackchan:device:run].each do |t|
-      step(d, t) { rake(dir, t, env: env, bundle: false) }
+    wt = worktree("trial")
+    step(d, "pin R2P2-darwin") { checkout(darwin_dir, sha) }
+    APPS.each_key do |platform|
+      %W[#{platform}:device:lib #{platform}:gen #{platform}:device:build].each { |t| step(d, t) { rake(wt, t) } }
     end
-    step(d, "pin R2P2-darwin holds") { head_is!(dir, sha) }
-    [["iphone_drb", "iPhone: Connect の後に 'dRuby over BLE: on' が出て、face joy で顔が変わった"],
-     ["watch_drb",  "Apple Watch: Connect の後に Face で顔が変わり、ぐるっとで首が回った"]].each do |key, q|
-      d["human"][key] = { "question" => q, "answer" => @ops.prompt(q) }
+    step(d, "pin R2P2-darwin holds") { head_is!(darwin_dir, sha) }
+    step(d, "quiet wait") { @quiet = quiet_wait_s(wt, @lock.fetch("arms").fetch("trial")); "#{@quiet} s" }
+    APPS.each do |platform, device|
+      step(d, "#{device} trial") do
+        @ops.sleep(@quiet)
+        out, = app_trial!(wt, platform, APP_TRIAL)
+        want!(out, APP_CONNECTED, device)
+        want!(out, "[trial] OK face=joy", device)
+        detail = out.lines.find { |l| l.start_with?("[trial] OK selftest detail=") }.to_s[DETAIL]
+        raise Stop, "#{device}: no selftest detail in #{out.inspect}" unless detail
+        detail
+      end
     end
+    step(d, "hand-off Mac → iPhone → Watch → Mac") { apple_hand_off(d, wt) }
     @report["verdict"] = verdict
     d
   rescue Stop
     @report["verdict"] = "fail"
     d
+  end
+
+  def app_trial!(wt, platform, lines)
+    t0 = @ops.now
+    ok, out, = @ops.rake(wt, "#{platform}:device:run",
+                         env: { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => "-StackchanTrial \"#{lines}\"" })
+    t = @ops.now - t0
+    device = APPS.fetch(platform)
+    raise Stop, "#{device}: #{platform}:device:run failed:\n#{out.to_s.lines.last(20).join}" unless ok
+    want!(out, APP_END, device)
+    [out, t]
+  end
+
+  def want!(out, line, device)
+    return if out.to_s.lines.map(&:strip).include?(line)
+    raise Stop, "#{device}: no #{line.inspect} in #{out.inspect}"
+  end
+
+  def apple_hand_off(d, wt)
+    @ops.sleep(@quiet)
+    cli!(wt, "face", "neutral")
+    c0 = status(wt)["connects"].to_i
+    @ops.sleep(@quiet)
+    out, ti = app_trial!(wt, "ios", "face joy")
+    want!(out, "[trial] OK face=joy", "iPhone")
+    @ops.sleep(@quiet)
+    out, tw = app_trial!(wt, "watchos", "face smile")
+    want!(out, "[trial] OK face=smile", "Watch")
+    @ops.sleep(@quiet)
+    tm = face!(wt, "neutral", {}, "the Mac does not get the robot back")
+    c1 = status(wt)["connects"].to_i
+    raise Stop, "Mac connects #{c0} -> #{c1}; want more than #{c0}" unless c1 > c0
+    { "hand-off iPhone" => ti, "hand-off Watch" => tw, "hand-off Mac" => tm }.each { |k, v| (d["timings"][k] ||= []) << v }
+    format("iPhone %.2f s, Watch %.2f s, Mac %.2f s", ti, tw, tm)
   end
 
   def run_touch
@@ -179,7 +221,7 @@ class DeviceTrial
 
   # Asks every question the run left unanswered (it ran without a TTY).
   def answer
-    (@report["arms"].values + [@report["darwin"]].compact).each do |part|
+    @report["arms"].values.each do |part|
       part["human"].each_value { |h| h["answer"] ||= @ops.prompt(h["question"]) }
     end
     @report["verdict"] = verdict
@@ -191,7 +233,7 @@ class DeviceTrial
     all_steps = [@report["pc_vm"], *arms, @report["darwin"]].compact.flat_map { |a| a["steps"] }
     return "fail" if all_steps.any? { |s| s["ok"] == false }
     return "incomplete" if arms.empty?
-    answers = (arms + [@report["darwin"]].compact).flat_map { |a| a["human"].values.map { |h| h["answer"] } }
+    answers = arms.flat_map { |a| a["human"].values.map { |h| h["answer"] } }
     return "fail" if answers.include?("n")
     return "incomplete" unless all_steps.all? { |s| s["ok"] } && answers.all? { |v| v == "y" } && @report["arms"].key?("trial") && @report["darwin"]
     "pass"
@@ -522,7 +564,6 @@ class DeviceTrial
     if (d = @report["darwin"])
       out << "\n## darwin\n\n| step | ok | detail |\n|---|---|---|\n"
       d["steps"].each { |s| out << "| #{s['name']} | #{mark(s)} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
-      out << "\n" << d["human"].map { |k, h| "- #{h['question']}: #{h['answer'] || 'unanswered'}" }.join("\n") << "\n"
     end
     out
   end

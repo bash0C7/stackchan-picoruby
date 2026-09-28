@@ -900,7 +900,7 @@ namespace :trial do
     write_trial_report(t)
   end
 
-  desc "iOS / watchOS apps at the locked R2P2-darwin against the trial firmware (needs DEVELOPMENT_TEAM, a paired iPhone + Watch). Appends to the latest report"
+  desc "Build apps/ios and apps/watchos at the locked R2P2-darwin, run each in trial mode against the trial firmware, then hand the robot Mac → iPhone → Watch → Mac (a paired iPhone + Watch). Appends to the latest report"
   task :darwin do
     json = latest_trial_json
     t = trial_session(File.basename(json, ".json"))

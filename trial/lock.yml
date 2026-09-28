@@ -42,6 +42,9 @@ arms:
     controller: true
     app: apps/robot/app.rb
 
-# iOS / watchOS apps, run against the trial arm's firmware.
+# The Apple platform. pc:vm_build builds the Mac VM from it, and `rake
+# trial:darwin` builds apps/ios and apps/watchos from the trial arm's worktree
+# with it, runs each app in trial mode against the trial arm's firmware, and
+# hands the robot Mac → iPhone → Watch → Mac.
 darwin:
-  R2P2-darwin: c0d5aff881b8e51d462483e8130fa3098be16bee             # claude/drb-over-ble
+  R2P2-darwin: 7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2             # claude/external-app

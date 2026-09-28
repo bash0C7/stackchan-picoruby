@@ -11,7 +11,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
     attr_reader :calls, :heads, :dirty, :submodules, :files, :robot
-    attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now
+    attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now, :app_out
 
     def initialize
       @calls = []
@@ -23,6 +23,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       @boot_log = {}
       @on_rake = {}
       @fail_rake = {}
+      @app_out = {}
       @fetched = {}
       @submodules = {}
       @files = {}
@@ -82,8 +83,35 @@ class DeviceTrialTest < Test::Unit::TestCase
       hook = @on_rake[tasks.first]
       hook.call(dir, env) if hook
       return [false, "boom", 0] if @fail_rake[tasks.first]
+      return [true, app_run(tasks.first, env), 0] if tasks.first.end_with?(":device:run")
       mac_rake(tasks.first, env)
       [true, "done", 0]
+    end
+
+    APP_BUSY = "busy: robot is held by another controller or unreachable"
+
+    def app_run(task, env)
+      platform = task.split(":").first
+      @clock += 9.5
+      lines = env["APP_LAUNCH_ARGS"][/\A-StackchanTrial "(.*)"\z/, 1].split(";")
+      custom = @app_out[platform]
+      return custom.call(lines) if custom
+      out = lines.map do |line|
+        verb, arg = line.split(" ", 2)
+        case verb
+        when "connect" then app_take(platform) ? "Connected; RX value_handle bound" : APP_BUSY
+        when "face" then app_take(platform) ? "OK face=#{arg}" : APP_BUSY
+        when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\""
+        end
+      end
+      @robot[:holder] = nil if @robot[:holder] == platform.to_sym
+      (out.map { |l| "[trial] #{l}\n" } << "[trial] end\n").join
+    end
+
+    def app_take(platform)
+      return false if @robot[:holder] && @robot[:holder] != platform.to_sym
+      @robot[:holder] = platform.to_sym
+      true
     end
 
     def mac_rake(task, env)
@@ -351,13 +379,157 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "fail", t.report["verdict"]
   end
 
-  def test_darwin_builds_against_the_trial_worktree_gem
+  APP_ENV = { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => '-StackchanTrial "connect;face joy;selftest"' }.freeze
+
+  def darwin_step(report, name) = report["darwin"]["steps"].find { |s| s["name"] == name }
+  def darwin_failed(report) = report["darwin"]["steps"].find { |s| !s["ok"] }
+
+  def run_darwin_only
+    t = trial
+    t.run_darwin
+    t.report
+  end
+
+  def test_darwin_builds_both_apps_in_the_trial_worktree_at_the_locked_r2p2_darwin
+    run_darwin_only
+    builds = @ops.calls.select { |c| c[0] == :rake && !c[2].end_with?(":device:run") }.map { |c| [c[1], c[2]] }
+    assert_equal %w[ios:device:lib ios:gen ios:device:build watchos:device:lib watchos:gen watchos:device:build]
+                   .map { |t| [wt("trial"), t] }, builds
+    assert_equal LOCK["darwin"]["R2P2-darwin"], @ops.heads[File.join(ROOT, "vendor", "R2P2-darwin")]
+  end
+
+  def test_each_app_runs_connect_face_and_selftest_once_on_its_console_after_the_builds
+    run_darwin_only
+    runs = @ops.calls.select { |c| c[0] == :rake && c[2].end_with?(":device:run") }
+    assert_equal [["ios:device:run", APP_ENV], ["watchos:device:run", APP_ENV]], runs.first(2).map { |c| [c[2], c[3]] }
+    last_build = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:build" }
+    assert_operator last_build, :<, @ops.calls.index(runs.first)
+  end
+
+  def test_darwin_passes_on_the_machine_answers_alone
+    r = run_darwin_only
+    assert_equal ["pin R2P2-darwin", "ios:device:lib", "ios:gen", "ios:device:build", "watchos:device:lib",
+                  "watchos:gen", "watchos:device:build", "pin R2P2-darwin holds", "quiet wait", "iPhone trial",
+                  "Watch trial", "hand-off Mac → iPhone → Watch → Mac"], r["darwin"]["steps"].map { |s| s["name"] }
+    assert r["darwin"]["steps"].all? { |s| s["ok"] }
+    assert_equal "<YL_actual:50,PU_actual:29>", darwin_step(r, "iPhone trial")["detail"]
+    assert_empty @ops.calls.select { |c| c[0] == :prompt }
+    assert_nil r["darwin"]["human"]
+  end
+
+  def test_darwin_hand_off_order
+    run_darwin_only
+    start = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:run" && c[3] == APP_ENV } + 1
+    seq = @ops.calls[start..].reject { |c| c[0] == :now }.map do |c|
+      case c[0]
+      when :cli then c[2]
+      when :rake then [c[2], c[3]["APP_LAUNCH_ARGS"]]
+      else c
+      end
+    end
+    assert_equal [[:sleep, 30], %w[face neutral], %w[status], [:sleep, 30],
+                  ["ios:device:run", '-StackchanTrial "face joy"'], [:sleep, 30],
+                  ["watchos:device:run", '-StackchanTrial "face smile"'], [:sleep, 30],
+                  %w[face neutral], %w[status]], seq
+  end
+
+  def test_the_hand_off_records_seconds_for_each_device
+    r = run_darwin_only
+    assert_equal ["hand-off iPhone", "hand-off Watch", "hand-off Mac"], r["darwin"]["timings"].keys
+    assert r["darwin"]["timings"].values.all? { |v| v.size == 1 && v[0] > 0 }
+    assert_match(/iPhone \d+\.\d\d s, Watch \d+\.\d\d s, Mac \d+\.\d\d s/,
+                 darwin_step(r, "hand-off Mac → iPhone → Watch → Mac")["detail"])
+  end
+
+  def test_a_failing_device_build_stops_darwin_before_any_app_runs
+    @ops.fail_rake["watchos:device:build"] = true
+    r = run_darwin_only
+    assert_equal "watchos:device:build", darwin_failed(r)["name"]
+    assert_nil @ops.calls.find { |c| c[0] == :rake && c[2].end_with?(":device:run") }
+    assert_equal "fail", r["verdict"]
+  end
+
+  def test_an_iphone_that_never_connects_fails_its_trial
+    @ops.app_out["ios"] = ->(_lines) { "[trial] busy: robot is held by another controller or unreachable\n[trial] end\n" }
+    r = run_darwin_only
+    assert_equal "iPhone trial", darwin_failed(r)["name"]
+    assert_match(/Connected; RX value_handle bound/, darwin_failed(r)["detail"])
+    assert_equal "fail", r["verdict"]
+  end
+
+  def test_an_app_whose_face_is_not_ok_fails_its_trial
+    @ops.app_out["watchos"] = ->(_lines) { "[trial] Connected; RX value_handle bound\n[trial] error: timeout\n[trial] end\n" }
+    r = run_darwin_only
+    assert_equal "Watch trial", darwin_failed(r)["name"]
+    assert_match(/OK face=joy/, darwin_failed(r)["detail"])
+  end
+
+  def test_an_app_without_the_selftest_detail_fails_its_trial
+    @ops.app_out["ios"] = lambda do |_lines|
+      "[trial] Connected; RX value_handle bound\n[trial] OK face=joy\n[trial] OK selftest detail=nil\n[trial] end\n"
+    end
+    r = run_darwin_only
+    assert_equal "iPhone trial", darwin_failed(r)["name"]
+    assert_match(/selftest detail/, darwin_failed(r)["detail"])
+  end
+
+  def test_an_app_that_never_ends_its_trial_fails
+    @ops.app_out["ios"] = ->(_lines) { "[trial] Connected; RX value_handle bound\n" }
+    r = run_darwin_only
+    assert_equal "iPhone trial", darwin_failed(r)["name"]
+    assert_match(/\[trial\] end/, darwin_failed(r)["detail"])
+  end
+
+  def test_an_iphone_busy_in_the_hand_off_fails_it
+    runs = 0
+    @ops.app_out["ios"] = lambda do |_lines|
+      runs += 1
+      next "[trial] #{FakeOps::APP_BUSY}\n[trial] end\n" if runs == 2
+      "[trial] Connected; RX value_handle bound\n[trial] OK face=joy\n" \
+        "[trial] OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n[trial] end\n"
+    end
+    r = run_darwin_only
+    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_match(/iPhone: no "\[trial\] OK face=joy"/, darwin_failed(r)["detail"])
+  end
+
+  def test_a_watch_that_does_not_show_smile_in_the_hand_off_fails_it
+    runs = 0
+    @ops.app_out["watchos"] = lambda do |_lines|
+      runs += 1
+      next "[trial] OK face=joy\n[trial] end\n" if runs == 2
+      "[trial] Connected; RX value_handle bound\n[trial] OK face=joy\n" \
+        "[trial] OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n[trial] end\n"
+    end
+    r = run_darwin_only
+    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_match(/Watch: no "\[trial\] OK face=smile"/, darwin_failed(r)["detail"])
+  end
+
+  def test_a_mac_whose_connects_do_not_grow_fails_the_hand_off
+    @ops.cli_out["status"] = "link=held connects=3 releases=0 last_connect_ms=1 hold_ms=10000\n"
+    r = run_darwin_only
+    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_match(/Mac connects 3 -> 3/, darwin_failed(r)["detail"])
+  end
+
+  def test_a_mac_that_does_not_get_the_robot_back_fails_the_hand_off
+    faces = 0
+    @ops.cli_out["face"] = lambda do |args, _env|
+      faces += 1
+      faces == 2 ? [8, "#{FakeOps::BUSY[1]}"] : @ops.mac_cli("face", args)
+    end
+    r = run_darwin_only
+    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_match(/the Mac does not get the robot back/, darwin_failed(r)["detail"])
+  end
+
+  def test_darwin_markdown_lists_its_steps
     t = trial
     t.run
     t.run_darwin
-    lib = @ops.calls.find { |c| c[0] == :rake && c[2] == "ios:stackchan:device:lib" }
-    assert_equal File.join(wt("trial"), "mrbgems", "picoruby-drb-ble"), lib.last["STACKCHAN_DRB_BLE_GEMDIR"]
-    assert_equal LOCK["darwin"]["R2P2-darwin"], @ops.heads[File.join(ROOT, "vendor", "R2P2-darwin")]
+    assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, t.markdown)
+    assert_match(/\| iPhone trial \| ok \| <YL_actual:50,PU_actual:29> \|/, t.markdown)
   end
 
   def test_markdown_puts_both_arms_side_by_side
