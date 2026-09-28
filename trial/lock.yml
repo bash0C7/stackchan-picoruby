@@ -22,7 +22,7 @@ arms:
       - "[boot] step:led-init-ok"
       - "[application] BLE peripheral starting"
   trial:
-    stackchan-picoruby: 7b163bb8d98b3920b83045fc651e0a3ce2607a5a   # claude/no-raise-at-gem-init
+    stackchan-picoruby: 0ba2e96170ea8639e1dc8a8175abf62618604d44   # claude/stackchan-robot-engine
     R2P2-ESP32: 850e9e8b009f17643fa1cc9cb16b4f684e69197f           # claude/stackchan-robot-engine
     picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
     repos:
