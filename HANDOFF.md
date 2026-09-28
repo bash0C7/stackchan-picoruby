@@ -111,9 +111,13 @@ the trial's reconnect timings decide them.
 
 Known risk on the robot: the base arm's firmware (picoruby `7258676`) starts
 its picoruby task with 248 B of the 8 KB stack left, so a base-arm boot can
-reboot with `stack overflow in task picoruby_task`; that is the base, not the
-trial. The trial arm's picoruby loads its gems without raising and starts with
-2,072 B (gdb under deterministic QEMU).
+reboot with `stack overflow in task picoruby_task`. The run checks each arm's
+boot log for that line and stops there, so a base arm that overflows ends the
+whole run with `verdict: fail` before the trial arm is flashed; run it again.
+The trial arm's picoruby loads its gems without raising and starts with
+2,072 B (gdb under deterministic QEMU); the firmware gem list carries only
+what the robot uses, which leaves that figure unchanged and the image at
+`0x247a70`.
 
 ### 2. After `verdict: pass`
 

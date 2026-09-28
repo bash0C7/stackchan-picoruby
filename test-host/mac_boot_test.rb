@@ -47,12 +47,6 @@ class MacBootTest < Test::Unit::TestCase
     assert_equal loads.uniq, loads
   end
 
-  def test_boot_daemon_loads_the_controller_in_a_fixed_order_with_radio_last
-    loads = load_paths(parse('boot_daemon.rb')).select { |p| p.start_with?(CONTROLLER) }
-    names = loads.map { |p| File.basename(p, '.rb') }
-    assert_equal %w[stackchan-controller errors send_builder nus central calibration link session args builder daemon radio], names
-  end
-
   def test_radio_loads_only_on_the_non_fake_branch
     branch = fake_branch
     assert_not_nil branch

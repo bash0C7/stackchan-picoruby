@@ -395,7 +395,7 @@ class DepsGuardTest < Test::Unit::TestCase
   # A stub in place of the guard, recording that it was reached and answering
   # however the caller asks. `ran` is a file rather than output, because the hook
   # swallows the guard's stdout and only speaks on stderr when it refuses.
-  def run_hook(command, verdict: 0)
+  def run_hook(command, verdict: 0, revert_check: 0)
     dir = File.join(DIR, "hook")
     FileUtils.mkdir_p(File.join(dir, "tools", "hooks"))
     FileUtils.cp(HOOK, File.join(dir, "tools", "hooks"))
@@ -404,11 +404,19 @@ class DepsGuardTest < Test::Unit::TestCase
     stub = File.join(dir, "tools", "check_deps_pushed.sh")
     File.write(stub, "#!/bin/sh\ntouch #{ran}\necho 'the pin is unpublished'\nexit #{verdict}\n")
     File.chmod(0o755, stub)
+    File.write(File.join(dir, "tools", "test_must_fail_on_revert.rb"),
+               revert_check.zero? ? "exit 0\n" : "warn 'a test passes with the code reverted'\nexit #{revert_check}\n")
 
     payload = { tool_name: "Bash", tool_input: { command: command, description: "d" } }
     _, err, status = Open3.capture3(File.join(dir, "tools", "hooks", "pre_push_guard.sh"),
                                     stdin_data: JSON.generate(payload))
     { ran: File.exist?(ran), stderr: utf8(err), code: status.exitstatus }
+  end
+
+  def test_a_test_that_passes_with_the_code_reverted_blocks_the_push
+    result = run_hook("git push origin main", verdict: 0, revert_check: 1)
+    assert_equal 2, result[:code]
+    assert_match(/passes with the code reverted/, result[:stderr])
   end
 
   def hook_decision(command)

@@ -44,8 +44,6 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   conf.gem gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-math"
   conf.gem core: 'picoruby-esp32'
   conf.gem core: "picoruby-shell"
-  conf.gem core: "picoruby-picoline"
-  conf.gem core: "picoruby-vim"
   conf.gem core: 'picoruby-rng'
   conf.gem core: 'picoruby-base64'
   conf.gem core: 'picoruby-yaml'
@@ -53,11 +51,8 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   conf.gem core: 'picoruby-gpio'
   conf.gem core: 'picoruby-i2c'
   conf.gem core: 'picoruby-spi'
-  conf.gem core: 'picoruby-adc'
   conf.gem core: 'picoruby-uart'
-  conf.gem core: 'picoruby-pwm'
   conf.gem core: 'picoruby-ble'
-  conf.gem core: 'picoruby-ble-uart'
   conf.gem core: 'picoruby-drb'
   conf.gem github: 'bash0C7/picoruby-ili9342',            branch: 'claude/aot-glyph16'
   conf.gem github: 'bash0C7/picoruby-py32-io-expander',   branch: 'claude/simplify'
@@ -66,12 +61,8 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   conf.gem gemdir: File.expand_path('../build/aot/esp32/gems/picoruby-stackchan_aot', __dir__)
   conf.gem gemdir: File.expand_path('../build/aot/esp32/picoruby-kernel_registry', __dir__)
   conf.gem gemdir: File.expand_path('../mrbgems/picoruby-stackchan-protocol', __dir__)
-  conf.gem core: 'picoruby-rmt'
   conf.gem core: 'picoruby-i2s'
   conf.gem core: 'picoruby-mbedtls'
   conf.gem core: 'picoruby-socket'
   conf.gem core: 'picoruby-network'
-  conf.gem core: 'picoruby-net-mqtt'
-  conf.gem core: 'picoruby-net-ntp'
-  conf.gem core: 'picoruby-adafruit_sk6812'
 end
