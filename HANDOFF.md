@@ -92,12 +92,29 @@ The iOS and watchOS apps build with `rake ios:lib ios:gen ios:build` /
 
 ### 1. Let the Mac see the robot's new GATT table, then check
 
-`pc:up` finds and connects to the robot, then fails with `dRuby pair not
-found`: the Mac's discovery does not list `6e400004` / `6e400005`. The robot
-has them. `Peripheral` looks their handles up at boot, and the boot log runs
-through advertising. The firmware the robot carried before (`main`) had only
-NUS RX / TX. The likely cause is CoreBluetooth serving that older table from
-its cache for the same address; this is unconfirmed.
+`pc:up` finds the robot, connects, and finishes GATT discovery (`Stopped by
+state: TC_IDLE`). It then fails with `dRuby pair not found`
+(`central.rb:191`): the Mac's list has NUS RX / TX but not `6e400004` /
+`6e400005`. The code rules out both ends as the cause:
+
+- **Robot:** `parse_att_db` in the ESP32 port either registers the whole
+  Ruby-built table with NimBLE or makes `BLE.new` raise `BLE init failed`. The
+  boot log shows `BLE_hci_power_control(1): started=1` and then advertising.
+- **Mac:** the darwin port discovers with `nil` filters, and every
+  characteristic it gets passes the decoder's range check.
+
+The hypothesis is that CoreBluetooth is serving, from its cache, the table
+this robot had under the `main` firmware (NUS RX / TX only). Three things
+support it:
+
+- The robot publishes no Service Changed (no 0x1801) and keeps the same public
+  address across firmware.
+- The vault records this trap
+  (`handoff-2026-05-21-implementation-start.md`).
+- The picoruby-ble-esp32-port session has measured it: only
+  `sudo pkill bluetoothd` clears it; toggling Bluetooth does not.
+
+It is unconfirmed until step 2 below.
 
 1. At the Mac (a person, needs the password): `sudo pkill bluetoothd`.
 2. `bundle exec rake trial:check STAMP=20260929-093450 FROM=pc:up`. If
