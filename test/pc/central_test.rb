@@ -60,6 +60,24 @@ class CentralTest < Picotest::Test
     assert_raise(StackChan::Controller::ConnectionError) { build_central(radio).connect }
   end
 
+  def services_without_cccd(uuid)
+    services = nus_services
+    services[0][:characteristics].each { |c| c[:descriptors] = [] if c[:uuid128] == uuid }
+    services
+  end
+
+  def test_connect_whose_discovery_stopped_before_the_tx_cccd_raises_and_subscribes_nothing
+    radio = FakeRadio.new(services: services_without_cccd(StackChan::Controller::Nus.tx_uuid))
+    assert_raise(StackChan::Controller::ConnectionError) { build_central(radio).connect }
+    assert_equal [], radio.descriptor_writes
+  end
+
+  def test_connect_whose_discovery_stopped_before_the_drb_cccd_raises_and_subscribes_nothing
+    radio = FakeRadio.new(services: services_without_cccd(StackChan::Controller::Nus.drb_tx_uuid))
+    assert_raise(StackChan::Controller::ConnectionError) { build_central(radio).connect }
+    assert_equal [], radio.descriptor_writes
+  end
+
   def test_not_connected_raises
     central = build_central(FakeRadio.new(services: nus_services))
     assert_raise(StackChan::Controller::ConnectionError) { central.raw_send("<F:2>\n") }

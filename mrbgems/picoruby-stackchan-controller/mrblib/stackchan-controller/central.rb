@@ -186,16 +186,18 @@ module StackChan
         @rx_handle   = rx[:value_handle]
         @tx_handle   = tx[:value_handle]
         @cccd_handle = Nus.cccd_handle(tx)
+        raise ConnectionError, "NUS TX CCCD not found; discovery did not finish" unless @cccd_handle
         drb_rx = Nus.find_characteristic(services, Nus.drb_rx_uuid)
         drb_tx = Nus.find_characteristic(services, Nus.drb_tx_uuid)
         raise ConnectionError, "dRuby pair not found" unless drb_rx && drb_tx
         @drb_rx_handle   = drb_rx[:value_handle]
         @drb_tx_handle   = drb_tx[:value_handle]
         @drb_cccd_handle = Nus.cccd_handle(drb_tx)
+        raise ConnectionError, "dRuby TX CCCD not found; discovery did not finish" unless @drb_cccd_handle
       end
 
       def subscribe_tx
-        [@cccd_handle, @drb_cccd_handle].compact.each do |h|
+        [@cccd_handle, @drb_cccd_handle].each do |h|
           @radio.write_characteristic_descriptor_using_descriptor_handle(@radio.conn_handle, h, SUBSCRIBE_ENABLE)
         end
         settle(SUBSCRIBE_SETTLE_MS)
