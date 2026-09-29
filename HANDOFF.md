@@ -161,9 +161,11 @@ likely to conflict, and the owner's open decisions.
 - **Service Changed.** Adding 0x1801 / Service Changed to `peripheral.rb` would
   stop the Mac caching the table. It is an app change, so it needs no firmware
   flash.
-- **R2P2-darwin's picoruby stays at `97479c96`.** Its `port-darwin` head
-  `ee10fd96` breaks Mac discovery: its decoder reads the new GATT event layout,
-  but its Swift still writes the old one.
+- **R2P2-darwin's picoruby stays at `97479c96`.** On `port-darwin`, `ee10fd96`
+  broke Mac discovery: its decoder read the new GATT event layout while its
+  Swift still wrote the old one. `7036c76a` fixes that. Moving to it also means
+  `radio.rb:38-41` in the controller must read notifications at 8 / 10 / 12
+  instead of 4 / 6 / 8.
 
 ### 2. After `verdict: pass`
 
