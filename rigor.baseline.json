@@ -49,7 +49,7 @@
     },
     {
       "path": "lib/device_trial.rb",
-      "line": 295,
+      "line": 316,
       "column": 52,
       "severity": "error",
       "rule": "call.undefined-method",

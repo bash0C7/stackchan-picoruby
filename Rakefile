@@ -253,7 +253,8 @@ end
 
 # Pure-Ruby driver gems live under mrbgems/ but are not in the firmware build_config, so
 # their mrblib is prepended to the application source before picorbc.
-DEVICE_GEM_SOURCES = %w[stackchan-led si12t aw88298 drb-ble stackchan-robot].flat_map { |g| Dir[File.expand_path("mrbgems/picoruby-#{g}/mrblib/**/*.rb", __dir__)].sort }
+DEVICE_GEM_DIRS = %w[stackchan-led si12t aw88298 drb-ble stackchan-robot].map { |g| "mrbgems/picoruby-#{g}" }
+DEVICE_GEM_SOURCES = DEVICE_GEM_DIRS.flat_map { |d| Dir[File.expand_path("#{d}/mrblib/**/*.rb", __dir__)].sort }
 
 def bundle_app_source(src)
   out = File.expand_path("tmp/build/#{File.basename(src, '.rb')}.bundled.rb", __dir__)
@@ -903,7 +904,7 @@ namespace :trial do
     require_relative "lib/device_trial_ops"
     device_env = -> { { "ESPPORT" => resolve_espport, "STACKCHAN_USB_SERIAL" => EspPort.serial_from(ENV, __dir__) } }
     ops = DeviceTrialOps.new("/tmp/stackchan-picoruby-debug/trial/#{stamp}", device_env: device_env)
-    DeviceTrial.new(lock: YAML.safe_load(File.read(TRIAL_LOCK)), root: __dir__, ops: ops, stamp: stamp)
+    DeviceTrial.new(lock: YAML.safe_load(File.read(TRIAL_LOCK)), root: __dir__, ops: ops, bundled: DEVICE_GEM_DIRS, stamp: stamp)
   end
 
   def write_trial_report(t)

@@ -9,17 +9,19 @@ class DeviceTrialTest < Test::Unit::TestCase
   LOCK = YAML.safe_load(File.read(File.expand_path("../trial/lock.yml", __dir__)))
   FW = LOCK["firmware"]
   ROOT_SHA = "a" * 40
+  BUNDLED = %w[mrbgems/picoruby-stackchan-robot mrbgems/picoruby-drb-ble].freeze
 
   # A machine made of git HEADs: every directory is a checkout at some sha.
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
-    attr_reader :calls, :heads, :dirty, :submodules, :files, :robot, :exists
+    attr_reader :calls, :heads, :dirty, :submodules, :files, :robot, :exists, :trees
     attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now, :app_out, :rake_out
 
     def initialize
       @calls = []
       @heads = {}
       @dirty = {}
+      @trees = {}
       @exists = {}
       @answers = []
       @cli_out = {}
@@ -66,6 +68,11 @@ class DeviceTrialTest < Test::Unit::TestCase
       @calls << [:git, dir, *args]
       case args
       in ["rev-parse", "HEAD"] then @heads[dir] ? [true, "#{@heads[dir]}\n", 0] : [false, "not a repo", 0]
+      in ["rev-parse", /\A(\w+):(.+)\z/]
+        commit = $1 == "HEAD" ? @heads[dir] : $1
+        [true, "#{@trees.fetch([commit, $2], "tree of #{$2}")}\n", 0]
+      in ["status", "--porcelain", "--untracked-files=no", "--", *paths]
+        [true, @dirty[dir].to_s.lines.select { |l| paths.any? { |p| l[3..].start_with?(p) } }.join, 0]
       in ["checkout", *, "--detach", sha] then (@heads[dir] = sha; [true, "", 0])
       in ["init", "--quiet", path] then (@heads[path] = nil; @exists[path] = true; [true, "", 0])
       in ["status", "--porcelain", "--untracked-files=no"] then [true, @dirty[dir].to_s, 0]
@@ -204,7 +211,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.files[File.join(ROOT, "apps/robot/app.rb")] = File.read(File.expand_path("../apps/robot/app.rb", __dir__))
   end
 
-  def trial(rounds: 2) = DeviceTrial.new(lock: LOCK, root: ROOT, ops: @ops, rounds: rounds, stamp: "t")
+  def trial(rounds: 2) = DeviceTrial.new(lock: LOCK, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: rounds, stamp: "t")
 
   def deployed(rounds: 2)
     t = trial(rounds: rounds)
@@ -396,7 +403,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     t = checked
     lock = Marshal.load(Marshal.dump(LOCK))
     lock["firmware"]["repos"]["picoruby-scservo"] = "c" * 40
-    later = DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, rounds: 2, stamp: "t")
+    later = DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: 2, stamp: "t")
     later.report.merge!(JSON.parse(JSON.generate(t.report)))
     @ops.calls.clear
     assert_raise_message(/lock\.yml differs/) { later.check }
@@ -404,13 +411,50 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_empty @ops.calls
   end
 
-  def test_a_moved_checkout_stops_check_and_trial_app_before_touching_anything
+  def test_a_checkout_moved_outside_what_the_board_runs_checks_and_resends_the_app
     t = checked
     @ops.heads[ROOT] = "b" * 40
+    later = reloaded(t)
+    later.check
+    assert_equal "b" * 40, later.report["check"]["root"]
+    later.upload_app
+    assert_equal "b" * 40, later.report["deploy"]["app_root"]
+    assert_equal ROOT_SHA, later.report["root"]
+  end
+
+  def test_a_changed_firmware_input_stops_check_and_trial_app_before_touching_anything
+    t = checked
+    @ops.heads[ROOT] = "b" * 40
+    @ops.trees[["b" * 40, "aot"]] = "another aot"
     @ops.calls.clear
-    assert_raise_message(/the deploy built #{ROOT_SHA}/) { reloaded(t).check }
-    assert_raise_message(/the deploy built #{ROOT_SHA}/) { reloaded(t).upload_app }
-    assert_empty @ops.calls.reject { |c| c[0] == :git && c[2] == "rev-parse" }
+    assert_raise_message(/aot differ from aaaaaaa, which the deploy built; that is another firmware/) { reloaded(t).check }
+    assert_raise_message(/aot differ from aaaaaaa, which the deploy built/) { reloaded(t).upload_app }
+    assert_empty @ops.calls.reject { |c| c[0] == :git && %w[rev-parse status].include?(c[2]) }
+  end
+
+  def test_a_changed_app_input_stops_the_check_until_trial_app_sends_it
+    t = checked
+    @ops.heads[ROOT] = "b" * 40
+    @ops.trees[["b" * 40, "mrbgems/picoruby-stackchan-robot"]] = "new robot engine"
+    @ops.calls.clear
+    assert_raise_message(/picoruby-stackchan-robot differ from aaaaaaa, which the board runs; run trial:app/) { reloaded(t).check }
+    assert_empty @ops.calls.reject { |c| c[0] == :git && %w[rev-parse status].include?(c[2]) }
+    later = reloaded(t)
+    later.upload_app
+    assert_equal "b" * 40, later.report["deploy"]["app_root"]
+    later.check
+    later.run_darwin
+    assert_equal "pass", later.report["verdict"]
+  end
+
+  def test_local_changes_in_what_the_board_runs_stop_the_check_and_elsewhere_do_not
+    t = checked
+    @ops.dirty[ROOT] = " M HANDOFF.md\n"
+    reloaded(t).check
+    @ops.dirty[ROOT] = " M apps/robot/app.rb\n"
+    assert_raise_message(/local changes/) { reloaded(t).check }
+    @ops.dirty[ROOT] = " M mrbgems/picoruby-stackchan-protocol/mrblib/frame_parser.rb\n"
+    assert_raise_message(/local changes/) { reloaded(t).upload_app }
   end
 
   def test_a_check_without_a_deploy_stops

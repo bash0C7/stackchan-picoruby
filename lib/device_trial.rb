@@ -44,6 +44,7 @@ class DeviceTrial
   RESETS = %w[r2p2:build_flash r2p2:flash_identity r2p2:reset_and_capture r2p2:reset].freeze
   FIRMWARE_WRITES = %w[r2p2:build_flash r2p2:build_flash_appmrb r2p2:flash r2p2:full_rebuild].freeze
   APP_WRITES = %w[r2p2:upload_appmrb r2p2:upload_mrb r2p2:wipe_storage].freeze
+  FIRMWARE_INPUTS = %w[build_config/esp32-stackchan.rb aot tools/aot mrbgems/picoruby-stackchan-protocol].freeze
   APP_BUNDLE = File.expand_path("~/Applications/StackchanPico.app")
   QUESTIONS = [["servo", "サーボが指示どおりに動いた"],
                ["subtitle", "字幕が欠けずに描画された"],
@@ -52,7 +53,8 @@ class DeviceTrial
 
   attr_reader :report
 
-  def initialize(lock:, root:, ops:, rounds: 8, stamp: "now")
+  def initialize(lock:, root:, ops:, bundled:, rounds: 8, stamp: "now")
+    @bundled = bundled
     @lock   = lock
     @root   = root
     @ops    = ops
@@ -125,11 +127,11 @@ class DeviceTrial
     d = @report["deploy"]
     firmware_ok = d && d["steps"].first(at).map { |s| s["name"] } == names.first(at) && d["steps"].first(at).all? { |s| s["ok"] }
     raise Stop, "report #{@report['stamp']} has no firmware deploy that finished ok; run trial:deploy" unless firmware_ok
-    same_tree!
+    same_tree!(app: false)
     d["steps"].slice!(at..)
     @report["check"] = { "steps" => [], "timings" => {}, "human" => {} }
     settle do
-      step(d, "pins hold") { verify(aot: true) }
+      step(d, "pins hold") { verify(aot: true, root: false) }
       step(d, "qemu gate") { rake("r2p2:qemu_check", env: { "QEMU_PROBE_APP" => firmware.fetch("app") }) }
       deploy_plan.drop(at).each { |name, body| step(d, name, &body) }
     end
@@ -138,6 +140,8 @@ class DeviceTrial
   def app_upload
     allowed = @may_write
     @may_write = allowed + APP_WRITES
+    clean!(@root, *app_inputs)
+    @report["deploy"]["app_root"] = head(@root)
     rake("r2p2:upload_appmrb", env: { "SRC" => firmware.fetch("app") })
   ensure
     @may_write = allowed
@@ -157,7 +161,7 @@ class DeviceTrial
       raise Stop, "FROM=#{from} keeps #{name.inspect}, which failed: #{s['detail']}" if s["ok"] == false
       s
     end
-    c = @report["check"] = { "steps" => kept, "timings" => {},
+    c = @report["check"] = { "root" => head(@root), "steps" => kept, "timings" => {},
                              "human" => names.index("questions") < start ? prev["human"] : {} }
     earlier = from ? prev["timings"] : {}
     @stub_sidecar = false
@@ -179,10 +183,27 @@ class DeviceTrial
 
   def lock_digest = Digest::SHA256.hexdigest(JSON.generate(@lock))
 
-  def same_tree!
+  def app_inputs = [firmware.fetch("app"), *@bundled]
+
+  def same_tree!(app: true)
     raise Stop, "trial/lock.yml differs from the one report #{@report['stamp']} deployed" unless @report["deploy"]["lock_digest"] == lock_digest
-    have = head(@root)
-    raise Stop, "#{@root} is at #{have.inspect}, the deploy built #{@report['root']}" unless have == @report["root"]
+    built = @report["root"]
+    moved = moved_since(built, FIRMWARE_INPUTS)
+    raise Stop, "#{moved.join(', ')} differ from #{built[0, 7]}, which the deploy built; that is another firmware and another report" unless moved.empty?
+    return unless app
+    sent = @report["deploy"]["app_root"] || built
+    moved = moved_since(sent, app_inputs)
+    raise Stop, "#{moved.join(', ')} differ from #{sent[0, 7]}, which the board runs; run trial:app" unless moved.empty?
+  end
+
+  def moved_since(commit, paths)
+    clean!(@root, *paths)
+    paths.reject { |path| tree(commit, path) == tree("HEAD", path) }
+  end
+
+  def tree(commit, path)
+    ok, out, = @ops.git(@root, "rev-parse", "#{commit}:#{path}")
+    ok ? out.strip : nil
   end
 
   def deployed?
@@ -349,9 +370,11 @@ class DeviceTrial
     git!(dir, "checkout", "--quiet", "--detach", want)
   end
 
-  def verify(aot:)
-    head_is!(@root, @report["root"])
-    clean!(@root)
+  def verify(aot:, root: true)
+    if root
+      head_is!(@root, @report["root"])
+      clean!(@root)
+    end
     head_is!(r2p2, firmware.fetch("R2P2-ESP32"))
     clean!(r2p2)
     head_is!(picoruby, firmware.fetch("picoruby"))
@@ -377,8 +400,8 @@ class DeviceTrial
     want[0, 7]
   end
 
-  def clean!(dir)
-    out = git!(dir, "status", "--porcelain", "--untracked-files=no")
+  def clean!(dir, *paths)
+    out = git!(dir, "status", "--porcelain", "--untracked-files=no", *(["--", *paths] unless paths.empty?))
     raise Stop, "#{dir} has local changes:\n#{out}" unless out.strip.empty?
   end
 

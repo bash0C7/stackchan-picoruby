@@ -5,8 +5,8 @@ class AppRequiresTest < Test::Unit::TestCase
 
   def bundled_gems
     rakefile = File.read(File.join(ROOT, 'Rakefile'))
-    list = rakefile[/^DEVICE_GEM_SOURCES\s*=\s*%w\[([^\]]*)\]/, 1]
-    assert_not_nil list, 'DEVICE_GEM_SOURCES = %w[...] not found in Rakefile'
+    list = rakefile[/^DEVICE_GEM_DIRS\s*=\s*%w\[([^\]]*)\]/, 1]
+    assert_not_nil list, 'DEVICE_GEM_DIRS = %w[...] not found in Rakefile'
     list.split
   end
 
