@@ -51,7 +51,7 @@ PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host-picotest", "bin", "picor
 # Rigor is a standalone CLI, not a bundled gem: it wants prism >= 1.0 while this
 # repo is pinned to the prism ~> 0.30 that picoruby vendors, so bundler cannot
 # resolve both. It gets its own gemset under the gitignored vendor/ tree instead.
-RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.3.7"
+RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.4.0"
 RIGOR_ROOT     = File.expand_path("vendor/rigor-tool", __dir__)
 RIGOR_BIN      = File.join(RIGOR_ROOT, "bin", "rigor")
 RIGOR_ENV      = { "GEM_HOME" => RIGOR_ROOT, "GEM_PATH" => RIGOR_ROOT }
@@ -65,7 +65,7 @@ def unbundled(&blk)
   defined?(Bundler) ? Bundler.with_unbundled_env(&blk) : blk.call
 end
 
-# rigor 0.3.7 reports source diagnostics with an absolute path while config-level
+# rigor reports source diagnostics with an absolute path while config-level
 # ones (`.rigor.yml`) stay relative, so the two directions key off whether the
 # repo-relative name is a real file.
 def rigor_relativize(path) = path.delete_prefix("#{__dir__}/")
@@ -75,9 +75,9 @@ def rigor_absolutize(path)
 end
 
 namespace :rigor do
-  desc "Install rigortype RIGOR_VERSION into vendor/rigor-tool (skip if present)"
+  desc "Install rigortype RIGOR_VERSION into vendor/rigor-tool (skip if that version is present)"
   task :setup do
-    next if File.exist?(RIGOR_BIN)
+    next if File.exist?(File.join(RIGOR_ROOT, "specifications", "rigortype-#{RIGOR_VERSION}.gemspec"))
     unbundled { sh RIGOR_ENV, "gem", "install", "rigortype", "-v", RIGOR_VERSION, "--no-document" }
   end
 

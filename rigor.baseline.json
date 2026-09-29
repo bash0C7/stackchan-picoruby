@@ -1,6 +1,6 @@
 {
   "success": false,
-  "error_count": 30,
+  "error_count": 29,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -12,17 +12,8 @@
       "message": "7 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, ruby-termios, serialport, and 2 more. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
     },
     {
-      "path": "app",
-      "line": 1,
-      "column": 1,
-      "severity": "warning",
-      "rule": null,
-      "source_family": "builtin",
-      "message": "no such file or directory (skipped)"
-    },
-    {
       "path": "lib/deploy/picomodem.rb",
-      "line": 248,
+      "line": 249,
       "column": 36,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -34,7 +25,7 @@
     },
     {
       "path": "lib/deploy/picomodem.rb",
-      "line": 253,
+      "line": 254,
       "column": 13,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -46,7 +37,7 @@
     },
     {
       "path": "lib/deploy/picomodem.rb",
-      "line": 253,
+      "line": 254,
       "column": 30,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -57,15 +48,17 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
-      "path": "lib/deploy/picomodem.rb",
-      "line": 153,
-      "column": 10,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
+      "path": "lib/device_trial.rb",
+      "line": 295,
+      "column": 52,
+      "severity": "error",
+      "rule": "call.undefined-method",
       "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+      "message": "undefined method `[]' for nil",
+      "receiver_type": "nil",
+      "method_name": "[]",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "mrbgems/picoruby-drb-ble/test/drb_ble_test.rb",
@@ -102,98 +95,6 @@
       "method_name": "split",
       "evidence_tier": "high",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/central.rb",
-      "line": 220,
-      "column": 29,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb",
-      "line": 249,
-      "column": 23,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always truthy (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb",
-      "line": 261,
-      "column": 23,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always truthy (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/link.rb",
-      "line": 86,
-      "column": 20,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/radio.rb",
-      "line": 34,
-      "column": 22,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/radio.rb",
-      "line": 41,
-      "column": 60,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/handle.rb",
-      "line": 37,
-      "column": 17,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `reopen_eyes_after' for nil",
-      "receiver_type": "nil",
-      "method_name": "reopen_eyes_after",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
-    },
-    {
-      "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/remote.rb",
-      "line": 52,
-      "column": 70,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `stack_high_water_mark' for singleton(Machine)",
-      "receiver_type": "singleton(Machine)",
-      "method_name": "stack_high_water_mark",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot.rb",
@@ -269,17 +170,6 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
-      "path": "test/device/audio_receiver_test.rb",
-      "line": 164,
-      "column": 43,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always truthy (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
       "path": "test/device/drb_channel_test.rb",
       "line": 165,
       "column": 61,
@@ -306,45 +196,12 @@
     },
     {
       "path": "test/device/ticker_test.rb",
-      "line": 14,
-      "column": 10,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "test/device/ticker_test.rb",
       "line": 183,
       "column": 78,
       "severity": "warning",
       "rule": "flow.always-truthy-condition",
       "source_family": "builtin",
       "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "test/fake_display.rb",
-      "line": 12,
-      "column": 29,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "test/pc/daemon_with_ble_test.rb",
-      "line": 84,
-      "column": 10,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always truthy (the surrounding flow proves it folds to a constant)",
       "evidence_tier": "medium",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
     },
@@ -361,52 +218,17 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
-      "path": "test/pc/session_test.rb",
-      "line": 20,
-      "column": 44,
+      "path": "test/pc/send_builder_test.rb",
+      "line": 26,
+      "column": 78,
       "severity": "error",
-      "rule": "call.undefined-method",
+      "rule": "call.argument-type-mismatch",
       "source_family": "builtin",
-      "message": "undefined method `size' for nil",
-      "receiver_type": "nil",
-      "method_name": "size",
+      "message": "argument type mismatch at parameter `color' of `led' on StackChan::Controller::SendBuilder: expected :blue | :cyan | :green | :magenta | :off | :red | :white | :yellow, got :rgb",
+      "receiver_type": "StackChan::Controller::SendBuilder",
+      "method_name": "led",
       "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
-    },
-    {
-      "path": "test/pc/session_test.rb",
-      "line": 29,
-      "column": 41,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `size' for nil",
-      "receiver_type": "nil",
-      "method_name": "size",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
-    },
-    {
-      "path": "test/pc/session_test.rb",
-      "line": 23,
-      "column": 20,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "test/pc/session_test.rb",
-      "line": 31,
-      "column": 20,
-      "severity": "warning",
-      "rule": "flow.always-truthy-condition",
-      "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
-      "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-argument-type-mismatch"
     },
     {
       "path": "test/pc/socket_read_retry_test.rb",
@@ -441,6 +263,18 @@
       "source_family": "builtin",
       "message": "possible nil receiver: `split' is undefined on NilClass",
       "method_name": "split",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "test-host/flash_identity_test.rb",
+      "line": 13,
+      "column": 52,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `values_at' is undefined on NilClass",
+      "method_name": "values_at",
       "evidence_tier": "high",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
@@ -542,7 +376,7 @@
     {
       "path": "test-host/r2p2_ref_test.rb",
       "line": 15,
-      "column": 19,
+      "column": 22,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
       "source_family": "builtin",
@@ -576,15 +410,5 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     }
   ],
-  "stats": {
-    "target_files": 124,
-    "rbs_classes_total": 1149,
-    "rbs_classes_project_sig": 32,
-    "rbs_classes_bundled": 1117,
-    "rbs_attribution_available": true,
-    "gem_walk_classes": 0,
-    "gem_walk_gems": 0,
-    "wall_seconds": 3.895682999980636,
-    "peak_rss_bytes": 206110720
-  }
+  "fail_on": "error"
 }
