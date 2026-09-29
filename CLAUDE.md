@@ -121,6 +121,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 ## ビルド・deploy
 
 - firmware・gem・app・BLE link を変える branch (この repo と、R2P2-ESP32 / picoruby-ili9342 / suppify / R2P2-darwin の対応 branch) は、`trial/lock.yml` に sha を書いて `/stackchan-device-trial` を通し、`trial/results/` の report が `verdict: pass` になるまで merge しない。
+- 実機に載る firmware は信頼のおける 1 種類だけ。比較や確認のために別の firmware を焼かない。書き込みは firmware が変わった時の 1 回で、app の転送は別に何度でもよい。実機で落ちたら実機で試し直さず、boot log を証拠に QEMU (`r2p2:qemu_check`) か host で再現して直す。
 
 | 用途 | 手段 |
 |---|---|
@@ -129,9 +130,9 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 | firmware / gem / sdkconfig を変えた | `/stackchan-device-build-flash` → `/stackchan-device-cold-recovery`、または `/stackchan-device-full-rebuild` |
 | 初回・target 切替 | `/stackchan-device-setup` |
 | 復旧 | `rake r2p2:boards` → cold-recovery → full-rebuild → 人手 (CoreS3 の USB serial が `r2p2:boards` に無い時だけ) |
-| merge 前の実機実績 | `/stackchan-device-trial` (`trial/lock.yml` の commit を base / trial の 2 arm で実機に載せる。upload する app は arm の `app:`、無ければ `app/application.rb`) |
+| merge 前の実機実績 | `/stackchan-device-trial` (`trial/lock.yml` の firmware 1 種類を `trial:deploy` で 1 回だけ焼き、app は `trial:app` で別に何度でも送り、`trial:check` で書き込まずに何度でも確かめる) |
 
-- firmware を焼く task (`r2p2:flash` / `build_flash` / `build_flash_appmrb`、それを呼ぶ `full_rebuild` と trial) は先に `r2p2:qemu_check` を通す。同じ tree を UART console 付き QEMU で起動し、app の require・bundle した gem (robot engine の `Peripheral < BLE` を含む)・`run` を空にした `StackChan::Robot` で app ファイル全体 (`StackChan.robot` block の評価) を読ませたうえで boot log から verdict を出す。QEMU は `-icount shift=2,align=off,sleep=off -seed 1 -rtc clock=vm` で走らせるので、同じ image なら shell prompt までの serial 出力は毎回同じになり、verdict はそこまでの log だけで決まる。FAIL なら flash せず、PASS のあと clean build してから flash する。QEMU が見るのは boot・gem load・DSL の評価までで、cold-boot 本体・I2C デバイス・LCD・サーボ・スピーカー・BLE 無線は見ない (そこは `/stackchan-device-trial`)。
+- firmware を焼く task (`r2p2:flash` / `build_flash` / `build_flash_appmrb`、それを呼ぶ `full_rebuild` と `trial:deploy`) と `trial:app` は先に `r2p2:qemu_check` を通す。同じ tree を UART console 付き QEMU で起動し、app の require・bundle した gem (robot engine の `Peripheral < BLE` を含む)・`run` を空にした `StackChan::Robot` で app ファイル全体 (`StackChan.robot` block の評価) を読ませたうえで boot log から verdict を出す。QEMU は `-icount shift=2,align=off,sleep=off -seed 1 -rtc clock=vm` で走らせるので、同じ image なら shell prompt までの serial 出力は毎回同じになり、verdict はそこまでの log だけで決まる。FAIL なら flash せず、PASS のあと clean build してから flash する。QEMU が見るのは boot・gem load・DSL の評価までで、cold-boot 本体・I2C デバイス・LCD・サーボ・スピーカー・BLE 無線は見ない (そこは `/stackchan-device-trial`)。
 - `rake qemu:setup` は QEMU (`esp_develop_9.2.2_20250817`) を sha256 で pin して `build/qemu/` に展開する。macOS は `brew install libgcrypt glib pixman sdl2 libslirp` が要る。QEMU `9.0.0` は PSRAM を見つけない (`quad_psram: PSRAM ID read error`)。eFuse drive は `nvram.esp32s3.efuse` (`esp32c3.efuse` は QEMU 9.2.2 に拒否される) に `BLK_VERSION_MAJOR=1` (byte 64 = `0x01`) を乗せないと boot が eFuse チェックで spin する。build と gate の `PICORB_VM` は一致させる。
 - `.rb` の直接 upload は禁止。必ず host で picorbc compile した `.mrb` を上げる (on-device compile は codegen stack overflow)。
 - `main_task.rb` は `/home/app.mrb` を無条件に `load` し、このアプリは戻らないので `$shell.start` に到達しない。抜ける keypress も無い。`upload_appmrb` はこのため先に `wipe_storage` を通す。`upload_mrb` (`DST=`) は app.mrb を壊さずに wipe できないので、autostart 中の device への helper upload は wipe → helper → app.mrb の順になる。
