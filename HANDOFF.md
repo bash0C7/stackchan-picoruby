@@ -67,8 +67,8 @@ firmware on the robot once (`trial:deploy`), sends the app on its own
 | suppify | `claude/string-arg-length` | `a5449a3` |
 
 The robot runs it. Report `trial/results/20260929-093450` (uncommitted, verdict
-`fail`) holds a deploy that passed every step and a check that stops at
-`pc:up`. The deploy checked the pins before and after the build, passed the
+`fail`) holds a deploy that passed every step and a check that stops at the
+last move of the hand-off (Next 1). The deploy checked the pins before and after the build, passed the
 QEMU gate, flashed once, sent the app separately (`DONE_ACK ok`), read flash
 identity `0.2.21-39-g9716605` with storage at `0x410000`, and captured a boot
 log through `HCI WORKING — advertising` with no fault.
@@ -90,51 +90,49 @@ The iOS and watchOS apps build with `rake ios:lib ios:gen ios:build` /
 
 ## Next
 
-### 1. Let the Mac see the robot's new GATT table, then check
+### 1. Check the controller fixes on the robot, then finish the report
 
-`pc:up` finds the robot, connects, and finishes GATT discovery (`Stopped by
-state: TC_IDLE`). It then fails with `dRuby pair not found`
-(`central.rb:191`): the Mac's list has NUS RX / TX but not `6e400004` /
-`6e400005`. The code rules out both ends as the cause:
+Report `trial/results/20260929-093450` (uncommitted, verdict `fail`) holds the
+one deploy and a check that passed every step up to `hand-off Mac A → Mac B →
+Mac A`, where Mac A's last `face neutral` ended in `ACK timeout for "<F:0>"`.
+The check reached `pc:up` on its first try once `sudo pkill bluetoothd` had
+cleared the Mac's cached GATT table (the robot publishes no Service Changed).
 
-- **Robot:** `parse_att_db` in the ESP32 port either registers the whole
-  Ruby-built table with NimBLE or makes `BLE.new` raise `BLE init failed`. The
-  boot log shows `BLE_hci_power_control(1): started=1` and then advertising.
-- **Mac:** the darwin port discovers with `nil` filters, and every
-  characteristic it gets passes the decoder's range check.
+Two controller defects explain it; each is fixed with a host test that failed
+first (`rake test` green, rigor `0 new, 0 fixed`, nothing pushed):
 
-The hypothesis is that CoreBluetooth is serving, from its cache, the table
-this robot had under the `main` firmware (NUS RX / TX only). Three things
-support it:
+- `1e057cd`: a reconnect whose 15 s scan ran out mid-discovery came back with
+  a target and a connection but no descriptors; `subscribe_tx` dropped the
+  missing CCCDs and the next frame went out with notifications off. bluetoothd
+  shows the good reconnect enabling notifications and the failed one never
+  doing so. Both CCCDs are now required, so a short discovery answers busy
+  (exit 8) and the next action reconnects.
+- `794dbda`: `Task.new` blocks run with `self` as `main`, so the daemon's tick
+  task died on its first `tick` (no keepalive, no hold-over to quiet, no idle
+  drain; `release seen: no`) and the shutdown task never stopped DRb.
 
-- The robot publishes no Service Changed (no 0x1801) and keeps the same public
-  address across firmware.
-- The vault records this trap
-  (`handoff-2026-05-21-implementation-start.md`).
-- The picoruby-ble-esp32-port session has measured it: only
-  `sudo pkill bluetoothd` clears it; toggling Bluetooth does not.
+Discovery on the Mac takes about 10 s after connecting, which leaves little of
+the 15 s budget. Both picoruby-ble sessions read the darwin port as stepping
+once per 1 s heartbeat; that is inferred from code, not measured. It is in the
+shared status table in the vault
+(`02_dev_docs/picoruby-ble-esp32-port/notes/2026-09-29-stackchan-alignment-status.md`),
+and the evidence for this failure is under
+`02_dev_docs/stackchan-picoruby/review/2026-09-29-handoff-ack-timeout/`.
 
-It is unconfirmed until step 2 below.
-
-1. At the Mac (a person, needs the password): `sudo pkill bluetoothd`. This
-   has been done; the Mac has not reconnected since.
-   - First, fix the guard that `trial:check` and `trial:app` run. It stops when
-     HEAD differs from the deploy's `7c677b8`, and HEAD has since moved by
-     documentation commits only, so step 2 would stop before touching anything.
-   - The guard should compare what the board runs: the lock's `firmware:`
-     digest, plus a digest of the app source together with the gem sources
-     bundled into it. HEAD is the wrong thing to compare.
-   - Fix it host-tested first, then do step 2.
-2. `bundle exec rake trial:check STAMP=20260929-093450 FROM=pc:up`. If
-   `dRuby pair not found` persists, the cache was not the cause; read the
-   robot side before anything touches it again.
-3. With a person at the robot: `rake trial:touch STAMP=20260929-093450`, then
-   `rake trial:answer STAMP=20260929-093450`.
-4. `rake trial:darwin` needs `DEVELOPMENT_TEAM` and a valid certificate for
+1. `bundle exec rake trial:check STAMP=20260929-093450 FROM=pc:up` (needs the
+   owner's go; no flash, no app upload, the controller is loaded from source).
+   Expect keepalives and `hold over` in `/tmp/stackchan-pico/daemon.log` and
+   `release seen: yes`. A discovery that overruns now shows as exit 8 rather
+   than an ACK timeout; that is the darwin port's pace, not a regression. A
+   pass here does not prove `1e057cd` — its host test does.
+2. With a person at the robot: `rake trial:touch STAMP=20260929-093450`, then
+   `rake trial:answer STAMP=20260929-093450`. The face and LEDs reacting to a
+   head touch have been seen by eye; the report still needs the CLI's
+   `touch zone=N`.
+3. `rake trial:darwin` needs `DEVELOPMENT_TEAM` and a valid certificate for
    the iPhone and Watch builds; every Apple Development certificate on this Mac
-   is revoked. `watchos:device:lib` also fails; its log at
-   `/tmp/stackchan-picoruby-debug/watchos-device-check.log` has not been read.
-5. The report must read `verdict: pass`; commit it.
+   is revoked.
+4. The report must read `verdict: pass`; commit it.
 
 What the check verifies by machine:
 
@@ -149,31 +147,28 @@ What the check verifies by machine:
   the first holds the robot
 
 `c.hold 10_000` / `bot.release_after 15_000` are first guesses; the check's
-reconnect timings decide them. `trial:darwin` then checks each app's
-trial-mode console (`Connected; RX value_handle bound`, `OK face=joy`, the
-selftest detail) and the hand-off Mac → iPhone → Watch → Mac.
+reconnect timings decide them. With keepalives running, the robot releases an
+idle Mac about 22 s after its last action, against the check's 30 s quiet wait.
 
 The firmware stays on the robot for all of it. A fault found on the robot is
 reproduced under QEMU or on the host and fixed there; putting a fix on the
 robot is the owner's call.
 
-The robot's picoruby (`9c4636a4`) and the PR #427 lineage the
-picoruby-ble-esp32-port session develops have diverged. Both sessions keep the
-picoruby-ble state in one table in the vault:
-`02_dev_docs/picoruby-ble-esp32-port/notes/2026-09-29-stackchan-alignment-status.md`.
-It records the branches and shas, the changes only one side has, the files
-likely to conflict, and the owner's open decisions.
+Open alongside it:
 
-- **Where the ESP32 fixes land.** The table proposes syncing PR #427's ESP32
-  fixes into the stackchan lineage.
-- **Service Changed.** Adding 0x1801 / Service Changed to `peripheral.rb` would
-  stop the Mac caching the table. It is an app change, so it needs no firmware
-  flash.
-- **R2P2-darwin's picoruby stays at `97479c96`.** On `port-darwin`, `ee10fd96`
-  broke Mac discovery: its decoder read the new GATT event layout while its
-  Swift still wrote the old one. `7036c76a` fixes that. Moving to it also means
-  `radio.rb:38-41` in the controller must read notifications at 8 / 10 / 12
-  instead of 4 / 6 / 8.
+- **Service Changed.** Adding 0x1801 / Service Changed to `peripheral.rb`
+  would stop the Mac caching the GATT table. It is an app change, so it needs
+  no firmware flash.
+- **Darwin port.** The Mac VM stays at picoruby `97479c96`. The newest
+  `port-darwin` is `7681c4f4` (unpushed): it fixes the layout mismatch and the
+  build under Xcode 27, and moving to it means `radio.rb` reads notifications
+  through the gem's `gatt_event_int16` / `gatt_event_value`. Rebuilding the VM
+  at `97479c96` on this Mac is expected to fail on the missing Swift header.
+- **Where the ESP32 fixes land.** The status table proposes syncing PR #427's
+  ESP32 fixes into the robot's picoruby lineage after this trial.
+- **Speaker distortion.** TTS is scaled to 0.05 before μ-law and the amp runs
+  at full volume; comparing `stackchan say --gain 0.02 / 0.05 / 0.15` by ear
+  decides whether the amp or the μ-law step is at fault.
 
 ### 2. After `verdict: pass`
 
