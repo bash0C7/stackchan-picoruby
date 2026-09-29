@@ -2,15 +2,18 @@ require 'test/unit'
 require 'yaml'
 require 'json'
 require 'device_trial'
+require 'device_trial_ops'
 
 class DeviceTrialTest < Test::Unit::TestCase
   ROOT = "/repo"
   LOCK = YAML.safe_load(File.read(File.expand_path("../trial/lock.yml", __dir__)))
+  FW = LOCK["firmware"]
+  ROOT_SHA = "a" * 40
 
   # A machine made of git HEADs: every directory is a checkout at some sha.
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
-    attr_reader :calls, :heads, :dirty, :submodules, :files, :robot
+    attr_reader :calls, :heads, :dirty, :submodules, :files, :robot, :exists
     attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now, :app_out, :rake_out
 
     def initialize
@@ -25,7 +28,6 @@ class DeviceTrialTest < Test::Unit::TestCase
       @fail_rake = {}
       @app_out = {}
       @rake_out = {}
-      @fetched = {}
       @submodules = {}
       @files = {}
       @tty = true
@@ -34,11 +36,6 @@ class DeviceTrialTest < Test::Unit::TestCase
     end
 
     def exist?(path) = @exists[path] || @heads.key?(path)
-
-    def link(target, path)
-      @calls << [:link, target, path]
-      @exists[path] = true
-    end
 
     def read(path) = @boot_log[path] || @files[path]
 
@@ -69,9 +66,7 @@ class DeviceTrialTest < Test::Unit::TestCase
       @calls << [:git, dir, *args]
       case args
       in ["rev-parse", "HEAD"] then @heads[dir] ? [true, "#{@heads[dir]}\n", 0] : [false, "not a repo", 0]
-      in ["fetch", *, sha] then (@fetched[[dir, sha]] = true; [true, "", 0])
       in ["checkout", *, "--detach", sha] then (@heads[dir] = sha; [true, "", 0])
-      in ["worktree", "add", "--detach", wt, sha] then (@heads[wt] = sha; [true, "", 0])
       in ["init", "--quiet", path] then (@heads[path] = nil; @exists[path] = true; [true, "", 0])
       in ["status", "--porcelain", "--untracked-files=no"] then [true, @dirty[dir].to_s, 0]
       in ["submodule", "update", *] then (@submodules.fetch(@heads[dir], {}).each { |path, sha| @heads[path] = sha }; [true, "", 0])
@@ -83,7 +78,9 @@ class DeviceTrialTest < Test::Unit::TestCase
       @calls << [:rake, dir, *tasks, env]
       hook = @on_rake[tasks.first]
       hook.call(dir, env) if hook
-      return [false, "boom", 0] if @fail_rake[tasks.first]
+      failing = @fail_rake[tasks.first]
+      failing = failing.call if failing.respond_to?(:call)
+      return [false, "boom", 0] if failing
       return [true, app_run(tasks.first, env), 0] if tasks.first.end_with?(":device:run")
       mac_rake(tasks.first, env)
       out = @rake_out[tasks.first]
@@ -169,35 +166,34 @@ class DeviceTrialTest < Test::Unit::TestCase
     end
   end
 
-  def wt(name) = File.join(ROOT, "build", "trial", name)
   def r2p2 = File.join(ROOT, "vendor", "R2P2-ESP32")
   def picoruby = File.join(r2p2, "components", "picoruby-esp32", "picoruby")
   def cache(name) = File.join(picoruby, "build", "repos", "esp32-picoruby", name)
+  def darwin = File.join(ROOT, "vendor", "R2P2-darwin")
+  def darwin_picoruby = File.join(darwin, "vendor", "picoruby")
 
-  def boot(arm, extra = "")
-    "segment 1: paddr=001135c0 vaddr=3fc9e600 size\nI (1387) app_init: App version:      0.2.21-30-g#{LOCK['arms'][arm]['R2P2-ESP32'][0, 7]}\n" \
-      "#{LOCK['arms'][arm]['boot_markers'].join("\n")}\n#{extra}"
+  def boot(extra = "")
+    "segment 1: paddr=001135c0 vaddr=3fc9e600 size\nI (1387) app_init: App version:      0.2.21-30-g#{FW['R2P2-ESP32'][0, 7]}\n" \
+      "#{FW['boot_markers'].join("\n")}\n#{extra}"
   end
-  
-  def identity(arm, version: "0.2.21-30-g#{LOCK['arms'][arm]['R2P2-ESP32'][0, 7]}", storage: "0x410000")
+
+  def identity(version: "0.2.21-30-g#{FW['R2P2-ESP32'][0, 7]}", storage: "0x410000")
     "[flash_identity] partition nvs 0x9000 0x6000\n[flash_identity] partition factory 0x10000 0x400000\n" \
       "[flash_identity] partition storage #{storage} 0x100000\n[flash_identity] app_version #{version}\n[flash_identity] project R2P2-ESP32\n"
   end
 
   def setup
     @ops = FakeOps.new
+    @ops.heads[ROOT] = ROOT_SHA
     @ops.heads[r2p2] = "0" * 40
-    @ops.heads[picoruby] = LOCK["arms"]["base"]["picoruby"]
-    LOCK["arms"].each_value { |arm| @ops.submodules[arm["R2P2-ESP32"]] = { picoruby => arm["picoruby"] } }
+    @ops.heads[picoruby] = "1" * 40
+    @ops.submodules[FW["R2P2-ESP32"]] = { picoruby => FW["picoruby"] }
+    @ops.exists[DeviceTrial::APP_BUNDLE] = true
     @ops.on_rake["r2p2:setup"] = lambda do |dir, _env|
-      aot = dir == wt("trial") ? LOCK["arms"]["trial"]["aot"] : {}
-      aot.each { |name, sha| @ops.heads[File.join(dir, "build", "aot", name)] = sha }
+      FW["aot"].each { |name, sha| @ops.heads[File.join(dir, "build", "aot", name)] = sha }
     end
-    @ops.on_rake["r2p2:build_flash"] = ->(dir, _env) { @flashed = File.basename(dir) }
-    @ops.rake_out["r2p2:flash_identity"] = -> { identity(@flashed) }
-    @ops.on_rake["r2p2:reset_and_capture"] = lambda do |dir, env|
-      @ops.boot_log[env["SERIAL_LOG"]] = boot(File.basename(dir))
-    end
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity }
+    @ops.on_rake["r2p2:reset_and_capture"] = ->(_dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot }
     @ops.cli_out["servo"] = "servo detail=\"<YL_actual:50,PU_actual:29>\\n\""
     @ops.cli_out["remote servo"] = ".\n<YL_actual:40,PU_actual:19>\n"
     @ops.cli_out["remote face"] = ".\n"
@@ -205,194 +201,516 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.cli_out["raw"] = "OK raw"
     @ops.cli_out["remote stack_free"] = "<stack_free:2024>\n"
     @ops.answers = %w[y] * 20
-    @ops.files[File.join(wt("trial"), "apps/robot/app.rb")] = File.read(File.expand_path("../apps/robot/app.rb", __dir__))
+    @ops.files[File.join(ROOT, "apps/robot/app.rb")] = File.read(File.expand_path("../apps/robot/app.rb", __dir__))
   end
 
   def trial(rounds: 2) = DeviceTrial.new(lock: LOCK, root: ROOT, ops: @ops, rounds: rounds, stamp: "t")
 
-  def step_names(report, arm) = report["arms"][arm]["steps"].map { |s| s["name"] }
-  def failed(report, arm) = report["arms"][arm]["steps"].find { |s| !s["ok"] }
+  def deployed(rounds: 2)
+    t = trial(rounds: rounds)
+    t.deploy
+    t
+  end
 
-  def test_both_arms_and_darwin_pass
-    t = trial
-    t.run
+  def checked(from: nil, rounds: 2)
+    t = deployed(rounds: rounds)
+    t.check(from: from)
+    t
+  end
+
+  def reloaded(t)
+    later = trial
+    later.report.merge!(JSON.parse(JSON.generate(t.report)))
+    later
+  end
+
+  def names(part) = part["steps"].map { |s| s["name"] }
+  def failed(part) = part["steps"].find { |s| s["ok"] == false }
+  def step(report, name) = report["check"]["steps"].find { |s| s["name"] == name }
+  def rakes = @ops.calls.select { |c| c[0] == :rake }
+  def rake_tasks = rakes.map { |c| c[2] }
+  def index_of(&blk) = @ops.calls.index(&blk)
+  def cli_call?(c, *args, env: {}) = c[0] == :cli && c[2] == args && c[3] == env
+  def rake_call?(c, task, env) = c[0] == :rake && c[2] == task && c[3] == env
+
+  DEPLOY_STEPS = ["pin trees", "pins hold before setup", "r2p2:setup", "pins hold after setup", "r2p2:build_flash",
+                  "pins hold after build", "app upload", "flash identity", "boot"].freeze
+  WRITES = DeviceTrial::FIRMWARE_WRITES + DeviceTrial::APP_WRITES
+  APP_STEPS = DEPLOY_STEPS.dup.insert(DEPLOY_STEPS.index("app upload"), "pins hold", "qemu gate").freeze
+  GATE_ENV = { "QEMU_PROBE_APP" => "apps/robot/app.rb" }.freeze
+  CHECK_STEPS = ["pc_vm", "flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
+                 "remote servo detail", "remote face", "say", "timings", "quiet wait", "selftest detail", "touch listen",
+                 "calibrate", "chat (sidecar STUB)", "release and reconnect", "hand-off Mac A → Mac B → Mac A",
+                 "stack high-water", "questions", "torque off", "pc:up (real sidecar)"].freeze
+
+  # --- deploy and check -----------------------------------------------------
+
+  def test_deploy_check_and_darwin_pass
+    t = checked
     t.run_darwin
     assert_equal "pass", t.report["verdict"]
-    assert_include step_names(t.report, "trial"), "remote servo detail"
-    assert_not_include step_names(t.report, "base"), "remote servo detail"
+    assert_equal DEPLOY_STEPS, names(t.report["deploy"])
+    assert_equal CHECK_STEPS, names(t.report["check"])
+    assert_equal ROOT_SHA, t.report["root"]
   end
 
-  def test_base_finishes_before_trial_starts_and_each_arm_builds_with_its_own_worktree
-    trial.run
-    rakes = @ops.calls.select { |c| c[0] == :rake }.map { |c| [File.basename(c[1]), c[2]] }
-    base_last = rakes.rindex { |d, _| d == "base" }
-    trial_first = rakes.index { |d, _| d == "trial" }
-    assert_operator base_last, :<, trial_first
-    assert_equal %w[r2p2:setup r2p2:build_flash r2p2:wipe_storage r2p2:upload_appmrb r2p2:reset_and_capture pc:up
-                    pc:down pc:up pc:up pc:down pc:down pc:up],
-                 rakes.select { |d, _| d == "trial" }.map(&:last)
+  def test_a_deploy_alone_is_incomplete
+    assert_equal "incomplete", deployed.report["verdict"]
   end
 
-  def upload_src(arm)
-    call = @ops.calls.find { |c| c[0] == :rake && c[1] == wt(arm) && c[2] == "r2p2:upload_appmrb" }
-    call.last["SRC"]
+  def test_every_rake_and_cli_runs_in_this_checkout
+    t = checked
+    t.run_darwin
+    assert_equal [ROOT], @ops.calls.select { |c| %i[rake cli].include?(c[0]) }.map { |c| c[1] }.uniq
   end
 
-  def test_an_arm_without_an_app_key_uploads_app_application_rb
+  def test_the_deploy_flashes_the_firmware_once_then_sends_the_locked_app
+    t = deployed
+    assert_equal ["r2p2:build_flash", "r2p2:upload_appmrb"], rake_tasks & WRITES
+    assert_equal 1, rake_tasks.count("r2p2:build_flash")
+    assert_equal [{ "SRC" => "apps/robot/app.rb" }], rakes.select { |c| c[2] == "r2p2:upload_appmrb" }.map(&:last)
+    assert_not_include rake_tasks, "r2p2:build_flash_appmrb"
+    assert t.report["deploy"]["steps"].all? { |s| s["ok"] }
+  end
+
+  def test_trial_app_resends_only_the_app_then_reads_the_identity_and_boots
+    t = checked
+    before = t.report["deploy"]["steps"].first(6).map(&:dup)
+    @ops.calls.clear
+    later = reloaded(t)
+    later.upload_app
+    assert_equal %w[r2p2:qemu_check r2p2:upload_appmrb r2p2:flash_identity r2p2:reset_and_capture r2p2:reset], rake_tasks
+    assert_equal GATE_ENV, rakes.first.last
+    assert_equal 10, later.report["resets"]
+    assert_empty rake_tasks & DeviceTrial::FIRMWARE_WRITES
+    assert_equal APP_STEPS, names(later.report["deploy"])
+    assert_equal before, later.report["deploy"]["steps"].first(6)
+    assert_equal({ "steps" => [], "timings" => {}, "human" => {} }, later.report["check"])
+    assert_equal "incomplete", later.report["verdict"]
+    later.check
+    later.run_darwin
+    assert_equal "pass", later.report["verdict"]
+  end
+
+  def test_the_deploy_writes_the_app_only_in_its_app_upload_and_trial_app_never_writes_firmware
+    t = trial
+    refused = []
+    try = ->(task) { t.rake(task) rescue refused << task }
+    @ops.on_rake["r2p2:build_flash"] = ->(_d, _e) { DeviceTrial::APP_WRITES.each(&try) }
+    t.deploy
+    assert_equal DeviceTrial::APP_WRITES, refused
+    refused.clear
+    @ops.on_rake["r2p2:upload_appmrb"] = ->(_d, _e) { DeviceTrial::FIRMWARE_WRITES.each(&try) }
+    t.upload_app
+    assert_equal DeviceTrial::FIRMWARE_WRITES, refused
+  end
+
+  def test_trial_app_retries_an_app_upload_that_failed_in_the_deploy
+    @ops.fail_rake["r2p2:upload_appmrb"] = true
+    t = deployed
+    assert_equal "app upload", failed(t.report["deploy"])["name"]
+    assert_raise(DeviceTrial::Stop) { reloaded(t).check }
+    @ops.fail_rake.delete("r2p2:upload_appmrb")
+    later = reloaded(t)
+    later.upload_app
+    assert_equal APP_STEPS, names(later.report["deploy"])
+    assert later.report["deploy"]["steps"].all? { |s| s["ok"] }
+  end
+
+  def test_a_pin_moved_since_the_deploy_stops_trial_app_before_the_gate_and_the_board
+    t = deployed
+    @ops.heads[cache("picoruby-ili9342")] = "e" * 40
+    @ops.calls.clear
+    t.upload_app
+    assert_empty rakes
+    assert_equal "pins hold", failed(t.report["deploy"])["name"]
+    assert_match(/picoruby-ili9342/, failed(t.report["deploy"])["detail"])
+    assert_equal "fail", t.report["verdict"]
+  end
+
+  def test_trial_app_runs_the_qemu_gate_before_any_serial_task
+    t = deployed
+    @ops.calls.clear
+    t.upload_app
+    serial = rakes.index { |c| DeviceTrialOps::DEVICE_TASKS.include?(c[2]) }
+    assert_equal [:rake, ROOT, "r2p2:qemu_check", GATE_ENV], rakes.first
+    assert_operator rakes.index(rakes.first), :<, serial
+    assert_not_include DeviceTrialOps::DEVICE_TASKS, "r2p2:qemu_check"
+    assert_not_include WRITES, "r2p2:qemu_check"
+  end
+
+  def test_a_failing_qemu_gate_stops_trial_app_before_the_board_and_a_later_trial_app_retries
+    t = deployed
+    @ops.fail_rake["r2p2:qemu_check"] = true
+    @ops.calls.clear
+    t.upload_app
+    assert_equal ["r2p2:qemu_check"], rake_tasks
+    assert_equal "qemu gate", failed(t.report["deploy"])["name"]
+    assert_equal "fail", t.report["verdict"]
+    assert_raise(DeviceTrial::Stop) { reloaded(t).check }
+    @ops.fail_rake.delete("r2p2:qemu_check")
+    later = reloaded(t)
+    later.upload_app
+    assert_equal APP_STEPS, names(later.report["deploy"])
+    later.check
+    later.run_darwin
+    assert_equal "pass", later.report["verdict"]
+  end
+
+  def test_trial_app_without_an_ok_firmware_deploy_stops
+    assert_raise(DeviceTrial::Stop) { trial.upload_app }
+    @ops.fail_rake["r2p2:build_flash"] = true
+    t = deployed
+    @ops.calls.clear
+    assert_raise(DeviceTrial::Stop) { reloaded(t).upload_app }
+    assert_empty rakes
+  end
+
+  def test_the_check_never_runs_a_flash_writing_task
+    t = deployed
+    @ops.calls.clear
+    t.check
+    t.run_darwin
+    assert_empty rake_tasks & WRITES
+    assert_equal "pass", t.report["verdict"]
+  end
+
+  def test_the_guard_stops_a_flash_write_outside_the_deploy
+    t = deployed
+    @ops.calls.clear
+    WRITES.each do |task|
+      assert_raise(DeviceTrial::Stop) { t.rake(task) }
+    end
+    assert_empty rakes
+  end
+
+  def test_a_second_deploy_into_the_same_report_stops
+    t = deployed
+    @ops.calls.clear
+    assert_raise(DeviceTrial::Stop) { t.deploy }
+    assert_raise(DeviceTrial::Stop) { reloaded(t).deploy }
+    assert_empty rakes
+  end
+
+  def test_a_changed_lock_stops_check_and_trial_app_before_touching_anything
+    t = checked
     lock = Marshal.load(Marshal.dump(LOCK))
-    lock["arms"]["trial"].delete("app")
-    DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, rounds: 2, stamp: "t").run(%w[trial])
-    assert_equal "app/application.rb", upload_src("trial")
+    lock["firmware"]["repos"]["picoruby-scservo"] = "c" * 40
+    later = DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, rounds: 2, stamp: "t")
+    later.report.merge!(JSON.parse(JSON.generate(t.report)))
+    @ops.calls.clear
+    assert_raise_message(/lock\.yml differs/) { later.check }
+    assert_raise_message(/lock\.yml differs/) { later.upload_app }
+    assert_empty @ops.calls
   end
 
-  def test_an_arm_uploads_the_app_its_lock_entry_names
-    lock = Marshal.load(Marshal.dump(LOCK))
-    lock["arms"]["trial"]["app"] = "apps/robot/app.rb"
-    DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, rounds: 2, stamp: "t").run(%w[trial])
-    assert_equal "apps/robot/app.rb", upload_src("trial")
+  def test_a_moved_checkout_stops_check_and_trial_app_before_touching_anything
+    t = checked
+    @ops.heads[ROOT] = "b" * 40
+    @ops.calls.clear
+    assert_raise_message(/the deploy built #{ROOT_SHA}/) { reloaded(t).check }
+    assert_raise_message(/the deploy built #{ROOT_SHA}/) { reloaded(t).upload_app }
+    assert_empty @ops.calls.reject { |c| c[0] == :git && c[2] == "rev-parse" }
   end
+
+  def test_a_check_without_a_deploy_stops
+    assert_raise(DeviceTrial::Stop) { trial.check }
+    assert_empty rakes
+  end
+
+  def test_a_check_after_a_failed_deploy_stops
+    @ops.fail_rake["r2p2:setup"] = true
+    t = deployed
+    assert_equal "fail", t.report["verdict"]
+    @ops.calls.clear
+    assert_raise(DeviceTrial::Stop) { reloaded(t).check }
+    assert_empty rakes
+  end
+
+  def test_a_deploy_starts_an_empty_check
+    t = checked
+    t.report["deploy"] = nil
+    t.deploy
+    assert_equal({ "steps" => [], "timings" => {}, "human" => {} }, t.report["check"])
+  end
+
+  # --- pins -----------------------------------------------------------------
 
   def test_every_tree_is_pinned_before_the_first_build
-    trial.run(%w[trial])
-    first_rake = @ops.calls.index { |c| c[0] == :rake && c[2] == "r2p2:setup" }
+    deployed
+    first_rake = @ops.calls.index { |c| c[0] == :rake }
     pins = @ops.calls[0...first_rake].select { |c| c[0] == :git && c[2] == "checkout" }.map { |c| [c[1], c.last] }
-    arm = LOCK["arms"]["trial"]
-    assert_include pins, [r2p2, arm["R2P2-ESP32"]]
-    arm["repos"].each { |name, sha| assert_include pins, [cache(name), sha] }
+    assert_include pins, [r2p2, FW["R2P2-ESP32"]]
+    FW["repos"].each { |name, sha| assert_include pins, [cache(name), sha] }
+    assert_include pins, [darwin, LOCK["darwin"]["R2P2-darwin"]]
+    assert_include pins, [darwin_picoruby, LOCK["darwin"]["picoruby"]]
+    assert_equal "r2p2:setup", rakes.first[2]
   end
 
-  def test_the_pc_vm_is_built_once_from_the_pinned_r2p2_darwin_before_the_first_arm_setup
-    r = trial.run
-    darwin = File.join(ROOT, "vendor", "R2P2-darwin")
-    sha = LOCK["darwin"]["R2P2-darwin"]
-    vm_builds = @ops.calls.each_index.select { |i| @ops.calls[i][0] == :rake && @ops.calls[i][2] == "pc:vm_build" }
-    assert_equal 1, vm_builds.size
-    assert_equal ROOT, @ops.calls[vm_builds.first][1]
-    pin = @ops.calls.index([:git, darwin, "checkout", "--quiet", "--detach", sha])
-    bundle = @ops.calls.index { |c| c[0] == :rake && c[2] == "pc:app_bundle" }
-    first_setup = @ops.calls.index { |c| c[0] == :rake && c[2] == "r2p2:setup" }
-    assert_operator pin, :<, vm_builds.first
-    assert_operator vm_builds.first, :<, bundle
-    assert_operator bundle, :<, first_setup
-    assert_equal 1, @ops.calls.count { |c| c[0] == :rake && c[2] == "pc:app_bundle" }
-    assert_equal ["pin R2P2-darwin", "pin R2P2-darwin picoruby", "pc:vm_build", "pc:app_bundle", "pin R2P2-darwin holds"],
-                 r["pc_vm"]["steps"].map { |s| s["name"] }
-  end
-
-  def test_a_failing_pc_vm_build_fails_the_verdict_before_any_arm
-    @ops.fail_rake["pc:vm_build"] = true
-    r = trial.run
-    assert_equal "fail", r["verdict"]
-    assert_equal "pc:vm_build", r["pc_vm"]["steps"].find { |s| !s["ok"] }["name"]
-    assert_empty r["arms"]
+  def test_a_dirty_checkout_stops_the_deploy_before_anything_builds
+    @ops.dirty[ROOT] = " M lib/device_trial.rb\n"
+    t = deployed
+    assert_equal "pin trees", failed(t.report["deploy"])["name"]
+    assert_match(/local changes/, failed(t.report["deploy"])["detail"])
+    assert_empty rakes
   end
 
   def test_a_moved_cache_keeps_its_old_commit_on_a_branch
     @ops.heads[cache("picoruby-ili9342")] = "f" * 40
-    trial.run(%w[trial])
+    deployed
     assert_include @ops.calls, [:git, cache("picoruby-ili9342"), "branch", "keep-#{'f' * 40}", "HEAD"]
-    assert_equal LOCK["arms"]["trial"]["repos"]["picoruby-ili9342"], @ops.heads[cache("picoruby-ili9342")]
+    assert_equal FW["repos"]["picoruby-ili9342"], @ops.heads[cache("picoruby-ili9342")]
   end
 
-  def test_a_pin_that_moves_during_the_build_stops_the_run
+  def test_a_pin_that_moves_during_the_build_stops_the_deploy
     @ops.on_rake["r2p2:build_flash"] = ->(_d, _e) { @ops.heads[cache("picoruby-ili9342")] = "e" * 40 }
-    r = trial.run
-    assert_equal "fail", r["verdict"]
-    assert_equal "pins hold after build", failed(r, "base")["name"]
-    assert_nil r["arms"]["trial"]
+    t = deployed
+    assert_equal "fail", t.report["verdict"]
+    assert_equal "pins hold after build", failed(t.report["deploy"])["name"]
+    assert_not_include rake_tasks, "r2p2:flash_identity"
   end
 
-  def test_local_changes_in_r2p2_stop_the_run
+  def test_a_checkout_that_moves_during_the_build_stops_the_deploy
+    @ops.on_rake["r2p2:build_flash"] = ->(_d, _e) { @ops.heads[ROOT] = "b" * 40 }
+    t = deployed
+    assert_equal "pins hold after build", failed(t.report["deploy"])["name"]
+  end
+
+  def test_local_changes_in_r2p2_stop_the_deploy
     @ops.dirty[r2p2] = " M components/picoruby-esp32/CMakeLists.txt\n"
-    r = trial.run
-    assert_equal "pins hold before setup", failed(r, "base")["name"]
-    assert_match(/local changes/, failed(r, "base")["detail"])
+    t = deployed
+    assert_equal "pins hold before setup", failed(t.report["deploy"])["name"]
+    assert_match(/local changes/, failed(t.report["deploy"])["detail"])
   end
 
-  def test_trial_aot_pins_are_checked_after_setup
+  def test_aot_pins_are_checked_after_setup
     @ops.on_rake["r2p2:setup"] = ->(_d, _e) {}
-    r = trial.run(%w[trial])
-    assert_equal "pins hold after setup", failed(r, "trial")["name"]
+    t = deployed
+    assert_equal "pins hold after setup", failed(t.report["deploy"])["name"]
   end
 
-  def test_a_fault_in_the_boot_log_fails_the_arm
-    @ops.on_rake["r2p2:reset_and_capture"] = ->(dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot(File.basename(dir), "***ERROR*** A stack overflow in task picoruby_task") }
-    r = trial.run
-    assert_equal "boot", failed(r, "base")["name"]
+  # --- identity and boot ------------------------------------------------------
+
+  def test_the_deploy_sends_the_app_after_the_flash_then_reads_the_identity_and_boots
+    deployed
+    assert_equal %w[r2p2:setup r2p2:build_flash r2p2:upload_appmrb r2p2:flash_identity r2p2:reset_and_capture r2p2:reset], rake_tasks
+  end
+
+  def test_a_fault_in_the_boot_log_fails_the_boot
+    @ops.on_rake["r2p2:reset_and_capture"] = ->(_d, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot("***ERROR*** A stack overflow in task picoruby_task") }
+    t = deployed
+    assert_equal "boot", failed(t.report["deploy"])["name"]
   end
 
   def test_a_missing_marker_fails_the_boot
-    @ops.on_rake["r2p2:reset_and_capture"] = ->(dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot(File.basename(dir)).sub("[boot] step:led-init-ok", "") }
-    r = trial.run(%w[trial])
-    assert_match(/led-init-ok/, failed(r, "trial")["detail"])
+    t = deployed
+    @ops.on_rake["r2p2:reset_and_capture"] = ->(_d, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot.sub("[boot] step:led-init-ok", "") }
+    t.check
+    assert_equal "boot", failed(t.report["check"])["name"]
+    assert_match(/led-init-ok/, failed(t.report["check"])["detail"])
+    assert_not_include rake_tasks, "pc:up"
   end
 
-  def test_boot_must_come_from_the_locked_firmware
-    @ops.rake_out["r2p2:flash_identity"] = -> { identity("base", version: "0.2.21-30-g2f18720-dirty") }
-    r = trial.run(%w[base])
-    assert_match(/App version/, failed(r, "base")["detail"])
+  def test_an_identity_that_is_not_the_locked_firmware_stops_the_check_before_boot_and_pc_up
+    t = deployed
+    @ops.calls.clear
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity(version: "0.2.21-30-g2f18720") }
+    t.check
+    assert_equal "flash identity", failed(t.report["check"])["name"]
+    assert_match(/App version/, failed(t.report["check"])["detail"])
+    assert_equal ["r2p2:flash_identity"], rake_tasks
   end
-  
+
+  def test_a_dirty_app_version_is_not_the_locked_firmware
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity(version: "0.2.21-30-g#{FW['R2P2-ESP32'][0, 7]}-dirty") }
+    t = deployed
+    assert_equal "flash identity", failed(t.report["deploy"])["name"]
+  end
+
   def test_the_flash_must_put_storage_where_the_tooling_writes
-    @ops.rake_out["r2p2:flash_identity"] = -> { identity("base", storage: "0x310000") }
-    r = trial.run(%w[base])
-    assert_match(/storage at "0x310000"/, failed(r, "base")["detail"])
+    @ops.rake_out["r2p2:flash_identity"] = -> { identity(storage: "0x310000") }
+    t = deployed
+    assert_match(/storage at "0x310000"/, failed(t.report["deploy"])["detail"])
   end
-  
-  def test_a_boot_log_that_lost_the_bootloader_lines_to_the_usb_reconnect_still_passes
-    r = trial.run(%w[base])
-    assert_equal "ok", r["arms"]["base"]["steps"].find { |s| s["name"] == "boot" }.then { |s| s["ok"] ? "ok" : s["detail"] }
+
+  def test_the_check_resets_out_of_the_capture_s_download_mode_right_before_pc_up
+    t = deployed
+    @ops.calls.clear
+    t.check
+    seq = @ops.calls.reject { |c| c[0] == :now }
+    cap = seq.index { |c| c[0] == :rake && c[2] == "r2p2:reset_and_capture" }
+    assert_equal({ "SERIAL_LOG" => File.join(ROOT, "build", "trial", "boot.log"), "DURATION" => "25" }, seq[cap].last)
+    assert_equal [[:rake, ROOT, "r2p2:reset", {}], [:rake, ROOT, "pc:up", {}]], seq[cap + 1, 2]
   end
-  
-  def test_the_identity_is_read_off_flash_from_this_tree_before_the_boot_capture
-    trial.run(%w[base])
-    rakes = @ops.calls.select { |c| c[0] == :rake }.map { |c| [c[1], c[2]] }
-    id = rakes.index([ROOT, "r2p2:flash_identity"])
-    cap = rakes.index([wt("base"), "r2p2:reset_and_capture"])
-    assert_operator rakes.index([wt("base"), "r2p2:upload_appmrb"]), :<, id
-    assert_operator id, :<, cap
+
+  # --- pc_vm and pc:up --------------------------------------------------------
+
+  def test_pc_vm_checks_the_darwin_pins_and_the_bundle_without_building
+    t = checked
+    assert_match(/StackchanPico\.app/, step(t.report, "pc_vm")["detail"])
+    assert_empty rake_tasks & %w[pc:vm_build pc:app_bundle]
   end
+
+  def test_a_missing_bundle_fails_pc_vm_and_is_not_built
+    t = deployed
+    @ops.exists.delete(DeviceTrial::APP_BUNDLE)
+    @ops.calls.clear
+    t.check
+    assert_equal "pc_vm", failed(t.report["check"])["name"]
+    assert_match(/missing/, failed(t.report["check"])["detail"])
+    assert_empty rakes
+  end
+
+  def test_a_moved_darwin_picoruby_fails_pc_vm
+    t = deployed
+    @ops.heads[darwin_picoruby] = "0" * 40
+    t.check
+    assert_equal "pc_vm", failed(t.report["check"])["name"]
+    assert_match(/picoruby is at "0{40}"/, failed(t.report["check"])["detail"])
+  end
+
+  def test_pc_up_succeeds_on_a_later_try
+    tries = 0
+    @ops.fail_rake["pc:up"] = -> { (tries += 1) < 3 }
+    t = checked
+    assert_match(/\Aup after 3 tries, \d+\.\d s\z/, step(t.report, "pc:up")["detail"])
+    first = index_of { |c| rake_call?(c, "pc:up", {}) }
+    assert_equal [[:sleep, 5], [:sleep, 5]], @ops.calls[first..].select { |c| c[0] == :sleep }.first(2)
+    t.run_darwin
+    assert_equal "pass", t.report["verdict"]
+  end
+
+  def test_pc_up_fails_after_the_last_try
+    @ops.fail_rake["pc:up"] = true
+    t = checked
+    assert_equal "pc:up", failed(t.report["check"])["name"]
+    assert_equal DeviceTrial::PC_UP_TRIES, rakes.count { |c| c[2] == "pc:up" }
+    assert_equal [[:sleep, 5]] * (DeviceTrial::PC_UP_TRIES - 1), @ops.calls.select { |c| c[0] == :sleep }
+    assert_equal "fail", t.report["verdict"]
+  end
+
+  # --- resets -----------------------------------------------------------------
+
+  def test_each_board_reset_is_recorded_across_deploy_and_check
+    t = deployed
+    assert_equal 4, t.report["resets"]
+    t.check
+    assert_equal 7, t.report["resets"]
+    assert_match(/Board resets: 7\n/, t.markdown)
+  end
+
+  def test_resets_are_recorded_and_never_stop_a_run_and_app_uploads_are_not_resets
+    t = deployed
+    t.report["resets"] = 1000
+    3.times { t.upload_app }
+    assert_equal 1000 + 3 * 3, t.report["resets"]
+    t.check
+    t.run_darwin
+    assert_equal "pass", t.report["verdict"]
+  end
+
+  # --- FROM= ------------------------------------------------------------------
+
+  def test_from_keeps_the_earlier_steps_and_reruns_the_rest
+    t = checked
+    before = t.report["check"]["steps"].map(&:dup)
+    t.report["check"]["timings"]["face joy"] = [9.0]
+    t.report["check"]["timings"]["release and reconnect"] = [9.0]
+    later = reloaded(t)
+    @ops.calls.clear
+    later.check(from: "calibrate")
+    c = later.report["check"]
+    assert_equal CHECK_STEPS, names(c)
+    i = CHECK_STEPS.index("calibrate")
+    assert_equal before.first(i), c["steps"].first(i)
+    assert_equal [9.0], c["timings"]["face joy"]
+    assert_not_equal [9.0], c["timings"]["release and reconnect"]
+    assert_not_include rake_tasks, "r2p2:flash_identity"
+    assert_equal "calibrate", @ops.calls.find { |x| x[0] == :cli }[2].first
+    assert_equal 30, later.report["check"]["steps"].find { |s| s["name"] == "quiet wait" }["detail"].to_i
+    assert_include @ops.calls, [:sleep, 30]
+  end
+
+  def test_from_before_the_questions_asks_them_again_and_after_keeps_the_answers
+    t = checked
+    @ops.answers = []
+    later = reloaded(t)
+    later.check(from: "torque off")
+    assert_equal %w[y y y y], later.report["check"]["human"].values.map { |h| h["answer"] }
+    later.check(from: "stack high-water")
+    assert_equal [nil] * 4, later.report["check"]["human"].values.map { |h| h["answer"] }
+  end
+
+  def test_from_with_an_earlier_failed_step_stops
+    @ops.cli_out["selftest"] = "OK selftest\n"
+    t = checked
+    assert_equal "selftest detail", failed(t.report["check"])["name"]
+    @ops.calls.clear
+    assert_raise(DeviceTrial::Stop) { reloaded(t).check(from: "calibrate") }
+    assert_empty @ops.calls.select { |c| %i[rake cli].include?(c[0]) }
+  end
+
+  def test_from_with_a_step_the_previous_check_never_reached_stops
+    @ops.cli_out["say"] = "OK say bytes=3000"
+    t = checked
+    assert_raise(DeviceTrial::Stop) { reloaded(t).check(from: "calibrate") }
+  end
+
+  def test_from_an_unknown_step_stops
+    t = checked
+    assert_raise(DeviceTrial::Stop) { t.check(from: "no such step") }
+  end
+
+  def test_from_the_failed_step_reruns_it
+    @ops.cli_out["selftest"] = "OK selftest\n"
+    t = checked
+    @ops.cli_out.delete("selftest")
+    later = reloaded(t)
+    later.check(from: "selftest detail")
+    assert_nil failed(later.report["check"])
+    later.run_darwin
+    assert_equal "pass", later.report["verdict"]
+  end
+
+  # --- robot steps --------------------------------------------------------------
 
   def test_remote_servo_must_answer_the_detail_line
     @ops.cli_out["remote servo"] = ".\n"
-    r = trial.run(%w[trial])
-    assert_equal "remote servo detail", failed(r, "trial")["name"]
+    t = checked
+    assert_equal "remote servo detail", failed(t.report["check"])["name"]
   end
 
-  def test_the_trial_arm_reports_the_stack_left_after_every_handler_ran
-    r = trial.run(%w[trial])
-    step = r["arms"]["trial"]["steps"].find { |s| s["name"] == "stack high-water" }
-    assert step["ok"]
-    assert_equal "2024 B free", step["detail"]
+  def test_the_check_reports_the_stack_left_after_every_handler_ran
+    assert_equal "2024 B free", step(checked.report, "stack high-water")["detail"]
   end
-  
-  def test_less_than_a_kilobyte_of_stack_left_stops_the_arm
+
+  def test_less_than_a_kilobyte_of_stack_left_stops_the_check
     @ops.cli_out["remote stack_free"] = "<stack_free:1023>\n"
-    r = trial.run(%w[trial])
-    assert_equal "stack high-water", failed(r, "trial")["name"]
+    assert_equal "stack high-water", failed(checked.report["check"])["name"]
   end
-  
-  def test_a_firmware_without_the_stack_reading_stops_the_arm
+
+  def test_a_firmware_without_the_stack_reading_stops_the_check
     @ops.cli_out["remote stack_free"] = "<stack_free:unknown>\n"
-    r = trial.run(%w[trial])
-    assert_equal "stack high-water", failed(r, "trial")["name"]
+    assert_equal "stack high-water", failed(checked.report["check"])["name"]
   end
-  
-  def test_an_arm_without_stack_check_does_not_ask_for_it
-    r = trial.run(%w[base])
-    refute_includes step_names(r, "base"), "stack high-water"
-  end
-  
+
   def test_say_must_span_more_than_two_multicore_chunks
     @ops.cli_out["say"] = "OK say bytes=3000"
-    r = trial.run(%w[trial])
-    assert_equal "say", failed(r, "trial")["name"]
+    assert_equal "say", failed(checked.report["check"])["name"]
+  end
+
+  def test_timings_hold_every_series_for_the_rounds
+    t = checked(rounds: 3)
+    tm = t.report["check"]["timings"]
+    assert_equal 3, tm["face joy"].size
+    assert_equal 3, tm["servo remote"].size
+    assert_equal 3, tm["say"].size
+    assert_equal 1, tm["hand-off B"].size
   end
 
   def test_unanswered_questions_leave_it_incomplete_until_answered
     @ops.answers = []
-    t = trial
-    t.run
+    t = checked
     t.run_darwin
     assert_equal "incomplete", t.report["verdict"]
     @ops.answers = %w[y] * 20
@@ -402,10 +720,289 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def test_a_no_fails_it
     @ops.answers = %w[y n] + %w[y] * 20
-    t = trial
-    t.run
+    t = checked
+    t.run_darwin
     assert_equal "fail", t.report["verdict"]
   end
+
+  # --- controller -------------------------------------------------------------
+
+  CONTROLLER_STEPS = ["quiet wait", "selftest detail", "touch listen", "calibrate", "chat (sidecar STUB)",
+                      "release and reconnect", "hand-off Mac A → Mac B → Mac A"].freeze
+  HANDOFF_UP = { "NS" => "handoff", "STACKCHAN_PORT" => "8797", "STACKCHAN_SIDECAR_PORT" => "8798",
+                 "STACKCHAN_LOGDIR" => "/tmp/stackchan-pico-handoff", "STUB" => "1", "ALLOW_BUSY" => "1" }.freeze
+  B = { "STACKCHAN_PORT" => "8797" }.freeze
+
+  def status_override(nth, link)
+    seen = 0
+    @ops.cli_out["status"] = lambda do |_args, _env|
+      seen += 1
+      line = @ops.status_line
+      seen == nth ? line.sub(/link=\S+/, "link=#{link}") : line
+    end
+  end
+
+  def test_the_controller_steps_run_in_order_between_timings_and_stack_high_water
+    n = names(checked.report["check"])
+    assert_equal CONTROLLER_STEPS, n[n.index("timings") + 1, CONTROLLER_STEPS.size]
+    assert_equal "stack high-water", n[n.index("timings") + 1 + CONTROLLER_STEPS.size]
+  end
+
+  def test_every_controller_step_passes_with_its_machine_answer
+    r = checked.report
+    assert_equal [], r["check"]["steps"].reject { |s| s["ok"] }
+    assert_equal "30 s", step(r, "quiet wait")["detail"]
+    assert_equal "<YL_actual:50,PU_actual:29>", step(r, "selftest detail")["detail"]
+    assert_equal "touch zone=1 (back)", step(r, "touch listen")["detail"]
+    assert_equal "yaw_zero 2048, pitch_zero 2050, verify delta 1/-2", step(r, "calibrate")["detail"]
+    assert_equal "reply=stub返答:こんにちは", step(r, "chat (sidecar STUB)")["detail"]
+    assert_match(/\Arelease seen: yes, reconnect \+ face \d\.\d\d s\z/, step(r, "release and reconnect")["detail"])
+    assert_match(/\Agap \d\.\d\d s, B \d\.\d\d s, A \d\.\d\d s\z/, step(r, "hand-off Mac A → Mac B → Mac A")["detail"])
+    %w[release\ and\ reconnect hand-off\ B hand-off\ A].each { |k| assert_equal 1, r["check"]["timings"][k].size }
+  end
+
+  def test_quiet_wait_is_hold_plus_release_after_plus_five_seconds
+    assert_equal 30, trial.quiet_wait_s
+    checked
+    assert_equal [30], @ops.calls.select { |c| c[0] == :sleep }.map(&:last).uniq
+  end
+
+  def test_quiet_wait_follows_the_firmware_app_and_the_status_line
+    @ops.files[File.join(ROOT, "apps/robot/app.rb")] = "StackChan.robot do |bot|\n  bot.release_after 4_000\nend.run\n"
+    @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=1 hold_ms=3000\n"
+    assert_equal 12, trial.quiet_wait_s
+  end
+
+  def test_an_app_without_release_after_stops_the_check
+    @ops.files[File.join(ROOT, "apps/robot/app.rb")] = "StackChan.robot do |bot|\nend.run\n"
+    assert_equal "quiet wait", failed(checked.report["check"])["name"]
+  end
+
+  def test_touch_asks_the_operator_then_listens_for_one_touch
+    checked
+    notice = index_of { |c| c == [:notice, "touch the back of the head"] }
+    listen = index_of { |c| cli_call?(c, "touch", "listen", "--count", "1", "--timeout", "30") }
+    assert_operator notice, :<, listen
+    assert_operator listen, :<, index_of { |c| cli_call?(c, "remote", "stack_free") }
+  end
+
+  def test_touch_that_times_out_stops_the_check
+    @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
+    t = checked
+    assert_equal "touch listen", failed(t.report["check"])["name"]
+    assert_match(/exit 1/, failed(t.report["check"])["detail"])
+  end
+
+  def test_selftest_without_a_detail_line_stops_the_check
+    @ops.cli_out["selftest"] = "OK selftest\n"
+    assert_equal "selftest detail", failed(checked.report["check"])["name"]
+  end
+
+  def run_without_a_tty
+    @ops.tty = false
+    t = checked
+    t.run_darwin
+    assert_equal "incomplete", t.report["verdict"]
+    reloaded(t)
+  end
+
+  def touch_steps(report) = report["check"]["steps"].select { |s| s["name"] == "touch listen" }
+
+  def test_trial_touch_listens_and_completes_the_verdict
+    later = run_without_a_tty
+    @ops.tty = true
+    @ops.calls.clear
+    later.run_touch
+    assert_equal [[:notice, "touch the back of the head"],
+                  [:cli, ROOT, %w[touch listen --count 1 --timeout 30], {}, nil]], @ops.calls
+    assert_equal [{ "name" => "touch listen", "ok" => true, "detail" => "touch zone=1 (back)" }], touch_steps(later.report)
+    later.answer
+    assert_equal "pass", later.report["verdict"]
+    assert_match(/\| touch listen \| ok \| touch zone=1 \(back\) \|/, later.markdown)
+  end
+
+  def test_trial_touch_that_times_out_fails_the_verdict
+    later = run_without_a_tty
+    @ops.tty = true
+    @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
+    later.run_touch
+    steps = touch_steps(later.report)
+    assert_equal 1, steps.size
+    assert_equal false, steps.first["ok"]
+    assert_match(/exit 1/, steps.first["detail"])
+    assert_equal "fail", later.report["verdict"]
+  end
+
+  def test_trial_touch_without_a_tty_leaves_it_incomplete
+    later = run_without_a_tty
+    @ops.calls.clear
+    later.run_touch
+    assert_empty @ops.calls.select { |c| c[0] == :cli }
+    assert_nil touch_steps(later.report).first["ok"]
+    assert_equal "incomplete", later.report["verdict"]
+  end
+
+  def test_trial_touch_without_a_check_stops
+    assert_raise(DeviceTrial::Stop) { deployed.tap { |t| t.report["check"] = nil }.run_touch }
+  end
+
+  def test_touch_without_a_tty_is_incomplete_and_the_check_goes_on
+    @ops.tty = false
+    t = checked
+    s = step(t.report, "touch listen")
+    assert_nil s["ok"]
+    assert_match(/incomplete/, s["detail"])
+    assert_nil index_of { |c| c[0] == :cli && c[2].first == "touch" }
+    assert_include names(t.report["check"]), "stack high-water"
+    assert_match(/\| touch listen \| incomplete \|/, t.markdown)
+  end
+
+  def test_from_keeps_an_incomplete_touch_for_trial_touch_to_fill
+    @ops.tty = false
+    t = checked
+    later = reloaded(t)
+    later.check(from: "calibrate")
+    assert_nil step(later.report, "touch listen")["ok"]
+  end
+
+  def test_calibrate_feeds_five_enters_and_reads_the_json_line
+    checked
+    c = @ops.calls.find { |x| x[0] == :cli && x[2].first == "calibrate" }
+    assert_equal %w[calibrate --no-torque-toggle --format json --samples 3], c[2]
+    assert_equal "\n" * 5, c[4]
+  end
+
+  def test_calibrate_that_needs_manual_calibration_stops_the_check
+    @ops.cli_out["calibrate"] = [6, "[FAIL] device returned unknown raw position (manual calibration needed)\n"]
+    t = checked
+    assert_equal "calibrate", failed(t.report["check"])["name"]
+    assert_match(/exit 6/, failed(t.report["check"])["detail"])
+  end
+
+  def test_calibrate_whose_last_line_is_not_json_stops_the_check
+    @ops.cli_out["calibrate"] = "[6/6] Re-align FORWARD\n[WARN] verify delta exceeded 3; review before paste.\n"
+    assert_equal "calibrate", failed(checked.report["check"])["name"]
+  end
+
+  def test_calibrate_with_a_forward_verify_delta_over_three_stops_the_check
+    @ops.cli_out["calibrate"] = FakeOps::CALIBRATION.sub('"pitch_delta":-2', '"pitch_delta":-4')
+    assert_equal "calibrate", failed(checked.report["check"])["name"]
+  end
+
+  def test_chat_restarts_the_mac_on_the_stub_sidecar_after_the_robot_released_it
+    checked
+    down = index_of { |c| rake_call?(c, "pc:down", {}) }
+    wait = index_of { |c| c == [:sleep, 30] }
+    up = index_of { |c| rake_call?(c, "pc:up", { "STUB" => "1" }) }
+    chat = index_of { |c| cli_call?(c, "chat", "こんにちは") }
+    assert_equal [down, wait, up, chat], [down, wait, up, chat].sort
+  end
+
+  def test_a_wrong_reply_stops_the_check
+    @ops.cli_out["chat"] = "reply=こんにちは！元気だよ\n"
+    t = checked
+    assert_equal "chat (sidecar STUB)", failed(t.report["check"])["name"]
+    assert_match(/reply=/, failed(t.report["check"])["detail"])
+  end
+
+  def restore_calls
+    last_chat = @ops.calls.rindex { |c| c[0] == :cli && c[2].first == "chat" }
+    @ops.calls[last_chat..].select { |c| c[0] == :rake || c[0] == :sleep }.last(3)
+  end
+
+  def test_the_check_leaves_the_mac_on_the_real_sidecar
+    checked
+    torque_off = @ops.calls.rindex { |c| cli_call?(c, "torque", "off") }
+    assert_equal [[:rake, ROOT, "pc:down", {}], [:sleep, 30], [:rake, ROOT, "pc:up", {}]], @ops.calls[torque_off + 1..]
+  end
+
+  def test_a_failure_after_chat_still_leaves_the_mac_on_the_real_sidecar
+    @ops.cli_out["B face"] = [1, "error: timeout\n"]
+    t = checked
+    assert_equal "fail", t.report["verdict"]
+    assert_equal [[:rake, ROOT, "pc:down", {}], [:sleep, 30], [:rake, ROOT, "pc:up", {}]], restore_calls
+  end
+
+  def test_release_is_seen_and_the_next_face_reconnects_once
+    checked
+    chat = index_of { |c| cli_call?(c, "chat", "こんにちは") }
+    joy = chat + @ops.calls[chat..].index { |c| cli_call?(c, "face", "joy") }
+    assert_equal [:sleep, 30], @ops.calls[joy - 2]
+    assert cli_call?(@ops.calls[joy - 1], "status")
+  end
+
+  def test_connects_that_do_not_grow_stop_the_check
+    @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=1 hold_ms=10000\n"
+    t = checked
+    assert_equal "release and reconnect", failed(t.report["check"])["name"]
+    assert_match(/connects/, failed(t.report["check"])["detail"])
+  end
+
+  def test_hand_off_starts_mac_b_on_its_own_namespace_ports_and_log_dir
+    checked
+    assert index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
+    assert_equal [%w[face joy], %w[face joy]], @ops.calls.select { |c| c[0] == :cli && c[3] == B }.map { |c| c[2] }
+  end
+
+  def test_hand_off_order
+    checked
+    up = index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
+    seq = @ops.calls[up - 2..].reject { |c| c[0] == :now }.first(12).map { |c| c[0] == :cli ? [c[2], c[3]] : c[0..2] + (c[0] == :rake ? [c[3]] : []) }
+    assert_equal [[%w[face neutral], {}], [%w[status], {}],
+                  [:rake, ROOT, "pc:up", HANDOFF_UP], [:sleep, 30],
+                  [%w[face neutral], {}], [%w[face joy], B], [%w[status], {}], [:sleep, 30],
+                  [%w[face joy], B], [:sleep, 30], [%w[face neutral], {}],
+                  [:rake, ROOT, "pc:down", { "NS" => "handoff" }]], seq
+  end
+
+  def test_mac_b_that_is_not_busy_stops_the_check_and_mac_b_is_stopped
+    @ops.cli_out["B face"] = [1, "error: timeout\n"]
+    t = checked
+    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
+    assert_match(/busy/, failed(t.report["check"])["detail"])
+    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
+  end
+
+  def test_mac_a_not_holding_before_mac_b_starts_stops_the_check
+    status_override(5, "released")
+    t = checked
+    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
+    assert_match(/before/, failed(t.report["check"])["detail"])
+    assert_nil index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
+  end
+
+  def test_mac_a_losing_the_robot_at_mac_b_busy_stops_the_check
+    status_override(6, "released")
+    t = checked
+    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
+    assert_match(/after/, failed(t.report["check"])["detail"])
+    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
+  end
+
+  def test_mac_b_starting_seven_seconds_after_mac_a_stops_the_check
+    @ops.on_now = ->(calls) { calls.last(2) == [[:now], [:now]] ? 7.0 : 0 }
+    t = checked
+    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
+    assert_match(/7\.00 s/, failed(t.report["check"])["detail"])
+    assert_empty @ops.calls.select { |c| c[0] == :cli && c[3] == B }
+    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
+  end
+
+  def test_mac_b_that_never_connects_stops_the_check
+    @ops.cli_out["B face"] = FakeOps::BUSY
+    t = checked
+    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
+    assert_match(/B never connects/, failed(t.report["check"])["detail"])
+  end
+
+  def test_mac_a_that_does_not_get_the_robot_back_stops_the_check
+    @ops.cli_out["face"] = ->(args, _env) { @ops.calls.any? { |c| c[0] == :cli && c[3] == B } ? [1, "error: timeout\n"] : @ops.mac_cli("face", args) }
+    t = checked
+    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
+    assert_match(/A/, failed(t.report["check"])["detail"])
+  end
+
+  # --- darwin -----------------------------------------------------------------
 
   APP_ENV = { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => '-StackchanTrial "connect;face joy;selftest"' }.freeze
 
@@ -418,17 +1015,18 @@ class DeviceTrialTest < Test::Unit::TestCase
     t.report
   end
 
-  def test_darwin_builds_both_apps_in_the_trial_worktree_at_the_locked_r2p2_darwin
+  def test_darwin_builds_both_apps_in_this_checkout_at_the_locked_r2p2_darwin
     run_darwin_only
-    builds = @ops.calls.select { |c| c[0] == :rake && !c[2].end_with?(":device:run") }.map { |c| [c[1], c[2]] }
+    builds = rakes.reject { |c| c[2].end_with?(":device:run") }.map { |c| [c[1], c[2]] }
     assert_equal %w[ios:device:lib ios:gen ios:device:build watchos:device:lib watchos:gen watchos:device:build]
-                   .map { |t| [wt("trial"), t] }, builds
-    assert_equal LOCK["darwin"]["R2P2-darwin"], @ops.heads[File.join(ROOT, "vendor", "R2P2-darwin")]
+                   .map { |t| [ROOT, t] }, builds
+    assert_equal LOCK["darwin"]["R2P2-darwin"], @ops.heads[darwin]
+    assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
   end
 
   def test_each_app_runs_connect_face_and_selftest_once_on_its_console_after_the_builds
     run_darwin_only
-    runs = @ops.calls.select { |c| c[0] == :rake && c[2].end_with?(":device:run") }
+    runs = rakes.select { |c| c[2].end_with?(":device:run") }
     assert_equal [["ios:device:run", APP_ENV], ["watchos:device:run", APP_ENV]], runs.first(2).map { |c| [c[2], c[3]] }
     last_build = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:build" }
     assert_operator last_build, :<, @ops.calls.index(runs.first)
@@ -436,13 +1034,12 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def test_darwin_passes_on_the_machine_answers_alone
     r = run_darwin_only
-    assert_equal ["pin R2P2-darwin", "pin R2P2-darwin picoruby", "ios:device:lib", "ios:gen", "ios:device:build", "watchos:device:lib",
+    assert_equal ["pin R2P2-darwin", "ios:device:lib", "ios:gen", "ios:device:build", "watchos:device:lib",
                   "watchos:gen", "watchos:device:build", "pin R2P2-darwin holds", "quiet wait", "iPhone trial",
-                  "Watch trial", "hand-off Mac → iPhone → Watch → Mac"], r["darwin"]["steps"].map { |s| s["name"] }
+                  "Watch trial", "hand-off Mac → iPhone → Watch → Mac"], names(r["darwin"])
     assert r["darwin"]["steps"].all? { |s| s["ok"] }
     assert_equal "<YL_actual:50,PU_actual:29>", darwin_step(r, "iPhone trial")["detail"]
     assert_empty @ops.calls.select { |c| c[0] == :prompt }
-    assert_nil r["darwin"]["human"]
   end
 
   def test_darwin_hand_off_order
@@ -473,7 +1070,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.fail_rake["watchos:device:build"] = true
     r = run_darwin_only
     assert_equal "watchos:device:build", darwin_failed(r)["name"]
-    assert_nil @ops.calls.find { |c| c[0] == :rake && c[2].end_with?(":device:run") }
+    assert_nil rakes.find { |c| c[2].end_with?(":device:run") }
     assert_equal "fail", r["verdict"]
   end
 
@@ -545,355 +1142,38 @@ class DeviceTrialTest < Test::Unit::TestCase
     faces = 0
     @ops.cli_out["face"] = lambda do |args, _env|
       faces += 1
-      faces == 2 ? [8, "#{FakeOps::BUSY[1]}"] : @ops.mac_cli("face", args)
+      faces == 2 ? [8, FakeOps::BUSY[1]] : @ops.mac_cli("face", args)
     end
     r = run_darwin_only
     assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
     assert_match(/the Mac does not get the robot back/, darwin_failed(r)["detail"])
   end
 
-  def test_darwin_markdown_lists_its_steps
-    t = trial
-    t.run
-    t.run_darwin
-    assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, t.markdown)
-    assert_match(/\| iPhone trial \| ok \| <YL_actual:50,PU_actual:29> \|/, t.markdown)
-  end
+  # --- report -------------------------------------------------------------------
 
-  def test_markdown_puts_both_arms_side_by_side
-    t = trial(rounds: 3)
-    t.run
+  def test_markdown_lists_pins_deploy_check_timings_and_darwin
+    t = checked(rounds: 3)
+    t.run_darwin
     md = t.markdown
-    assert_match(/\| series \| base \| trial \|/, md)
-    assert_match(/\| subtitle 19 glyphs \| \d\.\d{3} \| \d\.\d{3} \|/, md)
-    assert_match(/\| servo remote \| — \| \d\.\d{3} \|/, md)
-    assert_match(/\| hand-off B \| — \| \d\.\d{3} \|/, md)
-    assert_equal 3, t.report["arms"]["trial"]["timings"]["face joy"].size
-  end
-
-  CONTROLLER_STEPS = ["quiet wait", "selftest detail", "touch listen", "calibrate", "chat (sidecar STUB)",
-                      "release and reconnect", "hand-off Mac A → Mac B → Mac A"].freeze
-  HANDOFF_UP = { "NS" => "handoff", "STACKCHAN_PORT" => "8797", "STACKCHAN_SIDECAR_PORT" => "8798",
-                 "STACKCHAN_LOGDIR" => "/tmp/stackchan-pico-handoff", "STUB" => "1", "ALLOW_BUSY" => "1" }.freeze
-  B = { "STACKCHAN_PORT" => "8797" }.freeze
-
-  def step(report, arm, name) = report["arms"][arm]["steps"].find { |s| s["name"] == name }
-  def index_of(&blk) = @ops.calls.index(&blk)
-  def cli_call?(c, *args, env: {}) = c[0] == :cli && c[2] == args && c[3] == env
-  def rake_call?(c, task, env) = c[0] == :rake && c[2] == task && c[3] == env
-
-  def status_override(nth, link)
-    seen = 0
-    @ops.cli_out["status"] = lambda do |_args, _env|
-      seen += 1
-      line = @ops.status_line
-      seen == nth ? line.sub(/link=\S+/, "link=#{link}") : line
-    end
-  end
-
-  def test_the_controller_steps_run_in_order_between_measure_and_stack_high_water
-    names = step_names(trial.run(%w[trial]), "trial")
-    assert_equal CONTROLLER_STEPS, names[names.index("timings") + 1, CONTROLLER_STEPS.size]
-    assert_equal "stack high-water", names[names.index("timings") + 1 + CONTROLLER_STEPS.size]
-  end
-
-  def test_every_controller_step_passes_with_its_machine_answer
-    r = trial.run(%w[trial])
-    assert_equal [], r["arms"]["trial"]["steps"].reject { |s| s["ok"] }
-    assert_equal "30 s", step(r, "trial", "quiet wait")["detail"]
-    assert_equal "<YL_actual:50,PU_actual:29>", step(r, "trial", "selftest detail")["detail"]
-    assert_equal "touch zone=1 (back)", step(r, "trial", "touch listen")["detail"]
-    assert_equal "yaw_zero 2048, pitch_zero 2050, verify delta 1/-2", step(r, "trial", "calibrate")["detail"]
-    assert_equal "reply=stub返答:こんにちは", step(r, "trial", "chat (sidecar STUB)")["detail"]
-    assert_match(/\Arelease seen: yes, reconnect \+ face \d\.\d\d s\z/, step(r, "trial", "release and reconnect")["detail"])
-    assert_match(/\Agap \d\.\d\d s, B \d\.\d\d s, A \d\.\d\d s\z/, step(r, "trial", "hand-off Mac A → Mac B → Mac A")["detail"])
-    %w[release\ and\ reconnect hand-off\ B hand-off\ A].each { |k| assert_equal 1, r["arms"]["trial"]["timings"][k].size }
-  end
-
-  def test_quiet_wait_is_hold_plus_release_after_plus_five_seconds
-    assert_equal 30, trial.quiet_wait_s(wt("trial"), LOCK["arms"]["trial"])
-    trial.run(%w[trial])
-    assert_equal [30], @ops.calls.select { |c| c[0] == :sleep && c != [:sleep, DeviceTrial::BOOT_READY_S] }.map(&:last).uniq
-  end
-
-  def test_quiet_wait_follows_the_arm_app_and_the_status_line
-    @ops.files[File.join(wt("trial"), "apps/robot/app.rb")] = "StackChan.robot do |bot|\n  bot.release_after 4_000\nend.run\n"
-    @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=1 hold_ms=3000\n"
-    assert_equal 12, trial.quiet_wait_s(wt("trial"), LOCK["arms"]["trial"])
-  end
-
-  def test_an_app_without_release_after_stops_the_arm
-    @ops.files[File.join(wt("trial"), "apps/robot/app.rb")] = "StackChan.robot do |bot|\nend.run\n"
-    r = trial.run(%w[trial])
-    assert_equal "quiet wait", failed(r, "trial")["name"]
-  end
-
-  def test_the_base_arm_calls_none_of_the_controller_steps
-    r = trial.run(%w[base])
-    assert_empty step_names(r, "base") & CONTROLLER_STEPS
-    verbs = @ops.calls.select { |c| c[0] == :cli }.map { |c| c[2].first }.uniq
-    assert_empty verbs & %w[status selftest touch calibrate chat]
-    assert_empty @ops.calls.select { |c| %i[sleep notice now].include?(c[0]) && c != [:sleep, DeviceTrial::BOOT_READY_S] }
-    assert_equal ["pc:up"], @ops.calls.select { |c| c[0] == :rake && c[1] == wt("base") && c[2].start_with?("pc:") }.map { |c| c[2] }
-  end
-
-  def test_touch_asks_the_operator_then_listens_for_one_touch
-    trial.run(%w[trial])
-    notice = index_of { |c| c == [:notice, "touch the back of the head"] }
-    listen = index_of { |c| cli_call?(c, "touch", "listen", "--count", "1", "--timeout", "30") }
-    assert_operator notice, :<, listen
-    assert_operator listen, :<, index_of { |c| cli_call?(c, "remote", "stack_free") }
-  end
-
-  def test_touch_that_times_out_stops_the_arm
-    @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
-    r = trial.run(%w[trial])
-    assert_equal "touch listen", failed(r, "trial")["name"]
-    assert_match(/exit 1/, failed(r, "trial")["detail"])
-  end
-
-def test_selftest_without_a_detail_line_stops_the_arm
-  @ops.cli_out["selftest"] = "OK selftest\n"
-  r = trial.run(%w[trial])
-  assert_equal "selftest detail", failed(r, "trial")["name"]
-end
-
-def run_without_a_tty
-  @ops.tty = false
-  t = trial
-  t.run
-  t.run_darwin
-  assert_equal "incomplete", t.report["verdict"]
-  later = trial
-  later.report.merge!(JSON.parse(JSON.generate(t.report)))
-  later
-end
-
-def touch_steps(report) = report["arms"]["trial"]["steps"].select { |s| s["name"] == "touch listen" }
-
-def test_trial_touch_listens_on_the_trial_arm_and_completes_the_verdict
-  later = run_without_a_tty
-  @ops.tty = true
-  @ops.calls.clear
-  later.run_touch
-  assert_equal [[:notice, "touch the back of the head"],
-                [:cli, wt("trial"), %w[touch listen --count 1 --timeout 30], {}, nil]], @ops.calls
-  assert_equal [{ "name" => "touch listen", "ok" => true, "detail" => "touch zone=1 (back)" }], touch_steps(later.report)
-  assert_equal "pass", later.report["verdict"]
-  assert_match(/\| touch listen \| ok \| touch zone=1 \(back\) \|/, later.markdown)
-end
-
-def test_trial_touch_that_times_out_fails_the_verdict
-  later = run_without_a_tty
-  @ops.tty = true
-  @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
-  later.run_touch
-  steps = touch_steps(later.report)
-  assert_equal 1, steps.size
-  assert_equal false, steps.first["ok"]
-  assert_match(/exit 1/, steps.first["detail"])
-  assert_equal "fail", later.report["verdict"]
-end
-
-def test_trial_touch_without_a_tty_leaves_it_incomplete
-  later = run_without_a_tty
-  @ops.calls.clear
-  later.run_touch
-  assert_empty @ops.calls.select { |c| c[0] == :cli }
-  assert_nil touch_steps(later.report).first["ok"]
-  assert_equal "incomplete", later.report["verdict"]
-end
-
-  def test_touch_without_a_tty_is_incomplete_and_the_arm_goes_on
-    @ops.tty = false
-    t = trial
-    t.run
-    t.run_darwin
-    s = step(t.report, "trial", "touch listen")
-    assert_nil s["ok"]
-    assert_match(/incomplete/, s["detail"])
-    assert_nil index_of { |c| c[0] == :cli && c[2].first == "touch" }
-    assert_include step_names(t.report, "trial"), "stack high-water"
-    assert_equal "incomplete", t.report["verdict"]
-    assert_match(/\| touch listen \| incomplete \|/, t.markdown)
-  end
-
-  def test_calibrate_feeds_five_enters_and_reads_the_json_line
-    trial.run(%w[trial])
-    c = @ops.calls.find { |x| x[0] == :cli && x[2].first == "calibrate" }
-    assert_equal %w[calibrate --no-torque-toggle --format json --samples 3], c[2]
-    assert_equal "\n" * 5, c[4]
-  end
-
-  def test_calibrate_that_needs_manual_calibration_stops_the_arm
-    @ops.cli_out["calibrate"] = [6, "[FAIL] device returned unknown raw position (manual calibration needed)\n"]
-    r = trial.run(%w[trial])
-    assert_equal "calibrate", failed(r, "trial")["name"]
-    assert_match(/exit 6/, failed(r, "trial")["detail"])
-  end
-
-  def test_calibrate_whose_last_line_is_not_json_stops_the_arm
-    @ops.cli_out["calibrate"] = "[6/6] Re-align FORWARD\n[WARN] verify delta exceeded 3; review before paste.\n"
-    r = trial.run(%w[trial])
-    assert_equal "calibrate", failed(r, "trial")["name"]
-  end
-
-  def test_calibrate_with_a_forward_verify_delta_over_three_stops_the_arm
-    @ops.cli_out["calibrate"] = FakeOps::CALIBRATION.sub('"pitch_delta":-2', '"pitch_delta":-4')
-    r = trial.run(%w[trial])
-    assert_equal "calibrate", failed(r, "trial")["name"]
-  end
-
-  def test_chat_restarts_the_mac_on_the_stub_sidecar_after_the_robot_released_it
-    trial.run(%w[trial])
-    down = index_of { |c| rake_call?(c, "pc:down", {}) }
-    wait = index_of { |c| c == [:sleep, 30] }
-    up = index_of { |c| rake_call?(c, "pc:up", { "STUB" => "1" }) }
-    chat = index_of { |c| cli_call?(c, "chat", "こんにちは") }
-    assert_equal [down, wait, up, chat], [down, wait, up, chat].sort
-  end
-
-  def test_a_wrong_reply_stops_the_arm
-    @ops.cli_out["chat"] = "reply=こんにちは！元気だよ\n"
-    r = trial.run(%w[trial])
-    assert_equal "chat (sidecar STUB)", failed(r, "trial")["name"]
-    assert_match(/reply=/, failed(r, "trial")["detail"])
-  end
-
-  def restore_calls
-    last_chat = @ops.calls.rindex { |c| c[0] == :cli && c[2].first == "chat" }
-    @ops.calls[last_chat..].select { |c| c[0] == :rake || c[0] == :sleep }.last(3)
-  end
-
-  def test_the_arm_leaves_the_mac_on_the_real_sidecar
-    trial.run(%w[trial])
-    torque_off = @ops.calls.rindex { |c| cli_call?(c, "torque", "off") }
-    assert_equal [[:rake, wt("trial"), "pc:down", {}], [:sleep, 30], [:rake, wt("trial"), "pc:up", {}]],
-                 @ops.calls[torque_off + 1..]
-  end
-
-  def test_a_failure_after_chat_still_leaves_the_mac_on_the_real_sidecar
-    @ops.cli_out["B face"] = [1, "error: timeout\n"]
-    r = trial.run(%w[trial])
-    assert_equal "fail", r["verdict"]
-    assert_equal [[:rake, wt("trial"), "pc:down", {}], [:sleep, 30], [:rake, wt("trial"), "pc:up", {}]], restore_calls
-  end
-
-  def test_release_is_seen_and_the_next_face_reconnects_once
-    trial.run(%w[trial])
-    chat = index_of { |c| cli_call?(c, "chat", "こんにちは") }
-    joy = chat + @ops.calls[chat..].index { |c| cli_call?(c, "face", "joy") }
-    assert_equal [:sleep, 30], @ops.calls[joy - 2]
-    assert cli_call?(@ops.calls[joy - 1], "status")
-  end
-
-  def test_connects_that_do_not_grow_stop_the_arm
-    @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=1 hold_ms=10000\n"
-    r = trial.run(%w[trial])
-    assert_equal "release and reconnect", failed(r, "trial")["name"]
-    assert_match(/connects/, failed(r, "trial")["detail"])
-  end
-
-  def test_hand_off_starts_mac_b_on_its_own_namespace_ports_and_log_dir
-    trial.run(%w[trial])
-    assert index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
-    b_calls = @ops.calls.select { |c| c[0] == :cli && c[3] == B }.map { |c| c[2] }
-    assert_equal [%w[face joy], %w[face joy]], b_calls
-  end
-
-  def test_hand_off_order
-    trial.run(%w[trial])
-    up = index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
-    seq = @ops.calls[up - 2..].reject { |c| c[0] == :now }.first(12).map { |c| c[0] == :cli ? [c[2], c[3]] : c[0..2] + (c[0] == :rake ? [c[3]] : []) }
-    assert_equal [[%w[face neutral], {}], [%w[status], {}],
-                  [:rake, wt("trial"), "pc:up", HANDOFF_UP], [:sleep, 30],
-                  [%w[face neutral], {}], [%w[face joy], B], [%w[status], {}], [:sleep, 30],
-                  [%w[face joy], B], [:sleep, 30], [%w[face neutral], {}],
-                  [:rake, wt("trial"), "pc:down", { "NS" => "handoff" }]], seq
-  end
-
-  def test_mac_b_that_is_not_busy_stops_the_arm_and_mac_b_is_stopped
-    @ops.cli_out["B face"] = [1, "error: timeout\n"]
-    r = trial.run(%w[trial])
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(r, "trial")["name"]
-    assert_match(/busy/, failed(r, "trial")["detail"])
-    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
-  end
-
-  def test_mac_a_not_holding_before_mac_b_starts_stops_the_arm
-    status_override(5, "released")
-    r = trial.run(%w[trial])
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(r, "trial")["name"]
-    assert_match(/before/, failed(r, "trial")["detail"])
-    assert_nil index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
-  end
-
-  def test_mac_a_losing_the_robot_at_mac_b_busy_stops_the_arm
-    status_override(6, "released")
-    r = trial.run(%w[trial])
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(r, "trial")["name"]
-    assert_match(/after/, failed(r, "trial")["detail"])
-    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
-  end
-
-  def test_mac_b_starting_seven_seconds_after_mac_a_stops_the_arm
-    @ops.on_now = ->(calls) { calls.last(2) == [[:now], [:now]] ? 7.0 : 0 }
-    r = trial.run(%w[trial])
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(r, "trial")["name"]
-    assert_match(/7\.00 s/, failed(r, "trial")["detail"])
-    assert_empty @ops.calls.select { |c| c[0] == :cli && c[3] == B }
-    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
-  end
-
-  def test_mac_b_that_never_connects_stops_the_arm
-    @ops.cli_out["B face"] = FakeOps::BUSY
-    r = trial.run(%w[trial])
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(r, "trial")["name"]
-    assert_match(/B never connects/, failed(r, "trial")["detail"])
-  end
-
-  def test_mac_a_that_does_not_get_the_robot_back_stops_the_arm
-    @ops.cli_out["face"] = ->(args, _env) { @ops.calls.any? { |c| c[0] == :cli && c[3] == B } ? [1, "error: timeout\n"] : @ops.mac_cli("face", args) }
-    r = trial.run(%w[trial])
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(r, "trial")["name"]
-    assert_match(/A/, failed(r, "trial")["detail"])
+    assert_match(/\*\*verdict: pass\*\*/, md)
+    assert_match(/- stackchan-picoruby `aaaaaaa`/, md)
+    assert_match(/- firmware: R2P2-ESP32 `#{FW['R2P2-ESP32'][0, 7]}`, picoruby `#{FW['picoruby'][0, 7]}`, picoruby-ili9342 `6adc482`/, md)
+    assert_match(/- darwin: R2P2-darwin `#{LOCK['darwin']['R2P2-darwin'][0, 7]}`/, md)
+    assert_match(/## deploy\n\n\| step \| ok \| detail \|\n\|---\|---\|---\|\n\| pin trees \| ok \|/, md)
+    assert_match(/\| r2p2:build_flash \| ok \| ok \|/, md)
+    assert_match(/## check\n/, md)
+    assert_match(/\| series \| median \|/, md)
+    assert_match(/\| subtitle 19 glyphs \| \d\.\d{3} \|/, md)
+    assert_match(/\| servo remote \| \d\.\d{3} \|/, md)
+    assert_match(/\| hand-off B \| \d\.\d{3} \|/, md)
+    assert_match(/- サーボが指示どおりに動いた: y/, md)
+    assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, md)
+    assert_match(/\| iPhone trial \| ok \| <YL_actual:50,PU_actual:29> \|/, md)
   end
 
   def test_median
     assert_equal 2, DeviceTrial.median([3, 1, 2])
     assert_equal 2.5, DeviceTrial.median([4, 1, 2, 3])
     assert_nil DeviceTrial.median([])
-  end
-
-  def darwin_picoruby = File.join(ROOT, "vendor", "R2P2-darwin", "vendor", "picoruby")
-
-  def test_the_mac_vm_builds_on_the_locked_darwin_picoruby
-    r = trial.run(%w[base])
-    assert_include r["pc_vm"]["steps"].map { |s| s["name"] }, "pin R2P2-darwin picoruby"
-    assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
-    pin = @ops.calls.index { |c| c[0] == :git && c[1] == darwin_picoruby && c[2] == "checkout" }
-    build = @ops.calls.index { |c| c[0] == :rake && c[2] == "pc:vm_build" }
-    assert_operator pin, :<, build
-  end
-
-  def test_a_darwin_picoruby_moved_during_the_build_fails_the_pin_check
-    @ops.on_rake["pc:vm_build"] = ->(_d, _e) { @ops.heads[darwin_picoruby] = "0" * 40 }
-    r = trial.run(%w[base])
-    assert_equal "fail", r["verdict"]
-    assert_match(/picoruby is at "0{40}"/, r["pc_vm"]["steps"].find { |s| !s["ok"] }["detail"])
-  end
-
-  def test_the_board_is_reset_out_of_the_capture_s_download_mode_and_given_time_to_advertise_before_pc_up
-    trial.run(%w[base])
-    seq = @ops.calls.filter_map do |c|
-      case c
-      in [:rake, dir, "r2p2:reset_and_capture", *] then :capture if dir == wt("base")
-      in [:rake, ROOT, "r2p2:reset", *] then :reset
-      in [:sleep, DeviceTrial::BOOT_READY_S] then :ready
-      in [:rake, dir, "pc:up", *] then :up if dir == wt("base")
-      else nil
-      end
-    end
-    assert_equal %i[capture reset ready up], seq.first(4)
   end
 end

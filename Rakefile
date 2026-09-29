@@ -655,12 +655,10 @@ namespace :r2p2 do
     ensure_no_concurrent_monitor
     port = espport
     Dir.mktmpdir do |d|
-      bins = { 'table' => FlashIdentity::PARTITION_TABLE, 'app' => FlashIdentity::APP_HEADER }.map do |name, (addr, size)|
-        out = File.join(d, "#{name}.bin")
-        sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} read_flash #{format('0x%x', addr)} #{format('0x%x', size)} #{out}'"
-        File.binread(out)
-      end
-      puts FlashIdentity.lines(*bins)
+      out = File.join(d, 'flash.bin')
+      addr, size = FlashIdentity::READ
+      sh "bash -c '. #{ESP_IDF_EXPORT} && #{ESP_PYTHON} -m esptool -p #{port} read_flash #{format('0x%x', addr)} #{format('0x%x', size)} #{out}'"
+      puts FlashIdentity.lines(*FlashIdentity.split(File.binread(out)))
     end
   end
 
@@ -892,9 +890,10 @@ namespace :ios do
   end
 end
 
-# Device trial (trial/lock.yml): the robot running each arm, built from pinned
-# commits, driven from the Mac, timed in one session. lib/device_trial.rb holds
-# the order and the pass rules; lib/device_trial_ops.rb touches the machine.
+# Device trial (trial/lock.yml): one firmware, pinned and flashed once from
+# this checkout by trial:deploy, then booted, driven from the Mac and timed by
+# trial:check as often as needed. lib/device_trial.rb holds the order and the
+# pass rules; lib/device_trial_ops.rb touches the machine.
 namespace :trial do
   TRIAL_LOCK = File.expand_path("trial/lock.yml", __dir__)
   TRIAL_RESULTS = File.expand_path("trial/results", __dir__)
@@ -915,42 +914,50 @@ namespace :trial do
     puts "[trial] verdict: #{t.report['verdict']} -> #{base}.md"
   end
 
-  def latest_trial_json
-    Dir[File.join(TRIAL_RESULTS, "*.json")].max or abort "[trial] no report under #{TRIAL_RESULTS}"
+  def trial_report
+    json = ENV["STAMP"] ? File.join(TRIAL_RESULTS, "#{ENV['STAMP']}.json") : Dir[File.join(TRIAL_RESULTS, "*.json")].max_by { |f| File.mtime(f) }
+    abort "[trial] no report #{json || "under #{TRIAL_RESULTS}"}" unless json && File.exist?(json)
+    t = trial_session(File.basename(json, ".json"))
+    t.report.merge!(JSON.parse(File.read(json)))
+    t
   end
 
-  desc "Run trial/lock.yml on the robot: base then trial arm, each pinned, flashed, booted, driven, timed (~40 min). ESPPORT= optional"
-  task :run do
-    t = trial_session(Time.now.strftime("%Y%m%d-%H%M%S"))
-    t.run
+  def trial_do(t)
+    yield t
     write_trial_report(t)
+  rescue DeviceTrial::Stop => e
+    abort "[trial] #{e.message}"
   end
 
-  desc "Build apps/ios and apps/watchos at the locked R2P2-darwin, run each in trial mode against the trial firmware, then hand the robot Mac → iPhone → Watch → Mac (a paired iPhone + Watch). Appends to the latest report"
+  desc "Pin every tree in trial/lock.yml, build from this checkout and flash the firmware once (the only firmware write of a report), then send the app (~20 min). STAMP= names the report"
+  task :deploy do
+    stamp = ENV["STAMP"] || Time.now.strftime("%Y%m%d-%H%M%S")
+    t = File.exist?(File.join(TRIAL_RESULTS, "#{stamp}.json")) ? trial_report : trial_session(stamp)
+    trial_do(t) { |r| r.deploy }
+  end
+
+  desc "Boot the app under QEMU, then on a PASS re-send only the app (never the firmware) to the deployed board, read the identity and boot again; empties the check. STAMP= or the latest report"
+  task :app do
+    trial_do(trial_report) { |t| t.upload_app }
+  end
+
+  desc "Check the deployed firmware without writing flash: identity, boot, pc:up, BLE + dRuby, timings, controller, questions (~25 min). STAMP= or the latest report; FROM=<step> keeps the earlier steps"
+  task :check do
+    trial_do(trial_report) { |t| t.check(from: ENV["FROM"]) }
+  end
+
+  desc "Build apps/ios and apps/watchos at the locked R2P2-darwin, run each in trial mode against the deployed firmware, then hand the robot Mac → iPhone → Watch → Mac (a paired iPhone + Watch). STAMP= or the latest report"
   task :darwin do
-    json = latest_trial_json
-    t = trial_session(File.basename(json, ".json"))
-    t.report.merge!(JSON.parse(File.read(json)))
-    t.run_darwin
-    write_trial_report(t)
+    trial_do(trial_report) { |t| t.run_darwin }
   end
 
-  desc "Listen for one head touch on the robot as it stands (the trial arm) and record it in the latest or STAMP= report"
+  desc "Listen for one head touch on the robot as it stands and record it in the check of STAMP= or the latest report"
   task :touch do
-    json = ENV["STAMP"] ? File.join(TRIAL_RESULTS, "#{ENV['STAMP']}.json") : latest_trial_json
-    abort "[trial] no report #{json}" unless File.exist?(json)
-    t = trial_session(File.basename(json, ".json"))
-    t.report.merge!(JSON.parse(File.read(json)))
-    t.run_touch
-    write_trial_report(t)
+    trial_do(trial_report) { |t| t.run_touch }
   end
 
-  desc "Ask the questions the latest report left unanswered (it ran without a TTY)"
+  desc "Ask the questions the check left unanswered (it ran without a TTY). STAMP= or the latest report"
   task :answer do
-    json = latest_trial_json
-    t = trial_session(File.basename(json, ".json"))
-    t.report.merge!(JSON.parse(File.read(json)))
-    t.answer
-    write_trial_report(t)
+    trial_do(trial_report) { |t| t.answer }
   end
 end

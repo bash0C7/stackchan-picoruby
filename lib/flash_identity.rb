@@ -1,6 +1,7 @@
 module FlashIdentity
   PARTITION_TABLE = [0x8000, 0xC00].freeze
   APP_HEADER = [0x10000, 0x100].freeze
+  READ = [PARTITION_TABLE[0], APP_HEADER.sum - PARTITION_TABLE[0]].freeze
   APP_DESC_MAGIC = 0xABCD5432
 
   class Error < StandardError; end
@@ -13,6 +14,10 @@ module FlashIdentity
       { "label" => e[12, 16].delete("\x00"), "type" => type, "subtype" => subtype,
         "offset" => format("0x%x", offset), "size" => format("0x%x", size) }
     end
+  end
+
+  def split(bin)
+    [PARTITION_TABLE, APP_HEADER].map { |addr, size| bin.b[addr - READ[0], size] }
   end
 
   def app_version(bin)

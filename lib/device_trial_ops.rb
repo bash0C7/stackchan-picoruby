@@ -1,12 +1,12 @@
-# What DeviceTrial (lib/device_trial.rb) does to the machine: git, rake in a
-# worktree, the stackchan CLI, the operator's y/n.
+# What DeviceTrial (lib/device_trial.rb) does to the machine: git, rake in the
+# checkout, the stackchan CLI, the operator's y/n.
 require "fileutils"
 require "open3"
 require "bundler"
 require_relative "device_lock"
 
 class DeviceTrialOps
-  DEVICE_TASKS = %w[r2p2:build_flash r2p2:wipe_storage r2p2:upload_appmrb r2p2:reset_and_capture r2p2:flash_identity r2p2:reset].freeze
+  DEVICE_TASKS = %w[r2p2:build_flash r2p2:upload_appmrb r2p2:flash_identity r2p2:reset_and_capture r2p2:reset].freeze
 
   def initialize(log_dir, device_env: -> { {} })
     @log_dir = log_dir
@@ -16,7 +16,6 @@ class DeviceTrialOps
   end
 
   def exist?(path) = File.exist?(path) || File.symlink?(path)
-  def link(target, path) = File.symlink(target, path)
   def read(path) = File.exist?(path) ? File.binread(path) : nil
 
   def git(dir, *args)
@@ -28,10 +27,9 @@ class DeviceTrialOps
   # and the command's own exit status (no pipe in between).
   def rake(dir, *tasks, env: {}, bundle: true)
     return run_rake(dir, *tasks, env: env, bundle: bundle) unless DEVICE_TASKS.include?(tasks.first)
-    @device_env_value ||= @device_env.call
     DeviceLock.synchronize("esp32") do
       key = DeviceLock.env_key("esp32")
-      run_rake(dir, *tasks, env: @device_env_value.merge(key => ENV[key]).merge(env), bundle: bundle)
+      run_rake(dir, *tasks, env: @device_env.call.merge(key => ENV[key]).merge(env), bundle: bundle)
     end
   end
 

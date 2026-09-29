@@ -27,6 +27,14 @@ class FlashIdentityTest < Test::Unit::TestCase
     assert_equal "2f18720", got["app_version"]
   end
 
+  def test_one_read_from_the_partition_table_through_the_app_header_splits_into_both
+    assert_equal [0x8000, 0x8100], FlashIdentity::READ
+    bin = TABLE + "\xFF".b * (0x8000 - TABLE.size) + APP
+    assert_equal 0x8100, bin.size
+    assert_equal [TABLE, APP], FlashIdentity.split(bin)
+    assert_equal "2f18720", FlashIdentity.parse(FlashIdentity.lines(*FlashIdentity.split(bin)).join("\n") + "\n")["app_version"]
+  end
+
   def test_the_sha_comes_from_a_bare_sha_or_a_git_describe_version
     assert_equal "2f18720", FlashIdentity.sha_of("2f18720")
     assert_equal "2f18720", FlashIdentity.sha_of("0.2.21-30-g2f18720")
