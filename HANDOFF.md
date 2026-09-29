@@ -42,16 +42,19 @@ declare. `docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmw
 demand, so trigger it with `gh workflow run firmware.yml` after changing
 anything it covers.
 
-## In flight: one branch, one PR, one trial
+## In flight: one branch, one PR, one firmware on the robot
 
 Everything below `main` is on `claude/ecstatic-allen-s6qki1` (PR #11 → `main`).
 It carries, in commit order: dRuby over BLE, the AOT kernels (`ulaw_decode`,
 `glyph16`), picoruby-multicore on core 1, the deterministic QEMU boot gate, and
 DSL steps 1–5 (protocol gem folded in, robot engine + `apps/robot/app.rb`,
 controller engine + `apps/mac/app.rb`, `apps/ios` + `apps/watchos`, the
-firmware gem list in `build_config/esp32-stackchan.rb`).
+firmware gem list in `build_config/esp32-stackchan.rb`). It also carries the
+device tooling that picks the CoreS3 by USB serial, and the trial that puts one
+firmware on the robot once (`trial:deploy`), sends the app on its own
+(`trial:app`) and checks the board without writing flash (`trial:check`).
 
-The other repos it needs are pinned in `trial/lock.yml`'s trial arm:
+`trial/lock.yml` pins the one firmware:
 
 | repo | branch | sha |
 |---|---|---|
@@ -63,75 +66,77 @@ The other repos it needs are pinned in `trial/lock.yml`'s trial arm:
 | picoruby-scservo | `claude/simplify` | `1e3a18b` |
 | suppify | `claude/string-arg-length` | `a5449a3` |
 
-The base arm is `main` as it is. Verified in a Linux container: `picotest:run`
-and `test:host` green, `r2p2:qemu_check` PASS, `r2p2:build` (image
-`0x247a70`), CI `firmware.yml` and `deps.yml` on the pinned tree; the trial dry
-run (pin → setup → pins → gate → build → pins) on the tree before the gem list
-was trimmed. Nothing of it has run on the robot, the Mac VM,
-an iPhone or a Watch.
+The robot runs it. Report `trial/results/20260929-093450` (uncommitted, verdict
+`fail`) holds a deploy that passed every step and a check that stops at
+`pc:up`. The deploy checked the pins before and after the build, passed the
+QEMU gate, flashed once, sent the app separately (`DONE_ACK ok`), read flash
+identity `0.2.21-39-g9716605` with storage at `0x410000`, and captured a boot
+log through `HCI WORKING — advertising` with no fault.
+
+On the Mac, `rake test` and `test:host` pass except
+`platform_trees_test#test_r2p2_darwin_names_no_stackchan`: the locked
+R2P2-darwin `7a02219` names stackchan-picoruby in its README, README_jp and
+`docs/superpowers/`, which belongs to that branch. rigor runs at 0.4.0.
+
+With `BLE_FAKE=1` / `STUB=1` the daemon answers `status`, `chat` (stub reply)
+and `calibrate` (JSON from five piped Enters), and a second daemon under
+`NS=handoff` comes up beside the first.
+
+The iOS and watchOS apps build with `rake ios:lib ios:gen ios:build` /
+`watchos:…` at the locked darwin pin. Launched on a Simulator with
+`-StackchanTrial "actions"`, they reach `[trial] end`. `rake ios:run` stops at
+`open -a Simulator`, which this Mac cannot find, so the launch was
+`xcrun simctl launch --console-pty`.
 
 ## Next
 
-### 1. Run the trial on the Mac
+### 1. Let the Mac see the robot's new GATT table, then check
 
-The robot side of the trial runs unattended: the tooling picks the CoreS3 by
-USB serial (`.stackchan-usb-serial`, `rake r2p2:boards`), takes the esp32 lock
-it shares with R2P2-dev-harness, reads the board identity off flash and resets
-out of the capture before BLE. The base arm gets through build, flash, upload
-and boot; it stops at `pc:up`, because the launchd daemon has no Bluetooth
-permission.
+`pc:up` finds and connects to the robot, then fails with `dRuby pair not
+found`: the Mac's discovery does not list `6e400004` / `6e400005`. The robot
+has them. `Peripheral` looks their handles up at boot, and the boot log runs
+through advertising. The firmware the robot carried before (`main`) had only
+NUS RX / TX. The likely cause is CoreBluetooth serving that older table from
+its cache for the same address; this is unconfirmed.
 
-1. At the Mac (a person): allow StackchanPico under System Settings › Privacy &
-   Security › Bluetooth, or answer its pending prompt.
-2. `bundle exec rake pc:vm_build pc:app_bundle`, then `rake pc:up` in
-   `build/trial/base` must find the robot without a new prompt. That proves
-   the grant follows the app across rebuilds (`pc:app_bundle` signs with
-   `designated => identifier "com.bash0c7.stackchanpico"`). If it prompts
-   again, TCC keys ad-hoc apps by cdhash regardless, and the app needs a
-   valid signing certificate; every Apple Development certificate on this Mac
-   is revoked. `rake pc:down` after.
-3. `/stackchan-device-trial`, then `rake trial:touch`, `rake trial:answer`.
+1. At the Mac (a person, needs the password): `sudo pkill bluetoothd`.
+2. `bundle exec rake trial:check STAMP=20260929-093450 FROM=pc:up`. If
+   `dRuby pair not found` persists, the cache was not the cause; read the
+   robot side before anything touches it again.
+3. With a person at the robot: `rake trial:touch STAMP=20260929-093450`, then
+   `rake trial:answer STAMP=20260929-093450`.
 4. `rake trial:darwin` needs `DEVELOPMENT_TEAM` and a valid certificate for
-   the iPhone and Watch builds. Both apps already build and run in trial mode
-   on the Simulator (`[trial] end`) against the locked picoruby.
-5. `trial/results/<stamp>.md` must read `verdict: pass`.
+   the iPhone and Watch builds; every Apple Development certificate on this Mac
+   is revoked. `watchos:device:lib` also fails; its log at
+   `/tmp/stackchan-picoruby-debug/watchos-device-check.log` has not been read.
+5. The report must read `verdict: pass`; commit it.
 
-What the trial arm checks by machine, beyond boot / face / LED / servo /
-`remote` / `say` and their timings: the task stack left after every robot
-handler kind (stops below 1,024 B), `selftest` detail, a head touch,
-`calibrate` JSON, `chat` against the STUB sidecar, the robot releasing an idle
-Mac and the Mac reconnecting on its next action, a hand-off between two Mac
-daemons (the second must be refused with exit 8 while the first holds the
-robot), and in `trial:darwin` each app's trial-mode console
-(`Connected; RX value_handle bound`, `OK face=joy`, the selftest detail) and the
-hand-off Mac → iPhone → Watch → Mac.
+What the check verifies by machine:
 
-Where it is most likely to fail first, none of it compiled or run here: the
-Swift in `apps/{ios,watchos}/Sources`, XcodeGen expanding `${R2P2_DARWIN}`,
-the iOS / Watch VM libs built from `build_config/darwin-stackchan-*.rb`,
-`devicectl --console` carrying the apps' `[trial]` lines and passing
-`-StackchanTrial`, the Mac rediscovering the robot within 15 s after a
-release, launchd (`pc:up` with `ALLOW_BUSY`, the second daemon's plist; the
-`plutil` tests are omitted off the Mac), and `gets` from a pipe in
-`calibrate`. `c.hold 10_000` / `bot.release_after 15_000` are first guesses;
-the trial's reconnect timings decide them.
+- flash identity and boot
+- face / LED / servo detail / `remote` / `say` over more than two multicore
+  chunks, and their timings
+- the task stack left after every robot handler kind (stops below 1,024 B)
+- `selftest` detail, a head touch, `calibrate` JSON
+- `chat` against the STUB sidecar
+- the robot releasing an idle Mac, and the Mac reconnecting on its next action
+- a hand-off between two Mac daemons: the second is refused with exit 8 while
+  the first holds the robot
 
-Known risk on the robot: the base arm's firmware (picoruby `7258676`) starts
-its picoruby task with 248 B of the 8 KB stack left, so a base-arm boot can
-reboot with `stack overflow in task picoruby_task`. The run checks each arm's
-boot log for that line and stops there, so a base arm that overflows ends the
-whole run with `verdict: fail` before the trial arm is flashed; run it again.
-The trial arm's picoruby loads its gems without raising and starts with
-2,072 B (gdb under deterministic QEMU); the firmware gem list carries only
-what the robot uses, which leaves that figure unchanged and the image at
-`0x247a70`.
+`c.hold 10_000` / `bot.release_after 15_000` are first guesses; the check's
+reconnect timings decide them. `trial:darwin` then checks each app's
+trial-mode console (`Connected; RX value_handle bound`, `OK face=joy`, the
+selftest detail) and the hand-off Mac → iPhone → Watch → Mac.
+
+The firmware stays on the robot for all of it. A fault found on the robot is
+reproduced under QEMU or on the host and fixed there; putting a fix on the
+robot is the owner's call.
 
 ### 2. After `verdict: pass`
 
 Merge PR #11. Then bring each related repo's branch to its `main` (the sha in
 the table), point the Rakefile's `R2P2_ESP32_REF` / `R2P2_DARWIN_REF` and the
-build config's gem refs back at `main`, move the lock's base arm to the new
-`main`, and archive `bash0C7/picoruby-stackchan-protocol` on GitHub (nothing
+build config's gem refs back at `main`, and archive `bash0C7/picoruby-stackchan-protocol` on GitHub (nothing
 here refers to it).
 
 ### 3. The daemon has no defence against a client hanging up
@@ -149,7 +154,7 @@ rather than a change here.
 differ by exactly one line, the picoruby submodule pointer: `7258676`, which
 boots, against `568b4b88`, the lineage rebased onto upstream master, which
 overflows the 8 KB picoruby task stack during its own startup and boot-loops.
-`7258676` itself starts with 248 B left (item 1), so the rebased lineage
+`7258676` itself starts its picoruby task with 248 B of the 8 KB left, so the rebased lineage
 needs only a little more startup depth to cross the line.
 Switching is a one-line bump once that is resolved. Land shared changes on
 both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
