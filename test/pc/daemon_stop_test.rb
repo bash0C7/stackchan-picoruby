@@ -7,6 +7,11 @@ class DaemonStopTest < Picotest::Test
     @daemon.instance_variable_set(:@tick_task, Task.new(name: "tick") {})
   end
 
+  def teardown
+    shutdown = @daemon.instance_variable_get(:@shutdown_task)
+    shutdown.terminate if shutdown
+  end
+
   def test_stop_answers_the_caller
     assert_true @daemon.stop
   end

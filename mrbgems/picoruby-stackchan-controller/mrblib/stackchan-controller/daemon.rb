@@ -85,9 +85,10 @@ module StackChan
 
       def stop
         @tick_task.terminate
-        Task.new(name: "shutdown") do
+        ble = @ble
+        @shutdown_task = Task.new(name: "shutdown") do
           sleep_ms SHUTDOWN_WAIT_MS
-          @ble.disconnect
+          ble.disconnect
           DRb.stop_service
         end
         true
@@ -304,10 +305,11 @@ module StackChan
       end
 
       def start_tick
+        daemon = self
         Task.new(name: "tick") do
           while true
             sleep_ms TICK_MS
-            tick
+            daemon.tick
           end
         end
       end
