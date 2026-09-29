@@ -149,6 +149,22 @@ The firmware stays on the robot for all of it. A fault found on the robot is
 reproduced under QEMU or on the host and fixed there; putting a fix on the
 robot is the owner's call.
 
+The robot's picoruby (`9c4636a4`) and the PR #427 lineage the
+picoruby-ble-esp32-port session develops have diverged. Both sessions keep the
+picoruby-ble state in one table in the vault:
+`02_dev_docs/picoruby-ble-esp32-port/notes/2026-09-29-stackchan-alignment-status.md`.
+It records the branches and shas, the changes only one side has, the files
+likely to conflict, and the owner's open decisions.
+
+- **Where the ESP32 fixes land.** The table proposes syncing PR #427's ESP32
+  fixes into the stackchan lineage.
+- **Service Changed.** Adding 0x1801 / Service Changed to `peripheral.rb` would
+  stop the Mac caching the table. It is an app change, so it needs no firmware
+  flash.
+- **R2P2-darwin's picoruby stays at `97479c96`.** Its `port-darwin` head
+  `ee10fd96` breaks Mac discovery: its decoder reads the new GATT event layout,
+  but its Swift still writes the old one.
+
 ### 2. After `verdict: pass`
 
 Merge PR #11. Then bring each related repo's branch to its `main` (the sha in
