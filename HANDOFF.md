@@ -116,7 +116,15 @@ support it:
 
 It is unconfirmed until step 2 below.
 
-1. At the Mac (a person, needs the password): `sudo pkill bluetoothd`.
+1. At the Mac (a person, needs the password): `sudo pkill bluetoothd`. This
+   has been done; the Mac has not reconnected since.
+   - First, fix the guard that `trial:check` and `trial:app` run. It stops when
+     HEAD differs from the deploy's `7c677b8`, and HEAD has since moved by
+     documentation commits only, so step 2 would stop before touching anything.
+   - The guard should compare what the board runs: the lock's `firmware:`
+     digest, plus a digest of the app source together with the gem sources
+     bundled into it. HEAD is the wrong thing to compare.
+   - Fix it host-tested first, then do step 2.
 2. `bundle exec rake trial:check STAMP=20260929-093450 FROM=pc:up`. If
    `dRuby pair not found` persists, the cache was not the cause; read the
    robot side before anything touches it again.
