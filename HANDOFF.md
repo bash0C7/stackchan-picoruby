@@ -129,11 +129,20 @@ themselves were confirmed on the robot, as above.
 **Blocker B: the push guard refuses every push of this branch.**
 
 `tools/hooks/pre_push_guard.sh` runs `tools/test_must_fail_on_revert.rb`. It
-replays each changed test against the merge base `510d08e`. A test for a file
-this branch adds (e.g. `test-host/device_lock_test.rb` for `lib/device_lock.rb`)
-cannot load there. The script counts that as "did not run" and exits 1
-(`:103-107`), when not loading at all is the strongest form of failing on
-revert.
+replays each changed test method against the branch upstream `510d08e`
+(`origin/claude/ecstatic-allen-s6qki1`) and requires it to fail there. That
+stops tests which only exercise a fake. Four `test-host/` files test code that
+does not exist at `510d08e`, so they cannot load there:
+
+- `acceptance_test.rb`
+- `device_lock_test.rb`
+- `esp_port_test.rb`
+- `flash_identity_test.rb`
+
+The script stops at the first of them as "did not run" (`:93-96`). The plan
+proposes a one-line change so that a test-host file which cannot load at the
+base is skipped. That weakens the branch's own guard, so it needs the owner's
+approval.
 
 Once both blockers are cleared:
 
