@@ -24,8 +24,8 @@ the Stack-chan community.
 ```
 +-----------+   BLE NUS (frame protocol + ACK queue)   +---------------------+
 |  macOS    | <--------------------------------------> |  CoreS3 / R2P2      |
-|  (Ruby    |                                          |  PicoRuby + mrbgems |
-|  client)  |                                          |  LCD / LED / servo  |
+|  iPhone   |   second pair 6e400004/5 (dRuby)         |  PicoRuby + mrbgems |
+|  Watch    |                                          |  LCD / LED / servo  |
 +-----------+                                          |  / BLE / speaker    |
                                                        +---------------------+
 ```
@@ -34,13 +34,19 @@ The CoreS3 is an I/O endpoint. It renders faces, drives the 12-pixel WS2812 RGB
 ring, moves the two feedback servos, plays audio through the AW88298 amplifier,
 advertises the Nordic UART Service, and listens for control frames.
 
-The macOS side is the orchestrator. It sends control frames (face, LED, servo
-position, audio) and reads single-byte ACK or ERR replies plus detail frames.
+The controllers — the macOS daemon and the iPhone and Apple Watch apps — are
+the orchestrators. They send control frames (face, LED, servo position, audio)
+and read single-byte ACK or ERR replies plus detail frames.
 
 Control frames are key-value, comma-delimited, parsed by the FrameParser in
 the `mrbgems/picoruby-stackchan-protocol` gem. Audio is sent as a
 length-prefixed `<A:nbytes>` frame followed by raw mu-law bytes in
-MTU-sized writes.
+180-byte writes.
+
+The same service carries a second characteristic pair (`6e400004` write,
+`6e400005` notify) for dRuby over BLE, whose front on the robot runs the same
+dispatcher. Only the CLI's `stackchan remote` uses it; every Mac, iPhone and
+Watch action goes over text frames.
 
 ## Code layout
 
@@ -48,12 +54,10 @@ MTU-sized writes.
 into `vendor/` (gitignored, never hand-placed):
 
 ```
-vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch c-primitives-verified.
+vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch claude/external-build-config.
                       Device firmware build tree; its own picoruby submodule
-                      (branch stackchan-integration, derived from the
-                      upstream-PR-track picoruby-ble-esp32-port) carries the
-                      StackChan-specific in-tree gems (picoruby-ble-bridge,
-                      picoruby-i2s) alongside picoruby-ble itself.
+                      (branch claude/ble-peripheral-disconnect) carries
+                      picoruby-ble and picoruby-i2s.
 vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch claude/external-app. Apple
                       platform: builds the Mac PicoRuby VM and the iOS /
                       watchOS apps from this repo's apps/ and build_config/
@@ -93,14 +97,22 @@ apps/mac/app.rb      The Mac's behaviour: one `StackChan.controller do |c|
                      ... end` naming the CLI's actions (face, led, servo,
                      torque, selftest, say, chat, demo), the link hold time
                      and the reply handler.
+apps/ios/            The iPhone app: app.rb (one `StackChan.controller`) plus
+                     the Swift shell and XcodeGen project.yml.
+apps/watchos/        The Apple Watch app, laid out the same way.
 aot/kernels/         Ruby compiled ahead of time (spinel -> suppify) into the
                      firmware: mu-law decode on core 1, glyph expansion on
                      core 0. See aot/README.md.
+build_config/        picoruby build configs: the firmware
+                     (esp32-stackchan.rb), the host test VM, the Mac VM and
+                     the iOS / watchOS VMs.
 
 pc/stackchan-pico/         Launchd and process glue for the macOS side: the
-                           `stackchan` wrapper and the boot files that load the
-                           controller gem and apps/mac/app.rb into the PicoRuby
-                           daemon and CLI. See pc/stackchan-pico/README.md.
+                           `stackchan` wrapper and the boot files. The daemon
+                           loads the controller gem and apps/mac/app.rb; the
+                           CLI loads only the controller's cli.rb and
+                           calibration.rb and talks to the daemon. See
+                           pc/stackchan-pico/README.md.
 pc/stackchan/              CRuby support library for the AI/voice sidecar
                            only (Apple Foundation Model + say/afconvert
                            cannot run under PicoRuby).
@@ -109,7 +121,15 @@ pc/sidecar/                The CRuby sidecar process, bridged to the
 
 test/                      Host tests (picotest on a host PicoRuby VM, reusing
                            vendor/R2P2-ESP32's own picoruby submodule).
-lib/deploy/                host-side picomodem uploader.
+test-host/                 CRuby tests for the Rakefile's host-side tools.
+acceptance/                The pre-merge device check: lock.yml pins the one
+                           firmware, runner.rb and ops.rb drive it, results/
+                           holds the reports.
+tools/                     Measurement and demo scripts, the dependency guard
+                           and the push hook.
+lib/                       Ruby the Rakefile uses: the picomodem uploader
+                           (lib/deploy/), board and lock lookup, QEMU gate,
+                           flash identity and the launchd lifecycle.
 Rakefile                   build, flash, deploy, vendor fetch, and BLE smoke
                            task wrappers.
 ```
@@ -151,6 +171,11 @@ IRAM overflow. The second command builds the firmware and bakes
 `apps/robot/app.rb` into the littlefs storage partition as `/home/app.mrb`, so
 the robot autostarts it. Both need the CoreS3 attached over USB-C.
 
+Every task that flashes firmware first boots the same tree under QEMU
+(`r2p2:qemu_check`) and refuses to flash on a FAIL. The gate runs
+`rake qemu:setup`, which downloads the pinned QEMU into `build/qemu/`; on macOS
+that QEMU needs `brew install libgcrypt glib pixman sdl2 libslirp`.
+
 Every task that opens the serial port finds the CoreS3 by its USB serial number,
 not by port name: port names follow the USB socket, and every ESP32-S3 enumerates
 under the same product name. Put the CoreS3's serial in `.stackchan-usb-serial`
@@ -183,27 +208,35 @@ The iPhone and Apple Watch apps are `apps/ios` and `apps/watchos`: one
 build on a Mac with Xcode and XcodeGen through `vendor/R2P2-darwin`:
 
 ```bash
-bundle exec rake ios:all               # Simulator: lib -> gen -> build -> run
+bundle exec rake ios:lib ios:gen ios:build   # Simulator build
 bundle exec rake ios:device:all        # the connected iPhone (DEVELOPMENT_TEAM in apps/ios/project.yml)
 bundle exec rake watchos:device:all    # the connected Apple Watch
 ```
 
-Launched with `-StackchanTrial "connect;face joy"` an app runs those actions,
-prints each output line as `[trial] <line>`, then `[trial] end`, and exits;
-`rake trial:darwin` judges the apps that way.
+`rake ios:run` (and so `ios:all`) stops at `open -a Simulator`, so install the
+Simulator build with `xcrun simctl install` and launch it with
+`xcrun simctl launch --console-pty <device> com.bash0c7.picoruby.Stackchan -StackchanBatch "connect;face joy"`
+(not yet run since the launch argument became `-StackchanBatch`, #21).
+Device builds are signed and need a valid Apple Development certificate.
 
-Re-run `pc:app_bundle` after every `pc:vm_build`: the bundle is ad-hoc signed, and
-the signature binds to the exact bytes of the binary.
+Launched with `-StackchanBatch "connect;face joy"` an app runs those actions,
+prints each output line as `[batch] <line>`, then `[batch] end`, and exits;
+`rake acceptance:darwin` runs the device builds that way.
 
-The first `pc:up` after a device flash can report that the daemon did not answer
-within its timeout while the BLE link is still coming up. Run it again; it is
-idempotent and recreates the launchd jobs each time.
+Re-run `pc:app_bundle` after every `pc:vm_build`: it copies the new VM into the
+bundle and signs it ad hoc with the designated requirement
+`identifier "com.bash0c7.stackchanpico"`, which is what the TCC grant follows.
+
+`pc:up` succeeds once the daemon answers `status` with `connects` of at least 1.
+A `link=busy` answer fails it unless `ALLOW_BUSY=1`. It is idempotent and
+recreates the launchd jobs each time.
 
 ### Tests
 
 ```bash
 bundle exec rake picotest:build        # host picoruby VM from build_config/picoruby-test.rb
-bundle exec rake test                  # picotest: device / pc suites and each gem's own
+bundle exec rake test                  # rigor:check, then picotest: device / pc suites and each gem's own
+SUITE=pc FILTER=central bundle exec rake test   # one suite, test files whose name contains FILTER
 bundle exec rake test:host             # CRuby-only tools
 ```
 
@@ -241,7 +274,7 @@ StackChan by default:
 bundle exec rake pc:up                                   # (re)start the backends under launchd
 pc/stackchan-pico/bin/stackchan connect                  # explicit: bring the link up
 pc/stackchan-pico/bin/stackchan status                   # one key=value line: link=held connects=1 ...
-pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry / closed
+pc/stackchan-pico/bin/stackchan face joy                 # neutral / smile / joy / surprised / sad / angry
 pc/stackchan-pico/bin/stackchan led both red solid       # side: left|right|both, mode: solid|blink|breathing|off
 pc/stackchan-pico/bin/stackchan servo --yaw-left 50 --pitch-up 30 --time 500
 pc/stackchan-pico/bin/stackchan torque on                # off lets you move the head by hand
@@ -263,8 +296,8 @@ prints `busy: …` and exits 8.
 
 ### Touch reactions
 
-Head-touch reactions are on-device — the dispatcher polls the Si12T sensor
-from its heartbeat loop and updates the face + LED locally the moment a
+Head-touch reactions are on-device — the robot polls the Si12T sensor every
+50 ms from its 20 ms link loop and updates the face + LED locally the moment a
 rising edge fires (no PC round-trip, no perceptible lag even when the BLE
 link is idle). Per zone:
 
@@ -309,9 +342,9 @@ LED color/side/mode changes every 4-9s, face flips between smile/joy every
 purpose so the servos don't wear/overheat). Ctrl-C or `kill` stops it
 gracefully — LEDs off, face neutral, servo centered, torque off.
 
-`phrase_announcer.rb` picks one of five fixed phrases at random and speaks it
+`phrase_announcer.rb` picks a fixed phrase at random and speaks it
 every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
-0.05 is inaudible over room noise, 0.3 clips the 1W speaker).
+0.05 is inaudible over room noise, 0.3 overdrives the 1W speaker).
 
 Run both in the background and stop them together when done:
 
@@ -331,7 +364,7 @@ kill %1 %2
 | Eye-blink animation | yes | eye-only redraw |
 | WS2812 LED ring (12 px) | yes | solid, blink, breathing, off, per side |
 | Servo control (yaw, pitch) | yes | normalized YL/YR/PU protocol, BLE calibration CLI |
-| BLE control (Nordic UART Service) | yes | RX/TX, ACK queue, heartbeat tick |
+| BLE control (Nordic UART Service) | yes | RX/TX, ACK queue, 20 ms link loop, dRuby pair |
 | Speaker (AW88298 over I2S) | yes | mu-law audio streamed from macOS over BLE |
 | Microphone | no | planned |
 | IMU (BMI270 + BMM150) | no | planned |
@@ -342,10 +375,24 @@ kill %1 %2
 
 ## Known issues
 
-The BLE link itself is not one of these. A full pass over every verb — status,
-face, led, torque, servo on both axes, read-back, say, selftest, stop and head
-touch — completes without a single ACK timeout or retry.
-
+- Handing the robot from one Mac to another and back ends in an ACK timeout in
+  acceptance report `acceptance/results/20260929-093450`. Commits `1e057cd`
+  (a reconnect whose discovery stopped before the CCCDs was taken as connected)
+  and `794dbda` (the daemon's tick task died on its first tick) fix the two
+  causes on the host; no acceptance run has verified them yet. (#22)
+- The acceptance verdict cannot reach `pass`: it requires the darwin run, which
+  builds signed iPhone and Watch apps, and every Apple Development certificate
+  on this Mac is revoked. (#22)
+- Discovery on the Mac takes about 10 s of the 15 s connect budget
+  (`Central::CONNECT_TIMEOUT_MS`), so a reconnect can come back `busy` (exit 8)
+  when discovery runs out before both CCCDs are found. (#19)
+- After the robot's GATT table changes, the Mac keeps using the old table until
+  `sudo pkill bluetoothd`: the robot publishes no Service Changed. (#19)
+- `stackchan remote` exits 0 whatever the daemon answers, busy included. (#22)
+- `rake ios:run` (and so `ios:all`) stops at `open -a Simulator` and never
+  installs or launches the app. (#21)
+- The R2P2-darwin half of `test-host/platform_trees_test.rb` fails at the
+  R2P2-darwin commit pinned in `acceptance/lock.yml`. (#21)
 - There is no retry path: `StackChan::Controller::Central` raises `TimeoutError` on an ACK
   timeout and the CLI command fails rather than the frame being resent once.
   This is a gap in the code, not an observed symptom; it has no effect until a
@@ -367,13 +414,14 @@ touch — completes without a single ACK timeout or retry.
 macOS synthesizes speech with `say`, converts 8 kHz mono PCM to G.711 mu-law,
 and streams it over BLE using a half-duplex receive-then-play protocol.
 
-The PC side sends `<A:N>` (N = mu-law byte count), waits 1.5 s for the device
-heartbeat to pick it up, blasts the bytes in MTU-sized writes, then waits
-`N/8000 + 2 s` for playback to finish. The device, on receiving `<A:N>`,
-replies `<A:ready>`, sleeps `T = (N × 1000 / 8000) + 3000 ms` (main task fully
-static during this window), drains the receive queue, and plays the buffer. The
-phase separation prevents the NimBLE host thread and the PicoRuby main task
-from racing on the mruby heap.
+The PC side sends `<A:N>` (N = mu-law byte count), sleeps a fixed 1.5 s
+(`READY_WAIT_MS`; it does not wait for `<A:ready>`), sends the bytes in
+180-byte writes paced 20 ms apart, then waits for the device's `<A:done>` for
+`3300 + N × 6 / 5` ms clamped to 30-180 s. The device, on receiving `<A:N>`,
+replies `<A:ready>`, spends `T = (N × 1000 / 8000) + 3000 ms` taking the
+received writes off the queue in 50 ms steps, plays the buffer, and sends
+`<A:done>`. The phase separation prevents the NimBLE host thread and the
+PicoRuby main task from racing on the mruby heap.
 
 That window is sized from an assumed 8000 bytes/s blast, while the PC paces at a
 nominal 9000 bytes/s and measures slower than that. Long clips can therefore
@@ -444,9 +492,11 @@ macOS only. The Rakefile assumes macOS paths and the macOS
 [`serialport`](https://github.com/larskanis/ruby-serialport) gem. It needs
 Xcode with the Swift toolchain (for the `picoruby-ble` Darwin port used by
 `pc/stackchan-pico`'s BLE central), esp-idf v5.4 at `~/esp/esp-idf`, Ruby
-4.0+, and Bundler. Building and controlling the device fetches its build
-trees on demand via `bundle exec rake vendor:setup` (see "Code layout"
-above) rather than requiring hand-placed sibling clones.
+4.0+, Bundler, and for the QEMU gate in front of every flash
+`brew install libgcrypt glib pixman sdl2 libslirp`. Building and controlling
+the device fetches its build trees on demand via `bundle exec rake
+vendor:setup` (see "Code layout" above) rather than requiring hand-placed
+sibling clones.
 
 ## Dependencies
 
@@ -457,13 +507,16 @@ and build_configs each time.
 
 | Repo | Ref | Role | Pinned by |
 |---|---|---|---|
-| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `c-primitives-verified` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`) |
-| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `claude/external-app` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`) |
-| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `stackchan-integration` | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
+| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `claude/external-build-config` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`), sha in `acceptance/lock.yml` |
+| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `claude/external-app` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`), sha in `acceptance/lock.yml` |
+| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `claude/ble-peripheral-disconnect` (`9c4636a`) | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
-| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | tag `v0.1.0` | PY32 I/O expander driver | same build_config |
-| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | tag `v0.1.0` | Servo driver | same build_config |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `claude/aot-glyph16` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
+| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | branch `claude/simplify` | PY32 I/O expander driver | same build_config |
+| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | branch `claude/simplify` | Servo driver | same build_config |
+| [bash0C7/suppify](https://github.com/bash0C7/suppify) | sha in `aot/suppify.pin` | Turns the AOT kernels into one mrbgem | `aot/suppify.pin` (`rake aot:setup`) |
+| [matz/spinel](https://github.com/matz/spinel) | sha in suppify's `spinel.pin` | Ruby-to-C compiler behind the AOT kernels | suppify |
+| [bash0C7/picoruby-multicore](https://github.com/bash0C7/picoruby-multicore) | sha in `aot/multicore.pin` | Runs a kernel on core 1 | `aot/multicore.pin` |
 
 The WS2812, Si12T, AW88298 and dRuby-over-BLE gems are mrbgems in this
 repo's `mrbgems/` bundled into `app.mrb` at compile time. The BLE frame
@@ -482,7 +535,7 @@ that builds here forever and stops a fresh clone dead.
 `tools/check_deps_pushed.sh` asks both questions, counting only URLs whose host is
 github.com — the clones on this machine sit under `~/dev/src/github.com/...`, so a
 remote naming another directory on this disk spells the string while proving
-nothing. It walks every pin, including the ten inside picoruby, and resolves the
+nothing. It walks every pin, including the ones inside picoruby, and resolves the
 build trees through the main checkout so it answers the same from a worktree.
 
 It also reads the vendored trees themselves, because a tree can disagree with its
@@ -503,16 +556,17 @@ It runs in two places. Before a push, `tools/hooks/pre_push_guard.sh` — wired 
 `.claude/settings.json` — runs it in `--pins-only` mode and refuses the push if a
 pin would not survive. Publishing a pin is itself a push, so that one command
 gets through by saying so: `STACKCHAN_DEPS_GUARD=off git -C … push …`. And
-`.github/workflows/deps.yml` clones the firmware tree from nothing on every push
-and weekly, running the whole script, which catches a ref that rots while nobody
-is looking.
+`.github/workflows/deps.yml` clones the firmware tree from nothing on every push to
+main, on every pull request, weekly and on demand, running the whole script,
+which catches a ref that rots while nobody is looking.
 
 `.github/workflows/firmware.yml` answers the larger question the dependency
 check cannot: it builds the firmware in `espressif/idf:v5.4.2` from a fresh
-clone and runs both suites, so "it works on another machine" is measured rather
-than assumed. It does not flash and there is no CoreS3 on a runner, so the bench
-is still the only thing that can say whether the robot moves. A full esp-idf
-build is tens of minutes, so it runs weekly and on demand rather than per push.
+clone, boots it under the QEMU gate and runs both suites, so "it works on
+another machine" is measured rather than assumed. It does not flash and there
+is no CoreS3 on a runner, so the bench is still the only thing that can say
+whether the robot moves. A full esp-idf build is tens of minutes, so it runs
+weekly and on demand rather than per push.
 
 `test-host/deps_guard_test.rb` builds git fixtures that are broken in each of
 those ways and asserts the guard says so.
@@ -533,26 +587,26 @@ Adds on top of upstream:
   default config, and `R2P2_EXTRA_SRCS` adds C sources to the IDF component.
   The default config carries `picoruby-ble` and `picoruby-i2s`, whose ESP32
   ports the component compiles.
-- Points its `components/picoruby-esp32/picoruby` submodule at `7258676` on the
-  picoruby fork's `stackchan-integration` branch below. The branch head is on
-  the rebased lineage, which boot-loops on this board; see HANDOFF.
+- Points its `components/picoruby-esp32/picoruby` submodule at `9c4636a` on the
+  picoruby fork's `claude/ble-peripheral-disconnect` branch below.
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby)
 
-BLE support (`mrbgems/picoruby-ble/`), tracked on two branches, both rebased
-onto upstream picoruby/picoruby's `master`:
+BLE support (`mrbgems/picoruby-ble/`), tracked on two branches:
 
-- `stackchan-integration` — the ESP32 (NimBLE) peripheral port, derived from
-  the upstream-PR-track [`picoruby-ble-esp32-port`](https://github.com/picoruby/picoruby/pull/427)
-  branch, plus the StackChan-specific in-tree gems (`picoruby-i2s`,
-  `picoruby-ble-bridge`).
+- `claude/ble-peripheral-disconnect` — the ESP32 (NimBLE) peripheral port, on
+  the lineage before the rebase that upstream PR
+  [#427](https://github.com/picoruby/picoruby/pull/427) carries, and
+  `picoruby-i2s`, with a commit on top that lets a peripheral drop its
+  central.
 - `port-darwin` — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
   role can receive a GAP disconnect but cannot initiate one (this port has
   no such API) — `StackChan::Controller::Central#disconnect` in
   `mrbgems/picoruby-stackchan-controller` is therefore a local-state-only
-  no-op; reconnect-from-ACK-timeout relies on the peripheral's own
-  supervision timeout, not on the central closing the link.
+  no-op. An ACK timeout on a live link does not drop the link; the robot
+  frees it after `release_after` (15 s in `apps/robot/app.rb`) without
+  traffic.
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 
