@@ -243,9 +243,9 @@ module Acceptance
     end
 
     APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
-    APP_TRIAL = "connect;face joy;selftest"
-    APP_CONNECTED = "[trial] Connected; RX value_handle bound"
-    APP_END = "[trial] end"
+    APP_BATCH = "connect;face joy;selftest"
+    APP_CONNECTED = "[batch] Connected; RX value_handle bound"
+    APP_END = "[batch] end"
 
     def run_darwin
       d = @report["darwin"] = { "steps" => [], "timings" => {} }
@@ -257,12 +257,12 @@ module Acceptance
         step(d, "pin R2P2-darwin holds") { darwin_pins_hold! }
         step(d, "quiet wait") { @quiet = quiet_wait_s; "#{@quiet} s" }
         APPS.each do |platform, device|
-          step(d, "#{device} trial") do
+          step(d, "#{device} batch") do
             @ops.sleep(quiet)
-            out, = app_trial!(platform, APP_TRIAL)
+            out, = app_batch!(platform, APP_BATCH)
             want!(out, APP_CONNECTED, device)
-            want!(out, "[trial] OK face=joy", device)
-            detail = out.lines.find { |l| l.start_with?("[trial] OK selftest detail=") }.to_s[DETAIL]
+            want!(out, "[batch] OK face=joy", device)
+            detail = out.lines.find { |l| l.start_with?("[batch] OK selftest detail=") }.to_s[DETAIL]
             raise Stop, "#{device}: no selftest detail in #{out.inspect}" unless detail
             detail
           end
@@ -271,10 +271,10 @@ module Acceptance
       end
     end
 
-    def app_trial!(platform, lines)
+    def app_batch!(platform, lines)
       t0 = @ops.now
       ok, out, = run_rake(["#{platform}:device:run"],
-                          { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => "-StackchanTrial \"#{lines}\"" })
+                          { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => "-StackchanBatch \"#{lines}\"" })
       t = @ops.now - t0
       device = APPS.fetch(platform)
       raise Stop, "#{device}: #{platform}:device:run failed:\n#{out.to_s.lines.last(20).join}" unless ok
@@ -292,11 +292,11 @@ module Acceptance
       cli!("face", "neutral")
       c0 = status["connects"].to_i
       @ops.sleep(quiet)
-      out, ti = app_trial!("ios", "face joy")
-      want!(out, "[trial] OK face=joy", "iPhone")
+      out, ti = app_batch!("ios", "face joy")
+      want!(out, "[batch] OK face=joy", "iPhone")
       @ops.sleep(quiet)
-      out, tw = app_trial!("watchos", "face smile")
-      want!(out, "[trial] OK face=smile", "Watch")
+      out, tw = app_batch!("watchos", "face smile")
+      want!(out, "[batch] OK face=smile", "Watch")
       @ops.sleep(quiet)
       tm = face!("neutral", {}, "the Mac does not get the robot back")
       c1 = status["connects"].to_i

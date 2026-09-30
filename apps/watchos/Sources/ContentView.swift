@@ -53,8 +53,8 @@ struct ContentView: View {
             VMExecutor.shared.call("actions", "list") { listing in
                 self.actions = AppAction.parse(listing)
             }
-            if let trial = UserDefaults.standard.string(forKey: "StackchanTrial") {
-                VMExecutor.shared.runTrial(trial)
+            if let batch = UserDefaults.standard.string(forKey: "StackchanBatch") {
+                VMExecutor.shared.runBatch(batch)
             }
         }
     }

@@ -36,25 +36,25 @@ final class VMExecutor {
         }
     }
 
-    func runTrial(_ spec: String) {
+    func runBatch(_ spec: String) {
         let lines = spec.split(separator: ";")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        if lines.isEmpty { finishTrial() }
+        if lines.isEmpty { finishBatch() }
         for (i, line) in lines.enumerated() {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
             call(parts[0], parts.count > 1 ? parts[1] : "") { result in
                 for out in result.split(separator: "\n", omittingEmptySubsequences: true) {
-                    print("[trial] \(out)")
+                    print("[batch] \(out)")
                 }
                 fflush(stdout)
-                if i == lines.count - 1 { self.finishTrial() }
+                if i == lines.count - 1 { self.finishBatch() }
             }
         }
     }
 
-    private func finishTrial() {
-        print("[trial] end")
+    private func finishBatch() {
+        print("[batch] end")
         fflush(stdout)
         exit(0)
     }
