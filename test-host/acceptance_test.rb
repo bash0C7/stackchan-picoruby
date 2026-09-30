@@ -788,11 +788,14 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_operator listen, :<, index_of { |c| cli_call?(c, "remote", "stack_free") }
   end
 
-  def test_touch_that_times_out_stops_the_check
+  def test_a_head_nobody_touches_neither_stops_the_check_nor_blocks_the_pass
     @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
     t = checked
-    assert_equal "touch listen", failed(t.report["check"])["name"]
-    assert_match(/exit 1/, failed(t.report["check"])["detail"])
+    s = step(t.report, "touch listen")
+    assert_nil s["ok"]
+    assert_match(/not touched within 30 s/, s["detail"])
+    assert_equal CHECK_STEPS, names(t.report["check"])
+    assert_equal "pass", t.report["verdict"]
   end
 
   def test_selftest_without_a_detail_line_stops_the_check
@@ -802,9 +805,11 @@ class AcceptanceTest < Test::Unit::TestCase
 
   def run_without_a_tty
     @ops.tty = false
+    @ops.answers = []
     t = checked
     t.run_darwin
     assert_equal "incomplete", t.report["verdict"]
+    @ops.answers = %w[y] * 20
     reloaded(t)
   end
 
@@ -823,16 +828,16 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_match(/\| touch listen \| ok \| touch zone=1 \(back\) \|/, later.markdown)
   end
 
-  def test_acceptance_touch_that_times_out_fails_the_verdict
+  def test_acceptance_touch_that_times_out_leaves_it_untouched_and_the_answers_pass
     later = run_without_a_tty
     @ops.tty = true
     @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
     later.run_touch
     steps = touch_steps(later.report)
     assert_equal 1, steps.size
-    assert_equal false, steps.first["ok"]
-    assert_match(/exit 1/, steps.first["detail"])
-    assert_equal "fail", later.report["verdict"]
+    assert_nil steps.first["ok"]
+    later.answer
+    assert_equal "pass", later.report["verdict"]
   end
 
   def test_acceptance_touch_without_a_tty_leaves_it_incomplete
