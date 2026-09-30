@@ -35,6 +35,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 
 - `rescue` 節の裸の `raise` は元例外を再送出しない。`rescue Foo => e` … `raise e` と書く。
 - mruby VM を回す FreeRTOS task の stack は 8 KB。C から block を yield する構文 (`Array.new(n) { }`、`String#dup` 等) は VM を 1 段ネストして約 3.1 KB 積む。描画・BLE の深い経路では `while` と C 実装メソッドで書く。症状は `stack overflow in task picoruby_task` の boot loop。host では再現しない。
+- 例外は 1 回の raise + rescue で C stack を約 1.8 KB 積む (QEMU で `Machine.stack_high_water_mark` が 2024 B → 184 B)。起動後の空きは約 2 KB しかないので、tick と BLE の経路で raise を流れの制御に使わない (`DRbBle::Responder#feed` は長さ付きメッセージを切り出して、揃ってから読む)。
 - `String#[]=` のコストは差し込み先の全長に比例する。大きな buffer に行ごとに差し込まない。host では見えない。
 - `Task.new` の block は `self` がトップレベルの `main` で走る (block を作った場所の `self` ではない)。block が使う receiver や instance 変数は先に local に取ってから block に渡す (`Daemon#start_tick` / `#stop`)。
 

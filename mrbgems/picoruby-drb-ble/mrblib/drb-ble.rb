@@ -46,34 +46,55 @@ module DRbBle
     def initialize(front, allow:)
       @front = front
       @allow = allow
-      @buf = ""
+      reset
     end
 
     def reset
       @buf = ""
+      @fields = []
+      @taken = 0
     end
 
     def feed(bytes)
       @buf << bytes
       out = ""
-      while true
-        reader = Reader.new(@buf)
+      while (data = take_message)
         begin
-          ref, msg, args = DRb::DRbMessage.new(reader).recv_request
-        rescue Incomplete
-          reset if @buf.bytesize > MAX_REQUEST
-          break
+          @fields << Marshal.load(data)
         rescue
           reset
           break
         end
-        @buf = @buf.byteslice(reader.pos, @buf.bytesize - reader.pos)
-        out << reply(ref, msg, args)
+        unless well_formed?
+          reset
+          break
+        end
+        next unless @fields.size >= 4 && @fields.size == @fields[2] + 4
+        out << reply(@fields[0], @fields[1].to_sym, @fields[3, @fields[2]])
+        @fields = []
+        @taken = 0
       end
+      reset if @taken + @buf.bytesize > MAX_REQUEST
       out
     end
 
     private
+
+    def take_message
+      return nil if @buf.bytesize < 4
+      size = @buf.byteslice(0, 4).unpack("N")[0]
+      return nil if @buf.bytesize < 4 + size
+      data = @buf.byteslice(4, size)
+      @buf = @buf.byteslice(4 + size, @buf.bytesize - 4 - size)
+      @taken += 4 + size
+      data
+    end
+
+    def well_formed?
+      return @fields[1].is_a?(String) if @fields.size == 2
+      return @fields[2].is_a?(Integer) && @fields[2] >= 0 if @fields.size == 3
+      true
+    end
 
     def reply(ref, msg, args)
       w = Writer.new
