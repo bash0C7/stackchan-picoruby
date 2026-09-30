@@ -48,9 +48,9 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
-      "path": "lib/device_trial.rb",
-      "line": 316,
-      "column": 52,
+      "path": "acceptance/runner.rb",
+      "line": 318,
+      "column": 54,
       "severity": "error",
       "rule": "call.undefined-method",
       "source_family": "builtin",

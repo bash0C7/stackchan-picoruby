@@ -1,12 +1,12 @@
 require 'test/unit'
 require 'yaml'
 require 'json'
-require 'device_trial'
-require 'device_trial_ops'
+require_relative '../acceptance/runner'
+require_relative '../acceptance/ops'
 
-class DeviceTrialTest < Test::Unit::TestCase
+class AcceptanceTest < Test::Unit::TestCase
   ROOT = "/repo"
-  LOCK = YAML.safe_load(File.read(File.expand_path("../trial/lock.yml", __dir__)))
+  LOCK = YAML.safe_load(File.read(File.expand_path("../acceptance/lock.yml", __dir__)))
   FW = LOCK["firmware"]
   ROOT_SHA = "a" * 40
   BUNDLED = %w[mrbgems/picoruby-stackchan-robot mrbgems/picoruby-drb-ble].freeze
@@ -195,7 +195,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.heads[r2p2] = "0" * 40
     @ops.heads[picoruby] = "1" * 40
     @ops.submodules[FW["R2P2-ESP32"]] = { picoruby => FW["picoruby"] }
-    @ops.exists[DeviceTrial::APP_BUNDLE] = true
+    @ops.exists[Acceptance::Runner::APP_BUNDLE] = true
     @ops.on_rake["r2p2:setup"] = lambda do |dir, _env|
       FW["aot"].each { |name, sha| @ops.heads[File.join(dir, "build", "aot", name)] = sha }
     end
@@ -211,10 +211,10 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.files[File.join(ROOT, "apps/robot/app.rb")] = File.read(File.expand_path("../apps/robot/app.rb", __dir__))
   end
 
-  def trial(rounds: 2) = DeviceTrial.new(lock: LOCK, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: rounds, stamp: "t")
+  def runner(rounds: 2) = Acceptance::Runner.new(lock: LOCK, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: rounds, stamp: "t")
 
   def deployed(rounds: 2)
-    t = trial(rounds: rounds)
+    t = runner(rounds: rounds)
     t.deploy
     t
   end
@@ -226,7 +226,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   end
 
   def reloaded(t)
-    later = trial
+    later = runner
     later.report.merge!(JSON.parse(JSON.generate(t.report)))
     later
   end
@@ -242,7 +242,7 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   DEPLOY_STEPS = ["pin trees", "pins hold before setup", "r2p2:setup", "pins hold after setup", "r2p2:build_flash",
                   "pins hold after build", "app upload", "flash identity", "boot"].freeze
-  WRITES = DeviceTrial::FIRMWARE_WRITES + DeviceTrial::APP_WRITES
+  WRITES = Acceptance::Runner::FIRMWARE_WRITES + Acceptance::Runner::APP_WRITES
   APP_STEPS = DEPLOY_STEPS.dup.insert(DEPLOY_STEPS.index("app upload"), "pins hold", "qemu gate").freeze
   GATE_ENV = { "QEMU_PROBE_APP" => "apps/robot/app.rb" }.freeze
   CHECK_STEPS = ["pc_vm", "flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
@@ -280,7 +280,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert t.report["deploy"]["steps"].all? { |s| s["ok"] }
   end
 
-  def test_trial_app_resends_only_the_app_then_reads_the_identity_and_boots
+  def test_acceptance_app_resends_only_the_app_then_reads_the_identity_and_boots
     t = checked
     before = t.report["deploy"]["steps"].first(6).map(&:dup)
     @ops.calls.clear
@@ -289,7 +289,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal %w[r2p2:qemu_check r2p2:upload_appmrb r2p2:flash_identity r2p2:reset_and_capture r2p2:reset], rake_tasks
     assert_equal GATE_ENV, rakes.first.last
     assert_equal 10, later.report["resets"]
-    assert_empty rake_tasks & DeviceTrial::FIRMWARE_WRITES
+    assert_empty rake_tasks & Acceptance::Runner::FIRMWARE_WRITES
     assert_equal APP_STEPS, names(later.report["deploy"])
     assert_equal before, later.report["deploy"]["steps"].first(6)
     assert_equal({ "steps" => [], "timings" => {}, "human" => {} }, later.report["check"])
@@ -299,24 +299,24 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "pass", later.report["verdict"]
   end
 
-  def test_the_deploy_writes_the_app_only_in_its_app_upload_and_trial_app_never_writes_firmware
-    t = trial
+  def test_the_deploy_writes_the_app_only_in_its_app_upload_and_acceptance_app_never_writes_firmware
+    t = runner
     refused = []
     try = ->(task) { t.rake(task) rescue refused << task }
-    @ops.on_rake["r2p2:build_flash"] = ->(_d, _e) { DeviceTrial::APP_WRITES.each(&try) }
+    @ops.on_rake["r2p2:build_flash"] = ->(_d, _e) { Acceptance::Runner::APP_WRITES.each(&try) }
     t.deploy
-    assert_equal DeviceTrial::APP_WRITES, refused
+    assert_equal Acceptance::Runner::APP_WRITES, refused
     refused.clear
-    @ops.on_rake["r2p2:upload_appmrb"] = ->(_d, _e) { DeviceTrial::FIRMWARE_WRITES.each(&try) }
+    @ops.on_rake["r2p2:upload_appmrb"] = ->(_d, _e) { Acceptance::Runner::FIRMWARE_WRITES.each(&try) }
     t.upload_app
-    assert_equal DeviceTrial::FIRMWARE_WRITES, refused
+    assert_equal Acceptance::Runner::FIRMWARE_WRITES, refused
   end
 
-  def test_trial_app_retries_an_app_upload_that_failed_in_the_deploy
+  def test_acceptance_app_retries_an_app_upload_that_failed_in_the_deploy
     @ops.fail_rake["r2p2:upload_appmrb"] = true
     t = deployed
     assert_equal "app upload", failed(t.report["deploy"])["name"]
-    assert_raise(DeviceTrial::Stop) { reloaded(t).check }
+    assert_raise(Acceptance::Stop) { reloaded(t).check }
     @ops.fail_rake.delete("r2p2:upload_appmrb")
     later = reloaded(t)
     later.upload_app
@@ -324,7 +324,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert later.report["deploy"]["steps"].all? { |s| s["ok"] }
   end
 
-  def test_a_pin_moved_since_the_deploy_stops_trial_app_before_the_gate_and_the_board
+  def test_a_pin_moved_since_the_deploy_stops_acceptance_app_before_the_gate_and_the_board
     t = deployed
     @ops.heads[cache("picoruby-ili9342")] = "e" * 40
     @ops.calls.clear
@@ -335,18 +335,18 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "fail", t.report["verdict"]
   end
 
-  def test_trial_app_runs_the_qemu_gate_before_any_serial_task
+  def test_acceptance_app_runs_the_qemu_gate_before_any_serial_task
     t = deployed
     @ops.calls.clear
     t.upload_app
-    serial = rakes.index { |c| DeviceTrialOps::DEVICE_TASKS.include?(c[2]) }
+    serial = rakes.index { |c| Acceptance::Ops::DEVICE_TASKS.include?(c[2]) }
     assert_equal [:rake, ROOT, "r2p2:qemu_check", GATE_ENV], rakes.first
     assert_operator rakes.index(rakes.first), :<, serial
-    assert_not_include DeviceTrialOps::DEVICE_TASKS, "r2p2:qemu_check"
+    assert_not_include Acceptance::Ops::DEVICE_TASKS, "r2p2:qemu_check"
     assert_not_include WRITES, "r2p2:qemu_check"
   end
 
-  def test_a_failing_qemu_gate_stops_trial_app_before_the_board_and_a_later_trial_app_retries
+  def test_a_failing_qemu_gate_stops_acceptance_app_before_the_board_and_a_later_acceptance_app_retries
     t = deployed
     @ops.fail_rake["r2p2:qemu_check"] = true
     @ops.calls.clear
@@ -354,7 +354,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal ["r2p2:qemu_check"], rake_tasks
     assert_equal "qemu gate", failed(t.report["deploy"])["name"]
     assert_equal "fail", t.report["verdict"]
-    assert_raise(DeviceTrial::Stop) { reloaded(t).check }
+    assert_raise(Acceptance::Stop) { reloaded(t).check }
     @ops.fail_rake.delete("r2p2:qemu_check")
     later = reloaded(t)
     later.upload_app
@@ -364,12 +364,12 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "pass", later.report["verdict"]
   end
 
-  def test_trial_app_without_an_ok_firmware_deploy_stops
-    assert_raise(DeviceTrial::Stop) { trial.upload_app }
+  def test_acceptance_app_without_an_ok_firmware_deploy_stops
+    assert_raise(Acceptance::Stop) { runner.upload_app }
     @ops.fail_rake["r2p2:build_flash"] = true
     t = deployed
     @ops.calls.clear
-    assert_raise(DeviceTrial::Stop) { reloaded(t).upload_app }
+    assert_raise(Acceptance::Stop) { reloaded(t).upload_app }
     assert_empty rakes
   end
 
@@ -386,7 +386,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     t = deployed
     @ops.calls.clear
     WRITES.each do |task|
-      assert_raise(DeviceTrial::Stop) { t.rake(task) }
+      assert_raise(Acceptance::Stop) { t.rake(task) }
     end
     assert_empty rakes
   end
@@ -394,16 +394,16 @@ class DeviceTrialTest < Test::Unit::TestCase
   def test_a_second_deploy_into_the_same_report_stops
     t = deployed
     @ops.calls.clear
-    assert_raise(DeviceTrial::Stop) { t.deploy }
-    assert_raise(DeviceTrial::Stop) { reloaded(t).deploy }
+    assert_raise(Acceptance::Stop) { t.deploy }
+    assert_raise(Acceptance::Stop) { reloaded(t).deploy }
     assert_empty rakes
   end
 
-  def test_a_changed_lock_stops_check_and_trial_app_before_touching_anything
+  def test_a_changed_lock_stops_check_and_acceptance_app_before_touching_anything
     t = checked
     lock = Marshal.load(Marshal.dump(LOCK))
     lock["firmware"]["repos"]["picoruby-scservo"] = "c" * 40
-    later = DeviceTrial.new(lock: lock, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: 2, stamp: "t")
+    later = Acceptance::Runner.new(lock: lock, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: 2, stamp: "t")
     later.report.merge!(JSON.parse(JSON.generate(t.report)))
     @ops.calls.clear
     assert_raise_message(/lock\.yml differs/) { later.check }
@@ -422,7 +422,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal ROOT_SHA, later.report["root"]
   end
 
-  def test_a_changed_firmware_input_stops_check_and_trial_app_before_touching_anything
+  def test_a_changed_firmware_input_stops_check_and_acceptance_app_before_touching_anything
     t = checked
     @ops.heads[ROOT] = "b" * 40
     @ops.trees[["b" * 40, "aot"]] = "another aot"
@@ -432,12 +432,12 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_empty @ops.calls.reject { |c| c[0] == :git && %w[rev-parse status].include?(c[2]) }
   end
 
-  def test_a_changed_app_input_stops_the_check_until_trial_app_sends_it
+  def test_a_changed_app_input_stops_the_check_until_acceptance_app_sends_it
     t = checked
     @ops.heads[ROOT] = "b" * 40
     @ops.trees[["b" * 40, "mrbgems/picoruby-stackchan-robot"]] = "new robot engine"
     @ops.calls.clear
-    assert_raise_message(/picoruby-stackchan-robot differ from aaaaaaa, which the board runs; run trial:app/) { reloaded(t).check }
+    assert_raise_message(/picoruby-stackchan-robot differ from aaaaaaa, which the board runs; run acceptance:app/) { reloaded(t).check }
     assert_empty @ops.calls.reject { |c| c[0] == :git && %w[rev-parse status].include?(c[2]) }
     later = reloaded(t)
     later.upload_app
@@ -458,7 +458,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   end
 
   def test_a_check_without_a_deploy_stops
-    assert_raise(DeviceTrial::Stop) { trial.check }
+    assert_raise(Acceptance::Stop) { runner.check }
     assert_empty rakes
   end
 
@@ -467,7 +467,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     t = deployed
     assert_equal "fail", t.report["verdict"]
     @ops.calls.clear
-    assert_raise(DeviceTrial::Stop) { reloaded(t).check }
+    assert_raise(Acceptance::Stop) { reloaded(t).check }
     assert_empty rakes
   end
 
@@ -492,7 +492,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   end
 
   def test_a_dirty_checkout_stops_the_deploy_before_anything_builds
-    @ops.dirty[ROOT] = " M lib/device_trial.rb\n"
+    @ops.dirty[ROOT] = " M acceptance/runner.rb\n"
     t = deployed
     assert_equal "pin trees", failed(t.report["deploy"])["name"]
     assert_match(/local changes/, failed(t.report["deploy"])["detail"])
@@ -583,7 +583,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     t.check
     seq = @ops.calls.reject { |c| c[0] == :now }
     cap = seq.index { |c| c[0] == :rake && c[2] == "r2p2:reset_and_capture" }
-    assert_equal({ "SERIAL_LOG" => File.join(ROOT, "build", "trial", "boot.log"), "DURATION" => "25" }, seq[cap].last)
+    assert_equal({ "SERIAL_LOG" => File.join(ROOT, "build", "acceptance", "boot.log"), "DURATION" => "25" }, seq[cap].last)
     assert_equal [[:rake, ROOT, "r2p2:reset", {}], [:rake, ROOT, "pc:up", {}]], seq[cap + 1, 2]
   end
 
@@ -597,7 +597,7 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def test_a_missing_bundle_fails_pc_vm_and_is_not_built
     t = deployed
-    @ops.exists.delete(DeviceTrial::APP_BUNDLE)
+    @ops.exists.delete(Acceptance::Runner::APP_BUNDLE)
     @ops.calls.clear
     t.check
     assert_equal "pc_vm", failed(t.report["check"])["name"]
@@ -628,8 +628,8 @@ class DeviceTrialTest < Test::Unit::TestCase
     @ops.fail_rake["pc:up"] = true
     t = checked
     assert_equal "pc:up", failed(t.report["check"])["name"]
-    assert_equal DeviceTrial::PC_UP_TRIES, rakes.count { |c| c[2] == "pc:up" }
-    assert_equal [[:sleep, 5]] * (DeviceTrial::PC_UP_TRIES - 1), @ops.calls.select { |c| c[0] == :sleep }
+    assert_equal Acceptance::Runner::PC_UP_TRIES, rakes.count { |c| c[2] == "pc:up" }
+    assert_equal [[:sleep, 5]] * (Acceptance::Runner::PC_UP_TRIES - 1), @ops.calls.select { |c| c[0] == :sleep }
     assert_equal "fail", t.report["verdict"]
   end
 
@@ -690,19 +690,19 @@ class DeviceTrialTest < Test::Unit::TestCase
     t = checked
     assert_equal "selftest detail", failed(t.report["check"])["name"]
     @ops.calls.clear
-    assert_raise(DeviceTrial::Stop) { reloaded(t).check(from: "calibrate") }
+    assert_raise(Acceptance::Stop) { reloaded(t).check(from: "calibrate") }
     assert_empty @ops.calls.select { |c| %i[rake cli].include?(c[0]) }
   end
 
   def test_from_with_a_step_the_previous_check_never_reached_stops
     @ops.cli_out["say"] = "OK say bytes=3000"
     t = checked
-    assert_raise(DeviceTrial::Stop) { reloaded(t).check(from: "calibrate") }
+    assert_raise(Acceptance::Stop) { reloaded(t).check(from: "calibrate") }
   end
 
   def test_from_an_unknown_step_stops
     t = checked
-    assert_raise(DeviceTrial::Stop) { t.check(from: "no such step") }
+    assert_raise(Acceptance::Stop) { t.check(from: "no such step") }
   end
 
   def test_from_the_failed_step_reruns_it
@@ -806,7 +806,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   end
 
   def test_quiet_wait_is_hold_plus_release_after_plus_five_seconds
-    assert_equal 30, trial.quiet_wait_s
+    assert_equal 30, runner.quiet_wait_s
     checked
     assert_equal [30], @ops.calls.select { |c| c[0] == :sleep }.map(&:last).uniq
   end
@@ -814,7 +814,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   def test_quiet_wait_follows_the_firmware_app_and_the_status_line
     @ops.files[File.join(ROOT, "apps/robot/app.rb")] = "StackChan.robot do |bot|\n  bot.release_after 4_000\nend.run\n"
     @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=1 hold_ms=3000\n"
-    assert_equal 12, trial.quiet_wait_s
+    assert_equal 12, runner.quiet_wait_s
   end
 
   def test_an_app_without_release_after_stops_the_check
@@ -852,7 +852,7 @@ class DeviceTrialTest < Test::Unit::TestCase
 
   def touch_steps(report) = report["check"]["steps"].select { |s| s["name"] == "touch listen" }
 
-  def test_trial_touch_listens_and_completes_the_verdict
+  def test_acceptance_touch_listens_and_completes_the_verdict
     later = run_without_a_tty
     @ops.tty = true
     @ops.calls.clear
@@ -865,7 +865,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_match(/\| touch listen \| ok \| touch zone=1 \(back\) \|/, later.markdown)
   end
 
-  def test_trial_touch_that_times_out_fails_the_verdict
+  def test_acceptance_touch_that_times_out_fails_the_verdict
     later = run_without_a_tty
     @ops.tty = true
     @ops.cli_out["touch"] = [1, "[touch] listening (Ctrl-C to exit)...\n[touch] timed out\n"]
@@ -877,7 +877,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "fail", later.report["verdict"]
   end
 
-  def test_trial_touch_without_a_tty_leaves_it_incomplete
+  def test_acceptance_touch_without_a_tty_leaves_it_incomplete
     later = run_without_a_tty
     @ops.calls.clear
     later.run_touch
@@ -886,8 +886,8 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_equal "incomplete", later.report["verdict"]
   end
 
-  def test_trial_touch_without_a_check_stops
-    assert_raise(DeviceTrial::Stop) { deployed.tap { |t| t.report["check"] = nil }.run_touch }
+  def test_acceptance_touch_without_a_check_stops
+    assert_raise(Acceptance::Stop) { deployed.tap { |t| t.report["check"] = nil }.run_touch }
   end
 
   def test_touch_without_a_tty_is_incomplete_and_the_check_goes_on
@@ -901,7 +901,7 @@ class DeviceTrialTest < Test::Unit::TestCase
     assert_match(/\| touch listen \| incomplete \|/, t.markdown)
   end
 
-  def test_from_keeps_an_incomplete_touch_for_trial_touch_to_fill
+  def test_from_keeps_an_incomplete_touch_for_acceptance_touch_to_fill
     @ops.tty = false
     t = checked
     later = reloaded(t)
@@ -1054,7 +1054,7 @@ class DeviceTrialTest < Test::Unit::TestCase
   def darwin_failed(report) = report["darwin"]["steps"].find { |s| !s["ok"] }
 
   def run_darwin_only
-    t = trial
+    t = runner
     t.run_darwin
     t.report
   end
@@ -1216,8 +1216,8 @@ class DeviceTrialTest < Test::Unit::TestCase
   end
 
   def test_median
-    assert_equal 2, DeviceTrial.median([3, 1, 2])
-    assert_equal 2.5, DeviceTrial.median([4, 1, 2, 3])
-    assert_nil DeviceTrial.median([])
+    assert_equal 2, Acceptance::Runner.median([3, 1, 2])
+    assert_equal 2.5, Acceptance::Runner.median([4, 1, 2, 3])
+    assert_nil Acceptance::Runner.median([])
   end
 end

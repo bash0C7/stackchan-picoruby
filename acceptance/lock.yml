@@ -1,11 +1,11 @@
-# The one firmware the robot carries, commit for commit. `rake trial:deploy`
+# The one firmware the robot carries, commit for commit. `rake acceptance:deploy`
 # pins every tree below, builds from this checkout (its HEAD is recorded in the
 # report and its tracked files must be clean), flashes the firmware (the only
 # firmware write of a report) and then sends `app` to /home/app.mrb; `rake
-# trial:app` re-sends only the app. `rake trial:check` reads the flash back,
+# acceptance:app` re-sends only the app. `rake acceptance:check` reads the flash back,
 # boots the board and drives it from the Mac any number of times without
 # writing flash. Every sha is checked out before it is used and checked again
-# after the build; a mismatch stops the run. Change a line here to trial
+# after the build; a mismatch stops the run. Change a line here to try
 # something else.
 firmware:
   R2P2-ESP32: 97166052a334fcc959bcdf6fe7da4c35792f80a6           # claude/external-build-config
@@ -25,7 +25,7 @@ firmware:
     - "[application] BLE peripheral starting"
 
 # The Apple platform. pc:vm_build builds the Mac VM from it, and `rake
-# trial:darwin` builds apps/ios and apps/watchos from this checkout with it,
+# acceptance:darwin` builds apps/ios and apps/watchos from this checkout with it,
 # runs each app in trial mode against the deployed firmware, and hands the
 # robot Mac → iPhone → Watch → Mac.
 darwin:

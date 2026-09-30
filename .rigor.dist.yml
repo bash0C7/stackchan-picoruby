@@ -4,6 +4,7 @@
 target_ruby: "4.0"
 
 paths:
+  - acceptance
   - apps
   - lib
   - mrbgems

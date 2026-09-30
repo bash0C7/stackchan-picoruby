@@ -891,74 +891,74 @@ namespace :ios do
   end
 end
 
-# Device trial (trial/lock.yml): one firmware, pinned and flashed once from
-# this checkout by trial:deploy, then booted, driven from the Mac and timed by
-# trial:check as often as needed. lib/device_trial.rb holds the order and the
-# pass rules; lib/device_trial_ops.rb touches the machine.
-namespace :trial do
-  TRIAL_LOCK = File.expand_path("trial/lock.yml", __dir__)
-  TRIAL_RESULTS = File.expand_path("trial/results", __dir__)
+# Device acceptance (acceptance/lock.yml): one firmware, pinned and flashed once
+# from this checkout by acceptance:deploy, then booted, driven from the Mac and
+# timed by acceptance:check as often as needed. acceptance/runner.rb holds the
+# order and the pass rules; acceptance/ops.rb touches the machine.
+namespace :acceptance do
+  ACCEPTANCE_LOCK = File.expand_path("acceptance/lock.yml", __dir__)
+  ACCEPTANCE_RESULTS = File.expand_path("acceptance/results", __dir__)
 
-  def trial_session(stamp)
-    require_relative "lib/device_trial"
-    require_relative "lib/device_trial_ops"
+  def acceptance_session(stamp)
+    require_relative "acceptance/runner"
+    require_relative "acceptance/ops"
     device_env = -> { { "ESPPORT" => resolve_espport, "STACKCHAN_USB_SERIAL" => EspPort.serial_from(ENV, __dir__) } }
-    ops = DeviceTrialOps.new("/tmp/stackchan-picoruby-debug/trial/#{stamp}", device_env: device_env)
-    DeviceTrial.new(lock: YAML.safe_load(File.read(TRIAL_LOCK)), root: __dir__, ops: ops, bundled: DEVICE_GEM_DIRS, stamp: stamp)
+    ops = Acceptance::Ops.new("/tmp/stackchan-picoruby-debug/acceptance/#{stamp}", device_env: device_env)
+    Acceptance::Runner.new(lock: YAML.safe_load(File.read(ACCEPTANCE_LOCK)), root: __dir__, ops: ops, bundled: DEVICE_GEM_DIRS, stamp: stamp)
   end
 
-  def write_trial_report(t)
-    mkdir_p TRIAL_RESULTS
-    base = File.join(TRIAL_RESULTS, t.report["stamp"])
+  def write_acceptance_report(t)
+    mkdir_p ACCEPTANCE_RESULTS
+    base = File.join(ACCEPTANCE_RESULTS, t.report["stamp"])
     File.write("#{base}.json", JSON.pretty_generate(t.report))
     File.write("#{base}.md", t.markdown)
-    puts "[trial] verdict: #{t.report['verdict']} -> #{base}.md"
+    puts "[acceptance] verdict: #{t.report['verdict']} -> #{base}.md"
   end
 
-  def trial_report
-    json = ENV["STAMP"] ? File.join(TRIAL_RESULTS, "#{ENV['STAMP']}.json") : Dir[File.join(TRIAL_RESULTS, "*.json")].max_by { |f| File.mtime(f) }
-    abort "[trial] no report #{json || "under #{TRIAL_RESULTS}"}" unless json && File.exist?(json)
-    t = trial_session(File.basename(json, ".json"))
+  def acceptance_report
+    json = ENV["STAMP"] ? File.join(ACCEPTANCE_RESULTS, "#{ENV['STAMP']}.json") : Dir[File.join(ACCEPTANCE_RESULTS, "*.json")].max_by { |f| File.mtime(f) }
+    abort "[acceptance] no report #{json || "under #{ACCEPTANCE_RESULTS}"}" unless json && File.exist?(json)
+    t = acceptance_session(File.basename(json, ".json"))
     t.report.merge!(JSON.parse(File.read(json)))
     t
   end
 
-  def trial_do(t)
+  def acceptance_do(t)
     yield t
-    write_trial_report(t)
-  rescue DeviceTrial::Stop => e
-    abort "[trial] #{e.message}"
+    write_acceptance_report(t)
+  rescue Acceptance::Stop => e
+    abort "[acceptance] #{e.message}"
   end
 
-  desc "Pin every tree in trial/lock.yml, build from this checkout and flash the firmware once (the only firmware write of a report), then send the app (~20 min). STAMP= names the report"
+  desc "Pin every tree in acceptance/lock.yml, build from this checkout and flash the firmware once (the only firmware write of a report), then send the app (~20 min). STAMP= names the report"
   task :deploy do
     stamp = ENV["STAMP"] || Time.now.strftime("%Y%m%d-%H%M%S")
-    t = File.exist?(File.join(TRIAL_RESULTS, "#{stamp}.json")) ? trial_report : trial_session(stamp)
-    trial_do(t) { |r| r.deploy }
+    t = File.exist?(File.join(ACCEPTANCE_RESULTS, "#{stamp}.json")) ? acceptance_report : acceptance_session(stamp)
+    acceptance_do(t) { |r| r.deploy }
   end
 
   desc "Boot the app under QEMU, then on a PASS re-send only the app (never the firmware) to the deployed board, read the identity and boot again; empties the check. STAMP= or the latest report"
   task :app do
-    trial_do(trial_report) { |t| t.upload_app }
+    acceptance_do(acceptance_report) { |t| t.upload_app }
   end
 
   desc "Check the deployed firmware without writing flash: identity, boot, pc:up, BLE + dRuby, timings, controller, questions (~25 min). STAMP= or the latest report; FROM=<step> keeps the earlier steps"
   task :check do
-    trial_do(trial_report) { |t| t.check(from: ENV["FROM"]) }
+    acceptance_do(acceptance_report) { |t| t.check(from: ENV["FROM"]) }
   end
 
   desc "Build apps/ios and apps/watchos at the locked R2P2-darwin, run each in trial mode against the deployed firmware, then hand the robot Mac → iPhone → Watch → Mac (a paired iPhone + Watch). STAMP= or the latest report"
   task :darwin do
-    trial_do(trial_report) { |t| t.run_darwin }
+    acceptance_do(acceptance_report) { |t| t.run_darwin }
   end
 
   desc "Listen for one head touch on the robot as it stands and record it in the check of STAMP= or the latest report"
   task :touch do
-    trial_do(trial_report) { |t| t.run_touch }
+    acceptance_do(acceptance_report) { |t| t.run_touch }
   end
 
   desc "Ask the questions the check left unanswered (it ran without a TTY). STAMP= or the latest report"
   task :answer do
-    trial_do(trial_report) { |t| t.answer }
+    acceptance_do(acceptance_report) { |t| t.answer }
   end
 end
