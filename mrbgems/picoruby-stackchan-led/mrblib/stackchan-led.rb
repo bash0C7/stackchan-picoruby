@@ -72,7 +72,12 @@ class StackchanLed
 
   def initialize(py32)
     @py32 = py32
-    @buffer = Array.new(PIXEL_COUNT) { [0, 0, 0] }
+    @buffer = []
+    i = 0
+    while i < PIXEL_COUNT
+      @buffer << [0, 0, 0]
+      i += 1
+    end
     @flash_left_until = nil
     @flash_right_until = nil
     @py32.set_direction(LED_DATA_PIN, true)
