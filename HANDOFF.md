@@ -42,7 +42,7 @@ declare. `docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmw
 demand, so trigger it with `gh workflow run firmware.yml` after changing
 anything it covers.
 
-## In flight: PR #11, ready for the owner's merge decision
+## In flight: PR #11, not yet mergeable
 
 Everything below `main` is on `claude/ecstatic-allen-s6qki1` (PR #11 → `main`,
 not pushed). It carries:
@@ -100,33 +100,50 @@ locked R2P2-darwin (#21).
 
 ## Next
 
-### 1. Merge PR #11 (the owner's decision)
+### 1. Not mergeable yet: two blockers
 
-CLAUDE.md says to merge only when the acceptance report reads `verdict: pass`.
+CLAUDE.md allows the merge only once an acceptance report reads
+`verdict: pass`. It also has to be pushable. Neither holds yet. The plan is in
+the vault:
+`02_dev_docs/stackchan-picoruby/plans/2026-09-30-mergeable-plan.md`.
+
+**Blocker A: the acceptance rules cannot yield `pass`.**
+
 The only report, `acceptance/results/20260929-093450` (uncommitted), reads
-`fail`, for these reasons:
+`fail`:
 
-- It stops at the Mac A → Mac B hand-off. That step is not needed and is
-  written against the dead-tick behaviour.
+- It stops at the Mac A → Mac B hand-off. The owner judged that step not
+  needed, and its check assumes the dead-tick behaviour.
 - `touch listen` is incomplete, and the eye-and-ear questions are unanswered.
 - The verdict requires an iPhone / Watch run on devices whose certificates are
-  revoked.
+  revoked. iPhone / Watch scope is the Simulator.
+- `chat` runs against a STUB sidecar, which proves nothing about chat.
+- `pc_vm` duplicates what `pc:up` already fails on.
+- `say` reads a sentence long enough to be a nuisance.
 
-#22 covers all three. The functions themselves were confirmed on the robot, as
-above. The renamed Rakefile and runner have not yet run on the robot.
+These rules are fixed before the merge. Then one `acceptance:check FROM=pc:up`
+runs with the owner at the robot, and the owner runs `acceptance:touch` and
+`acceptance:answer` in Terminal.app, which needs a TTY. The functions
+themselves were confirmed on the robot, as above.
 
-To merge:
+**Blocker B: the push guard refuses every push of this branch.**
+
+`tools/hooks/pre_push_guard.sh` runs `tools/test_must_fail_on_revert.rb`. It
+replays each changed test against the merge base `510d08e`. A test for a file
+this branch adds (e.g. `test-host/device_lock_test.rb` for `lib/device_lock.rb`)
+cannot load there. The script counts that as "did not run" and exits 1
+(`:103-107`), when not loading at all is the strongest form of failing on
+revert.
+
+Once both blockers are cleared:
 
 1. Push this branch and the related branches in the table.
-2. Merge PR #11.
+2. Merge PR #11 (the owner's decision).
 3. Bring each related repo's branch to its `main`.
 4. Point the Rakefile's `R2P2_ESP32_REF` / `R2P2_DARWIN_REF` and the build
    config's gem refs back at `main`.
 5. Archive `bash0C7/picoruby-stackchan-protocol` on GitHub (nothing here refers
    to it).
-
-`tools/hooks/pre_push_guard.sh` currently blocks pushes: its
-`test_must_fail_on_revert.rb` fails on a `device_lock` LoadError (#22).
 
 ### 2. After the merge: the issues for the next session
 
@@ -142,12 +159,12 @@ To merge:
   - Xcode 27 needs port-darwin `7681c4f4` or later.
   - The certificates are revoked.
   - `devicectl_udid` and `platform_trees_test` are also open.
-- #22: the acceptance steps and verdict, the host tests that imitate the robot
-  or restate the code, the push guard, the long `say`, remote timings, the
-  audio distortion, and `FIRMWARE_INPUTS`.
-  - `FIRMWARE_INPUTS` includes `aot/README.md`, so that file still names the
-    skill `stackchan-device-trial`.
-  - `stash@{0}` holds the hand-off change it describes.
+- #22: what is left once blockers A and B are cleared:
+  - host tests that imitate the robot or restate the code
+  - dRuby timings for face, LED and subtitle, with an ACK check
+  - the audio distortion
+  - `FIRMWARE_INPUTS`, which includes `aot/README.md`; that is why that file
+    still names the skill `stackchan-device-trial`
 - #23: move `docs/superpowers/` to the vault.
 - Older and still open: #4, #5, #6 and #8.
 
