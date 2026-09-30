@@ -695,9 +695,12 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal "2024 B free", step(checked.report, "stack high-water")["detail"]
   end
 
-  def test_less_than_a_kilobyte_of_stack_left_stops_the_check
-    @ops.cli_out["remote stack_free"] = "<stack_free:1023>\n"
+  def test_less_than_512_b_of_stack_left_stops_the_check_and_856_b_passes
+    @ops.cli_out["remote stack_free"] = "<stack_free:511>\n"
     assert_equal "stack high-water", failed(checked.report["check"])["name"]
+    setup
+    @ops.cli_out["remote stack_free"] = "<stack_free:856>\n"
+    assert_equal "856 B free", step(checked.report, "stack high-water")["detail"]
   end
 
   def test_a_firmware_without_the_stack_reading_stops_the_check

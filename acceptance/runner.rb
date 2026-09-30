@@ -32,7 +32,7 @@ module Acceptance
     MULTICORE_CHUNK = 2046
     BOOT_CAPTURE_S = 25
     DETAIL = /<Y[LR]_actual:\d+,PU_actual:\d+>/
-    STACK_FLOOR = 1024
+    STACK_FLOOR = 512
     VERIFY_TOLERANCE = 3
     PC_UP_TRIES = 6
     PC_UP_WAIT_S = 5

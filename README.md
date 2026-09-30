@@ -376,13 +376,15 @@ kill %1 %2
 
 ## Known issues
 
-- The picoruby task has about 2 KB of its 8 KB stack left after startup, and
-  one raise and rescue takes about 1.8 KB of C stack. No path raises on a
-  well-formed request any more, but an error that reaches one of the
+- The picoruby task has about 2 KB of its 8 KB stack left after startup.
+  Drawing a face takes it to about 900 B: the ILI9342 primitives call
+  `SPI#write` and `GPIO#write` through `mrb_funcall` down into the ESP-IDF SPI
+  driver, and the reading varies by an interrupt frame (about 144 B). The
+  acceptance floor is 512 B, room for a few interrupt frames. One raise and
+  rescue takes about 1.8 KB, so an error that reaches one of the
   `rescue => e` handlers (dispatcher, touch poll, periodic handlers, a dRuby
-  handler) leaves the task a couple of hundred bytes from overflowing. Raising
-  `PICORB_TASK_STACK_SIZE` is the remedy; it is a firmware change and waits
-  until it is needed. (#22)
+  handler) can overflow the task. Raising `PICORB_TASK_STACK_SIZE` is the
+  remedy; it is a firmware change. (#22)
 - Discovery on the Mac takes about 10 s of the 15 s connect budget
   (`Central::CONNECT_TIMEOUT_MS`), so a reconnect can come back `busy` (exit 8)
   when discovery runs out before both CCCDs are found. (#19)
