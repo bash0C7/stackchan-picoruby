@@ -10,7 +10,7 @@ module Stackchan
     class Tts
       class SynthError < StandardError; end
 
-      DEFAULT_GAIN = 0.025
+      DEFAULT_GAIN = 0.05
 
       def initialize(gain: DEFAULT_GAIN, rate: nil)
         @gain = gain

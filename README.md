@@ -344,8 +344,8 @@ purpose so the servos don't wear/overheat). Ctrl-C or `kill` stops it
 gracefully — LEDs off, face neutral, servo centered, torque off.
 
 `phrase_announcer.rb` picks a fixed phrase at random and speaks it
-every 30s via `stackchan say --gain 0.175` (tuned by ear: 0.05
-is inaudible over room noise, 0.3 overdrives the 1W speaker).
+every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
+0.05 is inaudible over room noise, 0.3 overdrives the 1W speaker).
 
 Run both in the background and stop them together when done:
 
@@ -425,7 +425,7 @@ of speech for every doubling of the sample rate.
 The AW88298 Class-D amplifier requires its boost rail (SY7088, via AW9523) and
 its 1.8 V digital rail (AXP2101 ALDO1) powered at cold-boot. The I2S link uses
 BCLK on GPIO34, WS on GPIO33, and data-out on GPIO13 with no MCLK. Volume is
-controlled by the macOS-side `--gain` parameter (default 0.025). Nothing clips
+controlled by the macOS-side `--gain` parameter (default 0.05). Nothing clips
 digitally at any gain — `say` peaks around 19900 of full scale and neither the
 resample nor the mu-law encode reaches the rails — so audible break-up means the
 speaker is being overdriven, and the fix is amplitude, not the codec.
