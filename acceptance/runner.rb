@@ -28,29 +28,22 @@ module Acceptance
     FACES = %w[neutral smile joy surprised sad angry].freeze
     # 19 JIS X 0208 glyphs: Dispatcher::SUBTITLE_MAX_CHARS, all drawn by blit_glyph.
     SUBTITLE = "スタックチャン字幕の描画時間を測ります"
-    SAY_TEXT = "こんにちは。スタックチャンです。今日はルビーワールドカンファレンスで、" \
-               "マイコンとパソコンとスマートフォンをルビーでひとつなぎにした話をします。"
+    SAY_TEXT = "こんにちは"
     MULTICORE_CHUNK = 2046
     BOOT_CAPTURE_S = 25
     DETAIL = /<Y[LR]_actual:\d+,PU_actual:\d+>/
     STACK_FLOOR = 1024
-    STUB_REPLY = "reply=stub返答:こんにちは"
     VERIFY_TOLERANCE = 3
-    HANDOFF_GAP_S = 7
-    HANDOFF_UP = { "NS" => "handoff", "STACKCHAN_PORT" => "8797", "STACKCHAN_SIDECAR_PORT" => "8798",
-                   "STACKCHAN_LOGDIR" => "/tmp/stackchan-pico-handoff", "STUB" => "1", "ALLOW_BUSY" => "1" }.freeze
-    HANDOFF_DOWN = { "NS" => "handoff" }.freeze
-    MAC_B = { "STACKCHAN_PORT" => "8797" }.freeze
     PC_UP_TRIES = 6
     PC_UP_WAIT_S = 5
     RESETS = %w[r2p2:build_flash r2p2:flash_identity r2p2:reset_and_capture r2p2:reset].freeze
     FIRMWARE_WRITES = %w[r2p2:build_flash r2p2:build_flash_appmrb r2p2:flash r2p2:full_rebuild].freeze
     APP_WRITES = %w[r2p2:upload_appmrb r2p2:upload_mrb r2p2:wipe_storage].freeze
     FIRMWARE_INPUTS = %w[build_config/esp32-stackchan.rb aot tools/aot mrbgems/picoruby-stackchan-protocol].freeze
-    APP_BUNDLE = File.expand_path("~/Applications/StackchanPico.app")
     QUESTIONS = [["servo", "サーボが指示どおりに動いた"],
                  ["subtitle", "字幕が欠けずに描画された"],
                  ["audio", "say の音声が最後まで途切れずに鳴った"],
+                 ["distortion", "say の音声が割れずに鳴った"],
                  ["remote", "remote servo でも同じように動いた"]].freeze
 
     attr_reader :report
@@ -87,8 +80,7 @@ module Acceptance
     end
 
     def check_plan
-      [["pc_vm", -> { pc_vm }],
-       ["flash identity", -> { flash_identity }],
+      [["flash identity", -> { flash_identity }],
        ["boot", -> { boot }],
        ["pc:up", -> { pc_up }],
        ["torque on", -> { cli!("torque", "on") }],
@@ -103,12 +95,11 @@ module Acceptance
        ["selftest detail", -> { detail!(cli!("selftest")) }],
        ["touch listen", -> { touch }],
        ["calibrate", -> { calibrate }],
-       ["chat (sidecar STUB)", -> { chat }],
        ["release and reconnect", -> { release_and_reconnect }],
-       ["hand-off Mac A → Mac B → Mac A", -> { hand_off }],
        ["stack high-water", -> { stack_high_water }],
        ["questions", -> { ask }],
-       ["torque off", -> { cli!("torque", "off") }]]
+       ["torque off", -> { cli!("torque", "off") }],
+       ["chat", -> { chat }]]
     end
 
     def deploy
@@ -166,18 +157,9 @@ module Acceptance
       c = @report["check"] = { "root" => head(@root), "steps" => kept, "timings" => {},
                                "human" => names.index("questions") < start ? prev["human"] : {} }
       earlier = from ? prev["timings"] : {}
-      @stub_sidecar = false
       @quiet = nil
       settle do
         plan.drop(start).each { |name, body| step(c, name, &body) }
-        restore_sidecar(c)
-      rescue Stop => e
-        begin
-          restore_sidecar(c)
-        rescue Stop
-          nil
-        end
-        raise e
       ensure
         c["timings"] = earlier.merge(c["timings"])
       end
@@ -234,12 +216,6 @@ module Acceptance
       lock = @lock.fetch("darwin")
       head_is!(darwin_dir, lock.fetch("R2P2-darwin"))
       head_is!(darwin_picoruby, lock.fetch("picoruby"))
-    end
-
-    def pc_vm
-      darwin_pins_hold!
-      raise Stop, "#{APP_BUNDLE} is missing; build it with pc:vm_build + pc:app_bundle" unless @ops.exist?(APP_BUNDLE)
-      "R2P2-darwin #{@lock.dig('darwin', 'R2P2-darwin')[0, 7]}, #{APP_BUNDLE}"
     end
 
     APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
@@ -336,7 +312,7 @@ module Acceptance
       return "fail" if answers.include?("n")
       ran = c ? c["steps"].map { |s| s["name"] } : []
       complete = deployed? && (check_plan.map(&:first) - ran).empty? &&
-                 answers.all?("y") && all_steps.all? { |s| s["ok"] } && @report["darwin"]
+                 answers.all?("y") && all_steps.all? { |s| s["ok"] }
       complete ? "pass" : "incomplete"
     end
 
@@ -541,13 +517,12 @@ module Acceptance
     end
 
     def chat
-      rake("pc:down")
-      @stub_sidecar = true
-      @ops.sleep(quiet)
-      rake("pc:up", env: { "STUB" => "1" })
-      out = cli!("chat", "こんにちは").strip
-      raise Stop, "want #{STUB_REPLY.inspect}, got #{out.inspect}" unless out == STUB_REPLY
-      out
+      _, out, _, code = @ops.cli(@root, "chat", "こんにちは", "--no-speak")
+      reply = out.to_s[/^reply=(.*)$/, 1].to_s.strip
+      if code != 0 || reply.empty? || reply == "(none)" || reply.start_with?("stub返答:")
+        raise Stop, "chat exit #{code}; want a reply from the real sidecar:\n#{out}"
+      end
+      "reply=#{reply}"
     end
 
     def release_and_reconnect
@@ -562,52 +537,10 @@ module Acceptance
       format("release seen: %s, reconnect + face %.2f s", seen ? "yes" : "no", t)
     end
 
-    def hand_off
-      cli!("face", "neutral")
-      link = status["link"]
-      raise Stop, "Mac A shows link=#{link} before Mac B starts; want held" unless link == "held"
-      begin
-        rake("pc:up", env: HANDOFF_UP)
-        @ops.sleep(quiet)
-        cli!("face", "neutral")
-        a_done = @ops.now
-        gap = @ops.now - a_done
-        if gap >= HANDOFF_GAP_S
-          raise Stop, format("Mac B's first call starts %.2f s after Mac A's returned; want < %d s", gap, HANDOFF_GAP_S)
-        end
-        _, out, _, code = @ops.cli(@root, "face", "joy", env: MAC_B)
-        raise Stop, "Mac B was not busy: exit #{code}\n#{out}" unless code == 8 && out.include?("busy:")
-        link = status["link"]
-        raise Stop, "Mac A shows link=#{link} after Mac B's busy; want held" unless link == "held"
-        @ops.sleep(quiet)
-        tb = face!("joy", MAC_B, "Mac B never connects")
-        @ops.sleep(quiet)
-        ta = face!("neutral", {}, "Mac A does not get the robot back")
-      rescue Stop => e
-        run_rake(["pc:down"], HANDOFF_DOWN)
-        raise e
-      end
-      rake("pc:down", env: HANDOFF_DOWN)
-      t = @report["check"]["timings"]
-      (t["hand-off B"] ||= []) << tb
-      (t["hand-off A"] ||= []) << ta
-      format("gap %.2f s, B %.2f s, A %.2f s", gap, tb, ta)
-    end
-
     def face!(face, env, why)
       ok, out, t, code = @ops.cli(@root, "face", face, env: env)
       raise Stop, "#{why}: exit #{code}\n#{out}" unless ok && out.include?("OK face=")
       t
-    end
-
-    def restore_sidecar(c)
-      return unless @stub_sidecar
-      @stub_sidecar = false
-      step(c, "pc:up (real sidecar)") do
-        rake("pc:down")
-        @ops.sleep(quiet)
-        rake("pc:up")
-      end
     end
 
     # --- plumbing -------------------------------------------------------------

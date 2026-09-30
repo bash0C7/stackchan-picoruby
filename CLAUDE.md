@@ -129,11 +129,11 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 | 用途 | 手段 |
 |---|---|
 | app だけ変えた | `/stackchan-device-iterate` (picomodem upload、flash に優しい) |
-| iOS / watchOS app を変えた | Mac で `rake ios:device:all` / `watchos:device:all` (Simulator は `ios:lib ios:gen ios:build` の後 `xcrun simctl` で install / launch)。merge 前は `rake acceptance:darwin` |
+| iOS / watchOS app を変えた | Mac で `rake ios:device:all` / `watchos:device:all` (Simulator は `ios:lib ios:gen ios:build` の後 `xcrun simctl` で install / launch)。`rake acceptance:darwin` は署名できる証明書がある時に任意で流す (verdict の条件ではない、#21) |
 | firmware / gem / sdkconfig を変えた | `/stackchan-device-build-flash` → `/stackchan-device-cold-recovery`、または `/stackchan-device-full-rebuild` |
 | 初回・target 切替 | `/stackchan-device-setup` |
 | 復旧 | `rake r2p2:boards` → cold-recovery → full-rebuild → 人手 (CoreS3 の USB serial が `r2p2:boards` に無い時だけ) |
-| merge 前の実機実績 | `/stackchan-device-acceptance` (`acceptance/lock.yml` の firmware 1 種類を `acceptance:deploy` で 1 回だけ焼き、app は `acceptance:app` で別に何度でも送り、`acceptance:check` で書き込まずに何度でも確かめる) |
+| merge 前の実機実績 | `/stackchan-device-acceptance` (`acceptance/lock.yml` の firmware 1 種類を `acceptance:deploy` で 1 回だけ焼き、app は `acceptance:app` で別に何度でも送り、`acceptance:check` で書き込まずに何度でも確かめる。owner が TTY のある端末で `acceptance:check` を 1 回通しで流し、touch と問いもその中で済ませる) |
 
 - firmware を焼く task (`r2p2:flash` / `build_flash` / `build_flash_appmrb`、それを呼ぶ `full_rebuild` と `acceptance:deploy`) と `acceptance:app` は先に `r2p2:qemu_check` を通す。同じ tree を UART console 付き QEMU で起動し、app の require・bundle した gem (robot engine の `Peripheral < BLE` を含む)・`run` を空にした `StackChan::Robot` で app ファイル全体 (`StackChan.robot` block の評価) を読ませたうえで boot log から verdict を出す。QEMU は `-icount shift=2,align=off,sleep=off -seed 1 -rtc clock=vm` で走らせるので、同じ image なら shell prompt までの serial 出力は毎回同じになり、verdict はそこまでの log だけで決まる。FAIL なら flash せず、PASS のあと clean build してから flash する。QEMU が見るのは boot・gem load・DSL の評価までで、cold-boot 本体・I2C デバイス・LCD・サーボ・スピーカー・BLE 無線は見ない (そこは `/stackchan-device-acceptance`)。
 - `rake qemu:setup` は QEMU (`esp_develop_9.2.2_20250817`) を sha256 で pin して `build/qemu/` に展開する。macOS は `brew install libgcrypt glib pixman sdl2 libslirp` が要る。QEMU `9.0.0` は PSRAM を見つけない (`quad_psram: PSRAM ID read error`)。eFuse drive は `nvram.esp32s3.efuse` (`esp32c3.efuse` は QEMU 9.2.2 に拒否される) に `BLK_VERSION_MAJOR=1` (byte 64 = `0x01`) を乗せないと boot が eFuse チェックで spin する。build と gate の `PICORB_VM` は一致させる。

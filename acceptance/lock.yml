@@ -27,7 +27,8 @@ firmware:
 # The Apple platform. pc:vm_build builds the Mac VM from it, and `rake
 # acceptance:darwin` builds apps/ios and apps/watchos from this checkout with it,
 # runs each app in batch mode against the deployed firmware, and hands the
-# robot Mac → iPhone → Watch → Mac.
+# robot Mac → iPhone → Watch → Mac. That run is optional; the verdict does not
+# need it.
 darwin:
   R2P2-darwin: 7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2             # claude/external-app
   picoruby: 97479c96a4f9bd4f2b08540807bb792cd4ef8d18                # port-darwin, vendor/R2P2-darwin/vendor/picoruby

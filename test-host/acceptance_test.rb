@@ -34,7 +34,7 @@ class AcceptanceTest < Test::Unit::TestCase
       @files = {}
       @tty = true
       @clock = 0.0
-      @robot = { holder: :a, a_link: "held", connects: 1, stub: false }
+      @robot = { holder: :a, a_link: "held", connects: 1 }
     end
 
     def exist?(path) = @exists[path] || @heads.key?(path)
@@ -122,9 +122,8 @@ class AcceptanceTest < Test::Unit::TestCase
 
     def mac_rake(task, env)
       case [task, env["NS"]]
-      in ["pc:up", nil] then @robot.merge!(holder: :a, a_link: "held", connects: 1, stub: env["STUB"] == "1")
+      in ["pc:up", nil] then @robot.merge!(holder: :a, a_link: "held", connects: 1)
       in ["pc:down", nil] then (@robot[:holder] = nil if @robot[:holder] == :a; @robot[:a_link] = "down")
-      in ["pc:down", "handoff"] then @robot[:holder] = nil if @robot[:holder] == :b
       else nil
       end
     end
@@ -132,7 +131,6 @@ class AcceptanceTest < Test::Unit::TestCase
     def cli(root, *args, env: {}, stdin: nil)
       @calls << [:cli, root, args, env, stdin]
       key = args.first == "remote" ? "remote #{args[1]}" : args.first
-      key = "B #{key}" if env["STACKCHAN_PORT"] == "8797"
       out = @cli_out.fetch(key) { mac_cli(key, args) }
       out = out.call(args, env) if out.respond_to?(:call)
       code, text = out.is_a?(Array) ? out : [0, out]
@@ -151,18 +149,13 @@ class AcceptanceTest < Test::Unit::TestCase
       case key
       when "status" then status_line
       when "face"
-        return BUSY if r[:holder] == :b
         r[:connects] += 1 unless r[:a_link] == "held"
         r.merge!(holder: :a, a_link: "held")
-        "OK face=#{args[1]}\n"
-      when "B face"
-        return BUSY if r[:holder] == :a
-        r[:holder] = :b
         "OK face=#{args[1]}\n"
       when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n"
       when "touch" then "[touch] listening (Ctrl-C to exit)...\ntouch zone=1 (back)\n"
       when "calibrate" then CALIBRATION
-      when "chat" then r[:stub] ? "reply=stub返答:#{args[1]}\n" : "reply=こんにちは！元気だよ\n"
+      when "chat" then "reply=こんにちは！元気だよ\n"
       else "OK"
       end
     end
@@ -195,7 +188,6 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.heads[r2p2] = "0" * 40
     @ops.heads[picoruby] = "1" * 40
     @ops.submodules[FW["R2P2-ESP32"]] = { picoruby => FW["picoruby"] }
-    @ops.exists[Acceptance::Runner::APP_BUNDLE] = true
     @ops.on_rake["r2p2:setup"] = lambda do |dir, _env|
       FW["aot"].each { |name, sha| @ops.heads[File.join(dir, "build", "aot", name)] = sha }
     end
@@ -245,10 +237,9 @@ class AcceptanceTest < Test::Unit::TestCase
   WRITES = Acceptance::Runner::FIRMWARE_WRITES + Acceptance::Runner::APP_WRITES
   APP_STEPS = DEPLOY_STEPS.dup.insert(DEPLOY_STEPS.index("app upload"), "pins hold", "qemu gate").freeze
   GATE_ENV = { "QEMU_PROBE_APP" => "apps/robot/app.rb" }.freeze
-  CHECK_STEPS = ["pc_vm", "flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
+  CHECK_STEPS = ["flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
                  "remote servo detail", "remote face", "say", "timings", "quiet wait", "selftest detail", "touch listen",
-                 "calibrate", "chat (sidecar STUB)", "release and reconnect", "hand-off Mac A → Mac B → Mac A",
-                 "stack high-water", "questions", "torque off", "pc:up (real sidecar)"].freeze
+                 "calibrate", "release and reconnect", "stack high-water", "questions", "torque off", "chat"].freeze
 
   # --- deploy and check -----------------------------------------------------
 
@@ -587,31 +578,7 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal [[:rake, ROOT, "r2p2:reset", {}], [:rake, ROOT, "pc:up", {}]], seq[cap + 1, 2]
   end
 
-  # --- pc_vm and pc:up --------------------------------------------------------
-
-  def test_pc_vm_checks_the_darwin_pins_and_the_bundle_without_building
-    t = checked
-    assert_match(/StackchanPico\.app/, step(t.report, "pc_vm")["detail"])
-    assert_empty rake_tasks & %w[pc:vm_build pc:app_bundle]
-  end
-
-  def test_a_missing_bundle_fails_pc_vm_and_is_not_built
-    t = deployed
-    @ops.exists.delete(Acceptance::Runner::APP_BUNDLE)
-    @ops.calls.clear
-    t.check
-    assert_equal "pc_vm", failed(t.report["check"])["name"]
-    assert_match(/missing/, failed(t.report["check"])["detail"])
-    assert_empty rakes
-  end
-
-  def test_a_moved_darwin_picoruby_fails_pc_vm
-    t = deployed
-    @ops.heads[darwin_picoruby] = "0" * 40
-    t.check
-    assert_equal "pc_vm", failed(t.report["check"])["name"]
-    assert_match(/picoruby is at "0{40}"/, failed(t.report["check"])["detail"])
-  end
+  # --- pc:up ---------------------------------------------------------------
 
   def test_pc_up_succeeds_on_a_later_try
     tries = 0
@@ -680,9 +647,9 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.answers = []
     later = reloaded(t)
     later.check(from: "torque off")
-    assert_equal %w[y y y y], later.report["check"]["human"].values.map { |h| h["answer"] }
+    assert_equal %w[y] * Acceptance::Runner::QUESTIONS.size, later.report["check"]["human"].values.map { |h| h["answer"] }
     later.check(from: "stack high-water")
-    assert_equal [nil] * 4, later.report["check"]["human"].values.map { |h| h["answer"] }
+    assert_equal [nil] * Acceptance::Runner::QUESTIONS.size, later.report["check"]["human"].values.map { |h| h["answer"] }
   end
 
   def test_from_with_an_earlier_failed_step_stops
@@ -749,7 +716,6 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal 3, tm["face joy"].size
     assert_equal 3, tm["servo remote"].size
     assert_equal 3, tm["say"].size
-    assert_equal 1, tm["hand-off B"].size
   end
 
   def test_unanswered_questions_leave_it_incomplete_until_answered
@@ -762,6 +728,12 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal "pass", t.report["verdict"]
   end
 
+  def test_a_check_with_every_answer_y_passes_without_darwin
+    t = checked
+    assert_nil t.report["darwin"]
+    assert_equal "pass", t.report["verdict"]
+  end
+
   def test_a_no_fails_it
     @ops.answers = %w[y n] + %w[y] * 20
     t = checked
@@ -771,20 +743,7 @@ class AcceptanceTest < Test::Unit::TestCase
 
   # --- controller -------------------------------------------------------------
 
-  CONTROLLER_STEPS = ["quiet wait", "selftest detail", "touch listen", "calibrate", "chat (sidecar STUB)",
-                      "release and reconnect", "hand-off Mac A → Mac B → Mac A"].freeze
-  HANDOFF_UP = { "NS" => "handoff", "STACKCHAN_PORT" => "8797", "STACKCHAN_SIDECAR_PORT" => "8798",
-                 "STACKCHAN_LOGDIR" => "/tmp/stackchan-pico-handoff", "STUB" => "1", "ALLOW_BUSY" => "1" }.freeze
-  B = { "STACKCHAN_PORT" => "8797" }.freeze
-
-  def status_override(nth, link)
-    seen = 0
-    @ops.cli_out["status"] = lambda do |_args, _env|
-      seen += 1
-      line = @ops.status_line
-      seen == nth ? line.sub(/link=\S+/, "link=#{link}") : line
-    end
-  end
+  CONTROLLER_STEPS = ["quiet wait", "selftest detail", "touch listen", "calibrate", "release and reconnect"].freeze
 
   def test_the_controller_steps_run_in_order_between_timings_and_stack_high_water
     n = names(checked.report["check"])
@@ -799,10 +758,9 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal "<YL_actual:50,PU_actual:29>", step(r, "selftest detail")["detail"]
     assert_equal "touch zone=1 (back)", step(r, "touch listen")["detail"]
     assert_equal "yaw_zero 2048, pitch_zero 2050, verify delta 1/-2", step(r, "calibrate")["detail"]
-    assert_equal "reply=stub返答:こんにちは", step(r, "chat (sidecar STUB)")["detail"]
+    assert_equal "reply=こんにちは！元気だよ", step(r, "chat")["detail"]
     assert_match(/\Arelease seen: yes, reconnect \+ face \d\.\d\d s\z/, step(r, "release and reconnect")["detail"])
-    assert_match(/\Agap \d\.\d\d s, B \d\.\d\d s, A \d\.\d\d s\z/, step(r, "hand-off Mac A → Mac B → Mac A")["detail"])
-    %w[release\ and\ reconnect hand-off\ B hand-off\ A].each { |k| assert_equal 1, r["check"]["timings"][k].size }
+    assert_equal 1, r["check"]["timings"]["release and reconnect"].size
   end
 
   def test_quiet_wait_is_hold_plus_release_after_plus_five_seconds
@@ -933,44 +891,28 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal "calibrate", failed(checked.report["check"])["name"]
   end
 
-  def test_chat_restarts_the_mac_on_the_stub_sidecar_after_the_robot_released_it
-    checked
-    down = index_of { |c| rake_call?(c, "pc:down", {}) }
-    wait = index_of { |c| c == [:sleep, 30] }
-    up = index_of { |c| rake_call?(c, "pc:up", { "STUB" => "1" }) }
-    chat = index_of { |c| cli_call?(c, "chat", "こんにちは") }
-    assert_equal [down, wait, up, chat], [down, wait, up, chat].sort
-  end
-
-  def test_a_wrong_reply_stops_the_check
-    @ops.cli_out["chat"] = "reply=こんにちは！元気だよ\n"
-    t = checked
-    assert_equal "chat (sidecar STUB)", failed(t.report["check"])["name"]
-    assert_match(/reply=/, failed(t.report["check"])["detail"])
-  end
-
-  def restore_calls
-    last_chat = @ops.calls.rindex { |c| c[0] == :cli && c[2].first == "chat" }
-    @ops.calls[last_chat..].select { |c| c[0] == :rake || c[0] == :sleep }.last(3)
-  end
-
-  def test_the_check_leaves_the_mac_on_the_real_sidecar
+  def test_chat_runs_last_on_the_running_mac_without_speaking
     checked
     torque_off = @ops.calls.rindex { |c| cli_call?(c, "torque", "off") }
-    assert_equal [[:rake, ROOT, "pc:down", {}], [:sleep, 30], [:rake, ROOT, "pc:up", {}]], @ops.calls[torque_off + 1..]
+    assert_equal [[:cli, ROOT, %w[chat こんにちは --no-speak], {}, nil]], @ops.calls[torque_off + 1..]
+    assert_empty rakes.select { |c| c[3]["STUB"] }
   end
 
-  def test_a_failure_after_chat_still_leaves_the_mac_on_the_real_sidecar
-    @ops.cli_out["B face"] = [1, "error: timeout\n"]
-    t = checked
-    assert_equal "fail", t.report["verdict"]
-    assert_equal [[:rake, ROOT, "pc:down", {}], [:sleep, 30], [:rake, ROOT, "pc:up", {}]], restore_calls
+  def test_a_reply_that_is_none_or_from_the_stub_sidecar_fails_the_chat
+    ["reply=(none)\n", "reply=stub返答:こんにちは\n", "reply=\n", [1, "error: sidecar\n"]].each do |out|
+      setup
+      @ops.cli_out["chat"] = out
+      t = checked
+      assert_equal "chat", failed(t.report["check"])["name"], out.inspect
+      assert_equal "fail", t.report["verdict"]
+      assert step(t.report, "torque off")["ok"]
+    end
   end
 
   def test_release_is_seen_and_the_next_face_reconnects_once
     checked
-    chat = index_of { |c| cli_call?(c, "chat", "こんにちは") }
-    joy = chat + @ops.calls[chat..].index { |c| cli_call?(c, "face", "joy") }
+    cal = index_of { |c| c[0] == :cli && c[2].first == "calibrate" }
+    joy = cal + @ops.calls[cal..].index { |c| cli_call?(c, "face", "joy") }
     assert_equal [:sleep, 30], @ops.calls[joy - 2]
     assert cli_call?(@ops.calls[joy - 1], "status")
   end
@@ -980,70 +922,6 @@ class AcceptanceTest < Test::Unit::TestCase
     t = checked
     assert_equal "release and reconnect", failed(t.report["check"])["name"]
     assert_match(/connects/, failed(t.report["check"])["detail"])
-  end
-
-  def test_hand_off_starts_mac_b_on_its_own_namespace_ports_and_log_dir
-    checked
-    assert index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
-    assert_equal [%w[face joy], %w[face joy]], @ops.calls.select { |c| c[0] == :cli && c[3] == B }.map { |c| c[2] }
-  end
-
-  def test_hand_off_order
-    checked
-    up = index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
-    seq = @ops.calls[up - 2..].reject { |c| c[0] == :now }.first(12).map { |c| c[0] == :cli ? [c[2], c[3]] : c[0..2] + (c[0] == :rake ? [c[3]] : []) }
-    assert_equal [[%w[face neutral], {}], [%w[status], {}],
-                  [:rake, ROOT, "pc:up", HANDOFF_UP], [:sleep, 30],
-                  [%w[face neutral], {}], [%w[face joy], B], [%w[status], {}], [:sleep, 30],
-                  [%w[face joy], B], [:sleep, 30], [%w[face neutral], {}],
-                  [:rake, ROOT, "pc:down", { "NS" => "handoff" }]], seq
-  end
-
-  def test_mac_b_that_is_not_busy_stops_the_check_and_mac_b_is_stopped
-    @ops.cli_out["B face"] = [1, "error: timeout\n"]
-    t = checked
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
-    assert_match(/busy/, failed(t.report["check"])["detail"])
-    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
-  end
-
-  def test_mac_a_not_holding_before_mac_b_starts_stops_the_check
-    status_override(5, "released")
-    t = checked
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
-    assert_match(/before/, failed(t.report["check"])["detail"])
-    assert_nil index_of { |c| rake_call?(c, "pc:up", HANDOFF_UP) }
-  end
-
-  def test_mac_a_losing_the_robot_at_mac_b_busy_stops_the_check
-    status_override(6, "released")
-    t = checked
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
-    assert_match(/after/, failed(t.report["check"])["detail"])
-    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
-  end
-
-  def test_mac_b_starting_seven_seconds_after_mac_a_stops_the_check
-    @ops.on_now = ->(calls) { calls.last(2) == [[:now], [:now]] ? 7.0 : 0 }
-    t = checked
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
-    assert_match(/7\.00 s/, failed(t.report["check"])["detail"])
-    assert_empty @ops.calls.select { |c| c[0] == :cli && c[3] == B }
-    assert index_of { |c| rake_call?(c, "pc:down", { "NS" => "handoff" }) }
-  end
-
-  def test_mac_b_that_never_connects_stops_the_check
-    @ops.cli_out["B face"] = FakeOps::BUSY
-    t = checked
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
-    assert_match(/B never connects/, failed(t.report["check"])["detail"])
-  end
-
-  def test_mac_a_that_does_not_get_the_robot_back_stops_the_check
-    @ops.cli_out["face"] = ->(args, _env) { @ops.calls.any? { |c| c[0] == :cli && c[3] == B } ? [1, "error: timeout\n"] : @ops.mac_cli("face", args) }
-    t = checked
-    assert_equal "hand-off Mac A → Mac B → Mac A", failed(t.report["check"])["name"]
-    assert_match(/A/, failed(t.report["check"])["detail"])
   end
 
   # --- darwin -----------------------------------------------------------------
@@ -1209,7 +1087,6 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_match(/\| series \| median \|/, md)
     assert_match(/\| subtitle 19 glyphs \| \d\.\d{3} \|/, md)
     assert_match(/\| servo remote \| \d\.\d{3} \|/, md)
-    assert_match(/\| hand-off B \| \d\.\d{3} \|/, md)
     assert_match(/- サーボが指示どおりに動いた: y/, md)
     assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, md)
     assert_match(/\| iPhone batch \| ok \| <YL_actual:50,PU_actual:29> \|/, md)

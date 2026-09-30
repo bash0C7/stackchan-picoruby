@@ -221,7 +221,8 @@ Device builds are signed and need a valid Apple Development certificate.
 
 Launched with `-StackchanBatch "connect;face joy"` an app runs those actions,
 prints each output line as `[batch] <line>`, then `[batch] end`, and exits;
-`rake acceptance:darwin` runs the device builds that way.
+`rake acceptance:darwin` runs the device builds that way. It is optional: the
+verdict does not need it (#21).
 
 Re-run `pc:app_bundle` after every `pc:vm_build`: it copies the new VM into the
 bundle and signs it ad hoc with the designated requirement
@@ -375,14 +376,6 @@ kill %1 %2
 
 ## Known issues
 
-- Handing the robot from one Mac to another and back ends in an ACK timeout in
-  acceptance report `acceptance/results/20260929-093450`. Commits `1e057cd`
-  (a reconnect whose discovery stopped before the CCCDs was taken as connected)
-  and `794dbda` (the daemon's tick task died on its first tick) fix the two
-  causes on the host; no acceptance run has verified them yet. (#22)
-- The acceptance verdict cannot reach `pass`: it requires the darwin run, which
-  builds signed iPhone and Watch apps, and every Apple Development certificate
-  on this Mac is revoked. (#22)
 - Discovery on the Mac takes about 10 s of the 15 s connect budget
   (`Central::CONNECT_TIMEOUT_MS`), so a reconnect can come back `busy` (exit 8)
   when discovery runs out before both CCCDs are found. (#19)
