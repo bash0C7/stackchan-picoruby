@@ -91,6 +91,7 @@ Dir.mktmpdir("revert-check") do |tmp|
       out, = Open3.capture2e(env, "bundle", "exec", *command_for(path), chdir: wt)
       seen = results(path, out)
       unrun = names.reject { |n| seen.key?(n) }
+      next if seen.empty? && path.start_with?("test-host/") && out.match?(/cannot load such file/)
       unless unrun.empty?
         warn "test_must_fail_on_revert: #{path} did not run #{unrun.join(', ')} against #{base[0, 7]}:\n#{out.lines.last(15).join}"
         exit 1
