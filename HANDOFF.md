@@ -54,9 +54,7 @@ not pushed). It carries:
   `apps/mac/app.rb`, `apps/ios` + `apps/watchos`, and the firmware gem list in
   `build_config/esp32-stackchan.rb`
 - device tooling that picks the CoreS3 by USB serial
-- the pre-merge device check, `acceptance/`: one firmware deployed once
-  (`acceptance:deploy`), the app sent on its own (`acceptance:app`), and the
-  board checked without writing flash (`acceptance:check`)
+- the pre-merge device check, `acceptance/`
 
 `acceptance/lock.yml` pins the one firmware:
 
@@ -70,117 +68,101 @@ not pushed). It carries:
 | picoruby-scservo | `claude/simplify` | `1e3a18b` |
 | suppify | `claude/string-arg-length` | `a5449a3` |
 
-The robot runs this firmware.
+The robot runs this firmware and the app of `979eb09`. The acceptance report
+is `acceptance/results/20260929-093450` (uncommitted).
 
-On the robot and the Mac, every function in scope works:
+### What the branch changed on the way to a pass
 
-- pc:up, face, LED, servo with a position detail, and dRuby `remote servo` /
-  `remote face`
-- say, selftest, calibrate
-- the robot releasing an idle Mac, and the Mac reconnecting on its next action
-- a head touch reaching the Mac (`stackchan touch listen`)
+- `915a550`: the revert guard skips a test-host file that cannot load at the
+  base, so the branch can be pushed.
+- `254c44d`: acceptance is one full `acceptance:check` run by the owner in a
+  TTY (or a tmux session Claude drives, with the owner answering in chat). No
+  pc_vm, no multi-Mac hand-off, chat against the real sidecar and last, `say`
+  reads "こんにちは", a question asks about distortion, no darwin in the verdict.
+- `1aae757`: a head nobody touches within 30 s is recorded and neither stops
+  the run nor blocks `pass`.
+- `d56cb1b`: `DRbBle::Responder` frames requests itself instead of raising
+  `Incomplete`. One raise + rescue costs about 1.8 KB of C stack.
+- `c75f9d5`: the LED buffer is filled with `while`; `Array.new(n) { }` nested
+  the VM and left the picoruby task 488 B of stack at cold boot.
+- `979eb09`: the stack floor is 512 B. The remaining depth is the ILI9342
+  primitives calling `SPI#write` / `GPIO#write` through `mrb_funcall`.
+- The TTS gain stays at 0.05 (`7ef5b1e` was reverted by `6e271c3`).
 
-Two controller defects surfaced on the robot and are fixed with host tests that
-failed first:
+### The last acceptance run
 
-- `1e057cd` refuses a connection whose discovery stopped before both CCCDs.
-- `794dbda` keeps the daemon's tick and shutdown tasks alive. `Task.new`
-  blocks run with `self` as `main`.
-
-On the robot, the tick fix shows up as `hold over`, keepalives and `release
-seen: yes`.
-
-The iOS and watchOS apps reached the end of a launch-argument run in the
-Simulator before that argument was renamed to `-StackchanBatch` (`8f6dd68`).
-They have not been built since (#21).
-
-`rake test` passes with rigor at `0 new`. `rake test:host` fails only
-`platform_trees_test#test_r2p2_darwin_names_no_stackchan`, because of the
-locked R2P2-darwin (#21).
+Every step through the questions passed: stack high-water `888 B free`, the
+five answers all `y` (the owner heard no distortion). It stopped at
+`torque off` because the Mac daemon froze; `chat` has not run against the real
+sidecar yet. Two earlier runs failed on one-offs recorded in #22: a pitch
+`read_pos` that failed three times, and the daemon dying of SIGPIPE.
 
 ## Next
 
-### 1. Not mergeable yet: two blockers
+### 1. Not mergeable yet: the Mac daemon freezes
 
-CLAUDE.md allows the merge only once an acceptance report reads
-`verdict: pass`. It also has to be pushable. Neither holds yet. The plan is in
-the vault:
-`02_dev_docs/stackchan-picoruby/plans/2026-09-30-mergeable-plan.md`.
+The robot is powered off. Evidence is in the vault:
+`02_dev_docs/stackchan-picoruby/review/2026-10-01-daemon-freeze/`.
 
-**Blocker A: the acceptance rules cannot yield `pass`.**
+What is measured:
 
-The only report, `acceptance/results/20260929-093450` (uncommitted), reads
-`fail`:
+- Twice the daemon stopped accepting dRuby connections mid-acceptance; a CLI
+  stayed `ESTABLISHED` while the daemon held only its LISTEN socket.
+- Every task stopped: the tick task's 10 s heap log stopped too. The heap was
+  never the cause (about 750 KB used of 6.4 MB, flat).
+- Daemon 15112: 0 % CPU, `sample` shows only the scheduler's `usleep`.
+- Daemon 55951: 99.8 % CPU for hours; `spindump` shows all 501 samples inside
+  `mrb_task_queue_push`, whose only loop walks `q_waiting_` in
+  `queue_wake_one_waiter` (mruby-task `task_queue.c`). The list had a cycle.
+- dtrace over 15 s on a fresh daemon: `mrb_tick` ran 3,736 times on the main
+  thread and 3 times on two other threads. `mrb_task_queue_push` ran only on
+  the main thread (60 calls, from `Task::Queue#push`); `BLE_heartbeat` did
+  not push in that window.
 
-- It stops at the Mac A → Mac B hand-off. The owner judged that step not
-  needed, and its check assumes the dead-tick behaviour.
-- `touch listen` is incomplete, and the eye-and-ear questions are unanswered.
-- The verdict requires an iPhone / Watch run on devices whose certificates are
-  revoked. iPhone / Watch scope is the Simulator.
-- `chat` runs against a STUB sidecar, which proves nothing about chat.
-- `pc_vm` duplicates what `pc:up` already fails on.
-- `say` reads a sentence long enough to be a nuisance.
+What the code says:
 
-These rules are fixed before the merge. Then one `acceptance:check FROM=pc:up`
-runs with the owner at the robot, and the owner runs `acceptance:touch` and
-`acceptance:answer` in Terminal.app, which needs a TTY. The functions
-themselves were confirmed on the robot, as above.
+- The POSIX scheduler excludes the tick with `sigprocmask`
+  (mruby-task `ports/posix/task_hal.c`), which only masks the calling thread.
+  `setitimer` SIGALRM is process-directed, so a tick that lands on another
+  thread runs `mrb_tick` and relinks the task lists while the main thread is
+  inside its "excluded" section.
+- picoruby-ble's darwin port also calls `BLE_heartbeat()` from a GCD global
+  queue timer every second (`ports/darwin/ble.c:32-41`, commit `8cd0bbac`),
+  which calls `mrb_task_queue_push` off the VM thread. `task.h` forbids that.
+  It returns early once 16 events are pending, which is why the 15 s window
+  saw none.
 
-**Blocker B: the push guard refuses every push of this branch.**
+Not yet proven: which of the two cross-thread paths broke the list, and what
+the two off-main threads are. The next dtrace (needs the owner's sudo) is
+`/tmp/stackchan-picoruby-debug/queue_push.d` (a copy is in the vault folder):
+it prints the stack of every off-main `mrb_tick` and counts `BLE_heartbeat`
+and `mrb_task_queue_push` per thread over 60 s. Run it with the main
+thread's id as `$1`.
 
-`tools/hooks/pre_push_guard.sh` runs `tools/test_must_fail_on_revert.rb`. It
-replays each changed test method against the branch upstream `510d08e`
-(`origin/claude/ecstatic-allen-s6qki1`) and requires it to fail there. That
-stops tests which only exercise a fake. Four `test-host/` files test code that
-does not exist at `510d08e`, so they cannot load there:
+Both paths live in forks (picoruby / port-darwin, R2P2-darwin). Changing them
+needs a pull request, the same as picoruby itself. The owner closes the
+port-darwin session; do not hand this to it.
 
-- `acceptance_test.rb`
-- `device_lock_test.rb`
-- `esp_port_test.rb`
-- `flash_identity_test.rb`
-
-The script stops at the first of them as "did not run" (`:93-96`). The plan
-proposes a one-line change so that a test-host file which cannot load at the
-base is skipped. That weakens the branch's own guard, so it needs the owner's
-approval.
-
-Once both blockers are cleared:
-
-1. Push this branch and the related branches in the table.
-2. Merge PR #11 (the owner's decision).
-3. Bring each related repo's branch to its `main`.
-4. Point the Rakefile's `R2P2_ESP32_REF` / `R2P2_DARWIN_REF` and the build
-   config's gem refs back at `main`.
-5. Archive `bash0C7/picoruby-stackchan-protocol` on GitHub (nothing here refers
-   to it).
+Once the daemon no longer freezes: one more `acceptance:check` with the robot
+on, the report committed on `verdict: pass`, then push (pins first) and the
+owner's merge decision.
 
 ### 2. After the merge: the issues for the next session
 
-- #20: the dRuby instruction violation. dRuby was added as a second path.
-  Every app action still sends text frames, and only the CLI's `remote` uses
-  dRuby.
-- #19: the dRuby unification itself. Mac, iPhone and Watch talk to the robot
-  over PicoRuby dRuby over BLE only, with audio measured before it is allowed
-  a direct route.
-  - It also covers the port-darwin `3f2dfa24` update, where `radio.rb` must
-    read through `gatt_event_int16` / `gatt_event_value`, and Service Changed.
-- #21: build. Build and launch the `-StackchanBatch` apps in the Simulator.
-  - Xcode 27 needs port-darwin `7681c4f4` or later.
-  - The certificates are revoked.
-  - `devicectl_udid` and `platform_trees_test` are also open.
-- #22: what is left once blockers A and B are cleared:
-  - host tests that imitate the robot or restate the code
-  - dRuby timings for face, LED and subtitle, with an ACK check
-  - the audio distortion
-  - `FIRMWARE_INPUTS`, which includes `aot/README.md`; that is why that file
-    still names the skill `stackchan-device-trial`
+- #20: the dRuby instruction violation. Every app action still sends text
+  frames; only the CLI's `remote` uses dRuby.
+- #19: the dRuby unification itself, with audio measured before it may keep a
+  direct route. It also covers port-darwin `3f2dfa24` (`radio.rb` must read
+  through `gatt_event_int16` / `gatt_event_value`) and Service Changed.
+- #21: build the `-StackchanBatch` apps in the Simulator; Xcode 27 needs
+  port-darwin `7681c4f4` or later; certificates are revoked; `devicectl_udid`
+  and `platform_trees_test` are open.
+- #22: host tests that imitate the robot, dRuby timings, audio distortion
+  (stages listed in the issue), the stack headroom and `PICORB_TASK_STACK_SIZE`,
+  the one-off pitch read failure, `FIRMWARE_INPUTS` (why `aot/README.md` still
+  names `stackchan-device-trial`), and the revert guard having no test.
 - #23: move `docs/superpowers/` to the vault.
 - Older and still open: #4, #5, #6 and #8.
-
-The picoruby-ble state both sessions share is in the vault:
-`02_dev_docs/picoruby-ble-esp32-port/notes/2026-09-29-stackchan-alignment-status.md`.
-The evidence for the hand-off failure is in
-`02_dev_docs/stackchan-picoruby/review/2026-09-29-handoff-ack-timeout/`.
 
 ### 3. The daemon has no defence against a client hanging up
 
