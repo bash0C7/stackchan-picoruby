@@ -63,7 +63,7 @@ not pushed). It carries:
 | R2P2-ESP32 | `claude/external-build-config` | `9716605` |
 | picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
 | R2P2-darwin | `claude/external-app` | `7a02219` |
-| picoruby (fork, under R2P2-darwin) | `port-darwin` | `e2783d0`, local only: not pushed |
+| picoruby (fork, under R2P2-darwin) | `port-darwin` | `e2783d0`, pushed |
 | picoruby-ili9342 | `claude/aot-glyph16` | `6adc482` |
 | picoruby-py32-io-expander | `claude/simplify` | `8f8b3d3` |
 | picoruby-scservo | `claude/simplify` | `1e3a18b` |
@@ -143,16 +143,29 @@ What is done (all local, nothing pushed):
   under launchd from the rebuilt bundle (`status` answers `busy`, robot off).
 - QEMU gate on the firmware tree: PASS (`qemu-20261003-001117.log`).
 
+What the measurements after the fix say (vault folder, `tick_threads-*.out`
+and `tick-race-tests-README.md`):
+
+- dtrace 60 s idle and 60 s while `stackchan connect` kept CoreBluetooth
+  scanning: `sigalrm_handler`, `mrb_tick` and `mrb_task_queue_push` all on
+  one thread (14,949 / 14,862 ticks). The forwarding path never ran.
+- Standalone C tests of SIGALRM delivery (POSIX HAL vs hal-task-darwin, GCD
+  or pthread workers, main thread blocking SIGALRM up to 3 s): the kernel
+  never redirected the tick to another thread; it stayed pending for main.
+  So "main blocked, kernel picked a GCD thread" does **not** explain the 3
+  off-main ticks seen on the old daemon. XNU's `get_signalthread` reads as
+  if it should redirect; the disagreement is unresolved. hal-task-darwin is
+  harmless and keeps the invariant by construction, but the proven writer is
+  the heartbeat push (fixed by port-darwin `23e5bb89`); the off-main ticks
+  remain unexplained.
+
 What is not done:
 
-- Direct proof of the fix needs the owner's sudo: run
-  `/tmp/stackchan-picoruby-debug/queue_push.d` (copy in the vault folder) for
-  60 s against the running daemon with the VM thread's id as `$1`; `mrb_tick`
-  and `mrb_task_queue_push` must appear on that thread only. Save the script
-  next to its output this time.
-- The fork commit `e2783d0` and the pin must be pushed before this branch
-  (owner's approval). It is the fork's own branch, no upstream PR; the same
-  hole exists in mruby's POSIX HAL and could become an upstream PR later.
+- Find what the two off-main threads of `dtrace-queue-push-15s.txt` were.
+  Running the old pin's daemon under `tick_threads.d` (it records stacks)
+  would answer it; needs sudo.
+- The fork commit `e2783d0` is pushed (`origin/port-darwin`). This branch is
+  not; the same hole, if it exists, is in mruby's POSIX HAL too.
 - Then one more `acceptance:check` with the robot on, the report committed on
   `verdict: pass`, push (pins first) and the owner's merge decision.
 
