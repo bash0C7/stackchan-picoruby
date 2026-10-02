@@ -26,4 +26,5 @@ MRuby::Build.new do |conf|
   conf.gem core: "picoruby-bin-r2p2"
   conf.gem core: "picoruby-ble"
   conf.gem core: "picoruby-picotest"
+  conf.gem core: "hal-task-darwin"
 end
