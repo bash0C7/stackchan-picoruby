@@ -63,6 +63,7 @@ not pushed). It carries:
 | R2P2-ESP32 | `claude/external-build-config` | `9716605` |
 | picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
 | R2P2-darwin | `claude/external-app` | `7a02219` |
+| picoruby (fork, under R2P2-darwin) | `port-darwin` | `e2783d0`, local only: not pushed |
 | picoruby-ili9342 | `claude/aot-glyph16` | `6adc482` |
 | picoruby-py32-io-expander | `claude/simplify` | `8f8b3d3` |
 | picoruby-scservo | `claude/simplify` | `1e3a18b` |
@@ -88,6 +89,8 @@ is `acceptance/results/20260929-093450` (uncommitted).
 - `979eb09`: the stack floor is 512 B. The remaining depth is the ILI9342
   primitives calling `SPI#write` / `GPIO#write` through `mrb_funcall`.
 - The TTS gain stays at 0.05 (`7ef5b1e` was reverted by `6e271c3`).
+- The Mac VM is built from port-darwin `e2783d0` with `hal-task-darwin`: the
+  scheduler tick runs on the VM thread only (see Next 1).
 
 ### The last acceptance run
 
@@ -99,53 +102,59 @@ sidecar yet. Two earlier runs failed on one-offs recorded in #22: a pitch
 
 ## Next
 
-### 1. Not mergeable yet: the Mac daemon freezes
+### 1. The Mac daemon freeze: both writers closed, the fix awaits the owner's dtrace
 
 The robot is powered off. Evidence is in the vault:
-`02_dev_docs/stackchan-picoruby/review/2026-10-01-daemon-freeze/`.
+`02_dev_docs/stackchan-picoruby/review/2026-10-01-daemon-freeze/`; the plan
+and its adversarial review are `plans/2026-10-03-daemon-tick-thread.md`.
 
-What is measured:
+What froze: the mruby-task waiting list became cyclic. Daemon 55951 spent
+all 501 `spindump` samples walking `q_waiting_` in `queue_wake_one_waiter`
+(`mrb_task_queue_push`) at 99.8 % CPU; daemon 15112 sat at 0 % with every
+task asleep. The heap was never the cause (about 750 KB of 6.4 MB, flat).
 
-- Twice the daemon stopped accepting dRuby connections mid-acceptance; a CLI
-  stayed `ESTABLISHED` while the daemon held only its LISTEN socket.
-- Every task stopped: the tick task's 10 s heap log stopped too. The heap was
-  never the cause (about 750 KB used of 6.4 MB, flat).
-- Daemon 15112: 0 % CPU, `sample` shows only the scheduler's `usleep`.
-- Daemon 55951: 99.8 % CPU for hours; `spindump` shows all 501 samples inside
-  `mrb_task_queue_push`, whose only loop walks `q_waiting_` in
-  `queue_wake_one_waiter` (mruby-task `task_queue.c`). The list had a cycle.
-- dtrace over 15 s on a fresh daemon: `mrb_tick` ran 3,736 times on the main
-  thread and 3 times on two other threads. `mrb_task_queue_push` ran only on
-  the main thread (60 calls, from `Task::Queue#push`); `BLE_heartbeat` did
-  not push in that window.
+Why: two paths wrote the task lists from threads other than the VM thread.
 
-What the code says:
+- `mrb_tick` (mruby-task `task.c`) relinks waiting → ready. The POSIX HAL
+  arms `setitimer`, whose SIGALRM is process-directed; Darwin delivers it to
+  any thread not blocking it, and CoreBluetooth's GCD threads never block it.
+  The exclusion `mrb_task_disable_irq` is `sigprocmask`, which masks only the
+  calling thread. dtrace over 15 s saw 3 of 3,739 ticks on two non-main
+  threads (`dtrace-queue-push-15s.txt`; that output is from an earlier
+  version of the saved script, so it has no stacks for those ticks; the only
+  caller of `mrb_tick` in this build is the signal handler).
+- picoruby-ble's darwin port at pin `97479c96` called `BLE_heartbeat()` →
+  `mrb_task_queue_push` from a GCD timer every second.
 
-- The POSIX scheduler excludes the tick with `sigprocmask`
-  (mruby-task `ports/posix/task_hal.c`), which only masks the calling thread.
-  `setitimer` SIGALRM is process-directed, so a tick that lands on another
-  thread runs `mrb_tick` and relinks the task lists while the main thread is
-  inside its "excluded" section.
-- picoruby-ble's darwin port also calls `BLE_heartbeat()` from a GCD global
-  queue timer every second (`ports/darwin/ble.c:32-41`, commit `8cd0bbac`),
-  which calls `mrb_task_queue_push` off the VM thread. `task.h` forbids that.
-  It returns early once 16 events are pending, which is why the 15 s window
-  saw none.
+What is done (all local, nothing pushed):
 
-Not yet proven: which of the two cross-thread paths broke the list, and what
-the two off-main threads are. The next dtrace (needs the owner's sudo) is
-`/tmp/stackchan-picoruby-debug/queue_push.d` (a copy is in the vault folder):
-it prints the stack of every off-main `mrb_tick` and counts `BLE_heartbeat`
-and `mrb_task_queue_push` per thread over 60 s. Run it with the main
-thread's id as `$1`.
+- port-darwin `23e5bb89` (origin) fixes the heartbeat: the timer sets a flag,
+  `ble_scheduler_pump` turns it into `BLE_heartbeat()` on the VM thread.
+- port-darwin `e2783d0` (fork clone `~/dev/src/github.com/bash0C7/picoruby`,
+  worktree `picoruby-port-darwin`) adds `mrbgems/hal-task-darwin`, an external
+  HAL gem (same mechanism as `hal-io-darwin`) that replaces mruby-task's
+  POSIX HAL with the same code plus one check: a handler on any thread other
+  than the VM thread re-sends SIGALRM to the VM thread with `pthread_kill`.
+  `build_config/darwin-stackchan-pc.rb` includes it; `acceptance/lock.yml`
+  pins it. `vendor/R2P2-darwin/vendor/picoruby` was refreshed from the local
+  clone (`PICORUBY_REPO=… PICORUBY_REF=port-darwin rake refresh`).
+- The VM built, `libmruby.a` carries one `task_hal.o`, a Task::Queue and
+  `sleep_ms` timing script matches the previous binary, and the daemon is up
+  under launchd from the rebuilt bundle (`status` answers `busy`, robot off).
+- QEMU gate on the firmware tree: PASS (`qemu-20261003-001117.log`).
 
-Both paths live in forks (picoruby / port-darwin, R2P2-darwin). Changing them
-needs a pull request, the same as picoruby itself. The owner closes the
-port-darwin session; do not hand this to it.
+What is not done:
 
-Once the daemon no longer freezes: one more `acceptance:check` with the robot
-on, the report committed on `verdict: pass`, then push (pins first) and the
-owner's merge decision.
+- Direct proof of the fix needs the owner's sudo: run
+  `/tmp/stackchan-picoruby-debug/queue_push.d` (copy in the vault folder) for
+  60 s against the running daemon with the VM thread's id as `$1`; `mrb_tick`
+  and `mrb_task_queue_push` must appear on that thread only. Save the script
+  next to its output this time.
+- The fork commit `e2783d0` and the pin must be pushed before this branch
+  (owner's approval). It is the fork's own branch, no upstream PR; the same
+  hole exists in mruby's POSIX HAL and could become an upstream PR later.
+- Then one more `acceptance:check` with the robot on, the report committed on
+  `verdict: pass`, push (pins first) and the owner's merge decision.
 
 ### 2. After the merge: the issues for the next session
 
