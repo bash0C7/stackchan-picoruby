@@ -31,4 +31,4 @@ firmware:
 # need it.
 darwin:
   R2P2-darwin: 7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2             # claude/external-app
-  picoruby: e2783d026bf8cca456115066df97e28e7b231a62                # port-darwin, vendor/R2P2-darwin/vendor/picoruby
+  picoruby: 121c6b51fbe827f35e54dfdf9c4cfce144ae4d11                # port-darwin, vendor/R2P2-darwin/vendor/picoruby

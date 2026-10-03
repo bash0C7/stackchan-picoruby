@@ -403,13 +403,13 @@ kill %1 %2
   single observation after ten hours. It has not recurred, and a `say` on a
   warm device answers in seconds, so recreating a long idle is what would
   settle whether this is still real.
-- A client that opens a connection to the daemon and hangs up can kill it. The
-  daemon writes to a socket whose peer is gone and takes SIGPIPE, and its
-  PicoRuby VM cannot trap that: `Signal.list` carries no `PIPE`, and every
-  `Signal.trap` form raises `SystemStackError`. launchd restarts the process,
-  so the damage is a dropped connection rather than a dead robot. `rake pc:up`
-  checks the port by asking the kernel who is listening, not by connecting, so
-  it does not trigger this; the daemon itself has no defence.
+- A client that hangs up mid-call is dropped, not fatal: the daemon's sockets
+  carry `SO_NOSIGPIPE` (inherited from the listening socket), so the write to
+  the gone peer fails with EPIPE and the dRuby server logs
+  `DRb reply not delivered` and keeps accepting. The PicoRuby VM still cannot
+  trap SIGPIPE itself (`Signal.list` carries no `PIPE`), so this relies on
+  the socket layer. `rake pc:up` checks the port by asking the kernel who is
+  listening, not by connecting.
 
 ## Audio path
 
