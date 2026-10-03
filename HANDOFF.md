@@ -156,9 +156,9 @@ and `tick-race-tests-README.md`):
   second), which would send the tick to a CoreBluetooth or dispatch thread
   exactly while the VM thread masks SIGALRM inside `mrb_task_disable_irq`.
   Standalone C tests on this Mac (`tick-race-tests-README.md`) did not show
-  that redirection. The source read was not of this Mac's kernel version
-  (Darwin 27); until the matching XNU tag is read, neither the source nor the
-  tests settle it. The forwarding handler closes the path whatever the
+  that redirection. This Mac runs xnu-13432 (macOS 27.0); the newest published XNU is
+  xnu-12377 (macOS 26), so the source of this kernel's thread selection cannot
+  be read. Neither the published source nor the tests settle it. The forwarding handler closes the path whatever the
   trigger is, but that is containment, not explanation.
 
 What is not done:
