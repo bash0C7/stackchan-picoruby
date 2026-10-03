@@ -63,7 +63,7 @@ not pushed). It carries:
 | R2P2-ESP32 | `claude/external-build-config` | `9716605` |
 | picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
 | R2P2-darwin | `claude/external-app` | `7a02219` |
-| picoruby (fork, under R2P2-darwin) | `port-darwin` | `e2783d0`, pushed |
+| picoruby (fork, under R2P2-darwin) | `port-darwin` | `121c6b5`, local only (origin has `e2783d0`) |
 | picoruby-ili9342 | `claude/aot-glyph16` | `6adc482` |
 | picoruby-py32-io-expander | `claude/simplify` | `8f8b3d3` |
 | picoruby-scservo | `claude/simplify` | `1e3a18b` |
@@ -177,15 +177,39 @@ diff `97479c96..e2783d02`):
   pumped at scheduler entry, so with one busy task they arrive within a
   timeslice (12 ms); the controller's wait loops `sleep_ms` between polls.
 
+The SIGPIPE death is closed too. Reproduction: send a junk request and hang
+up with an immediate RST (`SO_LINGER` 0); the daemon died with signal 13
+(launchd `last terminating signal = Broken pipe`). Fork commits on
+`port-darwin`, local only:
+
+- `741472e6` put `SO_NOSIGPIPE` in `picoruby-socket/ports/darwin` — useless
+  for the Mac, whose host build compiles `ports/posix` (`ports/darwin` is the
+  iOS / watchOS cross-build); kept in history, superseded.
+- `11a8f89a` moved it to `ports/posix` under `#ifdef SO_NOSIGPIPE` (client
+  sockets right after `socket()`, accepted sockets after `accept()`), and
+  put the darwin files back to plain includes. Still died: when the RST
+  arrives before `accept` returns, `setsockopt` on that socket fails
+  (confirmed with a standalone C program, `nosigpipe_test2.c`).
+- `121c6b51` sets it on the listening socket instead, so accepted sockets
+  inherit it (`nosigpipe_test3.c`: `send` returns EPIPE, process alive).
+- `beea42a7` (picoruby-drb `drb_tcp.rb`): the failed error reply to a gone
+  peer no longer leaves `handle_client`; before, it reached
+  `DRbTCPServer#run`, whose rescue stopped the server (a deaf daemon that
+  launchd would not restart).
+
+With the VM rebuilt from `121c6b51`: the same replay leaves the daemon alive
+(same pid), `stackchan status` answers, and the log shows `DRb reply not
+delivered: send failed`. `acceptance/lock.yml` pins `121c6b51`.
+
 What is not done:
 
-- The fork commit `e2783d0` is pushed (`origin/port-darwin`). This branch is
-  not. The same hole is in mruby's POSIX HAL (upstream PR material).
+- Fork commits after `e2783d0` are not pushed; the pin points at a local
+  sha until they are. The same holes are in mruby's POSIX task HAL and in
+  upstream picoruby-socket / picoruby-drb (upstream PR material).
 - Nothing above has met the robot: the rebuilt VM has only reached `busy`
   with the robot off. A real link through the refreshed darwin port (scan,
   discovery, CCCD, notification, dRuby) is unverified.
-- Two known one-offs are untouched and can still stop a run: the daemon dies
-  on SIGPIPE (Next 3) and the pitch `read_pos` that failed three times (#22).
+- The pitch `read_pos` that failed three times (#22) is untouched.
 - Then one more `acceptance:check` with the robot on, the report committed on
   `verdict: pass`, push (pins first) and the owner's merge decision.
 
@@ -205,14 +229,6 @@ What is not done:
 - #23: move `docs/superpowers/` to the vault.
 - Older and still open: #4, #5, #6 and #8.
 
-### 3. The daemon has no defence against a client hanging up
-
-Any client that hangs up mid-call can kill the daemon: its PicoRuby VM cannot
-trap SIGPIPE (`Signal.list` carries no `PIPE` and every `Signal.trap` form
-raises `SystemStackError`), so a peer gone while the daemon writes to it takes
-the process down, and launchd restarts it. Closing that means `SO_NOSIGPIPE`
-or an ignored SIGPIPE in picoruby's socket layer, which is upstream work
-rather than a change here.
 
 ### 4. The lineage that will not boot
 
