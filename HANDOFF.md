@@ -63,7 +63,7 @@ not pushed). It carries:
 | R2P2-ESP32 | `claude/external-build-config` | `9716605` |
 | picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
 | R2P2-darwin | `claude/external-app` | `7a02219` |
-| picoruby (fork, under R2P2-darwin) | `port-darwin` | `121c6b5`, local only (origin has `e2783d0`) |
+| picoruby (fork, under R2P2-darwin) | `port-darwin` | `121c6b5` (pushed to origin) |
 | picoruby-ili9342 | `claude/aot-glyph16` | `6adc482` |
 | picoruby-py32-io-expander | `claude/simplify` | `8f8b3d3` |
 | picoruby-scservo | `claude/simplify` | `1e3a18b` |
@@ -89,7 +89,7 @@ is `acceptance/results/20260929-093450` (uncommitted).
 - `979eb09`: the stack floor is 512 B. The remaining depth is the ILI9342
   primitives calling `SPI#write` / `GPIO#write` through `mrb_funcall`.
 - The TTS gain stays at 0.05 (`7ef5b1e` was reverted by `6e271c3`).
-- The Mac VM is built from port-darwin `e2783d0` with `hal-task-darwin`: the
+- The Mac VM is built from port-darwin `121c6b5` with `hal-task-darwin`: the
   scheduler tick runs on the VM thread only (see Next 1).
 
 ### The last acceptance run
@@ -176,11 +176,25 @@ diff `97479c96..e2783d02`):
   write and disconnect packets are unchanged. CoreBluetooth events are now
   pumped at scheduler entry, so with one busy task they arrive within a
   timeslice (12 ms); the controller's wait loops `sleep_ms` between polls.
+- The discovery chain was read end to end against `PicoBLECentral.swift`:
+  synthetic handles are allocated by pre-order DFS with tight service ranges,
+  so every characteristic and descriptor passes the decoder's filing tests;
+  UUIDs go out LSB-first from `CBUUID.data` and `reverse_128` restores the
+  canonical bytes the controller compares (`Nus.nus_uuid`, `Nus.cccd_uuid`);
+  CoreBluetooth hides the CCCD, so the port mints one per notify
+  characteristic and routes its write to `setNotifyValue`; reads of the
+  write-only / notify-only NUS characteristics are answered with an empty
+  value and a QUERY_COMPLETE, so discovery reaches `:TC_IDLE` without the
+  robot answering a read; the subscribe wait is time-based (`settle`). The
+  Swift write and notification firing code is byte-identical to `97479c96`;
+  only the packet layout changed, and `de6be64` follows it. The pump drains
+  the Swift FIFO up to 16 pending events per scheduler entry and keeps the
+  rest queued, with a 512 B ceiling per packet (a 180 B dRuby chunk is 192 B).
 
 The SIGPIPE death is closed too. Reproduction: send a junk request and hang
 up with an immediate RST (`SO_LINGER` 0); the daemon died with signal 13
 (launchd `last terminating signal = Broken pipe`). Fork commits on
-`port-darwin`, local only:
+`port-darwin`, pushed to origin:
 
 - `741472e6` put `SO_NOSIGPIPE` in `picoruby-socket/ports/darwin` — useless
   for the Mac, whose host build compiles `ports/posix` (`ports/darwin` is the
@@ -203,9 +217,8 @@ delivered: send failed`. `acceptance/lock.yml` pins `121c6b51`.
 
 What is not done:
 
-- Fork commits after `e2783d0` are not pushed; the pin points at a local
-  sha until they are. The same holes are in mruby's POSIX task HAL and in
-  upstream picoruby-socket / picoruby-drb (upstream PR material).
+- The same holes are in mruby's POSIX task HAL and in upstream
+  picoruby-socket / picoruby-drb (upstream PR material).
 - Nothing above has met the robot: the rebuilt VM has only reached `busy`
   with the robot off. A real link through the refreshed darwin port (scan,
   discovery, CCCD, notification, dRuby) is unverified.
