@@ -149,20 +149,17 @@ and `tick-race-tests-README.md`):
 - dtrace 60 s idle and 60 s while `stackchan connect` kept CoreBluetooth
   scanning: `sigalrm_handler`, `mrb_tick` and `mrb_task_queue_push` all on
   one thread (14,949 / 14,862 ticks). The forwarding path never ran.
-- The kernel source (XNU `bsd/kern/kern_sig.c`, `get_signalthread`) is the
-  mechanism: a process-directed signal goes to the first thread in
-  `p_uthlist` that does not have it masked, pthreads in a first pass and
-  workqueue threads in a second. The VM thread masks SIGALRM only inside
-  `mrb_task_disable_irq`, so the tick lands on a CoreBluetooth or dispatch
-  workqueue thread exactly when the VM thread is inside the exclusion and
-  relinking the list. That is why the race corrupts rather than merely
-  interleaves, and why 3 of 3,739 ticks in 15 s were off-main while the old
-  daemon's heartbeat was also taking the exclusion once a second. The
-  forwarding handler acts at precisely that moment.
-- Standalone C tests (`tick-race-tests-README.md`) that block SIGALRM on main
-  with unmasked worker threads did not show redirection; they disagree with
-  the kernel source and are unresolved, most likely a flaw in the tests. Do
-  not use them as evidence either way.
+- Why those 3 ticks ran off-main is **not established**. The candidate
+  mechanism comes from XNU `get_signalthread` on the apple-oss-distributions
+  `main` branch: a process-directed signal goes to the first thread in
+  `p_uthlist` that does not have it masked (pthreads first, workqueue threads
+  second), which would send the tick to a CoreBluetooth or dispatch thread
+  exactly while the VM thread masks SIGALRM inside `mrb_task_disable_irq`.
+  Standalone C tests on this Mac (`tick-race-tests-README.md`) did not show
+  that redirection. The source read was not of this Mac's kernel version
+  (Darwin 27); until the matching XNU tag is read, neither the source nor the
+  tests settle it. The forwarding handler closes the path whatever the
+  trigger is, but that is containment, not explanation.
 
 What is not done:
 
