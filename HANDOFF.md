@@ -149,23 +149,27 @@ and `tick-race-tests-README.md`):
 - dtrace 60 s idle and 60 s while `stackchan connect` kept CoreBluetooth
   scanning: `sigalrm_handler`, `mrb_tick` and `mrb_task_queue_push` all on
   one thread (14,949 / 14,862 ticks). The forwarding path never ran.
-- Standalone C tests of SIGALRM delivery (POSIX HAL vs hal-task-darwin, GCD
-  or pthread workers, main thread blocking SIGALRM up to 3 s): the kernel
-  never redirected the tick to another thread; it stayed pending for main.
-  So "main blocked, kernel picked a GCD thread" does **not** explain the 3
-  off-main ticks seen on the old daemon. XNU's `get_signalthread` reads as
-  if it should redirect; the disagreement is unresolved. hal-task-darwin is
-  harmless and keeps the invariant by construction, but the proven writer is
-  the heartbeat push (fixed by port-darwin `23e5bb89`); the off-main ticks
-  remain unexplained.
+- The kernel source (XNU `bsd/kern/kern_sig.c`, `get_signalthread`) is the
+  mechanism: a process-directed signal goes to the first thread in
+  `p_uthlist` that does not have it masked, pthreads in a first pass and
+  workqueue threads in a second. The VM thread masks SIGALRM only inside
+  `mrb_task_disable_irq`, so the tick lands on a CoreBluetooth or dispatch
+  workqueue thread exactly when the VM thread is inside the exclusion and
+  relinking the list. That is why the race corrupts rather than merely
+  interleaves, and why 3 of 3,739 ticks in 15 s were off-main while the old
+  daemon's heartbeat was also taking the exclusion once a second. The
+  forwarding handler acts at precisely that moment.
+- Standalone C tests (`tick-race-tests-README.md`) that block SIGALRM on main
+  with unmasked worker threads did not show redirection; they disagree with
+  the kernel source and are unresolved, most likely a flaw in the tests. Do
+  not use them as evidence either way.
 
 What is not done:
 
-- Find what the two off-main threads of `dtrace-queue-push-15s.txt` were.
-  Running the old pin's daemon under `tick_threads.d` (it records stacks)
-  would answer it; needs sudo.
 - The fork commit `e2783d0` is pushed (`origin/port-darwin`). This branch is
-  not; the same hole, if it exists, is in mruby's POSIX HAL too.
+  not. The same hole is in mruby's POSIX HAL (upstream PR material).
+- Whether to run `acceptance:check` again is the owner's call; nothing on the
+  robot side changed, only the Mac VM.
 - Then one more `acceptance:check` with the robot on, the report committed on
   `verdict: pass`, push (pins first) and the owner's merge decision.
 
