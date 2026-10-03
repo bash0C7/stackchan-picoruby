@@ -161,12 +161,31 @@ and `tick-race-tests-README.md`):
   be read. Neither the published source nor the tests settle it. The forwarding handler closes the path whatever the
   trigger is, but that is containment, not explanation.
 
+What the port-darwin refresh changed for the controller (read against the
+diff `97479c96..e2783d02`):
+
+- GATT events now carry the BTstack 1.6 layout (payload at offset 8).
+  `radio.rb` read notifications at the old offsets and would have turned
+  every reply from the robot into handle 0 with an empty value; `de6be64`
+  reads them through `gatt_event_int16` / `gatt_event_value`, and the pc
+  suite's packets and BLE stub follow the same layout.
+- `connect` must be called from `advertising_report_callback` during a
+  scan (it is), `scan`'s keyword arguments and `_event_popped` are
+  unchanged, the controller matches characteristics by `uuid128` so the
+  changed `uuid128_to_uuid32` byte order does not reach it, and the CCCD
+  write and disconnect packets are unchanged. CoreBluetooth events are now
+  pumped at scheduler entry, so with one busy task they arrive within a
+  timeslice (12 ms); the controller's wait loops `sleep_ms` between polls.
+
 What is not done:
 
 - The fork commit `e2783d0` is pushed (`origin/port-darwin`). This branch is
   not. The same hole is in mruby's POSIX HAL (upstream PR material).
-- Whether to run `acceptance:check` again is the owner's call; nothing on the
-  robot side changed, only the Mac VM.
+- Nothing above has met the robot: the rebuilt VM has only reached `busy`
+  with the robot off. A real link through the refreshed darwin port (scan,
+  discovery, CCCD, notification, dRuby) is unverified.
+- Two known one-offs are untouched and can still stop a run: the daemon dies
+  on SIGPIPE (Next 3) and the pitch `read_pos` that failed three times (#22).
 - Then one more `acceptance:check` with the robot on, the report committed on
   `verdict: pass`, push (pins first) and the owner's merge decision.
 
@@ -175,8 +194,7 @@ What is not done:
 - #20: the dRuby instruction violation. Every app action still sends text
   frames; only the CLI's `remote` uses dRuby.
 - #19: the dRuby unification itself, with audio measured before it may keep a
-  direct route. It also covers port-darwin `3f2dfa24` (`radio.rb` must read
-  through `gatt_event_int16` / `gatt_event_value`) and Service Changed.
+  direct route. It also covers Service Changed.
 - #21: build the `-StackchanBatch` apps in the Simulator; Xcode 27 needs
   port-darwin `7681c4f4` or later; certificates are revoked; `devicectl_udid`
   and `platform_trees_test` are open.
