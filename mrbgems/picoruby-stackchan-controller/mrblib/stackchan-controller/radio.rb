@@ -35,10 +35,8 @@ module StackChan
         end
         super
         return unless event_packet.getbyte(0) == GATT_EVENT_NOTIFICATION
-        handle = BLE::Utils.little_endian_to_int16(event_packet.byteslice(4, 1))
-        len    = BLE::Utils.little_endian_to_int16(event_packet.byteslice(6, 1))
         cb = @on_notification
-        cb.call(handle, event_packet.byteslice(8, len)) if cb
+        cb.call(gatt_event_int16(event_packet, 0), gatt_event_value(event_packet)) if cb
       end
 
       def connect_and_discover(timeout_ms)

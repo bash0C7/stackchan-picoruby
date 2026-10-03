@@ -14,7 +14,7 @@ class RadioTest < Picotest::Test
   end
 
   def notification_packet(handle, value)
-    [0xA7, 0, 0, 0, handle, 0, value.bytesize, 0].pack("C*") + value
+    [0xA7, 6 + 4 + value.bytesize, 0, 0, 0, 0, 0, 0, handle, 0, value.bytesize, 0].pack("C*") + value
   end
 
   def test_pop_and_dispatch_calls_event_popped_even_when_queue_is_empty
@@ -24,7 +24,7 @@ class RadioTest < Picotest::Test
     assert_equal 2, @radio.event_popped_count
   end
 
-  def test_pending_packet_reaches_on_notification_in_one_call
+  def test_a_btstack_1_6_layout_notification_reaches_on_notification_in_one_call
     got = []
     @radio.on_notification = ->(handle, value) { got << [handle, value] }
     @radio.push_pending(notification_packet(0x2A, ".\n"))

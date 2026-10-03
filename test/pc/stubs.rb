@@ -21,12 +21,21 @@ class BLE
   GATT_EVENT_NOTIFICATION = 0xA7
   HCI_EVENT_LE_META = 0x3E
   HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
+  GATT_EVENT_PAYLOAD_OFFSET = 8
 
   module Utils
     def self.little_endian_to_int16(str)
       return 0 unless str
       (str.getbyte(0) || 0) | ((str.getbyte(1) || 0) << 8)
     end
+  end
+
+  def gatt_event_int16(event_packet, offset)
+    Utils.little_endian_to_int16(event_packet.byteslice(GATT_EVENT_PAYLOAD_OFFSET + offset, 2))
+  end
+
+  def gatt_event_value(event_packet)
+    event_packet.byteslice(GATT_EVENT_PAYLOAD_OFFSET + 4, gatt_event_int16(event_packet, 2))
   end
 
   attr_reader :role, :services, :state, :event_popped_count, :connect_calls, :writes
