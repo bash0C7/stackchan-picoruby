@@ -222,7 +222,10 @@ What is not done:
 - Nothing above has met the robot: the rebuilt VM has only reached `busy`
   with the robot off. A real link through the refreshed darwin port (scan,
   discovery, CCCD, notification, dRuby) is unverified.
-- The pitch `read_pos` that failed three times (#22) is untouched.
+- The pitch `read_pos` that failed three times (#22): the ESP32 receive path is
+  ruled out by source (vault `review/2026-10-03-pitch-read-pos/`); what is left is
+  the pitch servo itself being silent for ~300 ms right after a move starts, which
+  only the discarded status byte or a bus voltage measurement can settle.
 - Then one more `acceptance:check` with the robot on, the report committed on
   `verdict: pass`, push (pins first) and the owner's merge decision.
 
