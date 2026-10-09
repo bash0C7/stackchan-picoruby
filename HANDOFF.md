@@ -5,9 +5,9 @@ Where the work stands and what comes next. **Current state only.**
 Rewritten in place, never appended to. It carries no history: a reader arriving
 cold has no reference point for a past state, so "previously" and "as of
 <date>" do not belong here. Durable knowledge does not belong here either —
-README.md is what the robot is and does, CLAUDE.md is how to work on it, and
-specs, plans and reviews live in the Obsidian vault under
-`02_dev_docs/stackchan-picoruby/`.
+README.md is what the robot is and does, CLAUDE.md is how to work on it, specs
+and plans live in `docs/superpowers/`, and reviews and evidence live in the
+Obsidian vault under `02_dev_docs/stackchan-picoruby/review/`.
 
 Branch names and commit ids are not written here. What a build runs is read
 from where a machine reads it: `acceptance/lock.yml` for every sha, `Rakefile`
@@ -35,8 +35,9 @@ Since that run, without the robot:
   default branch. The commits are the same, but build_config is a firmware
   input, so the next `acceptance:deploy` flashes.
 
-`rake test` passes. The CRuby host tests pass except
-`platform_trees_test#test_r2p2_darwin_names_no_stackchan` (#21).
+`rake test` and the CRuby host tests pass. The iOS and watchOS apps build for
+the Simulator and, started with `-StackchanBatch "actions"`, reach
+`[batch] end`.
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails on
 any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -67,13 +68,10 @@ is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
 
 ### 2. Open issues
 
-- #20: every app action still sends text frames; only the CLI's `remote` uses
-  dRuby.
-- #19: the dRuby unification itself, with audio measured before it may keep a
-  direct route. It also covers Service Changed.
-- #21: build the `-StackchanBatch` apps in the Simulator; certificates are
-  revoked; `devicectl_udid` and `platform_trees_test` are open.
-- #22: host tests that imitate the robot, dRuby timings, audio distortion, the
+- #19: every app action still sends text frames and only the CLI's `remote`
+  uses dRuby; unify the route on dRuby over BLE, with audio measured before it
+  may keep a direct route. It also covers Service Changed.
+- #22: host tests that imitate the robot, dRuby timings, the
   stack headroom and `PICORB_TASK_STACK_SIZE`, `FIRMWARE_INPUTS` taking all of
   `aot/`, the revert guard having no test, and a pitch position read that
   failed three times in a row once. For the last, the ESP32 receive path is
@@ -81,8 +79,7 @@ is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
   is the pitch servo being silent for about 300 ms right after a move starts,
   which only the status byte the driver discards or a bus voltage measurement
   can settle.
-- #23: move `docs/superpowers/` to the vault.
-- #6: head touch response and LCD touch.
+- #24: LCD touch.
 - The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
   upstream picoruby-socket / picoruby-drb. That is upstream PR material.
 

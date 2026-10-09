@@ -210,16 +210,16 @@ bundle exec rake ios:device:all        # the connected iPhone (DEVELOPMENT_TEAM 
 bundle exec rake watchos:device:all    # the connected Apple Watch
 ```
 
-`rake ios:run` (and so `ios:all`) stops at `open -a Simulator`, so install the
-Simulator build with `xcrun simctl install` and launch it with
-`xcrun simctl launch --console-pty <device> com.bash0c7.picoruby.Stackchan -StackchanBatch "connect;face joy"`
-(not yet run since the launch argument became `-StackchanBatch`, #21).
+`rake ios:run` (and so `ios:all`) stops at `open -a Simulator`. To build and
+start an app in the Simulator, use the `stackchan-apple-simulator` skill: rake
+makes the VM and the Xcode project, and Xcode MCP (`.mcp.json`) builds, starts
+the app with `-StackchanBatch "actions"` and reads its console.
 Device builds are signed and need a valid Apple Development certificate.
 
 Launched with `-StackchanBatch "connect;face joy"` an app runs those actions,
 prints each output line as `[batch] <line>`, then `[batch] end`, and exits;
 `rake acceptance:darwin` runs the device builds that way. It is optional: the
-verdict does not need it (#21).
+verdict does not need it.
 
 Re-run `pc:app_bundle` after every `pc:vm_build`: it copies the new VM into the
 bundle and signs it ad hoc with the designated requirement
@@ -389,9 +389,7 @@ kill %1 %2
   `sudo pkill bluetoothd`: the robot publishes no Service Changed. (#19)
 - `stackchan remote` exits 0 whatever the daemon answers, busy included. (#22)
 - `rake ios:run` (and so `ios:all`) stops at `open -a Simulator` and never
-  installs or launches the app. (#21)
-- The R2P2-darwin half of `test-host/platform_trees_test.rb` fails at the
-  R2P2-darwin commit pinned in `acceptance/lock.yml`. (#21)
+  installs or launches the app.
 - There is no retry path: `StackChan::Controller::Central` raises `TimeoutError` on an ACK
   timeout and the CLI command fails rather than the frame being resent once.
   This is a gap in the code, not an observed symptom; it has no effect until a
