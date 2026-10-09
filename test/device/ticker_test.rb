@@ -38,15 +38,15 @@ class TickerTest < Picotest::Test
     @led        = FakeLed.new
     @touch      = FakeTouch.new
     @dispatcher = RobotTables.dispatcher(display: @display, led: @led, stdout: nil)
-    @notified   = []
+    @remote     = StackChan::Robot::Remote.new(@dispatcher)
     FakeFace::LOG.clear
     @ticker = ticker
   end
 
-  def ticker(touch: @touch, dispatcher: @dispatcher, touch_handlers: RobotTables.touch_handlers, periodic: [])
+  def ticker(touch: @touch, dispatcher: @dispatcher, touch_handlers: RobotTables.touch_handlers, periodic: [], remote: @remote)
     StackChan::Robot::Ticker.new(
       display: @display, led: @led, touch: touch, dispatcher: dispatcher,
-      notify: ->(frame) { @notified << frame },
+      remote: remote,
       touch_handlers: touch_handlers, periodic: periodic
     )
   end
@@ -80,7 +80,7 @@ class TickerTest < Picotest::Test
     @ticker.tick(1000)
     assert_equal :open, @dispatcher.current_face.mouth
     assert_equal [[:both, 0, 60, 0, 300]], flashes
-    assert_equal ["<touch:0>\n"], @notified
+    assert_equal [0], @remote.touches
   end
 
   def test_touch_zone_1_draws_angry_and_flashes_right_red
@@ -95,7 +95,7 @@ class TickerTest < Picotest::Test
     @ticker.tick(1000)
     assert_equal(-8, @dispatcher.current_face.mouth)
     assert_equal [[:left, 0, 0, 60, 300]], flashes
-    assert_equal ["<touch:2>\n"], @notified
+    assert_equal [2], @remote.touches
   end
 
   def test_touch_redraws_the_face_on_the_display
@@ -108,7 +108,7 @@ class TickerTest < Picotest::Test
     t = ticker(touch_handlers: {})
     @touch.next_zone = 1
     t.tick(1000)
-    assert_equal ["<touch:1>\n"], @notified
+    assert_equal [1], @remote.touches
     assert_equal [], @display.calls
     assert_equal [], flashes
   end
@@ -124,7 +124,7 @@ class TickerTest < Picotest::Test
   def test_no_touch_sensor_is_skipped
     t = ticker(touch: nil)
     t.tick(1000)
-    assert_equal [], @notified
+    assert_equal [], @remote.touches
   end
 
   def test_touch_poll_error_is_swallowed
@@ -132,17 +132,17 @@ class TickerTest < Picotest::Test
     @ticker.tick(1000)
     @touch.next_zone = 0
     @ticker.tick(1050)
-    assert_equal ["<touch:0>\n"], @notified
+    assert_equal [0], @remote.touches
   end
 
   def test_a_raising_touch_handler_is_logged_and_skips_the_notify
     t = ticker(touch_handlers: { 0 => ->(_r) { raise IOError, "led" } })
     @touch.next_zone = 0
     t.tick(1000)
-    assert_equal [], @notified
+    assert_equal [], @remote.touches
     @touch.next_zone = 0
     t.tick(1050)
-    assert_equal [], @notified
+    assert_equal [], @remote.touches
   end
 
   def test_led_ticks_every_50ms_with_the_current_time

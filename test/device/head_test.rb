@@ -51,4 +51,14 @@ class HeadTest < Picotest::Test
     @pitch.next_read = 500
     assert_equal({ yaw: nil, pitch: 500 }, @head.read_actual)
   end
+
+  def test_read_health_reports_the_real_scservos_error_and_status_per_axis
+    yaw_uart = FakeUART.new
+    yaw_uart.read_queue << :timeout
+    pitch_uart = FakeUART.new
+    pitch_uart.read_queue << { bytes: [0xFF, 0xFF, 0x01, 0x04, 0x00, 0x01, 0xF4, 0x05] }
+    head = StackChan::Robot::Head.new(SCServo.new(yaw_uart, id: 1), SCServo.new(pitch_uart, id: 1))
+    head.read_actual
+    assert_equal({ yaw: [:no_header, nil], pitch: [nil, 0] }, head.read_health)
+  end
 end

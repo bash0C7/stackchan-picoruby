@@ -93,35 +93,36 @@ class SessionTest < Picotest::Test
     sizes
   end
 
-  def test_a_touch_while_held_reaches_on_touch_and_poll_touch_within_one_tick
+  def test_a_touch_while_held_reaches_on_touch_and_poll_touch_after_the_next_keepalive
     seen = []
     @daemon.on_touch { |_s, zone| seen << zone }
     face("joy")
     @radio.touch(1)
-    tick
+    tick_until(FakeClock.now + 1_000)
     assert_equal [:right], seen
     assert_equal({ zone: 1, name: :right }, @daemon.poll_touch)
   end
 
-  def test_a_touch_drained_by_an_action_is_delivered_after_it
+  def test_a_touch_queued_by_the_keepalive_is_delivered_by_the_next_action
     seen = []
-    @daemon.on_touch { |_s, zone| seen << [zone, @radio.rx_frames.size] }
+    @daemon.on_touch { |_s, zone| seen << zone }
     face("joy")
     @radio.touch(2)
+    tick_until(FakeClock.now + 1_000)
     face("sad")
-    assert_equal [[:left, 2]], seen
+    assert_equal [:left], seen
   end
 
   def test_a_touch_handler_that_sends_a_face_writes_it_without_deadlock
     @daemon.on_touch { |s, _zone| s.face(:joy) }
     face("neutral")
     @radio.touch(0)
-    tick
+    tick_until(FakeClock.now + 1_000)
     assert_equal ["<F:0>\n", "<F:2>\n"], @radio.rx_frames
     assert_equal 1, token.size
   end
 
-  def test_a_raising_on_touch_handler_is_followed_by_one_more_tick_that_still_delivers_the_next_touch
+  def test_a_raising_on_touch_handler_is_followed_by_a_later_keepalive_that_still_delivers_the_next_touch
     calls = 0
     seen = []
     @daemon.on_touch do |_s, zone|
@@ -131,9 +132,9 @@ class SessionTest < Picotest::Test
     end
     face("neutral")
     @radio.touch(0)
-    tick
+    tick_until(FakeClock.now + 1_000)
     @radio.touch(2)
-    tick
+    tick_until(FakeClock.now + 1_000)
     assert_equal [:left], seen
     assert_true @logs.include?("on_touch RuntimeError: boom")
     assert_equal 1, token.size
@@ -152,11 +153,12 @@ class SessionTest < Picotest::Test
     end
     @voice.during_respond = lambda do
       @radio.touch(1)
+      tick_until(FakeClock.now + 1_000)
       face("sad")
     end
     face("neutral")
     @radio.touch(0)
-    tick
+    tick_until(FakeClock.now + 1_000)
     assert_equal [:back, :right], seen
     assert_equal 1, deepest
   end
@@ -228,7 +230,7 @@ class SessionTest < Picotest::Test
     FakeClock.sleeps.clear
     assert_equal "OK say bytes=400", say("hello")[:out]
     assert_equal [180, 180, 40], audio_writes_after("<A:400>\n")
-    assert_equal [1500, 20, 20, 20], FakeClock.sleeps
+    assert_equal [20, 1500, 20, 20, 20], FakeClock.sleeps
     assert_equal [[:synthesize, 1]], @voice.token_sizes
   end
 
@@ -276,8 +278,8 @@ class SessionTest < Picotest::Test
     during = nil
     @voice.during_respond = lambda do
       @radio.touch(1)
-      tick_until(t0 + 20_000)
-      during = [seen.dup, runs, @link.state, @radio.rx_frames.select { |f| f == "<read:pos>\n" }.size]
+      tick_until(t0 + 2_000)
+      during = [seen.dup, runs, @link.state, @radio.touches_calls]
     end
     chat("hi", speak: false)
     assert_equal [[], 0, :held, 2], during
@@ -287,7 +289,7 @@ class SessionTest < Picotest::Test
   def test_a_loss_clears_touches_nobody_polled
     face("neutral")
     @radio.touch(1)
-    tick
+    tick_until(FakeClock.now + 1_000)
     @radio.drop_link(event: true)
     tick
     assert_equal :released, @link.state
@@ -302,7 +304,7 @@ class SessionTest < Picotest::Test
       @radio.touch(i % 3)
       i += 1
     end
-    tick
+    tick_until(FakeClock.now + 1_000)
     polled = 0
     polled += 1 while @daemon.poll_touch
     assert_equal StackChan::Controller::Daemon::LISTEN_CAP, polled
@@ -312,7 +314,7 @@ class SessionTest < Picotest::Test
     @daemon.on_touch { |_s, _zone| raise NotImplementedError, "nope" }
     face("neutral")
     @radio.touch(0)
-    assert_raise(NotImplementedError) { face("joy") }
+    assert_raise(NotImplementedError) { tick_until(FakeClock.now + 1_000) }
     assert_equal 1, token.size
     assert_equal "OK face=sad", face("sad")[:out]
   end

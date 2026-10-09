@@ -4,7 +4,7 @@ class DrbChannelTest < Picotest::Test
 
   class FakeServo
     attr_reader :writes
-    attr_accessor :next_read
+    attr_accessor :next_read, :last_read_error, :last_status
     def initialize; @writes = []; @next_read = 0; end
     def write_pos(pos, time_ms:, speed:); @writes << [pos, time_ms, speed]; end
     def read_pos; @next_read; end
@@ -55,14 +55,15 @@ class DrbChannelTest < Picotest::Test
     @yaw = FakeServo.new
     @pitch = FakeServo.new
     @display = FakeDisplay.new
+    @head = StackChan::Robot::Head.new(@yaw, @pitch)
     @dispatcher = RobotTables.dispatcher(
       display: @display, led: (@led = FakeLed.new), stdout: nil,
-      head: StackChan::Robot::Head.new(@yaw, @pitch)
+      head: @head
     )
     @port = Port.new
     @front = StackChan::Robot::Remote.new(@dispatcher, remote_handlers: {
       wave: ->(r, level) { r.head(yaw_left: level, time: 300) },
-    })
+    }, head: @head)
     @channel = StackChan::Robot::DrbChannel.new(
       rx_handle: DRX, tx_handle: DTX, cccd_handle: DCCCD,
       responder: DRbBle::Responder.new(@front, allow: @front.exposed)
@@ -70,7 +71,7 @@ class DrbChannelTest < Picotest::Test
     @loop = StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: NullTicker.new, on_packet: ->(_p) {}, on_rx: ->(_d) {},
-      clock: -> { 0 }, log: ->(_l) {}, drb: @channel, audio: NullAudio.new
+      clock: -> { 0 }, log: ->(_l) {}, drb: @channel, audio: NullAudio.new, remote: @front
     )
     DRbBle.register("drbble://stackchan", CentralLink.new(@port, @loop), timeout_ms: 200)
     @remote = DRb::DRbObject.new_with_uri("drbble://stackchan")
@@ -145,7 +146,9 @@ class DrbChannelTest < Picotest::Test
   end
 
   def test_exposed_is_the_built_ins_then_the_remote_handler_names
-    assert_equal [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free, :wave], @front.exposed
+    assert_equal [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
+                  :selftest, :touches, :audio_begin, :audio_chunk, :audio_play, :audio_done,
+                  :servo_health, :wave], @front.exposed
   end
 
   def test_a_remote_handler_receives_the_handle_and_the_arguments_and_moves_the_head
@@ -177,5 +180,19 @@ class DrbChannelTest < Picotest::Test
 
   def test_stack_free_returns_the_same_lines_type_as_the_other_built_ins
     assert_equal StackChan::Robot::Remote::Lines, @front.stack_free.class
+  end
+
+  def test_servo_health_reports_each_axis_error_and_status
+    @yaw.last_read_error = :no_header
+    @yaw.last_status = nil
+    @pitch.last_read_error = nil
+    @pitch.last_status = 0
+    subscribe
+    assert_equal ["<yaw_err:no_header,yaw_status:unknown,pitch_err:none,pitch_status:0>\n"], @remote.servo_health
+  end
+
+  def test_servo_health_without_a_head_answers_question_mark
+    front = StackChan::Robot::Remote.new(@dispatcher, head: nil)
+    assert_equal ["?\n"], front.servo_health
   end
 end

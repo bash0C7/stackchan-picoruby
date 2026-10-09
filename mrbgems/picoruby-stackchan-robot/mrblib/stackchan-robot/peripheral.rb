@@ -18,6 +18,8 @@ module StackChan
       NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
       NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
+      SERVICE_CHANGED_CHAR_UUID = 0x2A05
+
       attr_reader :robot_handle
 
       def initialize(robot, display:, led:, head: nil, touch: nil, speaker: nil)
@@ -33,7 +35,7 @@ module StackChan
         )
         wiring = robot.wire(
           display: display, led: led, head: head, touch: touch, speaker: speaker,
-          stdout: self, notify: ->(frame) { write(frame) }
+          stdout: self
         )
         @dispatcher = wiring.dispatcher
         @robot_handle = wiring.handle
@@ -57,6 +59,7 @@ module StackChan
           log: ->(line) { puts line },
           drb: drb,
           audio: @audio,
+          remote: remote,
           release_after: robot.release_after
         )
         super(:peripheral, db.profile_data)
@@ -120,6 +123,11 @@ module StackChan
               c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
             end
           end
+          db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GATT_SERVICE_UUID) do |s|
+            s.add_characteristic(BLE::INDICATE, SERVICE_CHANGED_CHAR_UUID, BLE::INDICATE, "\x00\x00\xFF\xFF") do |c|
+              c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
+            end
+          end
         end
       end
 
@@ -141,7 +149,7 @@ module StackChan
       end
 
       def consume_rx(rx_data)
-        write("<A:done>\n") if @audio.consume(rx_data) { |frame| @dispatcher.handle(frame) }
+        write("<A:done>\n") if @audio.consume(rx_data) { |frame| write("?\n") }
       end
     end
   end

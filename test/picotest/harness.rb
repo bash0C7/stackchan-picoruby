@@ -69,14 +69,17 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
       dir: File.join(REPO_ROOT, "test", "pc"),
       cruby: lambda {
         load PC_STUBS_RB
+        DEVICE_FAKES.each { |f| load f }
         PROTOCOL_MRBLIB.each { |f| require f }
+        ROBOT_MRBLIB.each { |f| load f }
         CONTROLLER_MRBLIB.each { |f| load f }
         load PC_DRB_PATCH_RB
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
       },
       load_files: lambda {
         # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
-        files = [*DRB_MRBLIB, PC_STUBS_RB, *PROTOCOL_MRBLIB, *CONTROLLER_MRBLIB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
+        files = [*DRB_MRBLIB, PC_STUBS_RB, *DEVICE_FAKES, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, ROBOT_TABLES_RB,
+                 *CONTROLLER_MRBLIB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
         files << PC_FAKE_BLE_RB
         files << MAC_APP_RB

@@ -48,16 +48,17 @@ module StackChan
       end
     end
 
-    def wire(display:, led:, head: nil, touch: nil, speaker: nil, stdout:, notify:)
+    def wire(display:, led:, head: nil, touch: nil, speaker: nil, stdout:)
       dispatcher = Dispatcher.new(
         display: display, led: led, stdout: stdout, head: head, speaker: speaker,
         faces: @faces, face_index: @face_index, frame_handlers: @frame_handlers
       )
+      remote = Remote.new(dispatcher, remote_handlers: @remote_handlers, speaker: speaker, head: head)
       ticker = Ticker.new(
-        display: display, led: led, touch: touch, dispatcher: dispatcher, notify: notify,
+        display: display, led: led, touch: touch, dispatcher: dispatcher, remote: remote,
         touch_handlers: @touch_handlers, periodic: @periodic
       )
-      Wiring.new(dispatcher, ticker, Remote.new(dispatcher, remote_handlers: @remote_handlers))
+      Wiring.new(dispatcher, ticker, remote)
     end
 
     def run

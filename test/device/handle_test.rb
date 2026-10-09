@@ -102,7 +102,7 @@ class HandleTest < Picotest::Test
 
   def test_blink_closes_the_current_face_eyes_now
     StackChan::Robot::Ticker.new(display: @display, led: @led, touch: nil, dispatcher: @disp,
-                                 notify: ->(_f) {})
+                                 remote: nil)
     @r.face(:angry)
     @display.calls.clear
     @r.blink(150)
@@ -111,7 +111,7 @@ class HandleTest < Picotest::Test
 
   def test_blink_reopens_after_closed_ms_on_the_ticker
     ticker = StackChan::Robot::Ticker.new(display: @display, led: @led, touch: nil, dispatcher: @disp,
-                                          notify: ->(_f) {})
+                                          remote: nil)
     ticker.tick(1000)
     @r.blink(200)
     @display.calls.clear

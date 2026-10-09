@@ -1,6 +1,6 @@
 class IosAppTest < Picotest::Test
   PATH = "/tmp/_ios_app_test_app.rb"
-  DETAIL = "<YL_actual:0,PU_actual:0>"
+  DETAIL = "<YR_actual:0,PU_actual:0>"
 
   def setup
     FakeClock.reset(0)
@@ -65,10 +65,10 @@ class IosAppTest < Picotest::Test
   end
 
   def test_head_buttons
-    assert_equal ok("OK head=left #{DETAIL}"), @daemon.act("left", "")
-    assert_equal ok("OK head=center #{DETAIL}"), @daemon.act("center", "")
-    assert_equal ok("OK head=right #{DETAIL}"), @daemon.act("right", "")
-    assert_equal ok("OK head=up #{DETAIL}"), @daemon.act("up", "")
+    assert_equal ok("OK head=left <YL_actual:40,PU_actual:0>"), @daemon.act("left", "")
+    assert_equal ok("OK head=center <YR_actual:0,PU_actual:0>"), @daemon.act("center", "")
+    assert_equal ok("OK head=right <YR_actual:40,PU_actual:0>"), @daemon.act("right", "")
+    assert_equal ok("OK head=up <YR_actual:40,PU_actual:29>"), @daemon.act("up", "")
     assert_equal ["<YL:40,T:400>\n", "<YL:0,PU:0,T:400>\n", "<YR:40,T:400>\n", "<PU:30,T:400>\n"], @radio.rx_frames
   end
 

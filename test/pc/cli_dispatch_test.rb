@@ -2,10 +2,12 @@ class CliDispatchTest < Picotest::Test
   class ScriptedDaemon
     attr_reader :calls
 
-    def initialize(results: {}, touches: [])
+    def initialize(results: {}, touches: [], remote_results: {}, remote_raises: nil)
       @calls = []
       @results = results
       @touches = touches
+      @remote_results = remote_results
+      @remote_raises = remote_raises
     end
 
     def act(name, args)
@@ -21,6 +23,12 @@ class CliDispatchTest < Picotest::Test
     def poll_touch
       @calls << [:poll_touch]
       @touches.shift
+    end
+
+    def remote(msg, args = [])
+      @calls << [:remote, msg.to_s, args]
+      raise @remote_raises if @remote_raises
+      @remote_results.fetch(msg.to_s) { [] }
     end
   end
 
@@ -130,6 +138,34 @@ class CliDispatchTest < Picotest::Test
     cli = ScriptedCLI.new(daemon)
     assert_equal 8, cli.dispatch("touch", ["listen", "--count", "1"])
     assert_equal [[:act, "connect", []]], daemon.calls
+    assert_equal ["busy: robot is held"], cli.lines
+  end
+
+  def test_remote_with_an_array_of_integers_prints_each_and_exits_0
+    daemon = ScriptedDaemon.new(remote_results: { "touches" => [1, 2] })
+    cli = ScriptedCLI.new(daemon)
+    assert_equal 0, cli.dispatch("remote", ["touches"])
+    assert_equal ["1", "2"], cli.lines
+  end
+
+  def test_remote_with_a_boolean_prints_it_and_exits_0
+    daemon = ScriptedDaemon.new(remote_results: { "audio_done" => false })
+    cli = ScriptedCLI.new(daemon)
+    assert_equal 0, cli.dispatch("remote", ["audio_done"])
+    assert_equal ["false"], cli.lines
+  end
+
+  def test_remote_whose_first_line_is_a_rejection_exits_1
+    daemon = ScriptedDaemon.new(remote_results: { "command" => ["?\n"] })
+    cli = ScriptedCLI.new(daemon)
+    assert_equal 1, cli.dispatch("remote", ["command", "F=9"])
+    assert_equal ["?"], cli.lines
+  end
+
+  def test_remote_busy_exits_8
+    daemon = ScriptedDaemon.new(remote_raises: StackChan::Controller::Busy.new("robot is held"))
+    cli = ScriptedCLI.new(daemon)
+    assert_equal 8, cli.dispatch("remote", ["command", "F=2"])
     assert_equal ["busy: robot is held"], cli.lines
   end
 

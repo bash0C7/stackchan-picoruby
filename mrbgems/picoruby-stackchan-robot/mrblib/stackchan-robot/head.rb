@@ -26,6 +26,10 @@ module StackChan
         { yaw: @yaw.read_pos, pitch: @pitch.read_pos }
       end
 
+      def read_health
+        { yaw: [@yaw.last_read_error, @yaw.last_status], pitch: [@pitch.last_read_error, @pitch.last_status] }
+      end
+
       def selftest
         y0 = SERVO_YAW_ZERO
         [(y0 + 10), (y0 - 10), y0].each do |target|

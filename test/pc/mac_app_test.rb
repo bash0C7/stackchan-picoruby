@@ -42,7 +42,7 @@ class MacAppTest < Picotest::Test
   end
 
   def test_servo
-    assert_equal ok("servo detail=\"<YL_actual:0,PU_actual:0>\\n\""),
+    assert_equal ok("servo detail=\"<YL_actual:50,PU_actual:29>\\n\""),
                  act("servo", "--yaw-left", "50", "--pitch-up", "30", "--time", "500")
     assert_equal ["<YL:50,PU:30,T:500>\n"], @radio.rx_frames
   end
@@ -54,7 +54,7 @@ class MacAppTest < Picotest::Test
   end
 
   def test_selftest
-    assert_equal ok("OK selftest detail=\"<YL_actual:0,PU_actual:0>\\n\""), act("selftest")
+    assert_equal ok("OK selftest detail=\"<YR_actual:0,PU_actual:0>\\n\""), act("selftest")
     assert_equal ["<selftest:run>\n"], @radio.rx_frames
   end
 

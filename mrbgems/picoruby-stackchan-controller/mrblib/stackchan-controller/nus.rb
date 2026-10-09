@@ -31,15 +31,8 @@ module StackChan
         descriptor && descriptor[:handle]
       end
 
-      def classify(frame)
-        return :touch if Stackchan::BLE::FrameCodec.touch_event?(frame)
-        head = frame[0, 1]
-        return :ack if head == Stackchan::BLE::FrameCodec::ACK_OK || head == Stackchan::BLE::FrameCodec::ACK_ERROR
-        :other
-      end
-
       module_function :nus_uuid, :rx_uuid, :tx_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
-                      :find_characteristic, :cccd_handle, :classify
+                      :find_characteristic, :cccd_handle
     end
   end
 end

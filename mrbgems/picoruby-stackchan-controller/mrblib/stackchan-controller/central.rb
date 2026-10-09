@@ -10,9 +10,7 @@ module StackChan
       AUDIO_DONE_BASE_MS        = 3_300
       SUBSCRIBE_ENABLE          = "\x01\x00"
       DRB_URI                   = "drbble://stackchan"
-      KEEPALIVE_FRAME           = "<read:pos>\n"
 
-      attr_accessor :on_unsolicited
       attr_reader   :last_detail_frame
 
       def initialize(name_prefix: "StackChan", radio: nil, log_fn: nil)
@@ -31,9 +29,9 @@ module StackChan
         @drb_sent_at        = nil
         @inbox              = []
         @connected          = false
-        @on_unsolicited     = nil
         @last_detail_frame  = nil
         @lost               = false
+        @parser             = StackchanProtocol::FrameParser.new
       end
 
       def connected?
@@ -89,26 +87,45 @@ module StackChan
         raise ConnectionError, "not connected" unless @connected
         b = SendBuilder.new
         yield b
-        b.to_frames.each { |frame| write_and_await_ack(frame) }
+        b.to_frames.each { |frame| command_frame(frame) }
         self
       end
 
       def raw_send(frame)
         raise ConnectionError, "not connected" unless @connected
-        write_and_await_ack(frame)
+        command_frame(frame)
         self
       end
 
       def keepalive
         raise ConnectionError, "not connected" unless @connected
-        write_and_await_ack(KEEPALIVE_FRAME)
-        self
+        remote_call { remote.touches }
       end
 
       def write_without_ack(payload)
         raise ConnectionError, "not connected" unless @connected
         write_rx(payload)
         self
+      end
+
+      def audio_begin(n)
+        raise ConnectionError, "not connected" unless @connected
+        remote_call { remote.audio_begin(n) }
+      end
+
+      def audio_chunk(bytes)
+        raise ConnectionError, "not connected" unless @connected
+        remote_call { remote.audio_chunk(bytes) }
+      end
+
+      def audio_play
+        raise ConnectionError, "not connected" unless @connected
+        remote_call { remote.audio_play }
+      end
+
+      def audio_done?
+        raise ConnectionError, "not connected" unless @connected
+        remote_call { remote.audio_done }
       end
 
       def audio_done_timeout_ms(n)
@@ -216,74 +233,29 @@ module StackChan
           return
         end
         return unless handle == @tx_handle
-        case Nus.classify(value)
-        when :touch
-          cb = @on_unsolicited
-          cb.call(value) if cb
-        else
-          @inbox << value
-        end
+        @inbox << value
       end
 
       def write_rx(payload)
         @radio.write_value_of_characteristic_without_response(@radio.conn_handle, @rx_handle, payload)
       end
 
-      def write_and_await_ack(frame)
-        @last_detail_frame = nil
-        @inbox.clear
-        t0 = Machine.board_millis
-        write_rx(frame)
-        first = await_inbox
-        unless first
-          @log_fn.call("[t] #{frame.chomp} ack=timeout")
-          raise TimeoutError, "ACK timeout for #{frame.inspect}"
-        end
-        t_ack = Machine.board_millis
-        status = Nus.classify(first)
-        if status == :ack
-          t_detail = nil
-          if detail_expected?(frame)
-            @last_detail_frame = await_inbox
-            t_detail = @last_detail_frame ? Machine.board_millis : :timeout
-            if @last_detail_frame && Nus.classify(@last_detail_frame) == :ack
-              @log_fn.call("[ble_client] anomaly: detail-frame slot got an ACK-like byte #{@last_detail_frame.inspect} for #{frame.inspect}")
-            end
-          end
-          log_timing(frame, t0, t_ack, t_detail)
-          return if first[0, 1] == Stackchan::BLE::FrameCodec::ACK_OK
-          raise DeviceError, "device rejected #{frame.inspect}"
-        else
-          @last_detail_frame = first
-          log_timing(frame, t0, t_ack, nil)
-        end
+      def command_frame(frame)
+        @parser.reset
+        hash = @parser.feed(frame)[0] || {}
+        lines = remote_call { remote.command(hash) }
+        @last_detail_frame = lines[1]
+        raise DeviceError, "device rejected #{frame.inspect}" if lines[0] == "?\n"
       end
 
-      def log_timing(frame, t0, t_ack, t_detail)
-        line = "[t] #{frame.chomp} ack=#{t_ack - t0}ms"
-        if t_detail == :timeout
-          line += " detail=timeout"
-        elsif t_detail
-          line += " detail=#{t_detail - t0}ms"
-        end
-        @log_fn.call(line)
-      end
-
-      def await_inbox
-        polls = polls_for(ACK_TIMEOUT_MS)
-        i = 0
-        while true
-          drain
-          raise_if_lost
-          return @inbox.shift unless @inbox.empty?
-          return nil if i >= polls
-          sleep_ms(POLLING_UNIT_MS)
-          i += 1
-        end
-      end
-
-      def detail_expected?(frame)
-        frame.include?("YL:") || frame.include?("YR:") || frame.include?("PU:") || frame.start_with?("<read:") || frame.start_with?("<selftest:")
+      def remote_call
+        yield
+      rescue ConnectionError, TimeoutError => e
+        raise e
+      rescue DRb::DRbConnError => e
+        raise TimeoutError, e.message
+      rescue => e
+        raise DeviceError, "#{e.class}: #{e.message}"
       end
     end
   end

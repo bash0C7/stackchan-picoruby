@@ -80,6 +80,24 @@ class LinkLoopTest < Picotest::Test
     end
   end
 
+  class NullRemote
+    def perform_audio_play; end
+  end
+
+  class AudioPlayRemote
+    def initialize(advance:)
+      @advance = advance
+      @fired = false
+    end
+
+    def perform_audio_play
+      return false if @fired
+      @fired = true
+      @advance.call
+      true
+    end
+  end
+
   class FakeTicker
     attr_reader :ticks
 
@@ -109,10 +127,11 @@ class LinkLoopTest < Picotest::Test
       log: ->(line) { @logs << line },
       drb: NullDrb.new,
       audio: @audio,
+      remote: NullRemote.new,
     )
   end
 
-  def releasing_link(release_after:, drb: NullDrb.new, on_rx: ->(data) { @rx << data })
+  def releasing_link(release_after:, drb: NullDrb.new, on_rx: ->(data) { @rx << data }, remote: NullRemote.new)
     StackChan::Robot::LinkLoop.new(
       port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
       ticker: @ticker,
@@ -122,6 +141,7 @@ class LinkLoopTest < Picotest::Test
       log: ->(line) { @logs << line },
       drb: drb,
       audio: @audio,
+      remote: remote,
       release_after: release_after,
     )
   end
@@ -252,6 +272,7 @@ class LinkLoopTest < Picotest::Test
       log: ->(line) { @logs << line },
       drb: NullDrb.new,
       audio: @audio,
+      remote: NullRemote.new,
     )
     @port.queue_write(CCCD, "\x01\x00")
     @port.queue_write(RX, "<F:2>\n")
@@ -378,5 +399,14 @@ class LinkLoopTest < Picotest::Test
   def test_disconnected_resets_the_audio_receiver
     @link.disconnected
     assert_equal 1, @audio.resets
+  end
+
+  def test_a_blocking_audio_play_refreshes_activity_so_the_next_tick_does_not_release
+    remote = AudioPlayRemote.new(advance: -> { @now += 20_000_000 })
+    link = releasing_link(release_after: 1000, remote: remote)
+    rx_tick(link)
+    @now += 999_999
+    link.tick
+    assert_equal 0, @port.releases
   end
 end

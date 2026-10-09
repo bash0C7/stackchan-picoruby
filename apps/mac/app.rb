@@ -28,8 +28,8 @@ App = StackChan.controller do |c|
     "OK selftest detail=#{s.selftest.inspect}"
   end
 
-  c.action(:say) do |s, a|
-    s.say(a.text, gain: a.float("gain"), rate: a.int("rate"))
+  c.action(:say, flags: ["drb"]) do |s, a|
+    s.say(a.text, gain: a.float("gain"), rate: a.int("rate"), route: a.flag?("drb") ? :drb : :direct)
   end
 
   c.action(:chat, flags: ["no-speak"]) do |s, a|

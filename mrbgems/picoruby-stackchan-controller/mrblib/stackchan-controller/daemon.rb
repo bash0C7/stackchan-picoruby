@@ -29,7 +29,6 @@ module StackChan
         @acting         = 0
         @actions        = actions
         @link.on_lost   = -> { @listen.clear }
-        start_touch_reader
       end
 
       def on_touch(&blk)
@@ -176,7 +175,8 @@ module StackChan
           calibrate(Args.new(arg))
         when :speak_audio
           ulaw = audio_bytes(arg)
-          with_link { @session.speak_audio(ulaw) }
+          route = arg.is_a?(Array) && arg[1] == "drb" ? :drb : :direct
+          with_link { @session.speak_audio(ulaw, route: route) }
           "OK speak_audio bytes=#{ulaw.bytesize}"
         else
           blk = @actions[key][:blk]
@@ -294,14 +294,6 @@ module StackChan
         @link.lost! if @ble.lost?
       rescue StandardError => e
         log "#{what} #{e.class}: #{e.message}"
-      end
-
-      def start_touch_reader
-        @ble.on_unsolicited = lambda do |frame|
-          zone = Stackchan::BLE::FrameCodec.parse_touch(frame)
-          next unless zone
-          @link.touches.push(zone)
-        end
       end
 
       def start_tick

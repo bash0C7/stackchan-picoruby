@@ -6,7 +6,7 @@ module StackChan
       attr_reader :state, :touches
       attr_accessor :on_lost
 
-      def initialize(central:, clock: -> { Machine.board_millis }, hold: nil, keepalive_ms: 7_000, log:)
+      def initialize(central:, clock: -> { Machine.board_millis }, hold: nil, keepalive_ms: 1_000, log:)
         @central         = central
         @clock           = clock
         @hold            = hold
@@ -63,7 +63,8 @@ module StackChan
         return if now - @last_sent_at < @keepalive_ms
         @last_sent_at = now
         begin
-          @central.keepalive
+          zones = @central.keepalive
+          zones.each { |zone| @touches.push(zone) } if zones
         rescue ConnectionError => e
           @log.call("keepalive #{e.class}: #{e.message}")
           lost!

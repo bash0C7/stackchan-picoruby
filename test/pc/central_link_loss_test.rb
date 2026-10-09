@@ -4,9 +4,11 @@ class CentralLinkLossTest < Picotest::Test
   DRX = FakeRobotRadio::DRX
   DTX = FakeRobotRadio::DTX
 
-  class DropOnWriteRadio < FakeRobotRadio
-    def answer(frame)
+  class DropOnCommandRadio < FakeRobotRadio
+    def before_drx_write(value)
+      return :continue unless value.include?("command")
       drop_link(event: true)
+      :drop
     end
   end
 
@@ -81,7 +83,7 @@ class CentralLinkLossTest < Picotest::Test
     assert_true @central.connected?
     assert_false @central.lost?
     @central.raw_send("<F:2>\n")
-    assert_equal ["<F:2>\n"], @radio.rx_frames
+    assert_equal 18, @radio.dispatcher.current_face.mouth
   end
 
   def test_a_drb_chunk_from_the_old_link_is_gone_after_reconnect
@@ -105,12 +107,11 @@ class CentralLinkLossTest < Picotest::Test
   end
 
   def test_a_drop_during_the_ack_wait_raises_connection_error_at_the_next_poll
-    radio = DropOnWriteRadio.new
+    radio = DropOnCommandRadio.new
     central = build_central(radio)
     central.connect
     FakeClock.sleeps.clear
     assert_raise(StackChan::Controller::ConnectionError) { central.raw_send("<F:2>\n") }
-    assert_equal [], FakeClock.sleeps
     assert_false central.connected?
   end
 
@@ -118,7 +119,8 @@ class CentralLinkLossTest < Picotest::Test
     @radio.drop_link(event: false)
     assert_raise(StackChan::Controller::TimeoutError) { @central.raw_send("<F:2>\n") }
     assert_equal StackChan::Controller::Central::ACK_TIMEOUT_MS, sleep_total
-    assert_equal [[RX, "<F:2>\n"]], @radio.writes_after_drop
+    assert_true @radio.writes_after_drop.all? { |handle, _| handle == DRX }
+    assert_true @radio.writes_after_drop.size >= 1
   end
 
   def test_a_drop_during_the_audio_wait_raises_connection_error
@@ -151,23 +153,25 @@ class CentralLinkLossTest < Picotest::Test
     assert_equal 2, radio.connect_and_discover_calls
   end
 
+  def test_a_command_the_real_dispatcher_rejects_raises_device_error
+    assert_raise(StackChan::Controller::DeviceError) { @central.raw_send("<F:9>\n") }
+  end
+
   def test_selftest_keeps_its_detail_and_the_next_frame_gets_its_own_ack
     @central.raw_send("<selftest:run>\n")
-    assert_equal "<YL_actual:0,PU_actual:0>\n", @central.last_detail_frame
+    assert_equal "<YR_actual:0,PU_actual:0>\n", @central.last_detail_frame
     @central.raw_send("<F:2>\n")
     assert_nil @central.last_detail_frame
-    assert_equal ["<selftest:run>\n", "<F:2>\n"], @radio.rx_frames
   end
 
   def test_the_robot_acks_read_pos_before_the_reading
     @central.raw_send("<read:pos>\n")
-    assert_equal ["[t] <read:pos> ack=0ms detail=0ms"], @logs
+    assert_equal "<yaw_raw:482,pitch_raw:633>\n", @central.last_detail_frame
   end
 
-  def test_keepalive_sends_read_pos_and_keeps_the_reading
-    @central.keepalive
-    assert_equal ["<read:pos>\n"], @radio.rx_frames
-    assert_equal "<yaw_raw:2048,pitch_raw:2048>\n", @central.last_detail_frame
+  def test_keepalive_returns_the_queued_touch_zones
+    @radio.touch(1)
+    assert_equal [1], @central.keepalive
   end
 
   def test_the_robot_releases_after_its_quiet_time
@@ -178,18 +182,7 @@ class CentralLinkLossTest < Picotest::Test
     assert_false @central.connected?
     @central.connect
     @central.raw_send("<F:3>\n")
-    assert_equal ["<F:2>\n", "<F:3>\n"], @radio.rx_frames
-  end
-
-  def test_touch_reaches_on_unsolicited_only_while_the_link_is_up
-    got = []
-    @central.on_unsolicited = ->(frame) { got << frame }
-    @radio.touch(1)
-    @central.drain
-    @radio.drop_link(event: true)
-    @radio.touch(2)
-    @central.drain
-    assert_equal ["<touch:1>\n"], got
+    assert_equal :open, @radio.dispatcher.current_face.mouth
   end
 
   def test_audio_is_answered_ready_then_done_after_n_bytes

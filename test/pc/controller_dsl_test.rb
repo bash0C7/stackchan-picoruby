@@ -12,12 +12,10 @@ class ControllerDslTest < Picotest::Test
   end
 
   class DropOnDrbRadio < FakeRobotRadio
-    def write_value_of_characteristic_without_response(conn_handle, handle, value)
-      if handle == DRX
-        drop_link(event: true)
-        return false
-      end
-      super
+    def before_drx_write(value)
+      return :continue unless value.include?("echo")
+      drop_link(event: true)
+      :drop
     end
   end
 
@@ -118,7 +116,7 @@ class ControllerDslTest < Picotest::Test
   def test_on_touch_runs_for_a_touch_while_held
     @app.act(:face, ["joy"])
     @radio.touch(1)
-    tick_until(FakeClock.now + TICK_MS)
+    tick_until(FakeClock.now + 1_000)
     assert_equal [:right], @seen[:touch]
   end
 
@@ -196,7 +194,7 @@ class ControllerDslTest < Picotest::Test
   def test_a_druby_call_nobody_answers_is_an_error_and_the_next_action_still_runs
     result = @app.act(:probe, [])
     assert_equal :error, result[:status]
-    assert_true result[:message].include?("no reply")
+    assert_true result[:message].include?("not exposed")
     assert_equal :ok, @app.act(:face, ["joy"])[:status]
   end
 
@@ -249,6 +247,7 @@ class ControllerDslTest < Picotest::Test
   def test_send_of_tick_runs_one_tick
     @app.act(:face, ["joy"])
     @radio.touch(0)
+    sleep_ms 1_000
     @app.__send__(:tick, "")
     assert_equal [:back], @seen[:touch]
   end
@@ -284,7 +283,7 @@ class ControllerDslTest < Picotest::Test
 
   def test_calibrate_phases
     assert_equal :ok, @app.act(:calibrate, ["begin"])[:status]
-    assert_equal({ yaw_raw: 2048, pitch_raw: 2048 }, @app.act(:calibrate, ["sample", "3"])[:out])
+    assert_equal({ yaw_raw: 482, pitch_raw: 633 }, @app.act(:calibrate, ["sample", "3"])[:out])
     assert_equal :ok, @app.act(:calibrate, ["end"])[:status]
     assert_equal ["<torque:off>\n", "<read:pos>\n", "<read:pos>\n", "<read:pos>\n", "<torque:on>\n"], @radio.rx_frames
     assert_equal :error, @app.act(:calibrate, ["bogus"])[:status]

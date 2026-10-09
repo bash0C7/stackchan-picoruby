@@ -4,12 +4,12 @@ module StackChan
       TOUCH_PERIOD_MS = 50
       LED_PERIOD_MS   = 50
 
-      def initialize(display:, led:, touch:, dispatcher:, notify:, touch_handlers: {}, periodic: [])
+      def initialize(display:, led:, touch:, dispatcher:, remote:, touch_handlers: {}, periodic: [])
         @display        = display
         @led            = led
         @touch          = touch
         @dispatcher     = dispatcher
-        @notify         = notify
+        @remote         = remote
         @touch_handlers = touch_handlers
         @periodic       = periodic
         @periodic_due   = []
@@ -51,7 +51,7 @@ module StackChan
         return unless zone
         handler = @touch_handlers[zone]
         handler.call(@robot_handle) if handler
-        @notify.call("<touch:#{zone}>\n")
+        @remote.push_touch(zone)
       rescue => e
         puts "[application] touch poll error: #{e.class}: #{e.message}"
       end

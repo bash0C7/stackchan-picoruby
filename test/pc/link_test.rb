@@ -13,10 +13,11 @@ class LinkTest < Picotest::Test
       @events = []
     end
 
-    def answer(frame)
-      @stamps << [FakeClock.now, frame]
-      @events << [:frame, frame]
-      super
+    def before_drx_write(value)
+      @events << [:frame, "touches"]  if value.include?("touches")
+      @events << [:frame, "command"] if value.include?("command")
+      @stamps << [FakeClock.now, "touches"] if value.include?("touches")
+      :continue
     end
 
     def write_characteristic_descriptor_using_descriptor_handle(conn_handle, handle, value)
@@ -25,23 +26,12 @@ class LinkTest < Picotest::Test
     end
   end
 
-  class RejectingReadPosRadio < StampedRobotRadio
-    def answer(frame)
-      if frame.start_with?("<read:pos>")
-        @stamps << [FakeClock.now, frame]
-        schedule_notification(TX, "?\n")
-        return
-      end
-      super
-    end
-  end
-
-  class DropOnReadPosRadio < StampedRobotRadio
-    def answer(frame)
-      if frame.start_with?("<read:pos>")
-        @stamps << [FakeClock.now, frame]
+  class DropOnTouchesRadio < StampedRobotRadio
+    def before_drx_write(value)
+      if value.include?("touches")
+        @stamps << [FakeClock.now, "touches"]
         drop_link(event: true)
-        return
+        return :drop
       end
       super
     end
@@ -55,7 +45,6 @@ class LinkTest < Picotest::Test
     @radio = radio || StampedRobotRadio.new
     @central = StackChan::Controller::Central.new(name_prefix: "StackChan", radio: @radio, log_fn: ->(line) {})
     @link = StackChan::Controller::Link.new(central: @central, clock: -> { FakeClock.now }, hold: hold, log: ->(line) { @logs << line })
-    @central.on_unsolicited = ->(frame) { @link.touches << frame }
   end
 
   def setup
@@ -74,9 +63,9 @@ class LinkTest < Picotest::Test
     FakeClock.now
   end
 
-  def read_pos_offsets(t0)
+  def touches_offsets(t0)
     offsets = []
-    @radio.stamps.each { |t, frame| offsets << t - t0 if frame == "<read:pos>\n" }
+    @radio.stamps.each { |t, frame| offsets << t - t0 if frame == "touches" }
     offsets
   end
 
@@ -86,15 +75,15 @@ class LinkTest < Picotest::Test
     total
   end
 
-  def test_one_keepalive_in_the_hold_then_quiet
+  def test_the_keepalive_fires_every_second_in_the_hold_then_quiet
     t0 = act_frame("<F:2>\n")
     tick_until(t0 + 9_750)
-    assert_equal [7_000], read_pos_offsets(t0)
+    assert_equal (1..9).map { |i| i * 1000 }, touches_offsets(t0)
     assert_equal :held, @link.state
     tick_until(t0 + 10_000)
     assert_equal :quiet, @link.state
     tick_until(t0 + 60_000)
-    assert_equal [7_000], read_pos_offsets(t0)
+    assert_equal (1..9).map { |i| i * 1000 }, touches_offsets(t0)
     assert_equal :quiet, @link.state
   end
 
@@ -103,7 +92,7 @@ class LinkTest < Picotest::Test
     tick_until(t0 + 12_000)
     act_frame("<F:3>\n")
     tick_until(t0 + 19_000)
-    assert_equal [7_000, 19_000], read_pos_offsets(t0)
+    assert_equal 16, touches_offsets(t0).size
     assert_equal :held, @link.state
     assert_equal 1, @radio.connect_and_discover_calls
   end
@@ -115,29 +104,15 @@ class LinkTest < Picotest::Test
     assert_equal :quiet, @link.state
     assert_equal 0, @link.status[:releases]
     assert_equal 1, @radio.connect_and_discover_calls
-    assert_equal [[RX, "<read:pos>\n"]], @radio.writes_after_drop
   end
 
   def test_a_keepalive_that_sees_the_link_drop_releases_it
-    build(radio: DropOnReadPosRadio.new)
+    build(radio: DropOnTouchesRadio.new)
     t0 = act_frame("<F:2>\n")
     tick_until(t0 + 60_000)
     assert_equal :released, @link.state
-    assert_equal [7_000], read_pos_offsets(t0)
+    assert_equal [1_000], touches_offsets(t0)
     assert_equal 1, @radio.connect_and_discover_calls
-  end
-
-  def test_a_rejected_keepalive_keeps_its_seven_second_pace
-    build(hold: nil, radio: RejectingReadPosRadio.new)
-    daemon = StackChan::Controller::Daemon.new(link: @link, central: @central, log: ->(line) { @logs << line })
-    daemon.instance_variable_get(:@link).act { @central.raw_send("<F:2>\n") }
-    t0 = FakeClock.now
-    while FakeClock.now < t0 + 30_000
-      sleep_ms TICK_MS
-      daemon.tick
-    end
-    assert_equal [7_000, 14_000, 21_000, 28_000], read_pos_offsets(t0)
-    assert_equal :held, @link.state
   end
 
   def test_an_action_drains_a_release_no_tick_has_seen
@@ -145,13 +120,13 @@ class LinkTest < Picotest::Test
     t0 = act_frame("<F:2>\n")
     tick_until(t0 + 21_750)
     assert_equal :quiet, @link.state
-    sleep_ms 1_000
+    sleep_ms 3_000
     FakeClock.sleeps.clear
     @radio.events.clear
     act_frame("<F:3>\n")
     assert_equal 2, @radio.connect_and_discover_calls
     assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
-    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "<F:3>\n"]], @radio.events
+    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "command"]], @radio.events
     assert_equal :held, @link.state
   end
 
@@ -161,7 +136,7 @@ class LinkTest < Picotest::Test
     FakeClock.sleeps.clear
     tick_until(t0 + 21_750)
     assert_equal :quiet, @link.state
-    tick_until(t0 + 22_250)
+    tick_until(t0 + 24_250)
     assert_equal :released, @link.state
     assert_equal [TICK_MS], FakeClock.sleeps.uniq
     assert_equal 1, @link.status[:releases]
@@ -170,13 +145,13 @@ class LinkTest < Picotest::Test
   def test_an_action_after_a_packet_release_reconnects_before_its_frame
     @radio.release_after(15_000)
     t0 = act_frame("<F:2>\n")
-    tick_until(t0 + 22_250)
+    tick_until(t0 + 24_250)
     FakeClock.sleeps.clear
     @radio.events.clear
     act_frame("<F:3>\n")
     assert_equal 2, @radio.connect_and_discover_calls
     assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
-    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "<F:3>\n"]], @radio.events
+    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "command"]], @radio.events
     assert_equal :held, @link.state
   end
 
@@ -194,7 +169,6 @@ class LinkTest < Picotest::Test
     end
     assert_equal 1, runs
     assert_equal StackChan::Controller::Central::ACK_TIMEOUT_MS, sleep_total
-    assert_equal [[RX, "<F:3>\n"]], @radio.writes_after_drop
     assert_equal 1, @radio.connect_and_discover_calls
     assert_equal :quiet, @link.state
   end
@@ -233,12 +207,12 @@ class LinkTest < Picotest::Test
 
   def test_a_tick_that_may_not_expire_the_hold_keeps_the_keepalive
     t0 = act_frame("<F:2>\n")
-    while FakeClock.now < t0 + 15_000
+    while FakeClock.now < t0 + 2_500
       sleep_ms TICK_MS
       @link.tick(expire: false)
     end
     assert_equal :held, @link.state
-    assert_equal [7_000, 14_000], read_pos_offsets(t0)
+    assert_equal [1_000, 2_000], touches_offsets(t0)
   end
 
   def test_a_loss_calls_on_lost
@@ -283,15 +257,15 @@ class LinkTest < Picotest::Test
   def test_without_hold_the_keepalive_never_stops
     build(hold: nil)
     t0 = act_frame("<F:2>\n")
-    tick_until(t0 + 60_000)
-    assert_equal [7_000, 14_000, 21_000, 28_000, 35_000, 42_000, 49_000, 56_000], read_pos_offsets(t0)
+    tick_until(t0 + 5_000)
+    assert_equal [1_000, 2_000, 3_000, 4_000, 5_000], touches_offsets(t0)
     assert_equal :held, @link.state
   end
 
   def test_a_touch_while_released_is_never_delivered
     @radio.release_after(15_000)
     t0 = act_frame("<F:2>\n")
-    tick_until(t0 + 22_250)
+    tick_until(t0 + 24_250)
     @radio.touch(1)
     tick_until(t0 + 30_000)
     act_frame("<F:3>\n")
@@ -301,10 +275,10 @@ class LinkTest < Picotest::Test
   def test_a_touch_queued_before_a_loss_is_cleared
     t0 = act_frame("<F:2>\n")
     @radio.touch(1)
-    tick_until(t0 + 250)
-    assert_equal ["<touch:1>\n"], @link.touches
+    tick_until(t0 + 1_000)
+    assert_equal [1], @link.touches
     @radio.drop_link(event: true)
-    tick_until(t0 + 500)
+    tick_until(t0 + 1_250)
     assert_equal :released, @link.state
     assert_equal [], @link.touches
   end

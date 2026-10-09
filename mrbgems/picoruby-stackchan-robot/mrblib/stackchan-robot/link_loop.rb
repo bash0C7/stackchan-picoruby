@@ -4,7 +4,7 @@ module StackChan
       TICK_MS = 20
       CCCD_NOTIFY = "\x01\x00"
 
-      def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb:, audio:, release_after: nil)
+      def initialize(port:, rx_handle:, tx_handle:, cccd_handle:, ticker:, on_packet:, on_rx:, clock:, log:, drb:, audio:, remote:, release_after: nil)
         @port        = port
         @rx_handle   = rx_handle
         @tx_handle   = tx_handle
@@ -16,6 +16,7 @@ module StackChan
         @log         = log
         @drb         = drb
         @audio       = audio
+        @remote      = remote
         @release_after_us = release_after && release_after * 1000
         @notify_enabled = false
         @rx_at = nil
@@ -31,6 +32,7 @@ module StackChan
         @active_at = @clock.call if @drb.service(@port)
         release_if_idle
         @ticker.tick(@clock.call / 1000)
+        @active_at = @clock.call if @remote.perform_audio_play && @active_at
       end
 
       def pump

@@ -33,7 +33,6 @@ class RobotDslTest < Picotest::Test
     @yaw      = DslServo.new
     @pitch    = DslServo.new
     @stdout   = DslSink.new
-    @notified = []
     @booted   = []
   end
 
@@ -57,11 +56,10 @@ class RobotDslTest < Picotest::Test
   end
 
   def wire(robot)
-    notified = @notified
     robot.wire(
       display: @display, led: @led, touch: @touch,
       head: StackChan::Robot::Head.new(@yaw, @pitch),
-      stdout: @stdout, notify: ->(frame) { notified << frame }
+      stdout: @stdout
     )
   end
 
@@ -85,7 +83,7 @@ class RobotDslTest < Picotest::Test
     @touch.next_zone = 1
     w.ticker.tick(0)
     assert_equal [[:right, 60, 0, 0, 300]], led_calls(:flash_side)
-    assert_equal ["<touch:1>\n"], @notified
+    assert_equal [1], w.remote.touches
   end
 
   def test_a_remote_handler_is_exposed_and_reached_with_its_arguments

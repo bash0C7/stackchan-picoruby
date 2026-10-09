@@ -23,13 +23,4 @@ class NusTest < Picotest::Test
     assert_nil StackChan::Controller::Nus.cccd_handle(rx)
     assert_nil StackChan::Controller::Nus.cccd_handle(nil)
   end
-
-  def test_classify_separates_touch_and_ack_from_every_other_frame
-    assert_equal :touch, StackChan::Controller::Nus.classify("<touch:2>\n")
-    assert_equal :ack,   StackChan::Controller::Nus.classify(".\n")
-    assert_equal :ack,   StackChan::Controller::Nus.classify("?\n")
-    assert_equal :other, StackChan::Controller::Nus.classify("<YL_actual:1,PU_actual:2>\n")
-    assert_equal :other, StackChan::Controller::Nus.classify("<yaw_raw:1,pitch_raw:2>\n")
-    assert_equal :other, StackChan::Controller::Nus.classify("<rx:ok>\n")
-  end
 end

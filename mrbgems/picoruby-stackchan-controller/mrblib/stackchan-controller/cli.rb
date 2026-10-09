@@ -110,7 +110,19 @@ module StackChan
           end
           call_args = [frame]
         end
-        @daemon.remote(msg, call_args).each { |line| out line.chomp }
+        begin
+          result = @daemon.remote(msg, call_args)
+        rescue Busy => e
+          out "busy: #{e.message}"
+          return 8
+        end
+        if result.is_a?(Array)
+          result.each { |line| out line.to_s.chomp }
+          first = result[0]
+          return 1 if first.is_a?(String) && (first == "?" || first == "?\n")
+        else
+          out result.to_s
+        end
         0
       end
 

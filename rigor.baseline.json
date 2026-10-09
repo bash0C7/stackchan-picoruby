@@ -49,7 +49,7 @@
     },
     {
       "path": "acceptance/runner.rb",
-      "line": 294,
+      "line": 297,
       "column": 54,
       "severity": "error",
       "rule": "call.undefined-method",
@@ -171,7 +171,7 @@
     },
     {
       "path": "test/device/drb_channel_test.rb",
-      "line": 165,
+      "line": 168,
       "column": 61,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -183,7 +183,7 @@
     },
     {
       "path": "test/device/link_loop_test.rb",
-      "line": 319,
+      "line": 340,
       "column": 92,
       "severity": "error",
       "rule": "call.undefined-method",

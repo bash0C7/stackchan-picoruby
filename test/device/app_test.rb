@@ -26,11 +26,9 @@ class AppTest < Picotest::Test
     @led      = FakeLed.new
     @touch    = AppTouch.new
     @stdout   = AppSink.new
-    @notified = []
-    notified = @notified
     @wiring = RobotApp.robot.wire(
       display: @display, led: @led, touch: @touch,
-      stdout: @stdout, notify: ->(frame) { notified << frame }
+      stdout: @stdout
     )
   end
 
@@ -104,7 +102,7 @@ class AppTest < Picotest::Test
     @wiring.ticker.tick(0)
     assert_face_drawn(:surprised)
     assert_equal [[:both, 0, 60, 0, 300]], flashes
-    assert_equal ["<touch:0>\n"], @notified
+    assert_equal [0], @wiring.remote.touches
   end
 
   def test_right_touch_draws_angry_and_flashes_right_red
@@ -112,7 +110,7 @@ class AppTest < Picotest::Test
     @wiring.ticker.tick(0)
     assert_face_drawn(:angry)
     assert_equal [[:right, 60, 0, 0, 300]], flashes
-    assert_equal ["<touch:1>\n"], @notified
+    assert_equal [1], @wiring.remote.touches
   end
 
   def test_left_touch_draws_sad_and_flashes_left_blue
@@ -120,7 +118,7 @@ class AppTest < Picotest::Test
     @wiring.ticker.tick(0)
     assert_face_drawn(:sad)
     assert_equal [[:left, 0, 0, 60, 300]], flashes
-    assert_equal ["<touch:2>\n"], @notified
+    assert_equal [2], @wiring.remote.touches
   end
 
   def test_blink_closes_at_5000_ms_and_reopens_150_ms_later
