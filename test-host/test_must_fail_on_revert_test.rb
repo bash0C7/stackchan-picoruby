@@ -24,7 +24,7 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
     require_relative "../lib/calc"
 
     class CalcTest < Test::Unit::TestCase
-      def test_add
+      def #{"test_add"}
         assert_equal 2, Calc.add(1, 1)
       end
     end
@@ -62,7 +62,7 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
 
       write(dir, "lib/calc.rb", CALC_WITH_SUB)
       write(dir, "test-host/calc_test.rb", CALC_TEST.sub(
-        "end\nend\n", "end\n\n  def test_sub\n    assert_equal 2, Calc.sub(3, 1)\n  end\nend\n"))
+        "end\nend\n", "end\n\n  def #{"test_sub"}\n    assert_equal 2, Calc.sub(3, 1)\n  end\nend\n"))
       commit(dir, "add sub")
 
       out, err, status = run_guard(dir, base)
@@ -79,7 +79,7 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
 
       write(dir, "lib/calc.rb", CALC_WITH_SUB)
       write(dir, "test-host/calc_test.rb", CALC_TEST.sub(
-        "end\nend\n", "end\n\n  def test_add_again\n    assert_equal 2, Calc.add(1, 1)\n  end\nend\n"))
+        "end\nend\n", "end\n\n  def #{"test_add_again"}\n    assert_equal 2, Calc.add(1, 1)\n  end\nend\n"))
       commit(dir, "add redundant test")
 
       out, err, status = run_guard(dir, base)
@@ -100,7 +100,7 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
         require_relative "../lib/foo"
 
         class FooTest < Test::Unit::TestCase
-          def test_foo
+          def #{"test_foo"}
             assert_equal 42, Foo.answer
           end
         end

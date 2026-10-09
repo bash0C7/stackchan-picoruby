@@ -196,8 +196,9 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.cli_out["servo"] = "servo detail=\"<YL_actual:50,PU_actual:29>\\n\""
     @ops.cli_out["remote servo"] = ".\n<YL_actual:40,PU_actual:19>\n"
     @ops.cli_out["remote face"] = ".\n"
+    @ops.cli_out["remote text"] = ".\n"
+    @ops.cli_out["remote servo_health"] = "<yaw_err:none,yaw_status:0,pitch_err:none,pitch_status:0>\n"
     @ops.cli_out["say"] = "OK say bytes=9000"
-    @ops.cli_out["raw"] = "OK raw"
     @ops.cli_out["remote stack_free"] = "<stack_free:2024>\n"
     @ops.answers = %w[y] * 20
     @ops.files[File.join(ROOT, "apps/robot/app.rb")] = File.read(File.expand_path("../apps/robot/app.rb", __dir__))
@@ -238,8 +239,9 @@ class AcceptanceTest < Test::Unit::TestCase
   APP_STEPS = DEPLOY_STEPS.dup.insert(DEPLOY_STEPS.index("app upload"), "pins hold", "qemu gate").freeze
   GATE_ENV = { "QEMU_PROBE_APP" => "apps/robot/app.rb" }.freeze
   CHECK_STEPS = ["flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
-                 "remote servo detail", "remote face", "say", "timings", "quiet wait", "selftest detail", "touch listen",
-                 "calibrate", "release and reconnect", "stack high-water", "questions", "torque off", "chat"].freeze
+                 "remote servo detail", "servo health", "remote face", "say", "say routes", "timings", "quiet wait",
+                 "selftest detail", "touch listen", "calibrate", "release and reconnect", "stack high-water",
+                 "questions", "torque off", "chat"].freeze
 
   # --- deploy and check -----------------------------------------------------
 
@@ -426,7 +428,7 @@ class AcceptanceTest < Test::Unit::TestCase
   def test_a_changed_aot_readme_is_not_a_firmware_input
     t = checked
     @ops.heads[ROOT] = "b" * 40
-    @ops.trees[["b" * 40, "aot/README.md"]] = "another readme"
+    @ops.trees[["b" * 40, "aot"]] = "another aot tree"
     later = reloaded(t)
     later.check
     assert_equal "pass", later.report["verdict"]
@@ -642,7 +644,7 @@ class AcceptanceTest < Test::Unit::TestCase
   def test_from_keeps_the_earlier_steps_and_reruns_the_rest
     t = checked
     before = t.report["check"]["steps"].map(&:dup)
-    t.report["check"]["timings"]["face joy"] = [9.0]
+    t.report["check"]["timings"]["face"] = [9.0]
     t.report["check"]["timings"]["release and reconnect"] = [9.0]
     later = reloaded(t)
     @ops.calls.clear
@@ -651,7 +653,7 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal CHECK_STEPS, names(c)
     i = CHECK_STEPS.index("calibrate")
     assert_equal before.first(i), c["steps"].first(i)
-    assert_equal [9.0], c["timings"]["face joy"]
+    assert_equal [9.0], c["timings"]["face"]
     assert_not_equal [9.0], c["timings"]["release and reconnect"]
     assert_not_include rake_tasks, "r2p2:flash_identity"
     assert_equal "calibrate", @ops.calls.find { |x| x[0] == :cli }[2].first
@@ -729,9 +731,34 @@ class AcceptanceTest < Test::Unit::TestCase
   def test_timings_hold_every_series_for_the_rounds
     t = checked(rounds: 3)
     tm = t.report["check"]["timings"]
-    assert_equal 3, tm["face joy"].size
-    assert_equal 3, tm["servo remote"].size
-    assert_equal 3, tm["say"].size
+    assert_equal 3, tm["servo"].size
+    assert_equal 3, tm["face"].size
+    assert_equal 3, tm["led"].size
+    assert_equal 3, tm["text"].size
+  end
+
+  def test_measure_series_names_drop_the_old_text_vs_remote_comparison
+    tm = checked(rounds: 2).report["check"]["timings"]
+    assert_equal %w[servo face led text], %w[servo face led text] & tm.keys
+    assert_empty tm.keys & ["servo text", "servo remote", "face joy", "led (floor)", "subtitle 19 glyphs"]
+  end
+
+  def test_connect_ms_is_parsed_from_the_status_line_after_the_first_connect
+    @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=842 hold_ms=10000 ble_connected=true\n"
+    t = checked
+    assert_equal [842], t.report["check"]["timings"]["connect ms"]
+  end
+
+  def test_a_failing_drb_say_is_recorded_without_stopping_the_check_or_failing_the_verdict
+    @ops.cli_out["say"] = lambda do |args, _env|
+      args.include?("--drb") ? [1, "error: drb route failed\n"] : "OK say bytes=9000"
+    end
+    t = checked
+    assert_equal "pass", t.report["verdict"]
+    assert step(t.report, "say")["ok"]
+    assert step(t.report, "say routes")["ok"]
+    assert_equal 1, t.report["check"]["timings"]["say drb"].size
+    assert_equal 1, t.report["check"]["timings"]["say direct"].size
   end
 
   def test_unanswered_questions_leave_it_incomplete_until_answered
@@ -801,7 +828,10 @@ class AcceptanceTest < Test::Unit::TestCase
     notice = index_of { |c| c == [:notice, "touch the back of the head"] }
     listen = index_of { |c| cli_call?(c, "touch", "listen", "--count", "1", "--timeout", "30") }
     assert_operator notice, :<, listen
-    assert_operator listen, :<, index_of { |c| cli_call?(c, "remote", "stack_free") }
+    assert @ops.calls[0...listen].any? { |c| cli_call?(c, "remote", "stack_free") },
+           "say routes should have read stack_free before touch listen"
+    assert @ops.calls[listen..].any? { |c| cli_call?(c, "remote", "stack_free") },
+           "stack high-water should read stack_free after touch listen"
   end
 
   def test_a_head_nobody_touches_neither_stops_the_check_nor_blocks_the_pass
@@ -1106,8 +1136,10 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_match(/\| r2p2:build_flash \| ok \| ok \|/, md)
     assert_match(/## check\n/, md)
     assert_match(/\| series \| median \|/, md)
-    assert_match(/\| subtitle 19 glyphs \| \d\.\d{3} \|/, md)
-    assert_match(/\| servo remote \| \d\.\d{3} \|/, md)
+    assert_match(/\| text \| \d\.\d{3} \|/, md)
+    assert_match(/\| servo \| \d\.\d{3} \|/, md)
+    assert_match(/\| connect ms \| \d+\.\d{3} \|/, md)
+    assert_match(/\| say drb \| \d\.\d{3} \|/, md)
     assert_match(/- サーボが指示どおりに動いた: y/, md)
     assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, md)
     assert_match(/\| iPhone batch \| ok \| <YL_actual:50,PU_actual:29> \|/, md)

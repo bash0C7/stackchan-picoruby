@@ -84,13 +84,15 @@ module Acceptance
       [["flash identity", -> { flash_identity }],
        ["boot", -> { boot }],
        ["pc:up", -> { pc_up }],
-       ["torque on", -> { cli!("torque", "on") }],
+       ["torque on", -> { out = cli!("torque", "on"); record_connect_ms; out }],
        ["face neutral", -> { cli!("face", "neutral") }],
        ["led", -> { cli!("led", "both", "green", "solid") }],
        ["servo detail", -> { detail!(cli!("servo", "--yaw-left", "50", "--pitch-up", "30", "--time", "500")) }],
        ["remote servo detail", -> { detail!(cli!("remote", "servo", "YL=40", "PU=20", "T=500")) }],
+       ["servo health", -> { servo_health }],
        ["remote face", -> { remote_face }],
        ["say", -> { say }],
+       ["say routes", -> { say_routes }],
        ["timings", -> { measure }],
        ["quiet wait", -> { @quiet = quiet_wait_s; "#{@quiet} s" }],
        ["selftest detail", -> { detail!(cli!("selftest")) }],
@@ -438,6 +440,27 @@ module Acceptance
       "#{bytes} bytes"
     end
 
+    def say_routes
+      t = @report["check"]["timings"]
+      [[:direct, []], [:drb, ["--drb"]]].each do |route, flags|
+        _, _, seconds, = @ops.cli(@root, "say", SAY_TEXT, *flags)
+        (t["say #{route}"] ||= []) << seconds
+        _, stack_out, = @ops.cli(@root, "remote", "stack_free")
+        (t["stack after say #{route}"] ||= []) << stack_out.to_s[/<stack_free:(\d+)>/, 1].to_i
+      end
+      "say direct + drb recorded"
+    end
+
+    def servo_health
+      _, out, = @ops.cli(@root, "remote", "servo_health")
+      out.to_s.strip
+    end
+
+    def record_connect_ms
+      ms = status["last_connect_ms"]
+      (@report["check"]["timings"]["connect ms"] ||= []) << ms.to_i if ms
+    end
+
     def stack_high_water
       out = cli!("remote", "stack_free")
       free = out[/<stack_free:(\d+)>/, 1]
@@ -446,18 +469,12 @@ module Acceptance
       "#{free} B free"
     end
 
-    # Faces are interleaved so drift lands on all of them; the LED rounds are the
-    # BLE round trip with no LCD work.
     def measure
       t = @report["check"]["timings"]
-      @rounds.times do
-        FACES.each { |f| (t["face #{f}"] ||= []) << timed!("face", f) }
-      end
-      @rounds.times { (t["led (floor)"] ||= []) << timed!("led", "both", "red", "solid") }
-      @rounds.times { (t["subtitle 19 glyphs"] ||= []) << timed!("raw", "<text:#{SUBTITLE}>") }
-      @rounds.times { (t["servo text"] ||= []) << timed!("servo", "--yaw-left", "30", "--pitch-up", "10", "--time", "300") }
-      @rounds.times { (t["servo remote"] ||= []) << timed!("remote", "servo", "YL=30", "PU=10", "T=300") }
-      3.times { (t["say"] ||= []) << timed!("say", SAY_TEXT) }
+      @rounds.times { (t["servo"] ||= []) << timed!("servo", "--yaw-left", "30", "--pitch-up", "10", "--time", "300") }
+      @rounds.times { |i| (t["face"] ||= []) << timed!("face", FACES[i % FACES.size]) }
+      @rounds.times { (t["led"] ||= []) << timed!("led", "both", "red", "solid") }
+      @rounds.times { (t["text"] ||= []) << timed!("remote", "text", SUBTITLE) }
       "#{t.size} series"
     end
 
