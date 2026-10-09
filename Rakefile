@@ -17,7 +17,7 @@ R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/external-build-config"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
-R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "claude/external-app"
+R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "main"
 R2P2_DARWIN_ROOT = File.expand_path("vendor/R2P2-darwin", __dir__)
 
 namespace :vendor do

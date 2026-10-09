@@ -54,9 +54,9 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   conf.gem core: 'picoruby-uart'
   conf.gem core: 'picoruby-ble'
   conf.gem core: 'picoruby-drb'
-  conf.gem github: 'bash0C7/picoruby-ili9342',            branch: 'claude/aot-glyph16'
-  conf.gem github: 'bash0C7/picoruby-py32-io-expander',   branch: 'claude/simplify'
-  conf.gem github: 'bash0C7/picoruby-scservo',            branch: 'claude/simplify'
+  conf.gem github: 'bash0C7/picoruby-ili9342',            branch: 'main'
+  conf.gem github: 'bash0C7/picoruby-py32-io-expander',   branch: 'main'
+  conf.gem github: 'bash0C7/picoruby-scservo',            branch: 'main'
   conf.gem gemdir: File.expand_path('../build/aot/picoruby-multicore', __dir__)
   conf.gem gemdir: File.expand_path('../build/aot/esp32/gems/picoruby-stackchan_aot', __dir__)
   conf.gem gemdir: File.expand_path('../build/aot/esp32/picoruby-kernel_registry', __dir__)

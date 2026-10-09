@@ -11,11 +11,11 @@ firmware:
   R2P2-ESP32: 97166052a334fcc959bcdf6fe7da4c35792f80a6           # claude/external-build-config
   picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
   repos:                                                         # build/repos/esp32-picoruby/<name>
-    picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # claude/aot-glyph16
-    picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # claude/simplify
-    picoruby-scservo: 1e3a18b19ecf1d23e33a455278d691690af2acb8   # claude/simplify
+    picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # main
+    picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # main
+    picoruby-scservo: 1e3a18b19ecf1d23e33a455278d691690af2acb8   # main
   aot:                                                           # build/aot/<name>
-    suppify: a5449a394c6d6ef31afebdbabd56be563208a83e            # claude/string-arg-length
+    suppify: a5449a394c6d6ef31afebdbabd56be563208a83e            # main
     spinel: 4a28d45f01fef4605eedca6d7008771d51306e07
     picoruby-multicore: 83bd0d6203ebd707e46e0b7779f1c844ecca0187
   app: apps/robot/app.rb
@@ -30,5 +30,5 @@ firmware:
 # robot Mac → iPhone → Watch → Mac. That run is optional; the verdict does not
 # need it.
 darwin:
-  R2P2-darwin: 7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2             # claude/external-app
+  R2P2-darwin: 7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2             # main
   picoruby: 121c6b51fbe827f35e54dfdf9c4cfce144ae4d11                # port-darwin, vendor/R2P2-darwin/vendor/picoruby

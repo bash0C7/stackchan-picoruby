@@ -62,12 +62,12 @@ not pushed). It carries:
 |---|---|---|
 | R2P2-ESP32 | `claude/external-build-config` | `9716605` |
 | picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
-| R2P2-darwin | `claude/external-app` | `7a02219` |
+| R2P2-darwin | `main` | `7a02219` |
 | picoruby (fork, under R2P2-darwin) | `port-darwin` | `121c6b5` (pushed to origin) |
-| picoruby-ili9342 | `claude/aot-glyph16` | `6adc482` |
-| picoruby-py32-io-expander | `claude/simplify` | `8f8b3d3` |
-| picoruby-scservo | `claude/simplify` | `1e3a18b` |
-| suppify | `claude/string-arg-length` | `a5449a3` |
+| picoruby-ili9342 | `main` | `6adc482` |
+| picoruby-py32-io-expander | `main` | `8f8b3d3` |
+| picoruby-scservo | `main` | `1e3a18b` |
+| suppify | `main` | `a5449a3` |
 
 The robot runs this firmware and the app of `979eb09`. The acceptance report
 is `acceptance/results/20260929-093450` (uncommitted).

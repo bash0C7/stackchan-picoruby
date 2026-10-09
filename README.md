@@ -58,7 +58,7 @@ vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch claude/external-build-config.
                       Device firmware build tree; its own picoruby submodule
                       (branch claude/ble-peripheral-disconnect) carries
                       picoruby-ble and picoruby-i2s.
-vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch claude/external-app. Apple
+vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Apple
                       platform: builds the Mac PicoRuby VM and the iOS /
                       watchOS apps from this repo's apps/ and build_config/
                       (vendors picoruby's port-darwin branch internally). See
@@ -510,12 +510,12 @@ and build_configs each time.
 | Repo | Ref | Role | Pinned by |
 |---|---|---|---|
 | [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `claude/external-build-config` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`), sha in `acceptance/lock.yml` |
-| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `claude/external-app` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`), sha in `acceptance/lock.yml` |
+| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`), sha in `acceptance/lock.yml` |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `claude/ble-peripheral-disconnect` (`9c4636a`) | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
 | [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `claude/aot-glyph16` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
-| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | branch `claude/simplify` | PY32 I/O expander driver | same build_config |
-| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | branch `claude/simplify` | Servo driver | same build_config |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
+| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | branch `main` | PY32 I/O expander driver | same build_config |
+| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | branch `main` | Servo driver | same build_config |
 | [bash0C7/suppify](https://github.com/bash0C7/suppify) | sha in `aot/suppify.pin` | Turns the AOT kernels into one mrbgem | `aot/suppify.pin` (`rake aot:setup`) |
 | [matz/spinel](https://github.com/matz/spinel) | sha in suppify's `spinel.pin` | Ruby-to-C compiler behind the AOT kernels | suppify |
 | [bash0C7/picoruby-multicore](https://github.com/bash0C7/picoruby-multicore) | sha in `aot/multicore.pin` | Runs a kernel on core 1 | `aot/multicore.pin` |
