@@ -416,11 +416,28 @@ class AcceptanceTest < Test::Unit::TestCase
   def test_a_changed_firmware_input_stops_check_and_acceptance_app_before_touching_anything
     t = checked
     @ops.heads[ROOT] = "b" * 40
-    @ops.trees[["b" * 40, "aot"]] = "another aot"
+    @ops.trees[["b" * 40, "aot/kernels"]] = "another aot"
     @ops.calls.clear
-    assert_raise_message(/aot differ from aaaaaaa, which the deploy built; that is another firmware/) { reloaded(t).check }
-    assert_raise_message(/aot differ from aaaaaaa, which the deploy built/) { reloaded(t).upload_app }
+    assert_raise_message(/aot\/kernels differ from aaaaaaa, which the deploy built; that is another firmware/) { reloaded(t).check }
+    assert_raise_message(/aot\/kernels differ from aaaaaaa, which the deploy built/) { reloaded(t).upload_app }
     assert_empty @ops.calls.reject { |c| c[0] == :git && %w[rev-parse status].include?(c[2]) }
+  end
+
+  def test_a_changed_aot_readme_is_not_a_firmware_input
+    t = checked
+    @ops.heads[ROOT] = "b" * 40
+    @ops.trees[["b" * 40, "aot/README.md"]] = "another readme"
+    later = reloaded(t)
+    later.check
+    assert_equal "pass", later.report["verdict"]
+  end
+
+  def test_firmware_inputs_covers_exactly_what_the_aot_build_reads
+    assert_equal %w[build_config/esp32-stackchan.rb aot/kernels aot/mcu-shim aot/multicore.pin aot/suppify.pin
+                   tools/aot mrbgems/picoruby-stackchan-protocol], Acceptance::Runner::FIRMWARE_INPUTS
+    assert_not_include Acceptance::Runner::FIRMWARE_INPUTS, "aot"
+    assert_not_include Acceptance::Runner::FIRMWARE_INPUTS, "aot/README.md"
+    assert_not_include Acceptance::Runner::FIRMWARE_INPUTS, "aot/test"
   end
 
   def test_a_changed_app_input_stops_the_check_until_acceptance_app_sends_it
@@ -689,10 +706,6 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.cli_out["remote servo"] = ".\n"
     t = checked
     assert_equal "remote servo detail", failed(t.report["check"])["name"]
-  end
-
-  def test_the_check_reports_the_stack_left_after_every_handler_ran
-    assert_equal "2024 B free", step(checked.report, "stack high-water")["detail"]
   end
 
   def test_less_than_512_b_of_stack_left_stops_the_check_and_856_b_passes

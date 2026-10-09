@@ -39,7 +39,8 @@ module Acceptance
     RESETS = %w[r2p2:build_flash r2p2:flash_identity r2p2:reset_and_capture r2p2:reset].freeze
     FIRMWARE_WRITES = %w[r2p2:build_flash r2p2:build_flash_appmrb r2p2:flash r2p2:full_rebuild].freeze
     APP_WRITES = %w[r2p2:upload_appmrb r2p2:upload_mrb r2p2:wipe_storage].freeze
-    FIRMWARE_INPUTS = %w[build_config/esp32-stackchan.rb aot tools/aot mrbgems/picoruby-stackchan-protocol].freeze
+    FIRMWARE_INPUTS = %w[build_config/esp32-stackchan.rb aot/kernels aot/mcu-shim aot/multicore.pin aot/suppify.pin
+                         tools/aot mrbgems/picoruby-stackchan-protocol].freeze
     QUESTIONS = [["servo", "サーボが指示どおりに動いた"],
                  ["subtitle", "字幕が欠けずに描画された"],
                  ["audio", "say の音声が最後まで途切れずに鳴った"],
