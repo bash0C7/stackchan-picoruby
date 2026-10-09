@@ -41,6 +41,8 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 
 ## 構成
 
+StackChan を知っているのはこの repo だけ。picoruby・R2P2-ESP32・R2P2-darwin・driver の gem repo (picoruby-ili9342 / picoruby-py32-io-expander / picoruby-scservo)・suppify はどの project にも仕える横断の層で、StackChan かどうかを問わない。StackChan 固有のもの (gem の組み合わせ、pin 配置、app、protocol、名前) はこの repo の `build_config/`・`mrbgems/`・`apps/` に置き、横断の層へは「platform が決めた契約 (build_config の受け口、`APP_DIR` 等の env、HAL や port の header) に conform する」形でだけ関わる。横断の層に直すべきものが見つかったら、StackChan を外しても成り立つ一般の修正としてその repo に出す。
+
 - Firmware (`build_flash` が必要): firmware の gem 一覧は `build_config/esp32-stackchan.rb` にあり、`r2p2_build_env` が `R2P2_BUILD_CONFIG` (絶対 path) として R2P2-ESP32 に渡す。LCD / PY32 / servo の gem はこの config の `conf.gem github:` で fetch し、protocol gem (`StackchanProtocol::FrameParser` / `FrameCodec` / `FrameText`、`mrbgems/picoruby-stackchan-protocol`)・AOT kernel・picoruby-multicore は gem dir で入れる。picoruby-multicore の `ports/esp32/multicore.c` は ESP-IDF の include が要るので `R2P2_EXTRA_SRCS` で IDF component の source に足す。R2P2-ESP32 自身の default config は StackChan の gem を持たない。
 - Driver gems (`mrbgems/picoruby-*`): この repo 内の mrbgem。どれも pure Ruby で、`stackchan-led` / `si12t` / `aw88298` / `drb-ble` / `stackchan-robot` は Rakefile が `app.mrb` compile 時に app の前に連結する (先頭に app の top-level `require` を置く)。`stackchan-controller` は firmware に入らず、Mac の daemon / CLI は source で `load` し、iOS / watchOS は VM に gem として build する (依存は `mrbgem.rake` に宣言し、mrblib は build と同じ sort 順で読める)。
 - AOT kernels (`aot/kernels/*.rb`): spinel → suppify で 1 つの mrbgem にして firmware に入れる Ruby。`ulaw_decode` は picoruby-multicore で core 1、`glyph16` は core 0 から直接呼ぶ。spinel runtime は 1 組で thread-safe でないので、core 1 の kernel 実行中に core 0 で kernel を呼ばない。手順と制約は `aot/README.md`。
