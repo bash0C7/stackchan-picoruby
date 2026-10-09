@@ -20,18 +20,27 @@ where it is told: commanding yaw-left 50 with pitch-up 30 reads back
 
 | Piece | Revision |
 |---|---|
-| `stackchan-picoruby` | `main` @ `0a65507`, pushed |
-| firmware tree `vendor/R2P2-ESP32` | `c-primitives-verified` @ `2f18720` |
-| picoruby submodule under it | `7258676` |
-| LCD driver gem | `bash0C7/picoruby-ili9342` `main` @ `01a1a02` |
-| speaker gem | `mrbgems/picoruby-aw88298` here, fetched from `main` by the build_config |
+| `stackchan-picoruby` | `main`, pushed; PR #11 is merged into it |
+| firmware tree `vendor/R2P2-ESP32` | `claude/external-build-config` @ `9716605` |
+| picoruby submodule under it | `claude/ble-peripheral-disconnect` @ `9c4636a` |
+| driver gems, suppify, R2P2-darwin | `main` of each (shas in `acceptance/lock.yml`) |
+| picoruby under R2P2-darwin | `port-darwin` @ `121c6b5` |
 
-The device reports App version `2f18720`, so it is running this tree.
+The device reports App version `0.2.21-39-g9716605`, so it is running this
+firmware tree. `build_config/esp32-stackchan.rb` now fetches the three driver
+gems from `main` instead of their working branches; the shas are the same, but
+build_config is a firmware input, so the next `acceptance:deploy` flashes again.
 
-Tests pass: 476 picotest across device, pc, shared, aot, drb-ble and the three driver gems,
-with no failures, crashes or skips, plus the CRuby host tests, where ten cases
-are omitted on machines without `plutil`. Both workflows are green on the tip
-of `main`.
+`rake test` passes. The CRuby host tests pass except
+`platform_trees_test#test_r2p2_darwin_names_no_stackchan` (#21). `deps.yml` is
+green on the tip of `main`.
+
+The working branches are deleted here and in the gem repos, suppify and
+R2P2-darwin. The two forks keep one line each for this project: R2P2-ESP32
+`claude/external-build-config`, and picoruby `claude/ble-peripheral-disconnect`
+(firmware) and `port-darwin` (Mac / iOS / watchOS). The two picoruby lines
+split at `86029282` and cannot be joined without moving the firmware onto the
+lineage that does not boot (Next 4).
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails
 on any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -42,10 +51,7 @@ declare. `docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmw
 demand, so trigger it with `gh workflow run firmware.yml` after changing
 anything it covers.
 
-## In flight: PR #11, not yet mergeable
-
-Everything below `main` is on `claude/ecstatic-allen-s6qki1` (PR #11 → `main`,
-not pushed). It carries:
+## What PR #11 brought into main
 
 - dRuby over BLE and the AOT kernels (`ulaw_decode`, `glyph16`)
 - picoruby-multicore on core 1
@@ -226,8 +232,9 @@ What is not done:
   ruled out by source (vault `review/2026-10-03-pitch-read-pos/`); what is left is
   the pitch servo itself being silent for ~300 ms right after a move starts, which
   only the discarded status byte or a bus voltage measurement can settle.
-- Then one more `acceptance:check` with the robot on, the report committed on
-  `verdict: pass`, push (pins first) and the owner's merge decision.
+- Then, with the robot on: one `acceptance:deploy` (the flash that the build_config
+  change asks for) and one `acceptance:check`, the report committed on
+  `verdict: pass`.
 
 ### 2. After the merge: the issues for the next session
 
