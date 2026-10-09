@@ -9,265 +9,96 @@ README.md is what the robot is and does, CLAUDE.md is how to work on it, and
 specs, plans and reviews live in the Obsidian vault under
 `02_dev_docs/stackchan-picoruby/`.
 
+Branch names and commit ids are not written here. What a build runs is read
+from where a machine reads it: `acceptance/lock.yml` for every sha, `Rakefile`
+and `build_config/esp32-stackchan.rb` for the refs the build follows.
+
 ## Now
 
-The robot works, and every subsystem it has has been driven on the hardware:
-cold boot, BLE link, faces, LEDs, servos on both axes, head touch, audio, and
-selftest. Servo absolute positioning — the point of the whole thing — lands
-where it is told: commanding yaw-left 50 with pitch-up 30 reads back
-`<YL_actual:50,PU_actual:29>`, and yaw-right 40 with pitch-up 10 reads back
-`<YR_actual:39,PU_actual:9>`.
+Everything is on `main`. The robot works, and every subsystem it has has been
+driven on the hardware: cold boot, BLE link, faces, LEDs, servos on both axes,
+head touch, audio, and selftest. Servo absolute positioning — the point of the
+whole thing — lands where it is told.
 
-| Piece | Revision |
-|---|---|
-| `stackchan-picoruby` | `main`, pushed; PR #11 is merged into it |
-| firmware tree `vendor/R2P2-ESP32` | `claude/external-build-config` @ `9716605` |
-| picoruby submodule under it | `claude/ble-peripheral-disconnect` @ `9c4636a` |
-| driver gems, suppify, R2P2-darwin | `main` of each (shas in `acceptance/lock.yml`) |
-| picoruby under R2P2-darwin | `port-darwin` @ `121c6b5` |
+The robot is powered off and carries the firmware of the committed acceptance
+report in `acceptance/results/`. That report's verdict is `fail`: every step
+through the operator's questions passed, and it stopped at `torque off` because
+the Mac daemon froze.
 
-The device reports App version `0.2.21-39-g9716605`, so it is running this
-firmware tree. `build_config/esp32-stackchan.rb` now fetches the three driver
-gems from `main` instead of their working branches; the shas are the same, but
-build_config is a firmware input, so the next `acceptance:deploy` flashes again.
+Since that run, without the robot:
+
+- The daemon freeze and the daemon dying when a client hangs up are both
+  closed in the Mac VM, which is rebuilt and running under launchd.
+- The picoruby the Mac VM is built from moved forward; the controller follows
+  its GATT notification layout.
+- `build_config/esp32-stackchan.rb` fetches the driver gems from each repo's
+  default branch. The commits are the same, but build_config is a firmware
+  input, so the next `acceptance:deploy` flashes.
 
 `rake test` passes. The CRuby host tests pass except
-`platform_trees_test#test_r2p2_darwin_names_no_stackchan` (#21). `deps.yml` is
-green on the tip of `main`.
+`platform_trees_test#test_r2p2_darwin_names_no_stackchan` (#21).
 
-The working branches are deleted here and in the gem repos, suppify and
-R2P2-darwin. The two forks keep one line each for this project: R2P2-ESP32
-`claude/external-build-config`, and picoruby `claude/ble-peripheral-disconnect`
-(firmware) and `port-darwin` (Mac / iOS / watchOS). The two picoruby lines
-split at `86029282` and cannot be joined without moving the firmware onto the
-lineage that does not boot (Next 4).
-
-`rake test` runs `rigor:check` first, a host-side type analysis that fails
-on any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
+`rake test` runs `rigor:check` first, a host-side type analysis that fails on
+any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
 to have run, and installs its own gemset into `vendor/rigor-tool` on first use.
-Seventeen diagnostics are frozen in the snapshot; eight of them are false
-positives from rigor 0.3.7 and the rest are stated invariants the code does not
-declare. `docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmware.yml` runs weekly and on
-demand, so trigger it with `gh workflow run firmware.yml` after changing
-anything it covers.
-
-## What PR #11 brought into main
-
-- dRuby over BLE and the AOT kernels (`ulaw_decode`, `glyph16`)
-- picoruby-multicore on core 1
-- the deterministic QEMU boot gate
-- the DSL work: robot engine + `apps/robot/app.rb`, controller engine +
-  `apps/mac/app.rb`, `apps/ios` + `apps/watchos`, and the firmware gem list in
-  `build_config/esp32-stackchan.rb`
-- device tooling that picks the CoreS3 by USB serial
-- the pre-merge device check, `acceptance/`
-
-`acceptance/lock.yml` pins the one firmware:
-
-| repo | branch | sha |
-|---|---|---|
-| R2P2-ESP32 | `claude/external-build-config` | `9716605` |
-| picoruby (fork, under R2P2-ESP32) | `claude/ble-peripheral-disconnect` | `9c4636a` |
-| R2P2-darwin | `main` | `7a02219` |
-| picoruby (fork, under R2P2-darwin) | `port-darwin` | `121c6b5` (pushed to origin) |
-| picoruby-ili9342 | `main` | `6adc482` |
-| picoruby-py32-io-expander | `main` | `8f8b3d3` |
-| picoruby-scservo | `main` | `1e3a18b` |
-| suppify | `main` | `a5449a3` |
-
-The robot runs this firmware and the app of `979eb09`. The acceptance report
-is `acceptance/results/20260929-093450`.
-
-### What the branch changed on the way to a pass
-
-- `915a550`: the revert guard skips a test-host file that cannot load at the
-  base, so the branch can be pushed.
-- `254c44d`: acceptance is one full `acceptance:check` run by the owner in a
-  TTY (or a tmux session Claude drives, with the owner answering in chat). No
-  pc_vm, no multi-Mac hand-off, chat against the real sidecar and last, `say`
-  reads "こんにちは", a question asks about distortion, no darwin in the verdict.
-- `1aae757`: a head nobody touches within 30 s is recorded and neither stops
-  the run nor blocks `pass`.
-- `d56cb1b`: `DRbBle::Responder` frames requests itself instead of raising
-  `Incomplete`. One raise + rescue costs about 1.8 KB of C stack.
-- `c75f9d5`: the LED buffer is filled with `while`; `Array.new(n) { }` nested
-  the VM and left the picoruby task 488 B of stack at cold boot.
-- `979eb09`: the stack floor is 512 B. The remaining depth is the ILI9342
-  primitives calling `SPI#write` / `GPIO#write` through `mrb_funcall`.
-- The TTS gain stays at 0.05 (`7ef5b1e` was reverted by `6e271c3`).
-- The Mac VM is built from port-darwin `121c6b5` with `hal-task-darwin`: the
-  scheduler tick runs on the VM thread only (see Next 1).
-
-### The last acceptance run
-
-Every step through the questions passed: stack high-water `888 B free`, the
-five answers all `y` (the owner heard no distortion). It stopped at
-`torque off` because the Mac daemon froze; `chat` has not run against the real
-sidecar yet. Two earlier runs failed on one-offs recorded in #22: a pitch
-`read_pos` that failed three times, and the daemon dying of SIGPIPE.
+`docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmware.yml`
+runs weekly and on demand, so trigger it with `gh workflow run firmware.yml`
+after changing anything it covers.
 
 ## Next
 
-### 1. The Mac daemon freeze: both writers closed, the fix awaits the owner's dtrace
+### 1. One acceptance run with the robot on
 
-The robot is powered off. Evidence is in the vault:
-`02_dev_docs/stackchan-picoruby/review/2026-10-01-daemon-freeze/`; the plan
-and its adversarial review are `plans/2026-10-03-daemon-tick-thread.md`.
+`acceptance:deploy` (the one flash), then `acceptance:check` run once by the
+owner in a TTY, and the report committed.
 
-What froze: the mruby-task waiting list became cyclic. Daemon 55951 spent
-all 501 `spindump` samples walking `q_waiting_` in `queue_wake_one_waiter`
-(`mrb_task_queue_push`) at 99.8 % CPU; daemon 15112 sat at 0 % with every
-task asleep. The heap was never the cause (about 750 KB of 6.4 MB, flat).
+That run is the first time these meet the robot:
 
-Why: two paths wrote the task lists from threads other than the VM thread.
+- A real BLE link through the rebuilt Mac VM: scan, discovery, both CCCDs,
+  notifications, dRuby. Read against the port's source it is consistent with
+  the controller; it has only reached `busy` with the robot off.
+- `chat` against the real sidecar.
 
-- `mrb_tick` (mruby-task `task.c`) relinks waiting → ready. The POSIX HAL
-  arms `setitimer`, whose SIGALRM is process-directed; Darwin delivers it to
-  any thread not blocking it, and CoreBluetooth's GCD threads never block it.
-  The exclusion `mrb_task_disable_irq` is `sigprocmask`, which masks only the
-  calling thread. dtrace over 15 s saw 3 of 3,739 ticks on two non-main
-  threads (`dtrace-queue-push-15s.txt`; that output is from an earlier
-  version of the saved script, so it has no stacks for those ticks; the only
-  caller of `mrb_tick` in this build is the signal handler).
-- picoruby-ble's darwin port at pin `97479c96` called `BLE_heartbeat()` →
-  `mrb_task_queue_push` from a GCD timer every second.
+Why the daemon froze, what closed it, and what is still unexplained (three
+scheduler ticks that ran off the VM thread; the kernel source for this macOS
+is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
+`plans/2026-10-03-daemon-tick-thread.md` and
+`review/2026-10-10-pr11-closing-notes.md`.
 
-What is done (all local, nothing pushed):
+### 2. Open issues
 
-- port-darwin `23e5bb89` (origin) fixes the heartbeat: the timer sets a flag,
-  `ble_scheduler_pump` turns it into `BLE_heartbeat()` on the VM thread.
-- port-darwin `e2783d0` (fork clone `~/dev/src/github.com/bash0C7/picoruby`,
-  worktree `picoruby-port-darwin`) adds `mrbgems/hal-task-darwin`, an external
-  HAL gem (same mechanism as `hal-io-darwin`) that replaces mruby-task's
-  POSIX HAL with the same code plus one check: a handler on any thread other
-  than the VM thread re-sends SIGALRM to the VM thread with `pthread_kill`.
-  `build_config/darwin-stackchan-pc.rb` includes it; `acceptance/lock.yml`
-  pins it. `vendor/R2P2-darwin/vendor/picoruby` was refreshed from the local
-  clone (`PICORUBY_REPO=… PICORUBY_REF=port-darwin rake refresh`).
-- The VM built, `libmruby.a` carries one `task_hal.o`, a Task::Queue and
-  `sleep_ms` timing script matches the previous binary, and the daemon is up
-  under launchd from the rebuilt bundle (`status` answers `busy`, robot off).
-- QEMU gate on the firmware tree: PASS (`qemu-20261003-001117.log`).
-
-What the measurements after the fix say (vault folder, `tick_threads-*.out`
-and `tick-race-tests-README.md`):
-
-- dtrace 60 s idle and 60 s while `stackchan connect` kept CoreBluetooth
-  scanning: `sigalrm_handler`, `mrb_tick` and `mrb_task_queue_push` all on
-  one thread (14,949 / 14,862 ticks). The forwarding path never ran.
-- Why those 3 ticks ran off-main is **not established**. The candidate
-  mechanism comes from XNU `get_signalthread` on the apple-oss-distributions
-  `main` branch: a process-directed signal goes to the first thread in
-  `p_uthlist` that does not have it masked (pthreads first, workqueue threads
-  second), which would send the tick to a CoreBluetooth or dispatch thread
-  exactly while the VM thread masks SIGALRM inside `mrb_task_disable_irq`.
-  Standalone C tests on this Mac (`tick-race-tests-README.md`) did not show
-  that redirection. This Mac runs xnu-13432 (macOS 27.0); the newest published XNU is
-  xnu-12377 (macOS 26), so the source of this kernel's thread selection cannot
-  be read. Neither the published source nor the tests settle it. The forwarding handler closes the path whatever the
-  trigger is, but that is containment, not explanation.
-
-What the port-darwin refresh changed for the controller (read against the
-diff `97479c96..e2783d02`):
-
-- GATT events now carry the BTstack 1.6 layout (payload at offset 8).
-  `radio.rb` read notifications at the old offsets and would have turned
-  every reply from the robot into handle 0 with an empty value; `de6be64`
-  reads them through `gatt_event_int16` / `gatt_event_value`, and the pc
-  suite's packets and BLE stub follow the same layout.
-- `connect` must be called from `advertising_report_callback` during a
-  scan (it is), `scan`'s keyword arguments and `_event_popped` are
-  unchanged, the controller matches characteristics by `uuid128` so the
-  changed `uuid128_to_uuid32` byte order does not reach it, and the CCCD
-  write and disconnect packets are unchanged. CoreBluetooth events are now
-  pumped at scheduler entry, so with one busy task they arrive within a
-  timeslice (12 ms); the controller's wait loops `sleep_ms` between polls.
-- The discovery chain was read end to end against `PicoBLECentral.swift`:
-  synthetic handles are allocated by pre-order DFS with tight service ranges,
-  so every characteristic and descriptor passes the decoder's filing tests;
-  UUIDs go out LSB-first from `CBUUID.data` and `reverse_128` restores the
-  canonical bytes the controller compares (`Nus.nus_uuid`, `Nus.cccd_uuid`);
-  CoreBluetooth hides the CCCD, so the port mints one per notify
-  characteristic and routes its write to `setNotifyValue`; reads of the
-  write-only / notify-only NUS characteristics are answered with an empty
-  value and a QUERY_COMPLETE, so discovery reaches `:TC_IDLE` without the
-  robot answering a read; the subscribe wait is time-based (`settle`). The
-  Swift write and notification firing code is byte-identical to `97479c96`;
-  only the packet layout changed, and `de6be64` follows it. The pump drains
-  the Swift FIFO up to 16 pending events per scheduler entry and keeps the
-  rest queued, with a 512 B ceiling per packet (a 180 B dRuby chunk is 192 B).
-
-The SIGPIPE death is closed too. Reproduction: send a junk request and hang
-up with an immediate RST (`SO_LINGER` 0); the daemon died with signal 13
-(launchd `last terminating signal = Broken pipe`). Fork commits on
-`port-darwin`, pushed to origin:
-
-- `741472e6` put `SO_NOSIGPIPE` in `picoruby-socket/ports/darwin` — useless
-  for the Mac, whose host build compiles `ports/posix` (`ports/darwin` is the
-  iOS / watchOS cross-build); kept in history, superseded.
-- `11a8f89a` moved it to `ports/posix` under `#ifdef SO_NOSIGPIPE` (client
-  sockets right after `socket()`, accepted sockets after `accept()`), and
-  put the darwin files back to plain includes. Still died: when the RST
-  arrives before `accept` returns, `setsockopt` on that socket fails
-  (confirmed with a standalone C program, `nosigpipe_test2.c`).
-- `121c6b51` sets it on the listening socket instead, so accepted sockets
-  inherit it (`nosigpipe_test3.c`: `send` returns EPIPE, process alive).
-- `beea42a7` (picoruby-drb `drb_tcp.rb`): the failed error reply to a gone
-  peer no longer leaves `handle_client`; before, it reached
-  `DRbTCPServer#run`, whose rescue stopped the server (a deaf daemon that
-  launchd would not restart).
-
-With the VM rebuilt from `121c6b51`: the same replay leaves the daemon alive
-(same pid), `stackchan status` answers, and the log shows `DRb reply not
-delivered: send failed`. `acceptance/lock.yml` pins `121c6b51`.
-
-What is not done:
-
-- The same holes are in mruby's POSIX task HAL and in upstream
-  picoruby-socket / picoruby-drb (upstream PR material).
-- Nothing above has met the robot: the rebuilt VM has only reached `busy`
-  with the robot off. A real link through the refreshed darwin port (scan,
-  discovery, CCCD, notification, dRuby) is unverified.
-- The pitch `read_pos` that failed three times (#22): the ESP32 receive path is
-  ruled out by source (vault `review/2026-10-03-pitch-read-pos/`); what is left is
-  the pitch servo itself being silent for ~300 ms right after a move starts, which
-  only the discarded status byte or a bus voltage measurement can settle.
-- Then, with the robot on: one `acceptance:deploy` (the flash that the build_config
-  change asks for) and one `acceptance:check`, the report committed on
-  `verdict: pass`.
-
-### 2. After the merge: the issues for the next session
-
-- #20: the dRuby instruction violation. Every app action still sends text
-  frames; only the CLI's `remote` uses dRuby.
+- #20: every app action still sends text frames; only the CLI's `remote` uses
+  dRuby.
 - #19: the dRuby unification itself, with audio measured before it may keep a
   direct route. It also covers Service Changed.
-- #21: build the `-StackchanBatch` apps in the Simulator; Xcode 27 needs
-  port-darwin `7681c4f4` or later; certificates are revoked; `devicectl_udid`
-  and `platform_trees_test` are open.
-- #22: host tests that imitate the robot, dRuby timings, audio distortion
-  (stages listed in the issue), the stack headroom and `PICORB_TASK_STACK_SIZE`,
-  the one-off pitch read failure, `FIRMWARE_INPUTS` taking all of `aot/` (a
-  README edit there asks for a flash), and the revert guard having no test.
+- #21: build the `-StackchanBatch` apps in the Simulator; certificates are
+  revoked; `devicectl_udid` and `platform_trees_test` are open.
+- #22: host tests that imitate the robot, dRuby timings, audio distortion, the
+  stack headroom and `PICORB_TASK_STACK_SIZE`, `FIRMWARE_INPUTS` taking all of
+  `aot/`, the revert guard having no test, and a pitch position read that
+  failed three times in a row once. For the last, the ESP32 receive path is
+  ruled out by source (vault `review/2026-10-03-pitch-read-pos/`); what is left
+  is the pitch servo being silent for about 300 ms right after a move starts,
+  which only the status byte the driver discards or a bus voltage measurement
+  can settle.
 - #23: move `docs/superpowers/` to the vault.
 - Older and still open: #4, #5, #6 and #8.
+- The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
+  upstream picoruby-socket / picoruby-drb. That is upstream PR material.
 
+### 3. Adopting upstream picoruby for the firmware
 
-### 4. The lineage that will not boot
+The firmware's picoruby line, rebased onto upstream master, overflows the 8 KB
+picoruby task stack during its own startup and boot-loops on the CoreS3. The
+line in use leaves the picoruby task only a few hundred bytes at startup, so
+the rebased one needs just a little more depth to cross the line. Raising
+`PICORB_TASK_STACK_SIZE` is a design decision, not a tweak (CLAUDE.md).
 
-The firmware's picoruby line, with its own commits rebased onto upstream
-master, overflows the 8 KB picoruby task stack during its own startup and
-boot-loops on the CoreS3. `7258676`, an ancestor of the line in use, starts its picoruby task with 248 B
-of the 8 KB left, so the rebased one needs only a little more startup depth to
-cross the line. The rebased branches are deleted; adopting upstream means
-rebasing again onto upstream as it is then. The NimBLE ESP32 port itself is not waiting on this. It is what the device
-runs — the vendored tree carries `nimble_owner.c`, there is no btstack
-component, and the sdkconfig fragment is `bt_nimble` — and every verb drives it
-end to end. What the boot loop blocks is adopting that port rebased
-onto upstream master. Its plan is in the vault under
-`02_dev_docs/picoruby-ble-esp32-port/plans/`.
+The NimBLE ESP32 port itself is not waiting on this; it is what the device
+runs. What the boot loop blocks is adopting that port as upstream carries it.
+Its plan is in the vault under `02_dev_docs/picoruby-ble-esp32-port/plans/`.
 
-### 5. What the dependency guard does not reach
+### 4. What the dependency guard does not reach
 
 `--pins-only` checks pins and nothing else, so a rotted gem ref or an edited
 vendored tree passes at push time and is caught only by a full run.
@@ -276,13 +107,14 @@ branch force-pushed away reads as published until CI's fresh clone disagrees.
 And `STACKCHAN_DEPS_GUARD=off` is one string away for whoever finds the guard
 inconvenient.
 
-Branch protection is handled separately, and would cover main and master only.
-The refs this build depends on are long-lived integration branches and tags,
-which protection would not cover, so those stay detection-only.
+Branch protection is handled separately, and would cover default branches
+only. The refs this build depends on in the two forks are long-lived
+integration branches, which protection would not cover, so those stay
+detection-only.
 
 ## Known and deliberately left alone
 
 - The device tasks expect esp-idf at `~/esp/esp-idf` unless `ESP_IDF_EXPORT`
-  says otherwise. The version is pinned where a machine reads it —
-  `espressif/idf:v5.4.2` in the firmware workflow — and the python venv is
-  found by version rather than named.
+  says otherwise. The version is pinned where a machine reads it — the image
+  tag in the firmware workflow — and the python venv is found by version rather
+  than named.

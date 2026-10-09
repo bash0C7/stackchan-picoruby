@@ -54,14 +54,11 @@ Watch action goes over text frames.
 into `vendor/` (gitignored, never hand-placed):
 
 ```
-vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32, branch claude/external-build-config.
-                      Device firmware build tree; its own picoruby submodule
-                      (branch claude/ble-peripheral-disconnect) carries
-                      picoruby-ble and picoruby-i2s.
-vendor/R2P2-darwin/   bash0C7/R2P2-darwin, branch main. Apple
-                      platform: builds the Mac PicoRuby VM and the iOS /
-                      watchOS apps from this repo's apps/ and build_config/
-                      (vendors picoruby's port-darwin branch internally). See
+vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32. Device firmware build tree; its own
+                      picoruby submodule carries picoruby-ble and picoruby-i2s.
+vendor/R2P2-darwin/   bash0C7/R2P2-darwin. Apple platform: builds the Mac
+                      PicoRuby VM and the iOS / watchOS apps from this repo's
+                      apps/ and build_config/ (vendors its own picoruby). See
                       pc/stackchan-pico/README.md.
 ```
 
@@ -507,18 +504,18 @@ Repo/ref pins are the single source of truth for what a build actually runs;
 this table exists so that fact doesn't have to be re-derived from Rakefiles
 and build_configs each time.
 
-| Repo | Ref | Role | Pinned by |
-|---|---|---|---|
-| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | branch `claude/external-build-config` | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`), sha in `acceptance/lock.yml` |
-| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | branch `main` | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`), sha in `acceptance/lock.yml` |
-| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `claude/ble-peripheral-disconnect` (`9c4636a`) | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
-| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | branch `port-darwin` | PicoRuby itself, Mac side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup` |
-| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | branch `main` | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
-| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | branch `main` | PY32 I/O expander driver | same build_config |
-| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | branch `main` | Servo driver | same build_config |
-| [bash0C7/suppify](https://github.com/bash0C7/suppify) | sha in `aot/suppify.pin` | Turns the AOT kernels into one mrbgem | `aot/suppify.pin` (`rake aot:setup`) |
-| [matz/spinel](https://github.com/matz/spinel) | sha in suppify's `spinel.pin` | Ruby-to-C compiler behind the AOT kernels | suppify |
-| [bash0C7/picoruby-multicore](https://github.com/bash0C7/picoruby-multicore) | sha in `aot/multicore.pin` | Runs a kernel on core 1 | `aot/multicore.pin` |
+| Repo | Role | Ref and sha live in |
+|---|---|---|
+| [bash0C7/R2P2-ESP32](https://github.com/bash0C7/R2P2-ESP32) | ESP32 device firmware build tree | `Rakefile` (`R2P2_ESP32_REPO`/`R2P2_ESP32_REF`), sha in `acceptance/lock.yml` |
+| [bash0C7/R2P2-darwin](https://github.com/bash0C7/R2P2-darwin) | Apple platform: Mac PicoRuby VM, iOS / watchOS app builds | `Rakefile` (`R2P2_DARWIN_REPO`/`R2P2_DARWIN_REF`), sha in `acceptance/lock.yml` |
+| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | PicoRuby itself, device side | R2P2-ESP32's `components/picoruby-esp32/picoruby` submodule pin |
+| [bash0C7/picoruby](https://github.com/bash0C7/picoruby) | PicoRuby itself, Apple side (BLE + mbedtls + io-console + machine darwin ports) | R2P2-darwin's own `rake setup`, sha in `acceptance/lock.yml` |
+| [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
+| [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | PY32 I/O expander driver | same build_config |
+| [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | Servo driver | same build_config |
+| [bash0C7/suppify](https://github.com/bash0C7/suppify) | Turns the AOT kernels into one mrbgem | `aot/suppify.pin` (`rake aot:setup`) |
+| [matz/spinel](https://github.com/matz/spinel) | Ruby-to-C compiler behind the AOT kernels | suppify's `spinel.pin` |
+| [bash0C7/picoruby-multicore](https://github.com/bash0C7/picoruby-multicore) | Runs a kernel on core 1 | `aot/multicore.pin` |
 
 The WS2812, Si12T, AW88298 and dRuby-over-BLE gems are mrbgems in this
 repo's `mrbgems/` bundled into `app.mrb` at compile time. The BLE frame
@@ -589,19 +586,19 @@ Adds on top of upstream:
   default config, and `R2P2_EXTRA_SRCS` adds C sources to the IDF component.
   The default config carries `picoruby-ble` and `picoruby-i2s`, whose ESP32
   ports the component compiles.
-- Points its `components/picoruby-esp32/picoruby` submodule at `9c4636a` on the
-  picoruby fork's `claude/ble-peripheral-disconnect` branch below.
+- Points its `components/picoruby-esp32/picoruby` submodule at the picoruby
+  fork's firmware line below.
 
 ### [picoruby fork](https://github.com/bash0C7/picoruby)
 
-BLE support (`mrbgems/picoruby-ble/`), tracked on two branches:
+BLE support (`mrbgems/picoruby-ble/`), on two lines:
 
-- `claude/ble-peripheral-disconnect` — the ESP32 (NimBLE) peripheral port, on
+- The firmware line (the R2P2-ESP32 submodule pin) — the ESP32 (NimBLE) peripheral port, on
   the lineage before the rebase that upstream PR
   [#427](https://github.com/picoruby/picoruby/pull/427) carries, and
   `picoruby-i2s`, with a commit on top that lets a peripheral drop its
   central.
-- `port-darwin` — the macOS (CoreBluetooth) central/peripheral port used by
+- The Apple line (what R2P2-darwin fetches) — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
   role can receive a GAP disconnect but cannot initiate one (this port has
   no such API) — `StackChan::Controller::Central#disconnect` in
