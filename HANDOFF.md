@@ -82,7 +82,7 @@ is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
   which only the status byte the driver discards or a bus voltage measurement
   can settle.
 - #23: move `docs/superpowers/` to the vault.
-- Older and still open: #4, #5, #6 and #8.
+- #6: head touch response and LCD touch.
 - The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
   upstream picoruby-socket / picoruby-drb. That is upstream PR material.
 
