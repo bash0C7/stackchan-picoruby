@@ -38,15 +38,18 @@ The controllers — the macOS daemon and the iPhone and Apple Watch apps — are
 the orchestrators. They send control frames (face, LED, servo position, audio)
 and read single-byte ACK or ERR replies plus detail frames.
 
-Control frames are key-value, comma-delimited, parsed by the FrameParser in
-the `mrbgems/picoruby-stackchan-protocol` gem. Audio is sent as a
-length-prefixed `<A:nbytes>` frame followed by raw mu-law bytes in
-180-byte writes.
+Every command, reply and head touch travels as dRuby over BLE on the
+service's second characteristic pair (`6e400004` write, `6e400005` notify).
+The controller calls the robot's front object; a command is a Hash in the
+key-value vocabulary that the FrameParser in the
+`mrbgems/picoruby-stackchan-protocol` gem reads, and the reply is the lines
+the robot answers with.
 
-The same service carries a second characteristic pair (`6e400004` write,
-`6e400005` notify) for dRuby over BLE, whose front on the robot runs the same
-dispatcher. Only the CLI's `stackchan remote` uses it; every Mac, iPhone and
-Watch action goes over text frames.
+Audio has two routes while they are being compared on the robot. The default
+sends a length-prefixed `<A:nbytes>` frame followed by raw mu-law bytes in
+180-byte writes on the first pair (`6e400002` / `6e400003`), which carries
+nothing else. `stackchan say --drb` sends the same bytes through dRuby calls
+instead.
 
 ## Code layout
 
@@ -286,7 +289,7 @@ pc/stackchan-pico/bin/stackchan stop                     # the daemon exits
 ```
 
 The daemon holds the BLE link only while it is in use: the first action
-connects, a keepalive runs while actions keep coming, and `c.hold` ms
+connects, a keepalive runs every second while actions keep coming, and `c.hold` ms
 (10 s in `apps/mac/app.rb`) after the last one the keepalive stops and the
 robot releases the link. The next action reconnects. When the robot is held
 by another central (another Mac, the iOS app) or cannot be reached, the verb
@@ -305,7 +308,8 @@ link is idle). Per zone:
 | 1 | Angry | right half, red (300ms pulse) |
 | 2 | Sad | left half, blue (300ms pulse) |
 
-The PC side only sees the `<touch:N>` BLE notify, so `touch listen` is the
+The robot queues each touch and the controller collects the queue with its
+keepalive, about once a second, so `touch listen` is the
 right verb when you want a CLI side-effect (printing events) on top of the
 on-device visual feedback. It prints `touch zone=N (back|right|left)` per
 tap, exits 0 after `--count` taps, and exits 1 on `--timeout` seconds or when
@@ -362,11 +366,11 @@ kill %1 %2
 | Eye-blink animation | yes | eye-only redraw |
 | WS2812 LED ring (12 px) | yes | solid, blink, breathing, off, per side |
 | Servo control (yaw, pitch) | yes | normalized YL/YR/PU protocol, BLE calibration CLI |
-| BLE control (Nordic UART Service) | yes | RX/TX, ACK queue, 20 ms link loop, dRuby pair |
+| BLE control (Nordic UART Service) | yes | dRuby over BLE for commands, direct pair for audio, 20 ms link loop |
 | Speaker (AW88298 over I2S) | yes | mu-law audio streamed from macOS over BLE |
 | Microphone | no | planned |
 | IMU (BMI270 + BMM150) | no | planned |
-| 3-zone head touch (Si12T) | yes | on-device face + LED pulse per tap, BLE `<touch:N>` notify to PC |
+| 3-zone head touch (Si12T) | yes | on-device face + LED pulse per tap, polled by the controller over dRuby |
 | WiFi, HTTP, MQTT, WebSocket | no | gems available, wiring pending |
 | Camera (GC0308) | no | deferred |
 | NFC | no | deferred |
@@ -385,9 +389,10 @@ kill %1 %2
 - Discovery on the Mac takes about 10 s of the 15 s connect budget
   (`Central::CONNECT_TIMEOUT_MS`), so a reconnect can come back `busy` (exit 8)
   when discovery runs out before both CCCDs are found. (#19)
-- After the robot's GATT table changes, the Mac keeps using the old table until
-  `sudo pkill bluetoothd`: the robot publishes no Service Changed. (#19)
-- `stackchan remote` exits 0 whatever the daemon answers, busy included. (#22)
+- The robot's GATT table ends with Service Changed, but whether that stops
+  the Mac from reusing an old table has not been tried on the robot; until it
+  has, `sudo pkill bluetoothd` after a table change. (#19)
+- Which audio route stays is undecided until both are timed on the robot. (#19)
 - `rake ios:run` (and so `ios:all`) stops at `open -a Simulator` and never
   installs or launches the app.
 - There is no retry path: `StackChan::Controller::Central` raises `TimeoutError` on an ACK

@@ -13,7 +13,7 @@ firmware:
   repos:                                                         # build/repos/esp32-picoruby/<name>
     picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # main
     picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # main
-    picoruby-scservo: 1e3a18b19ecf1d23e33a455278d691690af2acb8   # main
+    picoruby-scservo: 36281109f3051b510634c6ae3f3d521d197e9064   # main
   aot:                                                           # build/aot/<name>
     suppify: a5449a394c6d6ef31afebdbabd56be563208a83e            # main
     spinel: 4a28d45f01fef4605eedca6d7008771d51306e07
