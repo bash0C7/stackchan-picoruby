@@ -13,7 +13,7 @@ The task resets the board and waits for the shell banner itself; no settle time 
 
 - `DONE_ACK ok` = uploaded.
 - `/home/app.mrb started but never returned` = the payload already on the device never hands control back, so there is no shell. `upload_appmrb` wipes storage first and cannot hit this. `upload_mrb` (DST=) cannot wipe without destroying app.mrb, so on a device running an autostart payload a helper upload needs a wipe, then the helper, then app.mrb again.
-- `does not exist` / `did not come back within` = board not on USB; human replug.
+- `does not exist` / `did not come back within` = run `bundle exec rake r2p2:boards`; a replug is for the CoreS3 serial missing from that list.
 - `no shell banner and no boot log` = enumerated but silent; cable or power.
 - `picorbc compilation failed` = syntax error in SRC.
 - `[monitor guard]` = Ctrl+] the open monitor, retry.

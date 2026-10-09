@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-# The sidecar's DRb-facing object.
 require "timeout"
 
 module StackchanSidecar
@@ -10,8 +9,6 @@ module StackchanSidecar
             "ただの相槌や『はい』で済ませず、相手や場の状況に触れた具体的な返事をしてください。"
 
   class Service
-    # Bounded by Timeout.timeout: the daemon's DRb read has no yield point, so
-    # an unbounded reply would freeze the daemon VM.
     DEFAULT_TIMEOUT_S = (ENV["STACKCHAN_SIDECAR_TIMEOUT_S"] || "60").to_i
 
     def initialize(stub: false, delay_s: nil, timeout_s: nil)
@@ -25,19 +22,13 @@ module StackchanSidecar
       end
     end
 
-    def ping
-      "pong"
-    end
-
-    # ctx carries no Time (PicoRuby cannot Marshal one). nil on any failure.
     def respond(prompt, ctx = {})
-      # Strings from PicoRuby arrive ASCII-8BIT; re-tag UTF-8.
       prompt = u8(prompt)
       ctx = normalize_ctx(ctx)
       Timeout.timeout(@timeout_s) do
         if @stub
           sleep(@delay_s) if @delay_s
-          next "stub返答:#{ctx[:touch_zone_label] || prompt}"[0, 19]
+          next "stub返答:#{prompt}"[0, 19]
         end
         situation = build_situation(ctx)
         full = situation.empty? ? prompt : "#{situation}\n\n問いかけ: #{prompt}"
@@ -67,7 +58,6 @@ module StackchanSidecar
 
     private
 
-    # Re-tag a PicoRuby-origin (ASCII-8BIT) String as UTF-8. Non-strings pass through.
     def u8(s)
       s.is_a?(String) ? s.dup.force_encoding("UTF-8") : s
     end
@@ -80,16 +70,11 @@ module StackchanSidecar
     end
 
     def build_situation(ctx)
-      return "" unless ctx.is_a?(Hash) && !ctx.empty?
+      return "" if ctx.empty?
       parts = []
       parts << "今の表情: #{ctx[:last_face]}"               if ctx[:last_face]
       parts << "自分が直前に言ったこと: 「#{ctx[:last_say]}」"   if ctx[:last_say]
       parts << "直前に相手から聞いた話: 「#{ctx[:last_heard]}」" if ctx[:last_heard]
-      if ctx[:touch_zone_label]
-        parts << "今、#{ctx[:touch_zone_label]}を触られた"
-      elsif ctx[:touch_zone]
-        parts << "今、頭の zone=#{ctx[:touch_zone]} を触られた"
-      end
       parts.empty? ? "" : ("今の状況:\n- " + parts.join("\n- "))
     end
   end

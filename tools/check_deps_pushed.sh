@@ -37,7 +37,7 @@ fi
 
 R2P2="$ROOT/vendor/R2P2-ESP32"
 DARWIN="$ROOT/vendor/R2P2-darwin"
-BUILD_CONFIG="$R2P2/components/picoruby-esp32/build_config/xtensa-esp-picoruby.rb"
+BUILD_CONFIG="$ROOT/build_config/esp32-stackchan.rb"
 PINS_ONLY=0
 [ "${1:-}" = "--pins-only" ] && PINS_ONLY=1
 

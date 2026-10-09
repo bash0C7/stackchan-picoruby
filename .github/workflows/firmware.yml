@@ -24,6 +24,8 @@ jobs:
     # esp-idf on the development machine says v5.4.2.
     container: espressif/idf:v5.4.2
     timeout-minutes: 90
+    env:
+      LC_ALL: C.UTF-8
 
     steps:
       - uses: actions/checkout@v7
@@ -57,6 +59,27 @@ jobs:
         env:
           ESP_IDF_EXPORT: /opt/esp/idf/export.sh
         run: bundle exec rake r2p2:build
+
+      - name: Install the QEMU boot gate's shared libraries
+        run: apt-get install -y -qq libsdl2-2.0-0 libslirp0
+
+      - name: Run the QEMU boot gate
+        env:
+          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
+        run: |
+          bundle exec rake qemu:setup
+          bundle exec rake r2p2:qemu_check
+
+      - name: Print the QEMU boot log on failure
+        if: failure()
+        run: |
+          log=$(ls -t /tmp/stackchan-picoruby-debug/qemu-*.log 2>/dev/null | head -1)
+          if [ -n "$log" ]; then
+            echo "== $log =="
+            cat "$log"
+          else
+            echo "no qemu boot log found under /tmp/stackchan-picoruby-debug/"
+          fi
 
       - name: Report what was produced
         run: |

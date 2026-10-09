@@ -10,7 +10,7 @@ class HeadTest < Picotest::Test
   def setup
     @yaw   = FakeServo.new
     @pitch = FakeServo.new
-    @head  = StackchanApp::Head.new(@yaw, @pitch)
+    @head  = StackChan::Robot::Head.new(@yaw, @pitch)
   end
 
   def test_apply_with_Y_only_writes_yaw_holds_pitch

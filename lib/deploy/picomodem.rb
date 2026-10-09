@@ -3,6 +3,7 @@
 # PicoModem file uploader for R2P2 (PicoRuby shell), called from the Rakefile.
 
 require "serialport"
+require_relative "../esp_port"
 
 module Deploy
   module Picomodem
@@ -83,12 +84,13 @@ module Deploy
       hint = others.empty? ? "no /dev/cu.usbmodem* node exists at all" : "present instead: #{others.inspect}"
       raise PortMissing,
             "[picomodem] #{port} does not exist (#{hint}). The board is not enumerated on USB — " \
-            "replug the USB-C cable, or pass ESPPORT=... if the node was renamed."
+            "run `bundle exec rake r2p2:boards`; a replug is for the CoreS3 serial missing from that list."
     end
 
     # Pulses RTS, waits out re-enumeration, returns [serial, port] (the node
     # can come back under another name).
     def reset_and_reopen(port, baud, stdout)
+      serial = EspPort.serial_of(EspPort.ioreg, port)
       pulse = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
       begin
         pulse.dtr = 0
@@ -112,15 +114,14 @@ module Deploy
         end
       end
 
-      others = Dir.glob("/dev/cu.usbmodem*").sort
-      if others.size == 1
-        renamed = others.first
-        stdout.puts "[picomodem] WARNING: #{port} never came back; the board re-enumerated as #{renamed}"
+      renamed = serial && EspPort.port_of(EspPort.ioreg, serial)
+      if renamed && renamed != port
+        stdout.puts "[picomodem] WARNING: #{port} never came back; USB serial #{serial} re-enumerated as #{renamed}"
         return [SerialPort.new(renamed, baud, 8, 1, SerialPort::NONE), renamed]
       end
       raise PortMissing,
-            "[picomodem] #{port} did not come back within #{REENUMERATE_TIMEOUT}s of reset " \
-            "(nodes now present: #{others.inspect}). The board dropped off USB — replug it."
+            "[picomodem] #{port} (USB serial #{serial || 'unknown'}) did not come back within #{REENUMERATE_TIMEOUT}s of reset. " \
+            "Run `bundle exec rake r2p2:boards`; a replug is for the CoreS3 serial missing from that list."
     end
 
     # Reads the boot log until the shell announces itself, answering the

@@ -5,8 +5,12 @@
 ## Usage
 
 ```ruby
-led = StackchanLed.new(py32)           # PY32IOExpander
-led.set_brightness(30)
-led.animate_side(:left, 255, 0, 0, :blink)   # side: :left / :right / :both, mode: :solid / :blink / :breathing / :off
-led.tick(Machine.board_millis)         # call periodically for blink / breathing
+led = StackchanLed.new(py32)
+led.animate_side(:left, 255, 0, 0, :blink)
+led.flash_side(:both, 0, 255, 0)
+led.tick(Machine.uptime_us / 1000)
 ```
+
+`side` is `:left`, `:right` or `:both`; `mode` is `:solid`, `:blink`, `:breathing` or `:off`.
+`flash_side` lights a side solid and blanks it 300 ms later unless `animate_side` sets that side first.
+`tick` drives blink, breathing and the end of a flash.

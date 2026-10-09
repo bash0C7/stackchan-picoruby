@@ -4,11 +4,6 @@ require_relative "test_helper"
 require "service"
 
 class ServiceTest < Test::Unit::TestCase
-  def test_ping
-    service = StackchanSidecar::Service.new(stub: true)
-    assert_equal "pong", service.ping
-  end
-
   def test_respond_stub_returns_reply_text
     service = StackchanSidecar::Service.new(stub: true)
     assert_equal "stub返答:こんにちは", service.respond("こんにちは")

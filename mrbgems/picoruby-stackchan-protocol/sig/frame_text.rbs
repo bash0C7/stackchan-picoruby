@@ -1,0 +1,10 @@
+module Stackchan
+  module AI
+    module FrameText
+      MAX_CHARS: Integer
+
+      def self.sanitize: (String text) -> String
+      def self.build: (face_index: Integer?, text: String) -> String
+    end
+  end
+end

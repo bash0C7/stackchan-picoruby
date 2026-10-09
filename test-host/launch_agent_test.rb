@@ -11,7 +11,7 @@ class LaunchAgentTest < Test::Unit::TestCase
   LOGDIR = "/tmp/stackchan-pico"
 
   def daemon(**over)
-    LaunchAgent.daemon_job(root: ROOT, vm_app: VM_APP, port: 8787, prefix: "StackChan",
+    LaunchAgent.daemon_job(root: ROOT, vm_app: VM_APP, port: 8787, sidecar_port: 8788, prefix: "StackChan",
                            ble_fake: false, logdir: LOGDIR, **over)
   end
 
@@ -25,14 +25,19 @@ class LaunchAgentTest < Test::Unit::TestCase
     assert_equal "com.bash0c7.stackchan-daemon", job["Label"]
     assert_equal ["#{VM_APP}/Contents/MacOS/picoruby",
                   "#{ROOT}/pc/stackchan-pico/app/boot_daemon.rb",
-                  ROOT, "8787", "StackChan"], job["ProgramArguments"]
+                  ROOT, "8787", "StackChan", "8788"], job["ProgramArguments"]
     assert_equal "#{LOGDIR}/daemon.log", job["StandardOutPath"]
     assert_equal "#{LOGDIR}/daemon.log", job["StandardErrorPath"]
   end
 
   def test_fake_ble_daemon_passes_fake_instead_of_a_prefix
     job = daemon(ble_fake: true)
-    assert_equal [ROOT, "8787", "fake"], job["ProgramArguments"][2..]
+    assert_equal [ROOT, "8787", "fake", "8788"], job["ProgramArguments"][2..]
+  end
+
+  def test_a_second_daemon_is_handed_its_own_sidecar_port
+    job = daemon(port: 8797, sidecar_port: 8798, ns: "handoff")
+    assert_equal [ROOT, "8797", "StackChan", "8798"], job["ProgramArguments"][2..]
   end
 
   # Supervision: restart on abnormal exit only. A daemon that exits 0 because

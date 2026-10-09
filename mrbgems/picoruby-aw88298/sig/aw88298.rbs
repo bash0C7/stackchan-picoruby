@@ -11,18 +11,13 @@ class AW88298
   AW_RATE_TBL: Array[Integer]
 
   def self.aw88298_reg06: (Integer sample_rate) -> Integer
-
-  # Ordered init writes as [reg, hi, lo] triples.
   def self.aw88298_init_writes: (Integer sample_rate) -> Array[Array[Integer]]
 
-  # G.711 mu-law -> 16-bit PCM. Defined in src/mruby/aw88298.c, so there is no
-  # Ruby body to infer this from.
-  def self.ulaw_decode: (String ulaw) -> String
+  CHUNK: Integer
 
   @i2c: _Bus
   @i2s: _Sink
 
-  attr_reader i2c: _Bus
   attr_reader i2s: _Sink
 
   def initialize: (i2c: _Bus, i2s: _Sink) -> void
