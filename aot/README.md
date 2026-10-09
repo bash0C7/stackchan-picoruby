@@ -51,4 +51,4 @@ build/host-aot/bin/picoruby build/aot_ab.rb
 ```
 
 Each pair is checked for equal bytes before it is timed. Host wall-clock only;
-device timings come from `/stackchan-device-trial`.
+device timings come from `/stackchan-device-acceptance`.

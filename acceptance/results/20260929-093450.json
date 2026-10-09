@@ -1,0 +1,326 @@
+{
+  "stamp": "20260929-093450",
+  "lock": {
+    "firmware": {
+      "R2P2-ESP32": "97166052a334fcc959bcdf6fe7da4c35792f80a6",
+      "picoruby": "9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba",
+      "repos": {
+        "picoruby-ili9342": "6adc482994ce420c491c442bd0a3c2c8834a6296",
+        "picoruby-py32-io-expander": "8f8b3d3d9aab03ca4dac2b78004b36a0459366c9",
+        "picoruby-scservo": "1e3a18b19ecf1d23e33a455278d691690af2acb8"
+      },
+      "aot": {
+        "suppify": "a5449a394c6d6ef31afebdbabd56be563208a83e",
+        "spinel": "4a28d45f01fef4605eedca6d7008771d51306e07",
+        "picoruby-multicore": "83bd0d6203ebd707e46e0b7779f1c844ecca0187"
+      },
+      "app": "apps/robot/app.rb",
+      "boot_markers": [
+        "[application] boot",
+        "[boot] step:led-init-ok",
+        "[application] BLE peripheral starting"
+      ]
+    },
+    "darwin": {
+      "R2P2-darwin": "7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2",
+      "picoruby": "97479c96a4f9bd4f2b08540807bb792cd4ef8d18"
+    }
+  },
+  "root": "7c677b84df347ef4f52194f800b0e194bd117d13",
+  "deploy": {
+    "lock_digest": "8cd78d1c264cac150bc1078249b050e1616fa1735ddd465bb76de4ce6d78ff29",
+    "steps": [
+      {
+        "name": "pin trees",
+        "ok": true,
+        "detail": "stackchan-picoruby 7c677b8, R2P2-ESP32 9716605, 3 cached gems, R2P2-darwin 7a02219, picoruby 97479c9"
+      },
+      {
+        "name": "pins hold before setup",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "r2p2:setup",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pins hold after setup",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "r2p2:build_flash",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pins hold after build",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "pins hold",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "qemu gate",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "app upload",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "flash identity",
+        "ok": true,
+        "detail": "App version 0.2.21-39-g9716605, storage 0x410000"
+      },
+      {
+        "name": "boot",
+        "ok": true,
+        "detail": "3 markers, no fault"
+      }
+    ],
+    "app_root": "979eb09d4c52dfdd3b1c7289380265e74547960b"
+  },
+  "check": {
+    "root": "979eb09d4c52dfdd3b1c7289380265e74547960b",
+    "steps": [
+      {
+        "name": "flash identity",
+        "ok": true,
+        "detail": "App version 0.2.21-39-g9716605, storage 0x410000"
+      },
+      {
+        "name": "boot",
+        "ok": true,
+        "detail": "3 markers, no fault"
+      },
+      {
+        "name": "pc:up",
+        "ok": true,
+        "detail": "up after 2 tries, 39.9 s"
+      },
+      {
+        "name": "torque on",
+        "ok": true,
+        "detail": "OK torque=on\n"
+      },
+      {
+        "name": "face neutral",
+        "ok": true,
+        "detail": "OK face=neutral\n"
+      },
+      {
+        "name": "led",
+        "ok": true,
+        "detail": "OK led=both/green/solid\n"
+      },
+      {
+        "name": "servo detail",
+        "ok": true,
+        "detail": "<YL_actual:7,PU_actual:9>"
+      },
+      {
+        "name": "remote servo detail",
+        "ok": true,
+        "detail": "<YL_actual:38,PU_actual:19>"
+      },
+      {
+        "name": "remote face",
+        "ok": true,
+        "detail": "ACK"
+      },
+      {
+        "name": "say",
+        "ok": true,
+        "detail": "7872 bytes"
+      },
+      {
+        "name": "timings",
+        "ok": true,
+        "detail": "11 series"
+      },
+      {
+        "name": "quiet wait",
+        "ok": true,
+        "detail": "30 s"
+      },
+      {
+        "name": "selftest detail",
+        "ok": true,
+        "detail": "<YL_actual:0,PU_actual:9>"
+      },
+      {
+        "name": "touch listen",
+        "ok": null,
+        "detail": "incomplete: not touched within 30 s"
+      },
+      {
+        "name": "calibrate",
+        "ok": true,
+        "detail": "yaw_zero 482, pitch_zero 662, verify delta 0/0"
+      },
+      {
+        "name": "release and reconnect",
+        "ok": true,
+        "detail": "release seen: yes, reconnect + face 13.11 s"
+      },
+      {
+        "name": "stack high-water",
+        "ok": true,
+        "detail": "888 B free"
+      },
+      {
+        "name": "questions",
+        "ok": true,
+        "detail": "5 questions"
+      },
+      {
+        "name": "torque off",
+        "ok": false,
+        "detail": "stackchan torque off failed:\n"
+      }
+    ],
+    "timings": {
+      "face neutral": [
+        0.16924300004029647,
+        0.25166800001170486,
+        0.2123039999860339,
+        0.19184200000017881,
+        0.19256599998334423,
+        0.19149499997729436,
+        0.19392799999332055,
+        0.2337299999780953
+      ],
+      "face smile": [
+        0.17753700003959239,
+        0.21951099997386336,
+        0.21178599999984726,
+        0.19018999999389052,
+        0.23231699998723343,
+        0.16338100004941225,
+        0.2708390000043437,
+        0.1888829999952577
+      ],
+      "face joy": [
+        0.2599789999658242,
+        0.21576999995158985,
+        0.20344500005012378,
+        0.2378879999741912,
+        0.21151100000133738,
+        0.21339900000020862,
+        0.24024699995061383,
+        0.20455700001912192
+      ],
+      "face surprised": [
+        0.19516499998280779,
+        0.21017800003755838,
+        0.17177299998002127,
+        0.22019799996633083,
+        0.17192800005432218,
+        0.18317699996987358,
+        0.1632250000257045,
+        0.2110289999982342
+      ],
+      "face sad": [
+        0.21232699998654425,
+        0.15964000002713874,
+        0.21324199996888638,
+        0.23205200000666082,
+        0.22382099996320903,
+        0.17218699998920783,
+        0.19162100000539795,
+        0.18489599996246397
+      ],
+      "face angry": [
+        0.19280000001890585,
+        0.19743800000287592,
+        0.19012899999506772,
+        0.17079000000376254,
+        0.23130500002298504,
+        0.21082499995827675,
+        0.21211999998195097,
+        0.24007399997208267
+      ],
+      "led (floor)": [
+        0.16242599999532104,
+        0.19314099999610335,
+        0.17939299996942282,
+        0.1720550000318326,
+        0.1919989999732934,
+        0.20023000001674518,
+        0.15045700001064688,
+        0.17308699997374788
+      ],
+      "subtitle 19 glyphs": [
+        0.2385880000074394,
+        0.24472900002729148,
+        0.2097199999843724,
+        0.23717600002419204,
+        0.23537699994631112,
+        0.25326100003439933,
+        0.23164300003554672,
+        0.25208599999314174
+      ],
+      "servo text": [
+        0.33227199997054413,
+        0.4189819999737665,
+        0.41158799995901063,
+        0.4201370000373572,
+        0.29933000000892207,
+        0.2927270000218414,
+        0.1916569999884814,
+        0.47187100001610816
+      ],
+      "servo remote": [
+        0.1875010000076145,
+        0.4198949999990873,
+        0.31985599995823577,
+        0.2233049999922514,
+        0.3232260000077076,
+        0.5358569999807514,
+        0.33972800004994497,
+        0.23118000000249594
+      ],
+      "say": [
+        6.356438999995589,
+        6.3654939999687485,
+        6.321399000007659
+      ],
+      "release and reconnect": [
+        13.105978999985382
+      ]
+    },
+    "human": {
+      "servo": {
+        "question": "サーボが指示どおりに動いた",
+        "answer": "y"
+      },
+      "subtitle": {
+        "question": "字幕が欠けずに描画された",
+        "answer": "y"
+      },
+      "audio": {
+        "question": "say の音声が最後まで途切れずに鳴った",
+        "answer": "y"
+      },
+      "distortion": {
+        "question": "say の音声が割れずに鳴った",
+        "answer": "y"
+      },
+      "remote": {
+        "question": "remote servo でも同じように動いた",
+        "answer": "y"
+      }
+    }
+  },
+  "darwin": null,
+  "resets": 34,
+  "verdict": "fail"
+}

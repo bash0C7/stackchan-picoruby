@@ -76,7 +76,7 @@ anything it covers.
 | suppify | `main` | `a5449a3` |
 
 The robot runs this firmware and the app of `979eb09`. The acceptance report
-is `acceptance/results/20260929-093450` (uncommitted).
+is `acceptance/results/20260929-093450`.
 
 ### What the branch changed on the way to a pass
 
@@ -247,8 +247,8 @@ What is not done:
   and `platform_trees_test` are open.
 - #22: host tests that imitate the robot, dRuby timings, audio distortion
   (stages listed in the issue), the stack headroom and `PICORB_TASK_STACK_SIZE`,
-  the one-off pitch read failure, `FIRMWARE_INPUTS` (why `aot/README.md` still
-  names `stackchan-device-trial`), and the revert guard having no test.
+  the one-off pitch read failure, `FIRMWARE_INPUTS` taking all of `aot/` (a
+  README edit there asks for a flash), and the revert guard having no test.
 - #23: move `docs/superpowers/` to the vault.
 - Older and still open: #4, #5, #6 and #8.
 
