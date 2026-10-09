@@ -4,7 +4,7 @@ require "open3"
 require "tmpdir"
 require "fileutils"
 
-ROOT = File.expand_path("..", __dir__)
+ROOT = ENV["TEST_MUST_FAIL_ON_REVERT_ROOT"] || File.expand_path("..", __dir__)
 TEST_DIRS = [%r{\Atest/}, %r{\Atest-host/}, %r{\Aaot/test/}, %r{\Amrbgems/[^/]+/test/}].freeze
 TEST_FILE = /_test\.rb\z/
 
@@ -72,9 +72,10 @@ if changed.none? { |p| !test_side?(p) }
   exit 1
 end
 
+PROJECT_ROOT = File.expand_path("..", __dir__)
 env = {
-  "BUNDLE_GEMFILE" => File.join(ROOT, "Gemfile"),
-  "PICORUBY_ROOT" => ENV["PICORUBY_ROOT"] || File.join(ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby"),
+  "BUNDLE_GEMFILE" => File.join(PROJECT_ROOT, "Gemfile"),
+  "PICORUBY_ROOT" => ENV["PICORUBY_ROOT"] || File.join(PROJECT_ROOT, "vendor", "R2P2-ESP32", "components", "picoruby-esp32", "picoruby"),
 }
 survivors = []
 Dir.mktmpdir("revert-check") do |tmp|
