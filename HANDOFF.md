@@ -27,18 +27,29 @@ the Mac daemon froze.
 
 Since that run, without the robot:
 
+- Every command, reply and head touch goes over dRuby over BLE; the text
+  frames are gone from the controller, and the robot's first NUS pair answers
+  only the direct audio route. The design is
+  `docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
+- Audio has two routes, the direct one (default) and a dRuby one
+  (`say --drb`), so they can be timed against each other on the robot.
+- The robot's GATT table ends with Service Changed.
+- The servo driver keeps why its last read failed and the status byte of its
+  last good reply, and the robot's front reports both (`remote servo_health`).
 - The daemon freeze and the daemon dying when a client hangs up are both
-  closed in the Mac VM, which is rebuilt and running under launchd.
+  closed in the Mac VM, which is rebuilt and running under launchd. The
+  running daemon still has the controller source it loaded at start;
+  `rake pc:up` loads the current one.
 - The picoruby the Mac VM is built from moved forward; the controller follows
   its GATT notification layout.
 - `build_config/esp32-stackchan.rb` fetches the driver gems from each repo's
-  default branch. The commits are the same, but build_config is a firmware
-  input, so the next `acceptance:deploy` flashes.
+  default branch, and the lock pins a newer servo driver, so the next
+  `acceptance:deploy` flashes.
 
-`rake test` and the CRuby host tests pass, and `deps.yml` and `firmware.yml`
-are green on `main`. The iOS and watchOS apps build for the Simulator and,
-started with `-StackchanBatch "actions"`, reach `[batch] end`; both also link
-for a device unsigned (`<platform>:device:check`).
+`rake test` and the CRuby host tests pass. The iOS and watchOS apps build for
+the Simulator and, started with `-StackchanBatch "actions"`, reach
+`[batch] end`. The robot's app and gems load in QEMU (`r2p2:qemu_check`).
+None of the above has met the robot.
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails on
 any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -49,47 +60,22 @@ after changing anything it covers.
 
 ## Next
 
-The owner has asked for the first four in this order, in one flow, without the
-robot. The acceptance run comes after them.
+### A. Approve the Xcode MCP server, then run the Simulator skill through it
 
-### A. Write the layering down in CLAUDE.md
-
-CLAUDE.md lists where files live but never states the principle: only this
-repository knows StackChan; picoruby, R2P2-ESP32, R2P2-darwin and the driver
-gems serve any project and must not learn about it; a build_config or app here
-conforms to the contract the platform sets. One or two sentences at the head of
-the 構成 section. It replaces a rule and a grep test that only recorded a past
-mistake (both deleted).
-
-### B. Run the Simulator check through Xcode MCP
-
-The skill `stackchan-apple-simulator` and `.mcp.json` are in place but have not
-run through Xcode MCP: the session that wrote them had no `xcode` server (it
-loads at session start; `sudo xcrun mcp-server enable` must have been run once).
-The same steps were verified with `xcrun simctl` instead. Run the skill for
-`ios` and `watchos`, correct it against what the tools actually take and
-return, and only then call it verified. `bash0C7/R2P2-darwin`'s CLAUDE.md has
-the working notes for those tools.
+`claude mcp list` shows the project's `xcode` server as pending approval, and
+only the owner can approve it (`/mcp`). Until then the skill
+`stackchan-apple-simulator` has never run through Xcode MCP; the same steps
+are verified with `xcodebuild` and `xcrun simctl`. Once approved, run the
+skill for `ios` and `watchos` and correct it against what the tools actually
+take and return. `bash0C7/R2P2-darwin`'s CLAUDE.md has the working notes for
+those tools.
 
 Left unverified next to this: R2P2-darwin's own watchOS build_config still
 lists `hal-io-darwin`, which no longer satisfies mruby's HAL provider contract
 at the picoruby this project pins, so its watchOS build should fail the same
 way this repository's did. That is R2P2-darwin's and the picoruby fork's to fix.
 
-### C. Issue #22
-
-Its body lists what is left: dRuby timings for more than servo, `stackchan
-remote` exiting 0 on a refusal, `FIRMWARE_INPUTS` taking all of `aot/`, the
-host test that imitates the robot (`FakeOps`), the revert guard having no test,
-discovery time after the VM refresh, the pitch read, the stack headroom.
-
-### D. Issue #19
-
-Move every app action, keepalive, calibration read and head touch onto dRuby
-over BLE; measure audio before deciding whether it keeps a direct route; add
-Service Changed. The robot side changes only in gems bundled into `app.mrb`.
-
-### E. One acceptance run with the robot on
+### B. One acceptance run with the robot on
 
 `acceptance:deploy` (the one flash), then `acceptance:check` run once by the
 owner in a TTY, and the report committed.
@@ -97,9 +83,21 @@ owner in a TTY, and the report committed.
 That run is the first time these meet the robot:
 
 - A real BLE link through the rebuilt Mac VM: scan, discovery, both CCCDs,
-  notifications, dRuby. Read against the port's source it is consistent with
-  the controller; it has only reached `busy` with the robot off.
+  notifications. It has only reached `busy` with the robot off.
+- Every action over dRuby, the one-second `touches` poll as keepalive, and
+  `touch listen` fed by that poll.
+- The GATT table with Service Changed: QEMU never registers the table, so
+  whether NimBLE accepts it is first seen at boot on the robot. Whether it
+  stops the Mac from reusing an old table is a separate observation: connect
+  without `sudo pkill bluetoothd` after the flash and see if both dRuby
+  handles resolve.
+- The dRuby audio route: the robot buffers the whole clip from 2048-byte
+  calls and plays it from its link loop after replying.
 - `chat` against the real sidecar.
+
+The report carries what the owner needs for the open decisions: `say direct`
+and `say drb` with the stack reading after each, `connect ms`, the `servo
+health` line, and the per-action timings over dRuby.
 
 Why the daemon froze, what closed it, and what is still unexplained (three
 scheduler ticks that ran off the VM thread; the kernel source for this macOS
@@ -107,19 +105,22 @@ is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
 `plans/2026-10-03-daemon-tick-thread.md` and
 `review/2026-10-10-pr11-closing-notes.md`.
 
+### C. Decide the audio route
+
+With the report's two `say` timings: if dRuby carries audio well enough, the
+first NUS pair, `AudioReceiver` and the firmware's dependency on the frame
+parser all go; if not, the direct route stays as the one stated exception.
+
 ### Open issues
 
-- #19: every app action still sends text frames and only the CLI's `remote`
-  uses dRuby; unify the route on dRuby over BLE, with audio measured before it
-  may keep a direct route. It also covers Service Changed.
-- #22: host tests that imitate the robot, dRuby timings, the
-  stack headroom and `PICORB_TASK_STACK_SIZE`, `FIRMWARE_INPUTS` taking all of
-  `aot/`, the revert guard having no test, and a pitch position read that
-  failed three times in a row once. For the last, the ESP32 receive path is
-  ruled out by source (vault `review/2026-10-03-pitch-read-pos/`); what is left
-  is the pitch servo being silent for about 300 ms right after a move starts,
-  which only the status byte the driver discards or a bus voltage measurement
-  can settle.
+- #19: implemented except the audio decision above; closes after the
+  acceptance run confirms it on the robot.
+- #22: what is left needs the robot or a decision. The pitch position read
+  that failed three times in a row once: the ESP32 receive path is ruled out
+  by source (vault `review/2026-10-03-pitch-read-pos/`), and `servo health`
+  now tells a silent servo from a bad reply the next time it happens. The
+  stack headroom and `PICORB_TASK_STACK_SIZE` are a design decision
+  (CLAUDE.md). Discovery time is recorded as `connect ms`.
 - #24: LCD touch.
 - The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
   upstream picoruby-socket / picoruby-drb. That is upstream PR material.
