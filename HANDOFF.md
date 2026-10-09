@@ -35,9 +35,10 @@ Since that run, without the robot:
   default branch. The commits are the same, but build_config is a firmware
   input, so the next `acceptance:deploy` flashes.
 
-`rake test` and the CRuby host tests pass. The iOS and watchOS apps build for
-the Simulator and, started with `-StackchanBatch "actions"`, reach
-`[batch] end`.
+`rake test` and the CRuby host tests pass, and `deps.yml` and `firmware.yml`
+are green on `main`. The iOS and watchOS apps build for the Simulator and,
+started with `-StackchanBatch "actions"`, reach `[batch] end`; both also link
+for a device unsigned (`<platform>:device:check`).
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails on
 any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -48,7 +49,47 @@ after changing anything it covers.
 
 ## Next
 
-### 1. One acceptance run with the robot on
+The owner has asked for the first four in this order, in one flow, without the
+robot. The acceptance run comes after them.
+
+### A. Write the layering down in CLAUDE.md
+
+CLAUDE.md lists where files live but never states the principle: only this
+repository knows StackChan; picoruby, R2P2-ESP32, R2P2-darwin and the driver
+gems serve any project and must not learn about it; a build_config or app here
+conforms to the contract the platform sets. One or two sentences at the head of
+the 構成 section. It replaces a rule and a grep test that only recorded a past
+mistake (both deleted).
+
+### B. Run the Simulator check through Xcode MCP
+
+The skill `stackchan-apple-simulator` and `.mcp.json` are in place but have not
+run through Xcode MCP: the session that wrote them had no `xcode` server (it
+loads at session start; `sudo xcrun mcp-server enable` must have been run once).
+The same steps were verified with `xcrun simctl` instead. Run the skill for
+`ios` and `watchos`, correct it against what the tools actually take and
+return, and only then call it verified. `bash0C7/R2P2-darwin`'s CLAUDE.md has
+the working notes for those tools.
+
+Left unverified next to this: R2P2-darwin's own watchOS build_config still
+lists `hal-io-darwin`, which no longer satisfies mruby's HAL provider contract
+at the picoruby this project pins, so its watchOS build should fail the same
+way this repository's did. That is R2P2-darwin's and the picoruby fork's to fix.
+
+### C. Issue #22
+
+Its body lists what is left: dRuby timings for more than servo, `stackchan
+remote` exiting 0 on a refusal, `FIRMWARE_INPUTS` taking all of `aot/`, the
+host test that imitates the robot (`FakeOps`), the revert guard having no test,
+discovery time after the VM refresh, the pitch read, the stack headroom.
+
+### D. Issue #19
+
+Move every app action, keepalive, calibration read and head touch onto dRuby
+over BLE; measure audio before deciding whether it keeps a direct route; add
+Service Changed. The robot side changes only in gems bundled into `app.mrb`.
+
+### E. One acceptance run with the robot on
 
 `acceptance:deploy` (the one flash), then `acceptance:check` run once by the
 owner in a TTY, and the report committed.
@@ -66,7 +107,7 @@ is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
 `plans/2026-10-03-daemon-tick-thread.md` and
 `review/2026-10-10-pr11-closing-notes.md`.
 
-### 2. Open issues
+### Open issues
 
 - #19: every app action still sends text frames and only the CLI's `remote`
   uses dRuby; unify the route on dRuby over BLE, with audio measured before it
@@ -83,7 +124,7 @@ is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
 - The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
   upstream picoruby-socket / picoruby-drb. That is upstream PR material.
 
-### 3. Adopting upstream picoruby for the firmware
+### Adopting upstream picoruby for the firmware
 
 The firmware's picoruby line, rebased onto upstream master, overflows the 8 KB
 picoruby task stack during its own startup and boot-loops on the CoreS3. The
@@ -95,7 +136,7 @@ The NimBLE ESP32 port itself is not waiting on this; it is what the device
 runs. What the boot loop blocks is adopting that port as upstream carries it.
 Its plan is in the vault under `02_dev_docs/picoruby-ble-esp32-port/plans/`.
 
-### 4. What the dependency guard does not reach
+### What the dependency guard does not reach
 
 `--pins-only` checks pins and nothing else, so a rotted gem ref or an edited
 vendored tree passes at push time and is caught only by a full run.
