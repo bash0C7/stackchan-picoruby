@@ -255,14 +255,12 @@ What is not done:
 
 ### 4. The lineage that will not boot
 
-`c-primitives-verified` and `stackchan-integration` in the R2P2-ESP32 fork
-differ by exactly one line, the picoruby submodule pointer: `7258676`, which
-boots, against `568b4b88`, the lineage rebased onto upstream master, which
-overflows the 8 KB picoruby task stack during its own startup and boot-loops.
-`7258676` itself starts its picoruby task with 248 B of the 8 KB left, so the rebased lineage
-needs only a little more startup depth to cross the line.
-Switching is a one-line bump once that is resolved. Land shared changes on
-both. The NimBLE ESP32 port itself is not waiting on this. It is what the device
+The firmware's picoruby line, with its own commits rebased onto upstream
+master, overflows the 8 KB picoruby task stack during its own startup and
+boot-loops on the CoreS3. `7258676`, an ancestor of the line in use, starts its picoruby task with 248 B
+of the 8 KB left, so the rebased one needs only a little more startup depth to
+cross the line. The rebased branches are deleted; adopting upstream means
+rebasing again onto upstream as it is then. The NimBLE ESP32 port itself is not waiting on this. It is what the device
 runs — the vendored tree carries `nimble_owner.c`, there is no btstack
 component, and the sdkconfig fragment is `bt_nimble` — and every verb drives it
 end to end. What the boot loop blocks is adopting that port rebased
