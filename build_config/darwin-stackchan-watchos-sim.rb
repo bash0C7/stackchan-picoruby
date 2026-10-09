@@ -46,7 +46,6 @@ MRuby::CrossBuild.new("watchos-stackchan-sim") do |conf|
 
   conf.ports :darwin, :posix
   conf.gem core: "picoruby-machine"
-  conf.gem core: "hal-io-darwin"
 
   ble_gemdir = ENV["PICORUBY_BLE_GEMDIR"] || "#{MRUBY_ROOT}/mrbgems/picoruby-ble"
   conf.cc.include_paths << "#{ble_gemdir}/ports/darwin/ext"

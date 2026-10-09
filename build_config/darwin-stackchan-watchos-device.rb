@@ -1,7 +1,7 @@
 sdk_path = `xcrun --sdk watchos --show-sdk-path`.strip
 clang    = `xcrun --sdk watchos --find clang`.strip
 ar       = `xcrun --sdk watchos --find ar`.strip
-os_min   = ENV["WATCHOS_MIN"] || "11.0"
+watchos_min   = ENV["WATCHOS_MIN"] || "11.0"
 
 module MRuby
   class Build
@@ -23,7 +23,7 @@ MRuby::CrossBuild.new("watchos-stackchan-device") do |conf|
 
   conf.cc.flags << "-arch" << "arm64_32"
   conf.cc.flags << "-isysroot" << sdk_path
-  conf.cc.flags << "-mwatchos-version-min=#{os_min}"
+  conf.cc.flags << "-mwatchos-version-min=#{watchos_min}"
 
   conf.cc.defines << "MRB_TICK_UNIT=4"
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=3"
@@ -46,7 +46,6 @@ MRuby::CrossBuild.new("watchos-stackchan-device") do |conf|
 
   conf.ports :darwin, :posix
   conf.gem core: "picoruby-machine"
-  conf.gem core: "hal-io-darwin"
 
   ble_gemdir = ENV["PICORUBY_BLE_GEMDIR"] || "#{MRUBY_ROOT}/mrbgems/picoruby-ble"
   conf.cc.include_paths << "#{ble_gemdir}/ports/darwin/ext"
