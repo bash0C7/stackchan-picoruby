@@ -43,6 +43,16 @@ MRuby::CrossBuild.new("watchos-stackchan-sim") do |conf|
   conf.gem gemdir: "#{mruby_mrbgems}/mruby-string-ext"
   conf.gem gemdir: "#{mruby_mrbgems}/mruby-pack"
   conf.gem gemdir: "#{mruby_mrbgems}/mruby-sprintf"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-toplevel-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-object-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-numeric-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-kernel-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-array-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-hash-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-proc-ext"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-method"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-metaprog"
+  conf.gem gemdir: "#{mruby_mrbgems}/mruby-error"
 
   conf.ports :darwin, :posix
   conf.gem core: "picoruby-machine"
