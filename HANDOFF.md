@@ -54,15 +54,30 @@ after changing anything it covers.
 ### A. The Apple apps run without a person
 
 The apps work in the hand. `rake acceptance:darwin` is the wiring that
-drives them from the Mac with nobody tapping, and it does not run yet. It
-stays, so it has to work.
+drives them from the Mac with nobody tapping. It stays, so it has to work,
+and it has not passed yet.
 
-- A watch app started with `-StackchanBatch` while nobody keeps the watch
-  awake finds no advertiser: a scan whose timeout is 15 s takes 34 s to
-  60 s there, and a later batch line can stay silent for minutes. The same
-  app, worn and tapped, connects at once. The scan's wait counts passes of
-  the VM's idle loop, not a clock, so an app the watch is not running in
-  front neither scans nor times out on time.
+- What runs by itself: both device builds (the watch build needs no watch
+  in reach), and on the iPhone the choice of the device, the install, the
+  launch and the batch. `rake ios:device:run` with `connect;joy;status`
+  connected in 2.6 s and ran to `[batch] end` with nobody touching the
+  phone.
+- What stopped the one full run: the iPhone had locked itself, and a locked
+  phone refuses the launch (`the device was not, or could not be,
+  unlocked`). The run needs the phone unlocked when it starts. Whether the
+  phone stays unlocked from the batch to the hand-off, which launches the
+  app a second time after the quiet waits, is not known.
+- The Apple Watch is not driven by that run. A watch app launched from the
+  Mac on a watch nobody has woken is not active: watchOS refuses it a
+  `WKExtendedRuntimeSession` (`The app must be active and before
+  applicationWillResignActive`), a scan whose timeout is 15 s takes 34 s
+  to 60 s and finds nothing, and the Mac has no way to wake a watch. Worn
+  and tapped, the same app connects at once. The Bluetooth central is one
+  implementation for iOS and watchOS, so the iPhone exercises it on
+  hardware.
+- A batch's lines can come out nested (`[batch] [batch] …`) when the main
+  thread is slow: the bridge captures the whole process's stdout during a
+  call, so a line printed for one call lands in the output of the next.
 - A watch that has seen an older robot answers discovery from the table it
   remembered (`dRuby pair not found; discovered services=1
   characteristics=6e400002,6e400003` against a robot that holds
@@ -81,20 +96,12 @@ stays, so it has to work.
 - The Mac sees the watch only while it is unlocked, awake and near; it
   drops to `unavailable` within seconds otherwise.
 
-`rake ios:device:run` and `watchos:device:run` pick a Simulator on this
-Xcode (bash0C7/R2P2-darwin issue 21), and `watchos:device:build` stops
-unless the watch is reachable at that moment. Until that is fixed: build
-with `xcodebuild -project apps/watchos/WatchStackchan.xcodeproj -scheme
-WatchStackchan -destination 'generic/platform=watchOS' -derivedDataPath
-vendor/R2P2-darwin/build/watchos-stackchan-app-device ARCHS=arm64_32
--allowProvisioningUpdates build` after `rake watchos:device:lib
-watchos:gen`, then install and launch with `xcrun devicectl device install
-app --device <UDID> <app>` and `xcrun devicectl device process launch
---console --terminate-existing --device <UDID> -- <bundle id>
--StackchanBatch "<lines>"`; without `-StackchanBatch` the same launch
-attaches the console to an app a person taps. `rake acceptance:darwin`
-goes through the rake tasks and so cannot pass yet. Its watchOS batch also
-asks for `selftest`, an action the watch app does not have.
+To watch an app a person taps, launch it with its console on the Mac:
+`xcrun devicectl device process launch --console --terminate-existing
+--device <UDID> <bundle id>`.
+
+Next step: with the iPhone unlocked, one `rake acceptance:darwin`. The
+commits that reshape that run are local until it has passed.
 
 ### B. Things found on the way, not yet acted on
 
