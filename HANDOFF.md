@@ -51,9 +51,14 @@ after changing anything it covers.
 
 ## Next
 
-### A. The Apple apps from the command line
+No step is waiting. What follows is what is known, for whoever picks one of
+these up; the open issues are the work that remains.
 
-The apps work in the hand. What does not work is driving them unattended.
+### A. The Apple apps from the command line: not needed
+
+The apps work in the hand. Driving them unattended does not work, and
+nothing needs it: only the optional `rake acceptance:darwin` does that, and
+no verdict depends on it.
 
 - A watch app started with `-StackchanBatch` while nobody keeps the watch
   awake finds no advertiser: a scan whose timeout is 15 s takes 34 s to
