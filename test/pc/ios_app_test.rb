@@ -19,16 +19,6 @@ class IosAppTest < Picotest::Test
     { status: :ok, out: out, message: nil }
   end
 
-  def test_face_takes_the_name_from_the_text
-    assert_equal ok("OK face=joy"), @daemon.act("face", "joy")
-    assert_equal ["<F:2>\n"], @radio.rx_frames
-  end
-
-  def test_face_without_a_name_answers_its_usage_line_and_writes_nothing
-    assert_equal ok("face: a face name is required"), @daemon.act("face", "")
-    assert_equal [], @radio.rx_frames
-  end
-
   def test_each_face_button_shows_its_face
     assert_equal ok("OK face=neutral"), @daemon.act("neutral", "")
     assert_equal ok("OK face=smile"), @daemon.act("smile", "")
@@ -39,19 +29,31 @@ class IosAppTest < Picotest::Test
     assert_equal ["<F:0>\n", "<F:1>\n", "<F:2>\n", "<F:3>\n", "<F:4>\n", "<F:5>\n"], @radio.rx_frames
   end
 
-  def test_led_defaults_to_solid_on_both_sides
-    assert_equal ok("OK led=both/red/solid"), @daemon.act("led", "red")
-    assert_equal ["<L:1,R:255,G:0,B:0,S:B,M:s>\n"], @radio.rx_frames
+  def test_each_led_button_sends_its_colour_solid_on_both_sides
+    frames = { "red" => "R:255,G:0,B:0", "green" => "R:0,G:255,B:0", "blue" => "R:0,G:0,B:255",
+               "yellow" => "R:255,G:255,B:0", "cyan" => "R:0,G:255,B:255", "magenta" => "R:255,G:0,B:255",
+               "white" => "R:255,G:255,B:255" }
+    frames.each do |color, rgb|
+      assert_equal ok("OK led=both/#{color}/solid"), @daemon.act("led_#{color}", "")
+    end
+    assert_equal frames.values.map { |rgb| "<L:1,#{rgb},S:B,M:s>\n" }, @radio.rx_frames
   end
 
-  def test_led_takes_mode_and_side
-    assert_equal ok("OK led=left/green/blink"), @daemon.act("led", "green blink left")
-    assert_equal ["<L:1,R:0,G:255,B:0,S:R,M:b>\n"], @radio.rx_frames
+  def test_led_off_button_turns_both_sides_off
+    assert_equal ok("OK led=both/off/off"), @daemon.act("led_off", "")
+    assert_equal ["<L:1,R:0,G:0,B:0,S:B,M:o>\n"], @radio.rx_frames
   end
 
-  def test_led_without_a_color_answers_its_usage_line_and_writes_nothing
-    assert_equal ok("led: color [mode] [side] is required"), @daemon.act("led", "")
-    assert_equal [], @radio.rx_frames
+  def test_no_button_answers_an_error_to_the_default_speech_sentence
+    sentence = "ぼくスタックチャン、かわいいよ"
+    IosApp.__send__(:actions, "")
+    names = @lines.map { |l| l.split("\t")[0] } - %w[connect status stop]
+    @lines.clear
+    failing = names.select do |name|
+      reply = @daemon.act(name, sentence)
+      reply[:status] != :ok || reply[:out].to_s.start_with?("error")
+    end
+    assert_equal [], failing
   end
 
   def test_head_buttons
@@ -78,13 +80,15 @@ class IosAppTest < Picotest::Test
 
   def test_actions_from_the_bridge_list_every_button
     IosApp.__send__(:actions, "")
-    assert_equal ["connect\tconnect", "status\tstatus", "stop\tstop", "face\tFace", "neutral\tneutral", "smile\tsmile",
-                  "joy\tjoy", "surprised\tsurprised", "sad\tsad", "angry\tangry", "led\tLED", "left\tLeft",
-                  "center\tCenter", "right\tRight", "up\tUp", "subtitle\tSubtitle", "selftest\tSelftest"], @lines
+assert_equal ["connect\tconnect", "status\tstatus", "stop\tstop", "neutral\tneutral", "smile\tsmile",
+              "joy\tjoy", "surprised\tsurprised", "sad\tsad", "angry\tangry", "led_red\tLED red",
+              "led_green\tLED green", "led_blue\tLED blue", "led_yellow\tLED yellow", "led_cyan\tLED cyan",
+              "led_magenta\tLED magenta", "led_white\tLED white", "led_off\tLED off", "left\tLeft",
+              "center\tCenter", "right\tRight", "up\tUp", "subtitle\tSubtitle", "selftest\tSelftest"], @lines
   end
 
   def test_a_bridge_call_prints_the_action_line
-    IosApp.__send__(:face, "joy")
+    IosApp.__send__(:joy, "")
     assert_equal ["OK face=joy"], @lines
     assert_equal ["<F:2>\n"], @radio.rx_frames
   end
@@ -110,7 +114,7 @@ class IosAppTest < Picotest::Test
 
   def test_a_declared_action_from_the_bridge_runs_without_a_c_frame_around_the_scheduler
     lines = passing_bridge_lines
-    IosApp.__send__(:face, "joy")
+    IosApp.__send__(:joy, "")
     assert_equal ["OK face=joy"], lines
   end
 
@@ -121,7 +125,7 @@ class IosAppTest < Picotest::Test
   end
 
   def test_every_action_name_answers_respond_to
-    [:connect, :status, :stop, :raw, :calibrate, :speak_audio, :face].each do |name|
+    [:connect, :status, :stop, :raw, :calibrate, :speak_audio, :joy, :led_red].each do |name|
       assert IosApp.respond_to?(name)
     end
   end

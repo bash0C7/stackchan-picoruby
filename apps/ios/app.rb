@@ -11,21 +11,20 @@ App = StackChan.controller do |c|
     "OK head=#{name} #{detail.to_s.chomp}"
   end
 
-  c.action(:face, label: "Face") do |s, a|
-    next "face: a face name is required" unless a[0]
-    show.call(s, a[0])
-  end
-
   %w[neutral smile joy surprised sad angry].each do |name|
     c.action(name.to_sym, label: name) { |s, _a| show.call(s, name) }
   end
 
-  c.action(:led, label: "LED") do |s, a|
-    next "led: color [mode] [side] is required" unless a[0]
-    mode = a[1] || "solid"
-    side = a[2] || "both"
-    s.led(side.to_sym, a[0].to_sym, mode: mode.to_sym)
-    "OK led=#{side}/#{a[0]}/#{mode}"
+  %w[red green blue yellow cyan magenta white].each do |color|
+    c.action("led_#{color}".to_sym, label: "LED #{color}") do |s, _a|
+      s.led(:both, color.to_sym, mode: :solid)
+      "OK led=both/#{color}/solid"
+    end
+  end
+
+  c.action(:led_off, label: "LED off") do |s, _a|
+    s.led(:both, :off, mode: :off)
+    "OK led=both/off/off"
   end
 
   c.action(:left, label: "Left") { |s, _a| turn.call(s, "left", { yaw_left: 40 }) }

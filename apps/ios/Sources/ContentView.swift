@@ -29,7 +29,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     group("Text") {
                         VStack(spacing: 8) {
-                            TextField("face / led / subtitle / Speak", text: $text)
+                            TextField("Subtitle / Speak", text: $text)
                                 .textFieldStyle(.roundedBorder)
                             Button("Speak") { speak() }
                                 .buttonStyle(.glass)

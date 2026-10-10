@@ -221,7 +221,7 @@ module Acceptance
     end
 
     APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
-    APP_BATCH = "connect;face joy;selftest"
+    APP_BATCH = { "ios" => "connect;joy;selftest", "watchos" => "connect;face joy;selftest" }.freeze
     APP_CONNECTED = "[batch] Connected; RX value_handle bound"
     APP_END = "[batch] end"
 
@@ -237,7 +237,7 @@ module Acceptance
         APPS.each do |platform, device|
           step(d, "#{device} batch") do
             @ops.sleep(quiet)
-            out, = app_batch!(platform, APP_BATCH)
+            out, = app_batch!(platform, APP_BATCH.fetch(platform))
             want!(out, APP_CONNECTED, device)
             want!(out, "[batch] OK face=joy", device)
             detail = out.lines.find { |l| l.start_with?("[batch] OK selftest detail=") }.to_s[DETAIL]
@@ -270,7 +270,7 @@ module Acceptance
       cli!("face", "neutral")
       c0 = status["connects"].to_i
       @ops.sleep(quiet)
-      out, ti = app_batch!("ios", "face joy")
+      out, ti = app_batch!("ios", "joy")
       want!(out, "[batch] OK face=joy", "iPhone")
       @ops.sleep(quiet)
       out, tw = app_batch!("watchos", "face smile")

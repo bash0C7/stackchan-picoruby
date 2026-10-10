@@ -107,6 +107,7 @@ class AcceptanceTest < Test::Unit::TestCase
         case verb
         when "connect" then app_take(platform) ? "Connected; RX value_handle bound" : APP_BUSY
         when "face" then app_take(platform) ? "OK face=#{arg}" : APP_BUSY
+        when "joy" then app_take(platform) ? "OK face=joy" : APP_BUSY
         when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\""
         end
       end
@@ -963,7 +964,10 @@ class AcceptanceTest < Test::Unit::TestCase
 
   # --- darwin -----------------------------------------------------------------
 
-  APP_ENV = { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => '-StackchanBatch "connect;face joy;selftest"' }.freeze
+  APP_ENV = {
+    "ios" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;joy;selftest") },
+    "watchos" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;face joy;selftest") }
+  }.freeze
 
   def darwin_step(report, name) = report["darwin"]["steps"].find { |s| s["name"] == name }
   def darwin_failed(report) = report["darwin"]["steps"].find { |s| !s["ok"] }
@@ -983,10 +987,10 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
   end
 
-  def test_each_app_runs_connect_face_and_selftest_once_on_its_console_after_the_builds
+  def test_each_app_runs_connect_a_face_and_selftest_once_on_its_console_after_the_builds
     run_darwin_only
     runs = rakes.select { |c| c[2].end_with?(":device:run") }
-    assert_equal [["ios:device:run", APP_ENV], ["watchos:device:run", APP_ENV]], runs.first(2).map { |c| [c[2], c[3]] }
+    assert_equal [["ios:device:run", APP_ENV["ios"]], ["watchos:device:run", APP_ENV["watchos"]]], runs.first(2).map { |c| [c[2], c[3]] }
     last_build = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:build" }
     assert_operator last_build, :<, @ops.calls.index(runs.first)
   end
@@ -1003,7 +1007,7 @@ class AcceptanceTest < Test::Unit::TestCase
 
   def test_darwin_hand_off_order
     run_darwin_only
-    start = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:run" && c[3] == APP_ENV } + 1
+    start = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:run" && c[3] == APP_ENV["watchos"] } + 1
     seq = @ops.calls[start..].reject { |c| c[0] == :now }.map do |c|
       case c[0]
       when :cli then c[2]
@@ -1012,8 +1016,8 @@ class AcceptanceTest < Test::Unit::TestCase
       end
     end
     assert_equal [[:sleep, 30], %w[face neutral], %w[status], [:sleep, 30],
-                  ["ios:device:run", '-StackchanBatch "face joy"'], [:sleep, 30],
-                  ["watchos:device:run", '-StackchanBatch "face smile"'], [:sleep, 30],
+                  ["ios:device:run", %q(-StackchanBatch "joy")], [:sleep, 30],
+                  ["watchos:device:run", %q(-StackchanBatch "face smile")], [:sleep, 30],
                   %w[face neutral], %w[status]], seq
   end
 
