@@ -16,8 +16,8 @@ module StackChan
       def initialize(name_prefix: "StackChan", radio: nil, log_fn: nil)
         @name_prefix        = name_prefix
         @radio              = radio || Radio.new(name_prefix: name_prefix)
-        @radio.on_notification = method(:handle_notification)
-        @radio.on_disconnect   = method(:link_lost)
+        @radio.on_notification = ->(handle, value) { handle_notification(handle, value) }
+        @radio.on_disconnect   = -> { link_lost }
         @log_fn             = log_fn   || ->(line) { $stderr.write(line + "\n"); $stderr.flush }
         @drb_rx_handle      = nil
         @drb_tx_handle      = nil
