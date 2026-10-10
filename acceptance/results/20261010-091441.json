@@ -268,7 +268,73 @@
       }
     }
   },
-  "darwin": null,
+  "darwin": {
+    "steps": [
+      {
+        "name": "pin R2P2-darwin",
+        "ok": true,
+        "detail": "R2P2-darwin 095fccc, picoruby 121c6b5"
+      },
+      {
+        "name": "ios:device:lib",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "ios:gen",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "ios:device:build",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "watchos:device:lib",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "watchos:gen",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "watchos:device:build",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pin R2P2-darwin holds",
+        "ok": true,
+        "detail": "121c6b5"
+      },
+      {
+        "name": "quiet wait",
+        "ok": true,
+        "detail": "30 s"
+      },
+      {
+        "name": "iPhone batch",
+        "ok": true,
+        "detail": "<YL_actual:3,PU_actual:0>"
+      },
+      {
+        "name": "hand-off Mac → iPhone → Mac",
+        "ok": true,
+        "detail": "iPhone 8.14 s, Mac 3.84 s"
+      }
+    ],
+    "timings": {
+      "hand-off iPhone": [
+        8.144404999911785
+      ],
+      "hand-off Mac": [
+        3.836816000053659
+      ]
+    }
+  },
   "resets": 28,
   "verdict": "pass"
 }
