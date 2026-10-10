@@ -79,7 +79,7 @@
     "app_root": "39db02442968f64ba083b0689bb3d23849983839"
   },
   "check": {
-    "root": "fb417ac7050235ca22edb0c1de2a9a4819ccb603",
+    "root": "24f697556354c11a2f259a2d64f2b7255a9b13f3",
     "steps": [
       {
         "name": "flash identity",
@@ -94,7 +94,7 @@
       {
         "name": "pc:up",
         "ok": true,
-        "detail": "up after 2 tries, 31.9 s"
+        "detail": "up after 2 tries, 27.8 s"
       },
       {
         "name": "torque on",
@@ -114,22 +114,168 @@
       {
         "name": "servo detail",
         "ok": true,
-        "detail": "<YL_actual:40,PU_actual:19>"
+        "detail": "<YL_actual:39,PU_actual:4>"
       },
       {
         "name": "remote servo detail",
-        "ok": false,
-        "detail": "stackchan remote servo YL=40 PU=20 T=500 failed:\nerror: drbble: no reply in 3000 ms\n"
+        "ok": true,
+        "detail": "<YL_actual:42,PU_actual:11>"
+      },
+      {
+        "name": "servo health",
+        "ok": true,
+        "detail": "<yaw_err:none,yaw_status:0,pitch_err:none,pitch_status:0>"
+      },
+      {
+        "name": "remote face",
+        "ok": true,
+        "detail": "ACK"
+      },
+      {
+        "name": "say",
+        "ok": true,
+        "detail": "7872 bytes"
+      },
+      {
+        "name": "say routes",
+        "ok": true,
+        "detail": "say direct + drb recorded"
+      },
+      {
+        "name": "timings",
+        "ok": true,
+        "detail": "9 series"
+      },
+      {
+        "name": "quiet wait",
+        "ok": true,
+        "detail": "30 s"
+      },
+      {
+        "name": "selftest detail",
+        "ok": true,
+        "detail": "<YL_actual:2,PU_actual:9>"
+      },
+      {
+        "name": "touch listen",
+        "ok": null,
+        "detail": "incomplete: no TTY, nobody to touch the head"
+      },
+      {
+        "name": "calibrate",
+        "ok": true,
+        "detail": "yaw_zero 481, pitch_zero 662, verify delta 0/0"
+      },
+      {
+        "name": "release and reconnect",
+        "ok": true,
+        "detail": "release seen: yes, reconnect + face 3.14 s"
+      },
+      {
+        "name": "stack high-water",
+        "ok": true,
+        "detail": "920 B free"
+      },
+      {
+        "name": "questions",
+        "ok": true,
+        "detail": "5 questions"
+      },
+      {
+        "name": "torque off",
+        "ok": true,
+        "detail": "OK torque=off\n"
+      },
+      {
+        "name": "chat",
+        "ok": true,
+        "detail": "reply=こんにちは、頭を撫でられましたね。嬉しいです。"
       }
     ],
     "timings": {
       "connect ms": [
-        6412
+        2648
+      ],
+      "say direct": [
+        6.386682000011206
+      ],
+      "stack after say direct": [
+        920
+      ],
+      "say drb": [
+        4.751931000035256
+      ],
+      "stack after say drb": [
+        920
+      ],
+      "servo": [
+        0.20404700003564358,
+        0.21658100001513958,
+        0.20857100002467632,
+        0.18257500021718442,
+        0.21746700000949204,
+        0.23166900011710823,
+        0.204316999996081,
+        0.21171800000593066
+      ],
+      "face": [
+        0.22149799996986985,
+        0.24010199983604252,
+        0.300848999992013,
+        0.1966260001063347,
+        0.24513500020839274,
+        0.2432819998357445,
+        0.20351799996569753,
+        0.2436720000114292
+      ],
+      "led": [
+        0.20218000002205372,
+        0.18929399992339313,
+        0.1751540000550449,
+        0.1786889999639243,
+        0.1812799999024719,
+        0.17608299991115928,
+        0.2181180000770837,
+        0.17870799987576902
+      ],
+      "text": [
+        0.2645879997871816,
+        0.2840940000023693,
+        0.2635050001554191,
+        0.2617629999294877,
+        0.2195069999434054,
+        0.26856200001202524,
+        0.20165699999779463,
+        0.2760250000283122
+      ],
+      "release and reconnect": [
+        3.144391000038013
       ]
     },
-    "human": {}
+    "human": {
+      "servo": {
+        "question": "サーボが指示どおりに動いた",
+        "answer": null
+      },
+      "subtitle": {
+        "question": "字幕が欠けずに描画された",
+        "answer": null
+      },
+      "audio": {
+        "question": "say の音声が最後まで途切れずに鳴った",
+        "answer": null
+      },
+      "distortion": {
+        "question": "say の音声が割れずに鳴った",
+        "answer": null
+      },
+      "remote": {
+        "question": "remote servo でも同じように動いた",
+        "answer": null
+      }
+    }
   },
   "darwin": null,
-  "resets": 10,
-  "verdict": "fail"
+  "resets": 13,
+  "verdict": "incomplete"
 }

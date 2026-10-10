@@ -21,30 +21,28 @@ head touch, audio, and selftest. Servo absolute positioning — the point of the
 whole thing — lands where it is told.
 
 The robot carries the firmware and app of the latest report in
-`acceptance/results/`: the deploy passed every step, including the boot with
-Service Changed in the GATT table. That report's verdict is `fail`. Its check
-ran without a TTY and reached, over a real BLE link, `torque on`, `face`,
-`led` and `servo` through dRuby (connect took 2.5 s and 6.4 s on its two
-runs), then stopped at `remote servo detail`. The cause was in the controller,
-not the robot, and is fixed on `main`: `stackchan remote` called the robot's
-front through `send`, which waits where the Mac's BLE notifications are never
-collected (CLAUDE.md, the CRuby differences). The fix has not met the robot.
+`acceptance/results/`, and that report's check ran start to finish over a
+real BLE link with every step a machine can judge passing. Its verdict is
+`incomplete`, for one reason: it ran without a TTY, so nobody touched the
+head and the five questions are unanswered.
 
-Right after that, the robot left the Mac: no ESP32 on the USB bus and no
-StackChan advertiser. The last BLE connection before it succeeded. Nothing
-here can tell a power-off from a pulled cable; it needs a person at the robot.
+What that run showed on the robot:
 
-What is on `main` and has not met the robot beyond the steps above:
-
-- Every command, reply and head touch goes over dRuby over BLE; the text
-  frames are gone from the controller, and the robot's first NUS pair answers
-  only the direct audio route. The design is
+- Every command and reply goes over dRuby over BLE: `torque`, `face`, `led`,
+  `servo`, `selftest`, `calibrate`, the `remote` verb, `servo health`
+  (no read error, status 0 on both servos), and `chat` against the real
+  sidecar. The design is
   `docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
-- Audio has two routes, the direct one (default) and a dRuby one
-  (`say --drb`), so they can be timed against each other on the robot.
-- The servo driver keeps why its last read failed and the status byte of its
-  last good reply, and the robot's front reports both (`remote servo_health`).
-- The one-second `touches` poll as keepalive, and `touch listen` fed by it.
+- The robot boots and connects with Service Changed in its GATT table, and
+  the Mac needed no `sudo pkill bluetoothd` after the flash that changed the
+  table.
+- The robot releases a quiet central and the next action reconnects.
+- Both audio routes return: the direct one and the dRuby one (`say --drb`).
+  The task stack's low mark reads the same after either (920 B free).
+
+What it could not show, because it needs a person: the head touch arriving
+through the one-second `touches` poll (`touch listen`), and whether the
+servos, the subtitle and the audio of either route looked and sounded right.
 
 `rake test` and the CRuby host tests pass. The iOS and watchOS apps build and
 start in the Simulator through Xcode MCP (`/stackchan-apple-simulator`) and
@@ -59,25 +57,17 @@ after changing anything it covers.
 
 ## Next
 
-### A. Get the robot back on USB, then one acceptance check
+### A. One acceptance check by the owner
 
-With the CoreS3 on USB and powered (`rake r2p2:boards` lists it): the owner
-runs `acceptance:check` once in a TTY at the robot. No deploy is needed; only
-the controller changed since the flash, and the check restarts the daemon
-with the current source.
+The owner runs `acceptance:check` once in a TTY at the robot, touches the
+back of the head when asked and answers the questions. No deploy is needed:
+the robot already carries what the report names. That run is the one that
+can end in `pass`.
 
-What that run meets for the first time:
-
-- `stackchan remote` after the fix, and everything after it in the check:
-  `servo health`, the timings over dRuby, `say` on both audio routes with the
-  stack reading after each, `touch listen` fed by the poll, calibrate, release
-  and reconnect, `chat` against the real sidecar.
-- Whether Service Changed stops the Mac from reusing an old GATT table. The
-  table registered and the robot connected; the Mac was not seen to need
-  `sudo pkill bluetoothd` after this flash, which changed the table.
-
-If the robot does not come back as a USB device with power applied, read the
-boot log first (`/stackchan-device-boot-verify`); do not flash to find out.
+The run plays `say` three times: the direct route in `say`, then direct and
+dRuby in `say routes`, in that order. The questions ask about audio once, so
+note by ear whether the third one (dRuby) differs from the first two; that
+is the evidence C needs and the report does not hold it.
 
 ### B. Things found on the way, not yet acted on
 
@@ -102,14 +92,17 @@ still unexplained are in the vault: `review/2026-10-01-daemon-freeze/`,
 
 ### C. Decide the audio route
 
-With the report's two `say` timings: if dRuby carries audio well enough, the
-first NUS pair, `AudioReceiver` and the firmware's dependency on the frame
-parser all go; if not, the direct route stays as the one stated exception.
+The report times one `say` on each route (`say direct`, `say drb`) with the
+stack reading after each; the dRuby one returned sooner and cost no stack.
+One sample each is not a comparison of speed, and what decides is the ear
+(A). If dRuby sounds the same, the first NUS pair, `AudioReceiver` and the
+firmware's dependency on the frame parser all go; if not, the direct route
+stays as the one stated exception.
 
 ### Open issues
 
-- #19: implemented except the audio decision above; closes after the
-  acceptance run confirms it on the robot.
+- #19: implemented and seen on the robot except the head touch through the
+  poll (A) and the audio decision (C).
 - #22: what is left needs the robot or a decision. The pitch position read
   that failed three times in a row once: the ESP32 receive path is ruled out
   by source (vault `review/2026-10-03-pitch-read-pos/`), and `servo health`
