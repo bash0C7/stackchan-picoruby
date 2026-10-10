@@ -13,7 +13,7 @@
     },
     {
       "path": "acceptance/runner.rb",
-      "line": 296,
+      "line": 301,
       "column": 54,
       "severity": "error",
       "rule": "call.undefined-method",

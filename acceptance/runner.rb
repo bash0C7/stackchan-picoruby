@@ -221,9 +221,13 @@ module Acceptance
     end
 
     APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
-    APP_BATCH = { "ios" => "connect;joy;selftest", "watchos" => "connect;face joy;selftest" }.freeze
     APP_CONNECTED = "[batch] Connected; dRuby pair bound"
     APP_END = "[batch] end"
+    APP_BATCH = {
+      "ios" => { batch: "connect;joy;selftest", wants: [APP_CONNECTED, "[batch] OK face=joy"], selftest: true },
+      "watchos" => { batch: "connect;face joy;head_sweep",
+                     wants: [APP_CONNECTED, "[batch] OK face=joy", "[batch] OK head_sweep"], selftest: false }
+    }.freeze
 
     def run_darwin
       d = @report["darwin"] = { "steps" => [], "timings" => {} }
@@ -237,9 +241,10 @@ module Acceptance
         APPS.each do |platform, device|
           step(d, "#{device} batch") do
             @ops.sleep(quiet)
-            out, = app_batch!(platform, APP_BATCH.fetch(platform))
-            want!(out, APP_CONNECTED, device)
-            want!(out, "[batch] OK face=joy", device)
+            plan = APP_BATCH.fetch(platform)
+            out, = app_batch!(platform, plan.fetch(:batch))
+            plan.fetch(:wants).each { |line| want!(out, line, device) }
+            next plan.fetch(:wants).drop(1).map { |l| l.delete_prefix("[batch] ") }.join(", ") unless plan.fetch(:selftest)
             detail = out.lines.find { |l| l.start_with?("[batch] OK selftest detail=") }.to_s[DETAIL]
             raise Stop, "#{device}: no selftest detail in #{out.inspect}" unless detail
             detail

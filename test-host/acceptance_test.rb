@@ -108,6 +108,7 @@ class AcceptanceTest < Test::Unit::TestCase
         when "connect" then app_take(platform) ? "Connected; dRuby pair bound" : APP_BUSY
         when "face" then app_take(platform) ? "OK face=#{arg}" : APP_BUSY
         when "joy" then app_take(platform) ? "OK face=joy" : APP_BUSY
+        when "head_sweep" then "OK head_sweep"
         when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\""
         end
       end
@@ -966,7 +967,7 @@ class AcceptanceTest < Test::Unit::TestCase
 
   APP_ENV = {
     "ios" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;joy;selftest") },
-    "watchos" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;face joy;selftest") }
+    "watchos" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;face joy;head_sweep") }
   }.freeze
 
   def darwin_step(report, name) = report["darwin"]["steps"].find { |s| s["name"] == name }
@@ -1002,6 +1003,7 @@ class AcceptanceTest < Test::Unit::TestCase
                   "Watch batch", "hand-off Mac → iPhone → Watch → Mac"], names(r["darwin"])
     assert r["darwin"]["steps"].all? { |s| s["ok"] }
     assert_equal "<YL_actual:50,PU_actual:29>", darwin_step(r, "iPhone batch")["detail"]
+    assert_equal "OK face=joy, OK head_sweep", darwin_step(r, "Watch batch")["detail"]
     assert_empty @ops.calls.select { |c| c[0] == :prompt }
   end
 
@@ -1061,6 +1063,23 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_match(/no selftest detail in/, darwin_failed(r)["detail"])
   end
 
+  def test_a_watch_without_head_sweep_fails_its_batch
+    @ops.app_out["watchos"] = lambda do |_lines|
+      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] error: servo\n[batch] end\n"
+    end
+    r = run_darwin_only
+    assert_equal "Watch batch", darwin_failed(r)["name"]
+    assert_match(/Watch: no "\[batch\] OK head_sweep"/, darwin_failed(r)["detail"])
+  end
+
+  def test_a_watch_needs_no_selftest_detail
+    @ops.app_out["watchos"] = lambda do |_lines|
+      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] OK head_sweep\n[batch] end\n"
+    end
+    r = run_darwin_only
+    assert_equal "OK face=joy, OK head_sweep", darwin_step(r, "Watch batch")["detail"]
+  end
+
   def test_an_app_that_never_ends_its_batch_fails
     @ops.app_out["ios"] = ->(_lines) { "[batch] Connected; dRuby pair bound\n" }
     r = run_darwin_only
@@ -1086,8 +1105,7 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.app_out["watchos"] = lambda do |_lines|
       runs += 1
       next "[batch] OK face=joy\n[batch] end\n" if runs == 2
-      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n" \
-        "[batch] OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n[batch] end\n"
+      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] OK head_sweep\n[batch] end\n"
     end
     r = run_darwin_only
     assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
