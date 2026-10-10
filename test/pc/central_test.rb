@@ -62,6 +62,42 @@ class CentralTest < Picotest::Test
     assert_equal [], radio.descriptor_writes
   end
 
+  def connect_error_message(radio)
+    build_central(radio).connect
+    nil
+  rescue StackChan::Controller::ConnectionError => e
+    e.message
+  end
+
+  def gap_uuid
+    [0x00, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x10, 0x00,
+     0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb].pack("C*")
+  end
+
+  def test_connect_with_empty_discovery_says_nothing_was_discovered
+    message = connect_error_message(FakeRadio.new(services: []))
+    assert_equal "dRuby pair not found; discovered services=0 characteristics=none", message
+  end
+
+  def test_connect_with_foreign_table_lists_the_characteristics_found
+    nus = StackChan::Controller::Nus
+    services = [
+      { characteristics: [{ uuid128: gap_uuid, value_handle: 3, descriptors: [] }] },
+      { characteristics: [
+        { uuid128: nus.nus_uuid(0x00, 0x03), value_handle: 5, descriptors: [] },
+        { uuid128: nus.nus_uuid(0x00, 0x02), value_handle: 7, descriptors: [] },
+      ] },
+    ]
+    message = connect_error_message(FakeRadio.new(services: services))
+    assert_equal "dRuby pair not found; discovered services=2 characteristics=2a00,6e400003,6e400002", message
+  end
+
+  def test_connect_without_drb_cccd_reports_the_discovery
+    radio = FakeRadio.new(services: services_without_cccd(StackChan::Controller::Nus.drb_tx_uuid))
+    message = connect_error_message(radio)
+    assert_equal "dRuby TX CCCD not found; discovery did not finish; discovered services=1 characteristics=6e400004,6e400005", message
+  end
+
   def test_not_connected_raises
     central = build_central(FakeRadio.new(services: nus_services))
     assert_raise(StackChan::Controller::ConnectionError) { central.raw_send("<F:2>\n") }

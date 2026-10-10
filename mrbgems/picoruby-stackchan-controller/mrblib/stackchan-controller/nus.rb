@@ -29,8 +29,40 @@ module StackChan
         descriptor && descriptor[:handle]
       end
 
+      HEX = "0123456789abcdef"
+      GAP_BASE_SUFFIX = [0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb].pack("C*")
+
+      def hex_bytes(uuid128, from, count)
+        out = ""
+        i = from
+        while i < from + count
+          b = uuid128.getbyte(i)
+          out << HEX[b >> 4, 1] << HEX[b & 0x0f, 1]
+          i += 1
+        end
+        out
+      end
+
+      def short_uuid(uuid128)
+        return "?" unless uuid128.is_a?(String) && uuid128.bytesize == 16
+        if uuid128.byteslice(4, 12) == GAP_BASE_SUFFIX
+          hex_bytes(uuid128, 2, 2)
+        else
+          hex_bytes(uuid128, 0, 4)
+        end
+      end
+
+      def describe_services(services)
+        shorts = []
+        services.each do |service|
+          service[:characteristics].each { |ch| shorts << short_uuid(ch[:uuid128]) }
+        end
+        "discovered services=#{services.size} characteristics=#{shorts.empty? ? "none" : shorts.join(",")}"
+      end
+
       module_function :nus_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
-                      :find_characteristic, :cccd_handle
+                      :find_characteristic, :cccd_handle,
+                      :hex_bytes, :short_uuid, :describe_services
     end
   end
 end
