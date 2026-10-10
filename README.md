@@ -22,7 +22,7 @@ the Stack-chan community.
 ## Architecture
 
 ```
-+-----------+     BLE NUS, pair 6e400004/5 (dRuby)      +---------------------+
++-----------+     BLE, dRuby pair 6e400004/5          +---------------------+
 |  macOS    | <--------------------------------------> |  CoreS3 / R2P2      |
 |  iPhone   |                                          |  PicoRuby + mrbgems |
 |  Watch    |                                          |  LCD / LED / servo  |
@@ -32,14 +32,14 @@ the Stack-chan community.
 
 The CoreS3 is an I/O endpoint. It renders faces, drives the 12-pixel WS2812 RGB
 ring, moves the two feedback servos, plays audio through the AW88298 amplifier,
-advertises the Nordic UART Service, and listens for control frames.
+advertises its dRuby service, and listens for control frames.
 
 The controllers — the macOS daemon and the iPhone and Apple Watch apps — are
 the orchestrators. They send control frames (face, LED, servo position, audio)
 and read the reply lines (an ACK or ERR line plus a detail line).
 
 Every command, reply, head touch and audio clip travels as dRuby over BLE on the
-service's characteristic pair (`6e400004` write, `6e400005` notify).
+service's characteristic pair (`6e400004` write, `6e400005` notify; the UUIDs sit on the Nordic UART base `6e40xxxx`).
 The controller calls the robot's front object; a command is a Hash in the
 key-value vocabulary that the FrameParser in the
 `mrbgems/picoruby-stackchan-protocol` gem reads, and the reply is the lines
@@ -363,7 +363,7 @@ kill %1 %2
 | Eye-blink animation | yes | eye-only redraw |
 | WS2812 LED ring (12 px) | yes | solid, blink, breathing, off, per side |
 | Servo control (yaw, pitch) | yes | normalized YL/YR/PU protocol, BLE calibration CLI |
-| BLE control (Nordic UART Service) | yes | dRuby over BLE for commands, replies, touch and audio, 20 ms link loop |
+| BLE control (dRuby service) | yes | dRuby over BLE for commands, replies, touch and audio, 20 ms link loop |
 | Speaker (AW88298 over I2S) | yes | mu-law audio sent from macOS as dRuby calls over BLE |
 | Microphone | no | planned |
 | IMU (BMI270 + BMM150) | no | planned |

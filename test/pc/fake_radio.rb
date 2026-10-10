@@ -175,17 +175,17 @@ class FakeRobotRadio < FakeRadio
   DTX   = 0x24
   DCCCD = 0x26
 
-  def self.nus_services
-    nus = StackChan::Controller::Nus
+  def self.gatt_services
+    gatt = StackChan::Controller::Gatt
     [{ characteristics: [
-      { uuid128: nus.drb_rx_uuid, value_handle: DRX, descriptors: [] },
-      { uuid128: nus.drb_tx_uuid, value_handle: DTX, descriptors: [{ uuid128: nus.cccd_uuid, handle: DCCCD }] },
+      { uuid128: gatt.drb_rx_uuid, value_handle: DRX, descriptors: [] },
+      { uuid128: gatt.drb_tx_uuid, value_handle: DTX, descriptors: [{ uuid128: gatt.cccd_uuid, handle: DCCCD }] },
     ] }]
   end
 
   attr_reader :rx_frames, :display, :led, :speaker, :remote, :dispatcher, :touches_calls
 
-  def initialize(services: FakeRobotRadio.nus_services, conn_handle: 1, target: :fake_target)
+  def initialize(services: FakeRobotRadio.gatt_services, conn_handle: 1, target: :fake_target)
     super(services: services, conn_handle: conn_handle, target: target)
     @rx_frames = []
     @touches_calls = 0

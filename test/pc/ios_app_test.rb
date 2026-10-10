@@ -95,7 +95,7 @@ assert_equal ["connect\tconnect", "status\tstatus", "stop\tstop", "neutral\tneut
 
   def test_connect_from_the_bridge_prints_the_line_the_connect_button_waits_for
     IosApp.__send__(:connect, "")
-    assert_equal ["Connected; RX value_handle bound"], @lines
+    assert_equal ["Connected; dRuby pair bound"], @lines
   end
 
   def test_speak_audio_from_the_bridge_takes_the_synthesised_hex

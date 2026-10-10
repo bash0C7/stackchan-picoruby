@@ -6,7 +6,7 @@ module StackChan
       FALLBACK_CHAT_PHRASE = "ちょっと考え中みたい"
       SHUTDOWN_WAIT_MS = 1000
       LISTEN_CAP = 16
-      CONNECTED_LINE = "Connected; RX value_handle bound"
+      CONNECTED_LINE = "Connected; dRuby pair bound"
 
       attr_reader :session, :reply_handlers
 

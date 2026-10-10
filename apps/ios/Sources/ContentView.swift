@@ -120,7 +120,7 @@ struct ContentView: View {
         output = "Scanning for Stack-chan…"
         VMExecutor.shared.call("connect", "") { result in
             self.output = result.isEmpty ? "(no output)" : result
-            self.connected = result.contains("Connected; RX value_handle bound")
+            self.connected = result.contains("Connected; dRuby pair bound")
             self.connectFailed = !self.connected
             self.busy = false
         }

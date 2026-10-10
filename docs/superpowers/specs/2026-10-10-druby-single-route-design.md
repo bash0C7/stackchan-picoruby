@@ -4,7 +4,7 @@
 
 ## 目的
 
-Mac・iPhone・Apple Watch の controller と robot の間を流れるもの (命令・応答・頭タッチ・音声) を、NUS service 内の dRuby pair (`6e400004` write / `6e400005` notify) の 1 本にする。例外の経路は無い。
+Mac・iPhone・Apple Watch の controller と robot の間を流れるもの (命令・応答・頭タッチ・音声) を、robot の dRuby service 内の pair (`6e400004` write / `6e400005` notify) の 1 本にする。例外の経路は無い。
 
 ## 形
 
@@ -12,7 +12,7 @@ app の DSL (`apps/*/app.rb`) と `Session` の公開メソッドは経路に依
 
 ### robot (`mrbgems/picoruby-stackchan-robot`、`app.mrb` に同梱)
 
-- GATT 表は GAP、NUS service (dRuby の RX / TX と TX の CCCD だけ)、末尾の Service Changed (service `0x1801`、characteristic `0x2A05` indicate + CCCD) から成る。
+- GATT 表は GAP、dRuby service (RX / TX と TX の CCCD だけ)、末尾の Service Changed (service `0x1801`、characteristic `0x2A05` indicate + CCCD) から成る。
 - `Remote` が front。`command` / `servo` / `led` / `face` / `text` / `torque` / `read_pos` / `stack_free` / `selftest` / `touches` / `audio_begin` / `audio_chunk` / `audio_play` / `audio_done` を持つ。
 - 命令系は `Dispatcher#handle_to` を通し、行の Array を返す (1 行目が `.` か `?`、あれば 2 行目が detail)。
 - `touches`：`Ticker#poll_touch` は zone を `Remote` の queue (上限 16、溢れたら古い方を捨てる) に積む。`touches` は溜まった zone の Array を返して空にする。robot 側の `on_touch` handler は robot の中で走る。

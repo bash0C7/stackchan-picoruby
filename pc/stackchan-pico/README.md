@@ -17,7 +17,7 @@ stackchan <verb>           ← bin/stackchan (shell wrapper: exec only)
    │ attaches
    ▼
 CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
-                                          │  ├─ BLE central  → StackChan (NUS)
+                                          │  ├─ BLE central  → StackChan (dRuby over BLE)
                                           │  └─ picoruby-drb TCP ▶ sidecar (CRuby)
                                           │                          ├─ Apple Foundation Model (chat)
                                           │                          └─ say + afconvert → mu-law (say)
@@ -32,7 +32,7 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   most 16 that `touch listen` polls.
 - **Link** (`StackChan::Controller::Link`): a clocked state machine. See
   "Link lifecycle" below.
-- **BLE**: `StackChan::Controller::Nus` (UUID→handle, frame classify),
+- **BLE**: `StackChan::Controller::Gatt` (the robot's GATT layout: UUIDs, characteristic and CCCD lookup, discovery description),
   `StackChan::Controller::Radio` (the `BLE` subclass) and
   `StackChan::Controller::Central` (verb-facing wrapper) are host-tested in `test/pc` (`SUITE=pc bundle exec rake test` from
   the repo root) against a `BLE` stub and `FakeRadio`. They implement

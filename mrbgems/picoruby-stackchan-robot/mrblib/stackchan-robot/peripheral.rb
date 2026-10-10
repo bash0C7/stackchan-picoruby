@@ -7,14 +7,14 @@ module StackChan
       BTSTACK_EVENT_STATE = 0x60
       HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
 
-      NUS_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
+      DRB_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
       DRB_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x04\x00\x40\x6e"
       DRB_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x05\x00\x40\x6e"
 
-      NUS_RX_PROPS = BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
-      NUS_TX_PROPS = BLE::READ | BLE::NOTIFY | BLE::DYNAMIC
-      NUS_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
-      NUS_CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
+      DRB_RX_PROPS = BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
+      DRB_TX_PROPS = BLE::READ | BLE::NOTIFY | BLE::DYNAMIC
+      DRB_TX_VAL_PROPS = BLE::READ | BLE::DYNAMIC
+      CCCD_PROPS = BLE::READ | BLE::WRITE | BLE::WRITE_WITHOUT_RESPONSE | BLE::DYNAMIC
 
       SERVICE_CHANGED_CHAR_UUID = 0x2A05
 
@@ -31,9 +31,9 @@ module StackChan
         ticker = wiring.ticker
         remote = wiring.remote
         drb = StackChan::Robot::DrbChannel.new(
-          rx_handle:   nus_handle(db, DRB_RX_CHAR_UUID, :value_handle),
-          tx_handle:   nus_handle(db, DRB_TX_CHAR_UUID, :value_handle),
-          cccd_handle: nus_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
+          rx_handle:   drb_handle(db, DRB_RX_CHAR_UUID, :value_handle),
+          tx_handle:   drb_handle(db, DRB_TX_CHAR_UUID, :value_handle),
+          cccd_handle: drb_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
           responder:   DRbBle::Responder.new(remote, allow: remote.exposed)
         )
         @link = StackChan::Robot::LinkLoop.new(
@@ -92,22 +92,22 @@ module StackChan
           db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GAP_SERVICE_UUID) do |s|
             s.add_characteristic(BLE::READ, BLE::GAP_DEVICE_NAME_UUID, BLE::READ, "StackChan-PicoRuby")
           end
-          db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, NUS_SERVICE_UUID) do |s|
-            s.add_characteristic(NUS_RX_PROPS, DRB_RX_CHAR_UUID, NUS_RX_PROPS, "")
-            s.add_characteristic(NUS_TX_PROPS, DRB_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
-              c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
+          db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, DRB_SERVICE_UUID) do |s|
+            s.add_characteristic(DRB_RX_PROPS, DRB_RX_CHAR_UUID, DRB_RX_PROPS, "")
+            s.add_characteristic(DRB_TX_PROPS, DRB_TX_CHAR_UUID, DRB_TX_VAL_PROPS, "") do |c|
+              c.add_descriptor(CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
             end
           end
           db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GATT_SERVICE_UUID) do |s|
             s.add_characteristic(BLE::INDICATE, SERVICE_CHANGED_CHAR_UUID, BLE::INDICATE, "\x00\x00\xFF\xFF") do |c|
-              c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
+              c.add_descriptor(CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
             end
           end
         end
       end
 
-      def nus_handle(db, char_uuid, key)
-        db.handle_table[NUS_SERVICE_UUID][char_uuid][key]
+      def drb_handle(db, char_uuid, key)
+        db.handle_table[DRB_SERVICE_UUID][char_uuid][key]
       end
 
       def packet_callback(event_packet)

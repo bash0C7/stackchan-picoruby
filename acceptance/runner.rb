@@ -222,7 +222,7 @@ module Acceptance
 
     APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
     APP_BATCH = { "ios" => "connect;joy;selftest", "watchos" => "connect;face joy;selftest" }.freeze
-    APP_CONNECTED = "[batch] Connected; RX value_handle bound"
+    APP_CONNECTED = "[batch] Connected; dRuby pair bound"
     APP_END = "[batch] end"
 
     def run_darwin

@@ -261,7 +261,7 @@ class ControllerDslTest < Picotest::Test
   end
 
   def test_connect_connects_once
-    assert_equal({ status: :ok, out: "Connected; RX value_handle bound", message: nil }, @app.act(:connect, []))
+    assert_equal({ status: :ok, out: "Connected; dRuby pair bound", message: nil }, @app.act(:connect, []))
     assert_equal 1, @daemon.status[:connects]
     assert_equal [], @radio.rx_frames
   end

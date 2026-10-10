@@ -105,7 +105,7 @@ class AcceptanceTest < Test::Unit::TestCase
       out = lines.map do |line|
         verb, arg = line.split(" ", 2)
         case verb
-        when "connect" then app_take(platform) ? "Connected; RX value_handle bound" : APP_BUSY
+        when "connect" then app_take(platform) ? "Connected; dRuby pair bound" : APP_BUSY
         when "face" then app_take(platform) ? "OK face=#{arg}" : APP_BUSY
         when "joy" then app_take(platform) ? "OK face=joy" : APP_BUSY
         when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\""
@@ -1041,12 +1041,12 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.app_out["ios"] = ->(_lines) { "[batch] busy: robot is held by another controller or unreachable\n[batch] end\n" }
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
-    assert_match(/Connected; RX value_handle bound/, darwin_failed(r)["detail"])
+    assert_match(/Connected; dRuby pair bound/, darwin_failed(r)["detail"])
     assert_equal "fail", r["verdict"]
   end
 
   def test_an_app_whose_face_is_not_ok_fails_its_batch
-    @ops.app_out["watchos"] = ->(_lines) { "[batch] Connected; RX value_handle bound\n[batch] error: timeout\n[batch] end\n" }
+    @ops.app_out["watchos"] = ->(_lines) { "[batch] Connected; dRuby pair bound\n[batch] error: timeout\n[batch] end\n" }
     r = run_darwin_only
     assert_equal "Watch batch", darwin_failed(r)["name"]
     assert_match(/OK face=joy/, darwin_failed(r)["detail"])
@@ -1054,7 +1054,7 @@ class AcceptanceTest < Test::Unit::TestCase
 
   def test_an_app_without_the_selftest_detail_fails_its_batch
     @ops.app_out["ios"] = lambda do |_lines|
-      "[batch] Connected; RX value_handle bound\n[batch] OK face=joy\n[batch] OK selftest detail=nil\n[batch] end\n"
+      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] OK selftest detail=nil\n[batch] end\n"
     end
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
@@ -1062,7 +1062,7 @@ class AcceptanceTest < Test::Unit::TestCase
   end
 
   def test_an_app_that_never_ends_its_batch_fails
-    @ops.app_out["ios"] = ->(_lines) { "[batch] Connected; RX value_handle bound\n" }
+    @ops.app_out["ios"] = ->(_lines) { "[batch] Connected; dRuby pair bound\n" }
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
     assert_match(/\[batch\] end/, darwin_failed(r)["detail"])
@@ -1073,7 +1073,7 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.app_out["ios"] = lambda do |_lines|
       runs += 1
       next "[batch] #{FakeOps::APP_BUSY}\n[batch] end\n" if runs == 2
-      "[batch] Connected; RX value_handle bound\n[batch] OK face=joy\n" \
+      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n" \
         "[batch] OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n[batch] end\n"
     end
     r = run_darwin_only
@@ -1086,7 +1086,7 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.app_out["watchos"] = lambda do |_lines|
       runs += 1
       next "[batch] OK face=joy\n[batch] end\n" if runs == 2
-      "[batch] Connected; RX value_handle bound\n[batch] OK face=joy\n" \
+      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n" \
         "[batch] OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n[batch] end\n"
     end
     r = run_darwin_only

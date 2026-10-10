@@ -1,14 +1,14 @@
 module StackChan
   class Controller
-    module Nus
-      def nus_uuid(suffix_hi, suffix_lo)
+    module Gatt
+      def base_uuid(suffix_hi, suffix_lo)
         [0x6e, 0x40, suffix_hi, suffix_lo,
          0xb5, 0xa3, 0xf3, 0x93, 0xe0, 0xa9,
          0xe5, 0x0e, 0x24, 0xdc, 0xca, 0x9e].pack("C*")
       end
 
-      def drb_rx_uuid; nus_uuid(0x00, 0x04); end
-      def drb_tx_uuid; nus_uuid(0x00, 0x05); end
+      def drb_rx_uuid; base_uuid(0x00, 0x04); end
+      def drb_tx_uuid; base_uuid(0x00, 0x05); end
 
       def cccd_uuid
         [0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x10, 0x00,
@@ -60,7 +60,7 @@ module StackChan
         "discovered services=#{services.size} characteristics=#{shorts.empty? ? "none" : shorts.join(",")}"
       end
 
-      module_function :nus_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
+      module_function :base_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
                       :find_characteristic, :cccd_handle,
                       :hex_bytes, :short_uuid, :describe_services
     end

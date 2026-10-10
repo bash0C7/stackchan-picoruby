@@ -107,7 +107,7 @@ class CliDispatchTest < Picotest::Test
   end
 
   def test_touch_listen_with_a_count_exits_0_after_that_many_events
-    daemon = ScriptedDaemon.new(results: { "connect" => ok("Connected; RX value_handle bound") },
+    daemon = ScriptedDaemon.new(results: { "connect" => ok("Connected; dRuby pair bound") },
                                 touches: [nil, { zone: 0, name: :back }])
     cli = ScriptedCLI.new(daemon)
     assert_equal 0, cli.dispatch("touch", ["listen", "--count", "1", "--timeout", "2"])
@@ -117,7 +117,7 @@ class CliDispatchTest < Picotest::Test
   end
 
   def test_touch_listen_exits_1_on_timeout
-    daemon = ScriptedDaemon.new(results: { "connect" => ok("Connected; RX value_handle bound") })
+    daemon = ScriptedDaemon.new(results: { "connect" => ok("Connected; dRuby pair bound") })
     cli = ScriptedCLI.new(daemon)
     assert_equal 1, cli.dispatch("touch", ["listen", "--count", "1", "--timeout", "2"])
     assert_equal 2000, FakeClock.now
@@ -125,7 +125,7 @@ class CliDispatchTest < Picotest::Test
   end
 
   def test_touch_listen_exits_1_when_the_link_is_released
-    daemon = ScriptedDaemon.new(results: { "connect" => ok("Connected; RX value_handle bound") },
+    daemon = ScriptedDaemon.new(results: { "connect" => ok("Connected; dRuby pair bound") },
                                 touches: [{ released: true }, { zone: 1, name: :right }])
     cli = ScriptedCLI.new(daemon)
     assert_equal 1, cli.dispatch("touch", ["listen"])

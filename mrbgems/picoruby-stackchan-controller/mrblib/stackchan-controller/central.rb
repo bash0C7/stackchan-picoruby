@@ -168,13 +168,13 @@ module StackChan
 
       def resolve_handles
         services = @radio.services
-        drb_rx = Nus.find_characteristic(services, Nus.drb_rx_uuid)
-        drb_tx = Nus.find_characteristic(services, Nus.drb_tx_uuid)
-        raise ConnectionError, "dRuby pair not found; #{Nus.describe_services(services)}" unless drb_rx && drb_tx
+        drb_rx = Gatt.find_characteristic(services, Gatt.drb_rx_uuid)
+        drb_tx = Gatt.find_characteristic(services, Gatt.drb_tx_uuid)
+        raise ConnectionError, "dRuby pair not found; #{Gatt.describe_services(services)}" unless drb_rx && drb_tx
         @drb_rx_handle   = drb_rx[:value_handle]
         @drb_tx_handle   = drb_tx[:value_handle]
-        @drb_cccd_handle = Nus.cccd_handle(drb_tx)
-        raise ConnectionError, "dRuby TX CCCD not found; discovery did not finish; #{Nus.describe_services(services)}" unless @drb_cccd_handle
+        @drb_cccd_handle = Gatt.cccd_handle(drb_tx)
+        raise ConnectionError, "dRuby TX CCCD not found; discovery did not finish; #{Gatt.describe_services(services)}" unless @drb_cccd_handle
       end
 
       def subscribe_tx

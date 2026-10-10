@@ -36,8 +36,8 @@ class FakeBleClient
 
   def keepalive
     raise StackChan::Controller::ConnectionError, "not connected" unless @connected
-    write_frame("<read:pos>\n")
-    self
+    $stderr.write("[fake_ble] remote touches []\n"); $stderr.flush
+    []
   end
 
   def send

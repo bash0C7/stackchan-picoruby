@@ -36,9 +36,9 @@ class CentralDrbTest < Picotest::Test
   def services(with_drb: true)
     chars = []
     if with_drb
-      chars << { uuid128: StackChan::Controller::Nus.drb_rx_uuid, value_handle: DRX, descriptors: [] }
-      chars << { uuid128: StackChan::Controller::Nus.drb_tx_uuid, value_handle: DTX,
-                 descriptors: [{ uuid128: StackChan::Controller::Nus.cccd_uuid, handle: DCCCD }] }
+      chars << { uuid128: StackChan::Controller::Gatt.drb_rx_uuid, value_handle: DRX, descriptors: [] }
+      chars << { uuid128: StackChan::Controller::Gatt.drb_tx_uuid, value_handle: DTX,
+                 descriptors: [{ uuid128: StackChan::Controller::Gatt.cccd_uuid, handle: DCCCD }] }
     end
     [{ characteristics: chars }]
   end

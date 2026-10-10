@@ -67,7 +67,7 @@ struct ContentView: View {
         busy = true
         status = "Scanning…"
         VMExecutor.shared.call("connect", "") { result in
-            self.connected = result.contains("Connected; RX value_handle bound")
+            self.connected = result.contains("Connected; dRuby pair bound")
             self.status = self.connected ? "connected" : self.lastLine(result)
             self.busy = false
         }
