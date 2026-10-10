@@ -27,19 +27,14 @@ and Service Changed. The design is
 
 The latest report in `acceptance/results/` has verdict `pass`: one check run
 start to finish in a TTY, from the Mac, with the owner at the robot. It
-covers `torque`, `face`, `led`, `servo`, `selftest`, `calibrate`, the
-`remote` verb, `servo health`, `say`, `chat` against the real sidecar, and
-the robot releasing a quiet central with the next action reconnecting. The
-head was not touched within the 30 s of that run.
-
-The robot gem on `main` differs from the app that report ran: its GATT
-constants are renamed (`DRB_*`), same values. The robot does not carry that
-app yet, so `acceptance:check` refuses until `acceptance:app` has sent it
-(A).
+covers `torque`, `face`, `led`, `servo`, `selftest`, head touch,
+`calibrate`, the `remote` verb, `servo health`, `say`, `chat` against the
+real sidecar, and the robot releasing a quiet central with the next action
+reconnecting. The robot carries the app that report ran.
 
 An iPhone drives the robot: it connects in about 2.3 s and `raw`, the face
 and LED buttons, the head moves, `subtitle`, `selftest` and `speak_audio`
-all answer over dRuby. An Apple Watch does not yet (B).
+all answer over dRuby. An Apple Watch does not yet (A).
 
 `rake test` and the CRuby host tests pass. The iOS and watchOS apps start in
 the Simulators and answer `status` through the bridge
@@ -54,46 +49,56 @@ after changing anything it covers.
 
 ## Next
 
-### A. Send the app and run the check
+### A. The Apple Watch against the robot
 
-With the CoreS3 on USB (`rake r2p2:boards` marks it): `acceptance:app`,
-then one `acceptance:check` in tmux with the owner answering the questions.
-The commits after the report are local until that check passes.
+The watch app installs and starts. Against the robot, `connect` finds no
+advertiser on its first tries (about 50 s each), then connects and ends in
+`dRuby pair not found; discovered services=1
+characteristics=6e400002,6e400003`. The robot's table holds `6e400004` and
+`6e400005` and neither of those two, and the same controller code connects
+from the iPhone and the Mac, so the watch is answering discovery from a
+table it remembered from an older robot. That remembered table has no
+Service Changed characteristic, so nothing the robot sends makes the watch
+read the table again.
 
-### B. The Apple Watch against the robot
-
-The watch app installs and starts, and its first run against the robot went:
-no advertiser for about 30 s, then a connection that ended in
-`dRuby pair not found`, then no advertiser on every later try. The same
-controller code connects from the iPhone.
-
-- The first scan may have sat behind the watch's Bluetooth permission
-  dialog; the owner has not said whether one appeared.
-- `dRuby pair not found` lists what discovery found
-  (`discovered services=N characteristics=…`), so the next run tells an
-  empty or cut-short discovery from a table the watch remembered from an
-  older robot. That run has not happened: the watch must be unlocked, on the
-  wrist and near the Mac for `watchos:device:build` to see it.
-- The later failures have one cause: after the failed connect the watch
-  still held the link, so the robot was not advertising. Nothing drops such
-  a link. picoruby-ble's central has no disconnect, and the robot releases
-  a central only once it has seen dRuby traffic from it, because the ESP32
-  port hands the robot no event when a central connects
+- Next: have the watch forget the table (restart the watch, or turn its
+  Bluetooth off and on in its Settings), then run the batch again. Not
+  tried yet.
+- After a failed connect the watch still holds the link, so the robot is
+  not advertising and every later try finds no advertiser. Nothing drops
+  such a link. picoruby-ble's central has no disconnect, and the robot
+  releases a central only once it has seen dRuby traffic from it, because
+  the ESP32 port hands the robot no event when a central connects
   (`ports/esp32/ble.c`, `BLE_GAP_EVENT_CONNECT` enqueues nothing for a
-  peripheral). A central that connects and never subscribes holds the robot
-  until it goes away by itself. Closing that needs the port to deliver a
-  connection event, which is a firmware change.
+  peripheral). Closing that needs the port to deliver a connection event,
+  which is a firmware change. Until then, end the watch app to free the
+  robot: `xcrun devicectl device info processes --device <UDID>` for the
+  pid, then `xcrun devicectl device process terminate --device <UDID>
+  --pid <pid> --kill`.
+- The batch printed nothing more after its fourth line (`led_show`) for
+  over four minutes. Not looked into; the watch app may have been
+  suspended when the screen went dark.
+- The Mac sees the watch only while it is unlocked, awake and near; it
+  drops to `unavailable` within seconds otherwise. A launch while the
+  watch shows the clock in a state it will not leave is refused
+  (`Navigation away from clock is not allowed`); the next launch went
+  through.
 
 `rake ios:device:run` and `watchos:device:run` pick a Simulator on this
-Xcode (bash0C7/R2P2-darwin issue 21). Until that is fixed, install and
-launch with `xcrun devicectl device install app --device <UDID> <app>` and
-`xcrun devicectl device process launch --console --terminate-existing
---device <UDID> -- <bundle id> -StackchanBatch "<lines>"`; `rake
-acceptance:darwin` goes through the rake tasks and so cannot pass yet. Its
-watchOS batch also asks for `selftest`, an action the watch app does not
-have.
+Xcode (bash0C7/R2P2-darwin issue 21), and `watchos:device:build` stops
+unless the watch is reachable at that moment. Until that is fixed: build
+with `xcodebuild -project apps/watchos/WatchStackchan.xcodeproj -scheme
+WatchStackchan -destination 'generic/platform=watchOS' -derivedDataPath
+vendor/R2P2-darwin/build/watchos-stackchan-app-device ARCHS=arm64_32
+-allowProvisioningUpdates build` after `rake watchos:device:lib
+watchos:gen`, then install and launch with `xcrun devicectl device install
+app --device <UDID> <app>` and `xcrun devicectl device process launch
+--console --terminate-existing --device <UDID> -- <bundle id>
+-StackchanBatch "<lines>"`. `rake acceptance:darwin` goes through the rake
+tasks and so cannot pass yet. Its watchOS batch also asks for `selftest`,
+an action the watch app does not have.
 
-### C. Things found on the way, not yet acted on
+### B. Things found on the way, not yet acted on
 
 - `DRbBle::Responder#reply` calls the front with `send`. For a method the
   front defines that is direct, but a `bot.remote` handler is reached through
@@ -115,7 +120,7 @@ and `review/2026-10-10-pr11-closing-notes.md`.
 ### Open issues
 
 - #19: done from the Mac and the iPhone; what is left of it is the Watch
-  (B).
+  (A).
 - #22: what is left needs the robot or a decision. A pitch position read can
   fail several times in a row; the ESP32 receive path is ruled out by source
   (vault `review/2026-10-03-pitch-read-pos/`), and `servo health` tells a
