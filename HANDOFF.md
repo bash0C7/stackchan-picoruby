@@ -54,19 +54,24 @@ after changing anything it covers.
 ### A. The Apple apps run without a person
 
 The apps work in the hand. `rake acceptance:darwin` is the wiring that
-drives them from the Mac with nobody tapping. It stays, so it has to work,
-and it has not passed yet.
+drives them from the Mac with nobody tapping, and the latest report carries
+a run of it that passed: both device builds, the iPhone batch (`connect`,
+`joy`, `selftest`) and the robot handed Mac → iPhone → Mac.
 
 - What runs by itself: both device builds (the watch build needs no watch
-  in reach), and on the iPhone the choice of the device, the install, the
-  launch and the batch. `rake ios:device:run` with `connect;joy;status`
-  connected in 2.6 s and ran to `[batch] end` with nobody touching the
-  phone.
-- What stopped the one full run: the iPhone had locked itself, and a locked
-  phone refuses the launch (`the device was not, or could not be,
-  unlocked`). The run needs the phone unlocked when it starts. Whether the
-  phone stays unlocked from the batch to the hand-off, which launches the
-  app a second time after the quiet waits, is not known.
+  in reach; the six build steps take under a minute when nothing changed),
+  and on the iPhone the choice of the device, the install, the launch and
+  the batch. The phone connects in about 2.3 s and stays unlocked from the
+  batch to the hand-off's second launch, about 70 s later.
+- What the run needs from a person: the iPhone unlocked when it starts (a
+  locked phone refuses the launch: `the device was not, or could not be,
+  unlocked`) and the robot powered.
+- A batch against a robot that is off does not end. `connect` came back
+  after 54 s with `no StackChan advertiser found`, and the next action
+  returned nothing for 13 minutes; `devicectl … launch --console` waits on
+  the app, so the run waits with it. Nothing bounds the iPhone step. End
+  the app by hand (below) to stop such a run, and put the committed report
+  back with `git checkout`, because the stopped run writes `fail` into it.
 - The Apple Watch is not driven by that run. A watch app launched from the
   Mac on a watch nobody has woken is not active: watchOS refuses it a
   `WKExtendedRuntimeSession` (`The app must be active and before
@@ -100,8 +105,8 @@ To watch an app a person taps, launch it with its console on the Mac:
 `xcrun devicectl device process launch --console --terminate-existing
 --device <UDID> <bundle id>`.
 
-Next step: with the iPhone unlocked, one `rake acceptance:darwin`. The
-commits that reshape that run are local until it has passed.
+Next step: bound the iPhone step, so a robot that is off fails the run
+instead of holding it, and find where the app's second action blocks.
 
 ### B. Things found on the way, not yet acted on
 
