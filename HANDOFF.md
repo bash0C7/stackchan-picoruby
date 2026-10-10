@@ -20,12 +20,21 @@ driven on the hardware: cold boot, BLE link, faces, LEDs, servos on both axes,
 head touch, audio, and selftest. Servo absolute positioning — the point of the
 whole thing — lands where it is told.
 
-The robot is powered off and carries the firmware of the committed acceptance
-report in `acceptance/results/`. That report's verdict is `fail`: every step
-through the operator's questions passed, and it stopped at `torque off` because
-the Mac daemon froze.
+The robot carries the firmware and app of the latest report in
+`acceptance/results/`: the deploy passed every step, including the boot with
+Service Changed in the GATT table. That report's verdict is `fail`. Its check
+ran without a TTY and reached, over a real BLE link, `torque on`, `face`,
+`led` and `servo` through dRuby (connect took 2.5 s and 6.4 s on its two
+runs), then stopped at `remote servo detail`. The cause was in the controller,
+not the robot, and is fixed on `main`: `stackchan remote` called the robot's
+front through `send`, which waits where the Mac's BLE notifications are never
+collected (CLAUDE.md, the CRuby differences). The fix has not met the robot.
 
-Since that run, without the robot:
+Right after that, the robot left the Mac: no ESP32 on the USB bus and no
+StackChan advertiser. The last BLE connection before it succeeded. Nothing
+here can tell a power-off from a pulled cable; it needs a person at the robot.
+
+What is on `main` and has not met the robot beyond the steps above:
 
 - Every command, reply and head touch goes over dRuby over BLE; the text
   frames are gone from the controller, and the robot's first NUS pair answers
@@ -33,23 +42,13 @@ Since that run, without the robot:
   `docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
 - Audio has two routes, the direct one (default) and a dRuby one
   (`say --drb`), so they can be timed against each other on the robot.
-- The robot's GATT table ends with Service Changed.
 - The servo driver keeps why its last read failed and the status byte of its
   last good reply, and the robot's front reports both (`remote servo_health`).
-- The daemon freeze and the daemon dying when a client hangs up are both
-  closed in the Mac VM, which is rebuilt and running under launchd. The
-  running daemon still has the controller source it loaded at start;
-  `rake pc:up` loads the current one.
-- The picoruby the Mac VM is built from moved forward; the controller follows
-  its GATT notification layout.
-- `build_config/esp32-stackchan.rb` fetches the driver gems from each repo's
-  default branch, and the lock pins a newer servo driver, so the next
-  `acceptance:deploy` flashes.
+- The one-second `touches` poll as keepalive, and `touch listen` fed by it.
 
-`rake test` and the CRuby host tests pass. The iOS and watchOS apps build for
-the Simulator and, started with `-StackchanBatch "actions"`, reach
-`[batch] end`. The robot's app and gems load in QEMU (`r2p2:qemu_check`).
-None of the above has met the robot.
+`rake test` and the CRuby host tests pass. The iOS and watchOS apps build and
+start in the Simulator through Xcode MCP (`/stackchan-apple-simulator`) and
+reach `[batch] end`.
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails on
 any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -60,48 +59,44 @@ after changing anything it covers.
 
 ## Next
 
-### A. Approve the Xcode MCP server, then run the Simulator skill through it
+### A. Get the robot back on USB, then one acceptance check
 
-`claude mcp list` shows the project's `xcode` server as pending approval, and
-only the owner can approve it (`/mcp`). Until then the skill
-`stackchan-apple-simulator` has never run through Xcode MCP; the same steps
-are verified with `xcodebuild` and `xcrun simctl`. Once approved, run the
-skill for `ios` and `watchos` and correct it against what the tools actually
-take and return. `bash0C7/R2P2-darwin`'s CLAUDE.md has the working notes for
-those tools.
+With the CoreS3 on USB and powered (`rake r2p2:boards` lists it): the owner
+runs `acceptance:check` once in a TTY at the robot. No deploy is needed; only
+the controller changed since the flash, and the check restarts the daemon
+with the current source.
 
-Left unverified next to this: R2P2-darwin's own watchOS build_config still
-lists `hal-io-darwin`, which no longer satisfies mruby's HAL provider contract
-at the picoruby this project pins, so its watchOS build should fail the same
-way this repository's did. That is R2P2-darwin's and the picoruby fork's to fix.
+What that run meets for the first time:
 
-### B. One acceptance run with the robot on
+- `stackchan remote` after the fix, and everything after it in the check:
+  `servo health`, the timings over dRuby, `say` on both audio routes with the
+  stack reading after each, `touch listen` fed by the poll, calibrate, release
+  and reconnect, `chat` against the real sidecar.
+- Whether Service Changed stops the Mac from reusing an old GATT table. The
+  table registered and the robot connected; the Mac was not seen to need
+  `sudo pkill bluetoothd` after this flash, which changed the table.
 
-`acceptance:deploy` (the one flash), then `acceptance:check` run once by the
-owner in a TTY, and the report committed.
+If the robot does not come back as a USB device with power applied, read the
+boot log first (`/stackchan-device-boot-verify`); do not flash to find out.
 
-That run is the first time these meet the robot:
+### B. Things found on the way, not yet acted on
 
-- A real BLE link through the rebuilt Mac VM: scan, discovery, both CCCDs,
-  notifications. It has only reached `busy` with the robot off.
-- Every action over dRuby, the one-second `touches` poll as keepalive, and
-  `touch listen` fed by that poll.
-- The GATT table with Service Changed: QEMU never registers the table, so
-  whether NimBLE accepts it is first seen at boot on the robot. Whether it
-  stops the Mac from reusing an old table is a separate observation: connect
-  without `sudo pkill bluetoothd` after the flash and see if both dRuby
-  handles resolve.
-- The dRuby audio route: the robot buffers the whole clip from 2048-byte
-  calls and plays it from its link loop after replying.
-- `chat` against the real sidecar.
+- `DRbBle::Responder#reply` calls the front with `send`. For a method the
+  front defines that is direct, but a `bot.remote` handler is reached through
+  `method_missing`, so on the robot it would run inside a nested VM and cost
+  about 3 KB of the 8 KB task stack. `apps/robot/app.rb` declares no such
+  handler today.
+- The iOS and watchOS bridges call the controller from C (`App.__send__`), so
+  every wait inside an action is the same kind of wait that hid the reply on
+  the Mac. Whether their BLE events arrive anyway is unverified; it needs a
+  phone or watch against the robot (`acceptance:darwin`).
+- R2P2-darwin's own watchOS build_config still lists `hal-io-darwin`, which
+  no longer satisfies mruby's HAL provider contract at the picoruby this
+  project pins, so its watchOS build should fail the same way this
+  repository's did. That is R2P2-darwin's and the picoruby fork's to fix.
 
-The report carries what the owner needs for the open decisions: `say direct`
-and `say drb` with the stack reading after each, `connect ms`, the `servo
-health` line, and the per-action timings over dRuby.
-
-Why the daemon froze, what closed it, and what is still unexplained (three
-scheduler ticks that ran off the VM thread; the kernel source for this macOS
-is not published) are in the vault: `review/2026-10-01-daemon-freeze/`,
+Why the daemon froze in the previous report, what closed it, and what is
+still unexplained are in the vault: `review/2026-10-01-daemon-freeze/`,
 `plans/2026-10-03-daemon-tick-thread.md` and
 `review/2026-10-10-pr11-closing-notes.md`.
 

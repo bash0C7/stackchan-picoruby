@@ -1,0 +1,135 @@
+{
+  "stamp": "20261010-091441",
+  "lock": {
+    "firmware": {
+      "R2P2-ESP32": "97166052a334fcc959bcdf6fe7da4c35792f80a6",
+      "picoruby": "9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba",
+      "repos": {
+        "picoruby-ili9342": "6adc482994ce420c491c442bd0a3c2c8834a6296",
+        "picoruby-py32-io-expander": "8f8b3d3d9aab03ca4dac2b78004b36a0459366c9",
+        "picoruby-scservo": "36281109f3051b510634c6ae3f3d521d197e9064"
+      },
+      "aot": {
+        "suppify": "a5449a394c6d6ef31afebdbabd56be563208a83e",
+        "spinel": "4a28d45f01fef4605eedca6d7008771d51306e07",
+        "picoruby-multicore": "83bd0d6203ebd707e46e0b7779f1c844ecca0187"
+      },
+      "app": "apps/robot/app.rb",
+      "boot_markers": [
+        "[application] boot",
+        "[boot] step:led-init-ok",
+        "[application] BLE peripheral starting"
+      ]
+    },
+    "darwin": {
+      "R2P2-darwin": "7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2",
+      "picoruby": "121c6b51fbe827f35e54dfdf9c4cfce144ae4d11"
+    }
+  },
+  "root": "39db02442968f64ba083b0689bb3d23849983839",
+  "deploy": {
+    "lock_digest": "184560c5b6d4548fae0259132c3ba45ca489cfc794c584ea0da4541489c681d0",
+    "steps": [
+      {
+        "name": "pin trees",
+        "ok": true,
+        "detail": "stackchan-picoruby 39db024, R2P2-ESP32 9716605, 3 cached gems, R2P2-darwin 7a02219, picoruby 121c6b5"
+      },
+      {
+        "name": "pins hold before setup",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "r2p2:setup",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pins hold after setup",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "r2p2:build_flash",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pins hold after build",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "app upload",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "flash identity",
+        "ok": true,
+        "detail": "App version 0.2.21-39-g9716605, storage 0x410000"
+      },
+      {
+        "name": "boot",
+        "ok": true,
+        "detail": "3 markers, no fault"
+      }
+    ],
+    "app_root": "39db02442968f64ba083b0689bb3d23849983839"
+  },
+  "check": {
+    "root": "fb417ac7050235ca22edb0c1de2a9a4819ccb603",
+    "steps": [
+      {
+        "name": "flash identity",
+        "ok": true,
+        "detail": "App version 0.2.21-39-g9716605, storage 0x410000"
+      },
+      {
+        "name": "boot",
+        "ok": true,
+        "detail": "3 markers, no fault"
+      },
+      {
+        "name": "pc:up",
+        "ok": true,
+        "detail": "up after 2 tries, 31.9 s"
+      },
+      {
+        "name": "torque on",
+        "ok": true,
+        "detail": "OK torque=on\n"
+      },
+      {
+        "name": "face neutral",
+        "ok": true,
+        "detail": "OK face=neutral\n"
+      },
+      {
+        "name": "led",
+        "ok": true,
+        "detail": "OK led=both/green/solid\n"
+      },
+      {
+        "name": "servo detail",
+        "ok": true,
+        "detail": "<YL_actual:40,PU_actual:19>"
+      },
+      {
+        "name": "remote servo detail",
+        "ok": false,
+        "detail": "stackchan remote servo YL=40 PU=20 T=500 failed:\nerror: drbble: no reply in 3000 ms\n"
+      }
+    ],
+    "timings": {
+      "connect ms": [
+        6412
+      ]
+    },
+    "human": {}
+  },
+  "darwin": null,
+  "resets": 10,
+  "verdict": "fail"
+}
