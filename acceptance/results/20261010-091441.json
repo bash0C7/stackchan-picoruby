@@ -79,7 +79,7 @@
     "app_root": "39db02442968f64ba083b0689bb3d23849983839"
   },
   "check": {
-    "root": "24f697556354c11a2f259a2d64f2b7255a9b13f3",
+    "root": "d59796ca51d0cad446a4b7cb5766dff98c1a2588",
     "steps": [
       {
         "name": "flash identity",
@@ -94,7 +94,7 @@
       {
         "name": "pc:up",
         "ok": true,
-        "detail": "up after 2 tries, 27.8 s"
+        "detail": "up after 2 tries, 29.8 s"
       },
       {
         "name": "torque on",
@@ -114,12 +114,12 @@
       {
         "name": "servo detail",
         "ok": true,
-        "detail": "<YL_actual:39,PU_actual:4>"
+        "detail": "<YL_actual:7,PU_actual:20>"
       },
       {
         "name": "remote servo detail",
         "ok": true,
-        "detail": "<YL_actual:42,PU_actual:11>"
+        "detail": "<YL_actual:50,PU_actual:29>"
       },
       {
         "name": "servo health",
@@ -154,27 +154,27 @@
       {
         "name": "selftest detail",
         "ok": true,
-        "detail": "<YL_actual:2,PU_actual:9>"
+        "detail": "<YL_actual:1,PU_actual:9>"
       },
       {
         "name": "touch listen",
-        "ok": null,
-        "detail": "incomplete: no TTY, nobody to touch the head"
+        "ok": true,
+        "detail": "touch zone=1 (right)"
       },
       {
         "name": "calibrate",
         "ok": true,
-        "detail": "yaw_zero 481, pitch_zero 662, verify delta 0/0"
+        "detail": "yaw_zero 481, pitch_zero 662, verify delta 0/-1"
       },
       {
         "name": "release and reconnect",
         "ok": true,
-        "detail": "release seen: yes, reconnect + face 3.14 s"
+        "detail": "release seen: yes, reconnect + face 2.91 s"
       },
       {
         "name": "stack high-water",
         "ok": true,
-        "detail": "920 B free"
+        "detail": "824 B free"
       },
       {
         "name": "questions",
@@ -189,93 +189,93 @@
       {
         "name": "chat",
         "ok": true,
-        "detail": "reply=こんにちは、頭を撫でられましたね。嬉しいです。"
+        "detail": "reply=こんにちは、頭を撫でられましたね。"
       }
     ],
     "timings": {
       "connect ms": [
-        2648
+        4152
       ],
       "say direct": [
-        6.386682000011206
+        6.37759599997662
       ],
       "stack after say direct": [
         920
       ],
       "say drb": [
-        4.751931000035256
+        4.591398000018671
       ],
       "stack after say drb": [
         920
       ],
       "servo": [
-        0.20404700003564358,
-        0.21658100001513958,
-        0.20857100002467632,
-        0.18257500021718442,
-        0.21746700000949204,
-        0.23166900011710823,
-        0.204316999996081,
-        0.21171800000593066
+        0.21593499998562038,
+        0.3170350000727922,
+        0.2425889999140054,
+        0.2971020000986755,
+        0.2235940000973642,
+        0.42236299999058247,
+        0.5095750000327826,
+        0.4516339998226613
       ],
       "face": [
-        0.22149799996986985,
-        0.24010199983604252,
-        0.300848999992013,
-        0.1966260001063347,
-        0.24513500020839274,
-        0.2432819998357445,
-        0.20351799996569753,
-        0.2436720000114292
+        0.230492000002414,
+        0.20836200006306171,
+        0.30798599985428154,
+        0.19543199986219406,
+        0.21725200000219047,
+        0.24421999999321997,
+        0.21159800002351403,
+        0.24424499995075166
       ],
       "led": [
-        0.20218000002205372,
-        0.18929399992339313,
-        0.1751540000550449,
-        0.1786889999639243,
-        0.1812799999024719,
-        0.17608299991115928,
-        0.2181180000770837,
-        0.17870799987576902
+        0.16284599993377924,
+        0.1844000001437962,
+        0.21123500005342066,
+        0.18389900005422533,
+        0.2042559999972582,
+        0.2634159999433905,
+        0.2713099999818951,
+        0.22496300004422665
       ],
       "text": [
-        0.2645879997871816,
-        0.2840940000023693,
-        0.2635050001554191,
-        0.2617629999294877,
-        0.2195069999434054,
-        0.26856200001202524,
-        0.20165699999779463,
-        0.2760250000283122
+        0.270924000069499,
+        0.2930149999447167,
+        0.23185100010596216,
+        0.25172200007364154,
+        0.28974599996581674,
+        0.2844620000105351,
+        0.23661500005982816,
+        0.2892040000297129
       ],
       "release and reconnect": [
-        3.144391000038013
+        2.9142859999556094
       ]
     },
     "human": {
       "servo": {
         "question": "サーボが指示どおりに動いた",
-        "answer": null
+        "answer": "y"
       },
       "subtitle": {
         "question": "字幕が欠けずに描画された",
-        "answer": null
+        "answer": "y"
       },
       "audio": {
         "question": "say の音声が最後まで途切れずに鳴った",
-        "answer": null
+        "answer": "y"
       },
       "distortion": {
         "question": "say の音声が割れずに鳴った",
-        "answer": null
+        "answer": "y"
       },
       "remote": {
         "question": "remote servo でも同じように動いた",
-        "answer": null
+        "answer": "y"
       }
     }
   },
   "darwin": null,
-  "resets": 13,
-  "verdict": "incomplete"
+  "resets": 16,
+  "verdict": "pass"
 }

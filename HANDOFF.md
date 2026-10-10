@@ -21,28 +21,25 @@ head touch, audio, and selftest. Servo absolute positioning — the point of the
 whole thing — lands where it is told.
 
 The robot carries the firmware and app of the latest report in
-`acceptance/results/`, and that report's check ran start to finish over a
-real BLE link with every step a machine can judge passing. Its verdict is
-`incomplete`, for one reason: it ran without a TTY, so nobody touched the
-head and the five questions are unanswered.
+`acceptance/results/`, and that report's verdict is `pass`: one check run
+start to finish in a TTY, with the owner at the robot touching the head and
+answering the questions.
 
 What that run showed on the robot:
 
-- Every command and reply goes over dRuby over BLE: `torque`, `face`, `led`,
-  `servo`, `selftest`, `calibrate`, the `remote` verb, `servo health`
-  (no read error, status 0 on both servos), and `chat` against the real
-  sidecar. The design is
+- Every command, reply and head touch goes over dRuby over BLE: `torque`,
+  `face`, `led`, `servo`, `selftest`, `calibrate`, the `remote` verb,
+  `servo health` (no read error, status 0 on both servos), `touch listen`
+  fed by the one-second `touches` poll, and `chat` against the real sidecar.
+  The design is
   `docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
 - The robot boots and connects with Service Changed in its GATT table, and
   the Mac needed no `sudo pkill bluetoothd` after the flash that changed the
   table.
 - The robot releases a quiet central and the next action reconnects.
-- Both audio routes return: the direct one and the dRuby one (`say --drb`).
-  The task stack's low mark reads the same after either (920 B free).
-
-What it could not show, because it needs a person: the head touch arriving
-through the one-second `touches` poll (`touch listen`), and whether the
-servos, the subtitle and the audio of either route looked and sounded right.
+- Audio plays on both routes, the direct one and the dRuby one
+  (`say --drb`), and the owner heard no difference between them. The task
+  stack's low mark reads the same after either.
 
 `rake test` and the CRuby host tests pass. The iOS and watchOS apps build and
 start in the Simulator through Xcode MCP (`/stackchan-apple-simulator`) and
@@ -57,17 +54,16 @@ after changing anything it covers.
 
 ## Next
 
-### A. One acceptance check by the owner
+### A. Decide the audio route
 
-The owner runs `acceptance:check` once in a TTY at the robot, touches the
-back of the head when asked and answers the questions. No deploy is needed:
-the robot already carries what the report names. That run is the one that
-can end in `pass`.
-
-The run plays `say` three times: the direct route in `say`, then direct and
-dRuby in `say routes`, in that order. The questions ask about audio once, so
-note by ear whether the third one (dRuby) differs from the first two; that
-is the evidence C needs and the report does not hold it.
+The evidence is in: in the report the dRuby route returned sooner than the
+direct one in the same run (`say drb` against `say direct`), left the same
+stack reading, and sounded the same to the owner. Recommended: carry audio
+over dRuby only. That removes the first NUS pair, `AudioReceiver`, the
+direct half of `Session#speak_audio` and the `--drb` flag; the robot gem
+travels in `app.mrb`, so it is an app transfer and a new check, not a
+flash. The firmware's dependency on the frame parser can go at the next
+firmware build. The decision is the owner's.
 
 ### B. Things found on the way, not yet acted on
 
@@ -90,19 +86,10 @@ still unexplained are in the vault: `review/2026-10-01-daemon-freeze/`,
 `plans/2026-10-03-daemon-tick-thread.md` and
 `review/2026-10-10-pr11-closing-notes.md`.
 
-### C. Decide the audio route
-
-The report times one `say` on each route (`say direct`, `say drb`) with the
-stack reading after each; the dRuby one returned sooner and cost no stack.
-One sample each is not a comparison of speed, and what decides is the ear
-(A). If dRuby sounds the same, the first NUS pair, `AudioReceiver` and the
-firmware's dependency on the frame parser all go; if not, the direct route
-stays as the one stated exception.
-
 ### Open issues
 
-- #19: implemented and seen on the robot except the head touch through the
-  poll (A) and the audio decision (C).
+- #19: implemented and passed on the robot; closes with the audio decision
+  (A).
 - #22: what is left needs the robot or a decision. The pitch position read
   that failed three times in a row once: the ESP32 receive path is ruled out
   by source (vault `review/2026-10-03-pitch-read-pos/`), and `servo health`
