@@ -1,4 +1,4 @@
-# Host VM for bench/aot_ab.rb and bench/aot_multicore.rb: the picotest defines
+# Host VM for bench/aot_ab.rb: the picotest defines
 # without PICORB_DEBUG, picoruby-multicore's pthread port, and the gems
 # tools/aot/kernels_build.rb generated for the host (the AOT kernels and their
 # multicore_kernels table). Built by tools/aot_host_vm.sh.

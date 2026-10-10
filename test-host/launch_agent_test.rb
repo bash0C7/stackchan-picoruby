@@ -57,7 +57,7 @@ class LaunchAgentTest < Test::Unit::TestCase
                  sidecar["ProgramArguments"]
   end
 
-  # The 8-day muted-say regression: an ambient STACKCHAN_SIDECAR_STUB must not
+  # An ambient STACKCHAN_SIDECAR_STUB must not
   # be able to reach the job. The key exists only when stub was asked for.
   def test_stub_flag_is_present_only_when_requested
     assert_equal "1", sidecar(stub: true)["EnvironmentVariables"]["STACKCHAN_SIDECAR_STUB"]

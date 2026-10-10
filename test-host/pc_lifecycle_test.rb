@@ -127,8 +127,7 @@ class PcLifecycleTest < Test::Unit::TestCase
 # A connect-and-close probe leaves an abandoned connection on the daemon's drb
 # port. The daemon cannot service it while its startup blocks on the sidecar,
 # and when it finally does it writes to a socket whose peer is gone and takes
-# SIGPIPE, which its PicoRuby VM cannot trap. Measured at 4 failures in 15
-# bring-ups with a connecting probe and 0 in 15 without. So the check has to
+# SIGPIPE, which its PicoRuby VM cannot trap. So the check has to
 # ask the kernel who is listening and never open a connection itself.
 def test_the_port_check_never_opens_a_connection
   server = TCPServer.new("127.0.0.1", 0)
@@ -200,8 +199,8 @@ end
     error = assert_raise(PcLifecycle::Error) { subject.up }
     assert_true error.message.include?(@holder)
     # The refusal has to land BEFORE bootstrap. Bootstrapping over a foreign
-    # owner is what produced the original defect: the new job dies on
-    # EADDRINUSE and the port check then passes against the squatter.
+    # owner makes the new job die on EADDRINUSE while the port check passes
+    # against the squatter.
     assert_false @calls.any? { |a| a[1] == "bootstrap" }
   end
 

@@ -6,7 +6,7 @@ name: dependencies are fetchable
 # from an empty runner and see whether the pieces arrive.
 #
 # This does not build the firmware — that needs esp-idf and a toolchain — but it
-# fails on both ways the build has actually broken: a submodule pin that was
+# fails on both ways the build breaks: a submodule pin that was
 # never pushed, and a gem branch deleted when its pull request merged. The
 # recursive submodule update below is the stronger of the two checks: it resolves
 # every nested pin from an empty runner, which is exactly what a newcomer's first

@@ -4,10 +4,8 @@
 # and a launchd plist has nothing to prove there anyway.
 #
 # The tests that reach it say so with `needs_plutil`, and are omitted rather than
-# failed where the tool is absent. Which tests those are was measured by making
-# every plutil call fail and reading the list back, not by reading the sources:
-# the dependency arrives through the library, so a test can need plutil without
-# the word appearing anywhere in it.
+# failed where the tool is absent. The dependency arrives through the library,
+# so a test can need plutil without the word appearing anywhere in it.
 module NeedsPlutil
   def needs_plutil
     return if system("which", "plutil", out: File::NULL, err: File::NULL)

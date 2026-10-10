@@ -5,7 +5,7 @@
 # `if` field takes permission-rule syntax, which prefix-matches the command, and
 # the pushes that matter here do not start with `git push`: they are
 # `git -C vendor/R2P2-ESP32 push`, and an absolute `/opt/homebrew/bin/git push`
-# whenever PATH is broken. Both were measured slipping past `Bash(git push*)`.
+# whenever PATH is broken. Both slip past `Bash(git push*)`.
 # So every Bash call reaches this script and it decides for itself, with shell
 # parameter expansion only — nothing is spawned on the path that exits early.
 #

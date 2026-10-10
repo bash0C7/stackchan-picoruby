@@ -1,7 +1,7 @@
 # rigor
 
 [rigor](https://github.com/rigortype/rigor) is a type-inference static analyzer for Ruby.
-It runs on the host over `apps/ lib/ mrbgems/ pc/ test/ test-host/`.
+It runs on the host over `acceptance/ apps/ lib/ mrbgems/ pc/ test/ test-host/`.
 
 ## Why it is not in the Gemfile
 
@@ -26,11 +26,11 @@ helper does this.
 
 rigor needs Ruby 4.0, so `rake test` is gated only where that Ruby exists. `firmware.yml`
 builds inside `espressif/idf:v5.4.2`, whose apt Ruby is 3.2, and calls `rake picotest:run`
-directly for that reason. No CI job runs rigor today.
+directly for that reason. No CI job runs rigor.
 
 ## The snapshot
 
-`rigor.baseline.json` freezes the diagnostics that exist today so `rigor:check` reports only
+`rigor.baseline.json` freezes the current diagnostics so `rigor:check` reports only
 what is new. Regenerate it with `rake rigor:snapshot` **only** after reading what changed —
 the point of the file is that a new diagnostic has to be looked at, not absorbed.
 
@@ -70,7 +70,7 @@ Not false positives:
 also the mechanism by which a picoruby bump becomes a `rigor:check` diff — a renamed method or a
 changed return type shows up here rather than in a grep.
 
-Two constraints on that list, both learned by hitting them:
+Two constraints on that list:
 
 - **Never point it at the whole `mrbgems` tree.** picoruby reimplements parts of the stdlib, so
   `picoruby-base64/sig/base64.rbs` redeclares the `Base64` that rbs ships. One such collision
@@ -84,10 +84,10 @@ Two constraints on that list, both learned by hitting them:
 The picoruby paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must
 have run. That costs nothing: `rake test` already needs the same tree to build the picotest VM.
 
-This repo's own five gems carry hand-written `sig/` in the upstream picoruby layout
+This repo's own gems carry hand-written `sig/` in the upstream picoruby layout
 (`mrbgems/picoruby-<gem>/sig/*.rbs`), also listed in `signature_paths`. They are hand-written
 rather than generated: `rigor sig-gen` emits only the methods it can fully type and says
-nothing about the rest — 5 of `frame_codec.rb`'s 10 — writes them to a mirrored
+nothing about the rest, writes them to a mirrored
 `sig/<source path>.rbs` instead of the gem's own `sig/`, and with `--params=observed` narrows a
 parameter to whatever one call site happened to pass (`def face: (:smile)`). Useful as a
 cross-check, not as the artifact.

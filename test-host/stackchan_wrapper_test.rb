@@ -2,7 +2,7 @@ require 'test/unit'
 require 'fileutils'
 require 'open3'
 
-# The wrapper's whole remaining job is to exec the PicoRuby CLI with the right
+# The wrapper's whole job is to exec the PicoRuby CLI with the right
 # argv. A fake VM records what it was handed, so this needs neither PicoRuby
 # nor a running daemon.
 class StackchanWrapperTest < Test::Unit::TestCase

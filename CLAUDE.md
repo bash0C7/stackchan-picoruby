@@ -10,7 +10,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - 進捗報告はツール結果に裏付けのあることだけ書く。未検証は未検証と言う。
 - 実機・ビルド・deploy は `stackchan-device-*` skill 経由。`rake r2p2:*` を main context から直接叩かない。
 - 長い rake (setup / build_flash / full_rebuild) は subagent (haiku) の foreground で 1 chain task として回し、log は `/tmp/stackchan-picoruby-debug/` に tee する。
-- spec と plan は repo の `docs/superpowers/{specs,plans}/` に置いて commit する。review・調査レポート・計測の証拠は Obsidian vault の `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ObsidianVault/02_dev_docs/stackchan-picoruby/review/` に置く。PR #427 関連は隣の `picoruby-ble-esp32-port/`。記事・WIP メモは esa (team `ksbrb`、カテゴリ `ｽﾀｯｸﾁｬﾝ`)。
+- spec と plan は repo の `docs/superpowers/{specs,plans}/` に置いて commit する。実行し終えた plan と、コードが先へ進んだ spec は vault の `02_dev_docs/stackchan-picoruby/{plans,specs}/` に移して repo から外す。review・調査レポート・計測の証拠は Obsidian vault の `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ObsidianVault/02_dev_docs/stackchan-picoruby/review/` に置く。PR #427 関連は隣の `picoruby-ble-esp32-port/`。記事・WIP メモは esa (team `ksbrb`、カテゴリ `ｽﾀｯｸﾁｬﾝ`)。
 - 日付・経緯・「以前は」を doc やコメントに残さない。現在の挙動を現在形で書く。経緯は git log に任せる。
 - コメントを書かない。コードは How、テストは What (テスト名)、コミットログは Why を担う。残すのは toolchain が読むもの (magic comment、suppify の `#:` 型注釈、rigor/steep 指示) と `# REQUIRED FOR PY32 COLD-BOOT` だけ。
 
@@ -108,7 +108,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 - `bootout` は unload 完了前に返る。ポートが空くのと service 登録が消えるのは別のシグナルで、ポートは数ミリ秒で空くのに登録は残る。`launchctl print` が失敗する (= 不在) まで待ってから bootstrap する。
 - **daemon のポートを接続で確認しない。** `wait_for_port` が connect して即 close すると、見捨てられた接続が drb ポートに残る。daemon は起動中 (sidecar priming) にブロックしており、協調 Task なのでそれを処理できず、後で相手のいないソケットへ書いて SIGPIPE で死ぬ。このため `pc:up` は `lsof` で LISTEN を見るだけで接続しない。PicoRuby VM は SIGPIPE を trap できない (`Signal.list` に `PIPE` が無く、`Signal.trap` はどの形でも `SystemStackError`)。R2P2-darwin が引く picoruby の picoruby-socket は listen socket に `SO_NOSIGPIPE` を付けて accepted socket に継承させるので、切れた相手への send は EPIPE で例外になり、picoruby-drb はその client だけを捨てて accept を続ける。RST が accept より前に届いた socket には後から `setsockopt` できない (失敗する) ので、listen socket 側に付ける。
 - `hal-task-darwin` (R2P2-darwin が引く picoruby の gem) は Mac の config (`build_config/darwin-stackchan-pc.rb`) にだけ入れる。iOS / watchOS の config には入れない (`bridge/task_hal_ios.c` と二重定義になる)。
-- Ruby 4.0 は `drb` を default gem から外した。root の `Gemfile` に `gem 'drb'` が要る。host test は verifier を注入して本物の DRb 経路を通らないので、テストは緑のまま実機で LoadError になる。
+- Ruby 4.0 の default gem に `drb` は無い。root の `Gemfile` に `gem 'drb'` が要る。host test は verifier を注入して本物の DRb 経路を通らないので、テストは緑のまま実機で LoadError になる。
 - CoreBluetooth の許可 (TCC) は app の designated requirement に付く。`codesign -s -` だけの ad-hoc 署名では requirement が cdhash になり、`pc:vm_build` → `pc:app_bundle` で VM が変わるたびに別の app として扱われ、launchd から起動した daemon は許可ダイアログ待ちのまま scan 結果を 1 件も受け取らない (`no StackChan advertiser found`、状態通知も来ない)。Terminal から走らせた scan は Terminal の許可で動くので切り分けにならない。`pc:app_bundle` は requirement を `identifier "com.bash0c7.stackchanpico"` に固定して署名する。この Mac の Apple Development 証明書は全部失効している。
 
 ## テスト

@@ -151,8 +151,9 @@ The controller holds the link only while it is in use.
 
 - `released`: no link. The next action connects first (scan, connect,
   discover, subscribe) and the link becomes `held`.
-- `held`: every 7 s without a frame the tick sends `<read:pos>` as a
-  keepalive. `touch listen` polling counts as use.
+- `held`: every 1 s the tick calls the robot's `touches` as a keepalive, and
+  the zones it returns are the head-touch notifications. `touch listen`
+  polling counts as use.
 - `quiet`: `c.hold` ms (`10_000` in `apps/mac/app.rb`) after the last action
   the keepalive stops. The robot releases the link 15 s after the last frame
   it received; an action before that uses the link as it is.
@@ -185,10 +186,11 @@ from a shell, even signed and previously authorized, always crashes.
 `~/Applications/StackchanPico.app` bundle (built by `rake pc:app_bundle`,
 path overridable with `STACKCHAN_PICORUBY_APP`); launchd is an acceptable
 responsible process for TCC, so this needs no `open -a` step. Rebuild the bundle (`rake pc:app_bundle`) after every
-`pc:vm_build` — the ad-hoc code signature, and the TCC authorization tied to
-it, is bound to the binary's exact bytes.
+`pc:vm_build` to copy the new VM in. The ad-hoc signature carries the designated
+requirement `identifier "com.bash0c7.stackchanpico"`, which is what the TCC
+authorization follows.
 
-## PicoRuby constraints worked around
+## PicoRuby constraints
 
 No Mutex/Thread (timesliced Tasks, `Task::Queue`); drb carries no kwargs (Hash args) and
 no remote block (poll, not yield-back); `system` can't background/redirect

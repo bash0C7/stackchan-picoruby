@@ -1,9 +1,8 @@
 name: firmware builds from nothing
 
 # The dependency check proves every piece can be fetched. It cannot prove they
-# compile together, and until this job existed nobody had ever built this
-# firmware anywhere but the one Mac it was written on — so "it works on another
-# machine" was an assumption, not a measurement.
+# compile together, so this job builds the firmware on a machine that is not
+# the Mac it is developed on.
 #
 # It does not flash and there is no CoreS3 here, so a green run means the tree
 # compiles and its own suites pass on a machine that is not that Mac. Whether the

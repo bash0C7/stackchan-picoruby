@@ -316,7 +316,7 @@ def stackchan_cli!(label, *args)
 end
 
 # Upload the robot app as the autostart payload, reset, and wait for
-# advertising (5 s escape hatch + cold-boot + 3 s BLE yield).
+# advertising (5 s startup wait + cold-boot + 3 s BLE yield).
 def deploy_application_and_wait(label)
   wait = ENV.fetch('AUTOSTART_WAIT', '12').to_i
   ENV['SRC'] = 'apps/robot/app.rb'

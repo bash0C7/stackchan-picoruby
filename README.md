@@ -580,11 +580,10 @@ Adds on top of upstream:
 
 BLE support (`mrbgems/picoruby-ble/`), on two lines:
 
-- The firmware line (the R2P2-ESP32 submodule pin) — the ESP32 (NimBLE) peripheral port, on
-  the lineage before the rebase that upstream PR
-  [#427](https://github.com/picoruby/picoruby/pull/427) carries, and
-  `picoruby-i2s`, with a commit on top that lets a peripheral drop its
-  central.
+- The firmware line (the R2P2-ESP32 submodule pin) — the ESP32 (NimBLE) peripheral port,
+  which lets a peripheral drop its central, and `picoruby-i2s`. It is not the
+  lineage that upstream PR
+  [#427](https://github.com/picoruby/picoruby/pull/427) carries.
 - The Apple line (what R2P2-darwin fetches) — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
   role can receive a GAP disconnect but cannot initiate one (this port has

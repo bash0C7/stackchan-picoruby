@@ -4,8 +4,8 @@ require 'open3'
 require 'json'
 
 # The guard's whole job is to answer "would this still build on another disk?",
-# and every way it has been wrong answered "yes" when the truth was "no". So the
-# fixtures here are built to be wrong in each of those ways: a remote that only
+# and the failure to avoid is answering "yes" when the truth is "no". So the
+# fixtures here are built to be wrong in each way that could happen: a remote that only
 # looks like GitHub, a pin two levels down, a submodule that is not there.
 #
 # Nothing reaches the network. Fake GitHub remotes are given remote-tracking refs
@@ -21,7 +21,7 @@ class DepsGuardTest < Test::Unit::TestCase
   # an immediate refusal, so a test never waits on github.com. The identity is
   # here rather than configured per repository because `git submodule add` makes
   # clones this file never touches, and a container has no global one to fall
-  # back on — which is how CI found this and a developer machine never would.
+  # back on.
   OFFLINE = {
     "GIT_TERMINAL_PROMPT" => "0",
     "GIT_CONFIG_COUNT" => "1",
@@ -99,7 +99,7 @@ class DepsGuardTest < Test::Unit::TestCase
   end
 
   # A checkout of this machine, under a directory whose name contains github.com
-  # exactly as ~/dev/src/github.com/... does. This is what used to pass.
+  # exactly as ~/dev/src/github.com/... does.
   def publish_to_a_local_path_only(sub)
     repo!(sub)
     disk = File.join(DIR, "dev", "src", "github.com", "someone", File.basename(sub))
