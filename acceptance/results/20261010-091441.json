@@ -61,6 +61,16 @@
         "detail": "all pins hold"
       },
       {
+        "name": "pins hold",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "qemu gate",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
         "name": "app upload",
         "ok": true,
         "detail": "ok"
@@ -76,10 +86,10 @@
         "detail": "3 markers, no fault"
       }
     ],
-    "app_root": "39db02442968f64ba083b0689bb3d23849983839"
+    "app_root": "7806dec25ca86652e4245ae2264dd5f18df554af"
   },
   "check": {
-    "root": "d59796ca51d0cad446a4b7cb5766dff98c1a2588",
+    "root": "ec6e302fe20230f59dae43f9f0c674ec8efa4b6f",
     "steps": [
       {
         "name": "flash identity",
@@ -94,7 +104,7 @@
       {
         "name": "pc:up",
         "ok": true,
-        "detail": "up after 2 tries, 29.8 s"
+        "detail": "up after 2 tries, 30.3 s"
       },
       {
         "name": "torque on",
@@ -114,12 +124,12 @@
       {
         "name": "servo detail",
         "ok": true,
-        "detail": "<YL_actual:7,PU_actual:20>"
+        "detail": "<YL_actual:8,PU_actual:11>"
       },
       {
         "name": "remote servo detail",
         "ok": true,
-        "detail": "<YL_actual:50,PU_actual:29>"
+        "detail": "<YL_actual:38,PU_actual:22>"
       },
       {
         "name": "servo health",
@@ -137,14 +147,9 @@
         "detail": "7872 bytes"
       },
       {
-        "name": "say routes",
-        "ok": true,
-        "detail": "say direct + drb recorded"
-      },
-      {
         "name": "timings",
         "ok": true,
-        "detail": "9 series"
+        "detail": "5 series"
       },
       {
         "name": "quiet wait",
@@ -154,27 +159,27 @@
       {
         "name": "selftest detail",
         "ok": true,
-        "detail": "<YL_actual:1,PU_actual:9>"
+        "detail": "<YL_actual:3,PU_actual:9>"
       },
       {
         "name": "touch listen",
-        "ok": true,
-        "detail": "touch zone=1 (right)"
+        "ok": null,
+        "detail": "incomplete: not touched within 30 s"
       },
       {
         "name": "calibrate",
         "ok": true,
-        "detail": "yaw_zero 481, pitch_zero 662, verify delta 0/-1"
+        "detail": "yaw_zero 481, pitch_zero 662, verify delta 0/0"
       },
       {
         "name": "release and reconnect",
         "ok": true,
-        "detail": "release seen: yes, reconnect + face 2.91 s"
+        "detail": "release seen: yes, reconnect + face 2.50 s"
       },
       {
         "name": "stack high-water",
         "ok": true,
-        "detail": "824 B free"
+        "detail": "856 B free"
       },
       {
         "name": "questions",
@@ -189,67 +194,55 @@
       {
         "name": "chat",
         "ok": true,
-        "detail": "reply=こんにちは、頭を撫でられましたね。"
+        "detail": "reply=こんにちは、頭を撫でられて嬉しいです。"
       }
     ],
     "timings": {
       "connect ms": [
-        4152
-      ],
-      "say direct": [
-        6.37759599997662
-      ],
-      "stack after say direct": [
-        920
-      ],
-      "say drb": [
-        4.591398000018671
-      ],
-      "stack after say drb": [
-        920
+        4063
       ],
       "servo": [
-        0.21593499998562038,
-        0.3170350000727922,
-        0.2425889999140054,
-        0.2971020000986755,
-        0.2235940000973642,
-        0.42236299999058247,
-        0.5095750000327826,
-        0.4516339998226613
+        0.31810200004838407,
+        0.16155900014564395,
+        0.2307410000357777,
+        0.2984400000423193,
+        0.20395799982361495,
+        0.33219200000166893,
+        0.33076500007882714,
+        0.22265600017271936
       ],
       "face": [
-        0.230492000002414,
-        0.20836200006306171,
-        0.30798599985428154,
-        0.19543199986219406,
-        0.21725200000219047,
-        0.24421999999321997,
-        0.21159800002351403,
-        0.24424499995075166
+        0.19728299998678267,
+        0.20330799999646842,
+        0.23465100000612438,
+        0.1482169998344034,
+        0.20803399989381433,
+        0.21767599997110665,
+        0.18322700005955994,
+        0.203296999912709
       ],
       "led": [
-        0.16284599993377924,
-        0.1844000001437962,
-        0.21123500005342066,
-        0.18389900005422533,
-        0.2042559999972582,
-        0.2634159999433905,
-        0.2713099999818951,
-        0.22496300004422665
+        0.20511600002646446,
+        0.19173199986107647,
+        0.20357799995690584,
+        0.20403000013902783,
+        0.18296699994243681,
+        0.18455499992705882,
+        0.18309599999338388,
+        0.1831080000847578
       ],
       "text": [
-        0.270924000069499,
-        0.2930149999447167,
-        0.23185100010596216,
-        0.25172200007364154,
-        0.28974599996581674,
-        0.2844620000105351,
-        0.23661500005982816,
-        0.2892040000297129
+        0.23696200014092028,
+        0.26320899999700487,
+        0.26371699990704656,
+        0.275859999936074,
+        0.2645930000580847,
+        0.2876859998796135,
+        0.29585400014184415,
+        0.24101899983361363
       ],
       "release and reconnect": [
-        2.9142859999556094
+        2.501040000002831
       ]
     },
     "human": {
@@ -276,6 +269,6 @@
     }
   },
   "darwin": null,
-  "resets": 16,
+  "resets": 22,
   "verdict": "pass"
 }

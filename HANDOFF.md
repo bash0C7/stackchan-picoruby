@@ -22,28 +22,29 @@ whole thing — lands where it is told.
 
 The robot carries the firmware and app of the latest report in
 `acceptance/results/`, and that report's verdict is `pass`: one check run
-start to finish in a TTY, with the owner at the robot touching the head and
-answering the questions.
+start to finish in a TTY, with the owner at the robot answering the
+questions.
 
-What that run showed on the robot:
+Everything between a controller and the robot is dRuby over BLE, audio
+included; there is no second route and no first NUS pair. The design is
+`docs/superpowers/specs/2026-10-10-druby-single-route-design.md`. What the
+report's run showed on the robot: `torque`, `face`, `led`, `servo`,
+`selftest`, `calibrate`, the `remote` verb, `servo health` (no read error,
+status 0 on both servos), `say`, `chat` against the real sidecar, and the
+robot releasing a quiet central with the next action reconnecting. The head
+was not touched within the 30 s of that run; the touch path (the one-second
+`touches` poll feeding `touch listen`) is the one an earlier run of the same
+firmware passed, and the app change since did not touch it.
 
-- Every command, reply and head touch goes over dRuby over BLE: `torque`,
-  `face`, `led`, `servo`, `selftest`, `calibrate`, the `remote` verb,
-  `servo health` (no read error, status 0 on both servos), `touch listen`
-  fed by the one-second `touches` poll, and `chat` against the real sidecar.
-  The design is
-  `docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
-- The robot boots and connects with Service Changed in its GATT table, and
-  the Mac needed no `sudo pkill bluetoothd` after the flash that changed the
-  table.
-- The robot releases a quiet central and the next action reconnects.
-- Audio plays on both routes, the direct one and the dRuby one
-  (`say --drb`), and the owner heard no difference between them. The task
-  stack's low mark reads the same after either.
+`rake test` and the CRuby host tests pass.
 
-`rake test` and the CRuby host tests pass. The iOS and watchOS apps build and
-start in the Simulator through Xcode MCP (`/stackchan-apple-simulator`) and
-reach `[batch] end`.
+The iOS and watchOS apps have never driven the robot with this controller.
+Two faults that stopped every action inside their VMs are fixed and seen
+fixed in the Simulators, where `status` now answers through the bridge
+(`/stackchan-apple-simulator`): actions were reached through
+`method_missing`, which the bridge's `__send__` runs as a C call that
+starves the BLE pump, and the central used `method(:name)`, which those VMs
+do not have. A Simulator has no Bluetooth, so nothing past `status` has run.
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails on
 any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -54,16 +55,24 @@ after changing anything it covers.
 
 ## Next
 
-### A. Decide the audio route
+### A. The iPhone and the Watch against the robot
 
-The evidence is in: in the report the dRuby route returned sooner than the
-direct one in the same run (`say drb` against `say direct`), left the same
-stack reading, and sounded the same to the owner. Recommended: carry audio
-over dRuby only. That removes the first NUS pair, `AudioReceiver`, the
-direct half of `Session#speak_audio` and the `--drb` flag; the robot gem
-travels in `app.mrb`, so it is an app transfer and a new check, not a
-flash. The firmware's dependency on the frame parser can go at the next
-firmware build. The decision is the owner's.
+Blocked on signing, which only the owner can clear: Xcode has no Apple ID
+(`No Accounts`), every Apple Development certificate in the keychain is
+revoked, and the provisioning profile does not include the iPhone on USB.
+With an account signed in under Xcode's Settings → Accounts, the build
+registers the device and makes the certificate itself.
+
+Then: `rake ios:device:lib ios:gen ios:device:build`, and
+`ios:device:run` with `APP_CONSOLE=1` and
+`APP_LAUNCH_ARGS='-StackchanBatch "connect;face joy;selftest;speak_audio <hex>"'`
+while the Mac leaves the robot alone (no action for `c.hold` plus the
+robot's `release_after`). `speak_audio` takes μ-law as hex; the Mac's
+sidecar synthesises it (`synthesize(text, nil, nil)` on
+`druby://127.0.0.1:8788`). The same for `watchos:` once a Watch is
+reachable; the one paired with this Mac shows as unavailable. This is the
+first time waits inside an action run on those VMs against a real link, so
+read a timeout there as a finding about the VM's scheduler, not the robot.
 
 ### B. Things found on the way, not yet acted on
 
@@ -72,10 +81,10 @@ firmware build. The decision is the owner's.
   `method_missing`, so on the robot it would run inside a nested VM and cost
   about 3 KB of the 8 KB task stack. `apps/robot/app.rb` declares no such
   handler today.
-- The iOS and watchOS bridges call the controller from C (`App.__send__`), so
-  every wait inside an action is the same kind of wait that hid the reply on
-  the Mac. Whether their BLE events arrive anyway is unverified; it needs a
-  phone or watch against the robot (`acceptance:darwin`).
+- `Daemon::CONNECTED_LINE` still reads `Connected; RX value_handle bound`, a
+  handle that no longer exists. The Swift views of both apps, the darwin
+  acceptance step and four tests match on that exact string, so changing it
+  is one edit across all of them.
 - R2P2-darwin's own watchOS build_config still lists `hal-io-darwin`, which
   no longer satisfies mruby's HAL provider contract at the picoruby this
   project pins, so its watchOS build should fail the same way this
@@ -88,8 +97,8 @@ still unexplained are in the vault: `review/2026-10-01-daemon-freeze/`,
 
 ### Open issues
 
-- #19: implemented and passed on the robot; closes with the audio decision
-  (A).
+- #19: done and passed on the robot from the Mac; what is left of it is the
+  iPhone and Watch run (A).
 - #22: what is left needs the robot or a decision. The pitch position read
   that failed three times in a row once: the ESP32 receive path is ruled out
   by source (vault `review/2026-10-03-pitch-read-pos/`), and `servo health`
