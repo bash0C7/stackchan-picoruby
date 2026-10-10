@@ -137,7 +137,7 @@ module StackChan
       end
 
       def remote(msg, *args)
-        lines = @central.remote.send(msg.to_sym, *args)
+        lines = @central.call_front(msg.to_sym, args)
         record(:remote)
         lines
       end

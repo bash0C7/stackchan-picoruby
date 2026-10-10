@@ -1,14 +1,3 @@
-class FakeBleRemote
-  def method_missing(name, *args)
-    $stderr.write("[fake_ble] remote #{name} #{args.inspect}\n"); $stderr.flush
-    ["<#{name}:fake>\n"]
-  end
-
-  def respond_to_missing?(_name, _include_private = false)
-    true
-  end
-end
-
 class FakeBleClient
   attr_accessor :on_unsolicited
   attr_reader :last_detail_frame
@@ -75,9 +64,10 @@ class FakeBleClient
     self
   end
 
-  def remote
+  def call_front(msg, args)
     raise StackChan::Controller::ConnectionError, "not connected" unless @connected
-    FakeBleRemote.new
+    $stderr.write("[fake_ble] remote #{msg} #{args.inspect}\n"); $stderr.flush
+    ["<#{msg}:fake>\n"]
   end
 
   private

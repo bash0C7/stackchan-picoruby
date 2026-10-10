@@ -168,6 +168,11 @@ module StackChan
         DRb::DRbObject.new_with_uri(DRB_URI)
       end
 
+      def call_front(msg, args)
+        remote
+        DRb.send_message(DRB_URI, nil, msg, args)
+      end
+
       def send_chunk(bytes)
         raise ConnectionError, "not connected" unless @connected
         if @drb_sent_at

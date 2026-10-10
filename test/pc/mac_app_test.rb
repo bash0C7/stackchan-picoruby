@@ -9,6 +9,13 @@ class MacAppTest < Picotest::Test
     end
   end
 
+  class PassingRadio < FakeRobotRadio
+    def before_drx_write(_value)
+      Task.pass
+      :continue
+    end
+  end
+
   def setup
     FakeClock.reset(0)
     @radio = FakeRobotRadio.new
@@ -40,6 +47,13 @@ class MacAppTest < Picotest::Test
     assert result[:message].include?("not exposed")
   end
   
+  def test_a_remote_call_waits_where_the_scheduler_can_switch_tasks
+    central = StackChan::Controller::Central.new(name_prefix: "StackChan", radio: PassingRadio.new, log_fn: ->(_line) {})
+    daemon = App.wire(central: central, voice: StubVoice.new, clock: -> { FakeClock.now }, log: ->(_line) {},
+                      out: ->(_line) {})
+    assert_equal({ status: :ok, out: ["<stack_free:unknown>\n"], message: nil }, daemon.remote("stack_free", []))
+  end
+
   def test_face
     assert_equal ok("OK face=joy"), act("face", "joy")
     assert_equal ["<F:2>\n"], @radio.rx_frames
