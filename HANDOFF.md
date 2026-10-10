@@ -51,14 +51,11 @@ after changing anything it covers.
 
 ## Next
 
-No step is waiting. What follows is what is known, for whoever picks one of
-these up; the open issues are the work that remains.
+### A. The Apple apps run without a person
 
-### A. The Apple apps from the command line: not needed
-
-The apps work in the hand. Driving them unattended does not work, and
-nothing needs it: only the optional `rake acceptance:darwin` does that, and
-no verdict depends on it.
+The apps work in the hand. `rake acceptance:darwin` is the wiring that
+drives them from the Mac with nobody tapping, and it does not run yet. It
+stays, so it has to work.
 
 - A watch app started with `-StackchanBatch` while nobody keeps the watch
   awake finds no advertiser: a scan whose timeout is 15 s takes 34 s to
