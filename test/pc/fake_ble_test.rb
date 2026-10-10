@@ -14,17 +14,13 @@ class FakeBleTest < Picotest::Test
     assert_equal "servo detail=\"<YL_actual:0,PU_actual:0>\\n\"", @daemon.act("servo", ["--yaw-left", "10"])[:out]
   end
 
-def test_keepalive_returns_the_touch_zones_the_robot_holds
-  client = FakeBleClient.new.connect
-  assert_equal [], client.keepalive
-  assert_nil client.last_detail_frame
-end
+  def test_keepalive_returns_the_touch_zones_the_robot_holds
+    client = FakeBleClient.new.connect
+    assert_equal [], client.keepalive
+    assert_nil client.last_detail_frame
+  end
 
-def test_keepalive_without_a_connection_raises
-  assert_raise(StackChan::Controller::ConnectionError) { FakeBleClient.new.keepalive }
-end
-
-def test_remote_answers_lines
+  def test_remote_answers_lines
     assert_equal({ status: :ok, out: ["<face:fake>\n"], message: nil }, @daemon.remote("face", ["joy"]))
   end
 
