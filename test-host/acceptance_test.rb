@@ -1058,14 +1058,14 @@ class AcceptanceTest < Test::Unit::TestCase
     end
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
-    assert_match(/selftest detail/, darwin_failed(r)["detail"])
+    assert_match(/no selftest detail in/, darwin_failed(r)["detail"])
   end
 
   def test_an_app_that_never_ends_its_batch_fails
     @ops.app_out["ios"] = ->(_lines) { "[batch] Connected; dRuby pair bound\n" }
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
-    assert_match(/\[batch\] end/, darwin_failed(r)["detail"])
+    assert_match(/no "\[batch\] end" in/, darwin_failed(r)["detail"])
   end
 
   def test_an_iphone_busy_in_the_hand_off_fails_it
