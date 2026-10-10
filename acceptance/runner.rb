@@ -167,12 +167,12 @@ module Acceptance
       end
     end
 
-    def lock_digest = Digest::SHA256.hexdigest(JSON.generate(@lock))
+    def lock_digest = Digest::SHA256.hexdigest(JSON.generate(@lock.fetch("firmware")))
 
     def app_inputs = [firmware.fetch("app"), *@bundled]
 
     def same_tree!(app: true)
-      raise Stop, "acceptance/lock.yml differs from the one report #{@report['stamp']} deployed" unless @report["deploy"]["lock_digest"] == lock_digest
+      raise Stop, "the firmware pins in acceptance/lock.yml differ from the ones report #{@report['stamp']} deployed" unless @report["deploy"]["lock_digest"] == lock_digest
       built = @report["root"]
       moved = moved_since(built, FIRMWARE_INPUTS)
       raise Stop, "#{moved.join(', ')} differ from #{built[0, 7]}, which the deploy built; that is another firmware and another report" unless moved.empty?

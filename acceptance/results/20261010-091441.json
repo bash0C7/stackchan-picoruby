@@ -28,7 +28,7 @@
   },
   "root": "39db02442968f64ba083b0689bb3d23849983839",
   "deploy": {
-    "lock_digest": "184560c5b6d4548fae0259132c3ba45ca489cfc794c584ea0da4541489c681d0",
+    "lock_digest": "c40eba492a0eb582edd5063b72b9d97c3a453ec60326bf83dce2bd746edace52",
     "steps": [
       {
         "name": "pin trees",

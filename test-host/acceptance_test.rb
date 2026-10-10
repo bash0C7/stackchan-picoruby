@@ -394,16 +394,30 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_empty rakes
   end
 
-  def test_a_changed_lock_stops_check_and_acceptance_app_before_touching_anything
+  def test_a_changed_firmware_pin_stops_check_and_acceptance_app_before_touching_anything
     t = checked
     lock = Marshal.load(Marshal.dump(LOCK))
     lock["firmware"]["repos"]["picoruby-scservo"] = "c" * 40
     later = Acceptance::Runner.new(lock: lock, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: 2, stamp: "t")
     later.report.merge!(JSON.parse(JSON.generate(t.report)))
     @ops.calls.clear
-    assert_raise_message(/lock\.yml differs/) { later.check }
-    assert_raise_message(/lock\.yml differs/) { later.upload_app }
+    assert_raise_message(/firmware pins in acceptance\/lock\.yml differ/) { later.check }
+    assert_raise_message(/firmware pins in acceptance\/lock\.yml differ/) { later.upload_app }
     assert_empty @ops.calls
+  end
+
+  def test_a_changed_darwin_pin_leaves_the_deployed_report_usable_for_check_and_acceptance_app
+    t = checked
+    lock = Marshal.load(Marshal.dump(LOCK))
+    lock["darwin"]["R2P2-darwin"] = "c" * 40
+    later = Acceptance::Runner.new(lock: lock, root: ROOT, ops: @ops, bundled: BUNDLED, rounds: 2, stamp: "t")
+    later.report.merge!(JSON.parse(JSON.generate(t.report)))
+    @ops.calls.clear
+    later.check
+    later.upload_app
+    assert_nil failed(later.report["check"])
+    assert_nil failed(later.report["deploy"])
+    assert_empty(rake_tasks & Acceptance::Runner::FIRMWARE_WRITES)
   end
 
   def test_a_checkout_moved_outside_what_the_board_runs_checks_and_resends_the_app
