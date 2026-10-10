@@ -30,5 +30,5 @@ firmware:
 # robot Mac → iPhone → Watch → Mac. That run is optional; the verdict does not
 # need it.
 darwin:
-  R2P2-darwin: 7a0221967f70bd93114a3ccd5c4f7248e3bbd7c2             # main
+  R2P2-darwin: 095fccc36bd3401e8281709575b221392ebcdd1f             # main
   picoruby: 121c6b51fbe827f35e54dfdf9c4cfce144ae4d11                # port-darwin, vendor/R2P2-darwin/vendor/picoruby
