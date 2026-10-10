@@ -180,8 +180,7 @@ module StackChan
           calibrate(Args.new(arg))
         when :speak_audio
           ulaw = audio_bytes(arg)
-          route = arg.is_a?(Array) && arg[1] == "drb" ? :drb : :direct
-          with_link { @session.speak_audio(ulaw, route: route) }
+          with_link { @session.speak_audio(ulaw) }
           "OK speak_audio bytes=#{ulaw.bytesize}"
         else
           blk = @actions[key][:blk]

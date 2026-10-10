@@ -92,7 +92,6 @@ module Acceptance
        ["servo health", -> { servo_health }],
        ["remote face", -> { remote_face }],
        ["say", -> { say }],
-       ["say routes", -> { say_routes }],
        ["timings", -> { measure }],
        ["quiet wait", -> { @quiet = quiet_wait_s; "#{@quiet} s" }],
        ["selftest detail", -> { detail!(cli!("selftest")) }],
@@ -438,17 +437,6 @@ module Acceptance
       raise Stop, "no `OK say bytes=` in #{out.inspect}" unless bytes
       raise Stop, "#{bytes} bytes fit in two chunks; the clip must span more" if bytes.to_i <= MULTICORE_CHUNK * 2
       "#{bytes} bytes"
-    end
-
-    def say_routes
-      t = @report["check"]["timings"]
-      [[:direct, []], [:drb, ["--drb"]]].each do |route, flags|
-        _, _, seconds, = @ops.cli(@root, "say", SAY_TEXT, *flags)
-        (t["say #{route}"] ||= []) << seconds
-        _, stack_out, = @ops.cli(@root, "remote", "stack_free")
-        (t["stack after say #{route}"] ||= []) << stack_out.to_s[/<stack_free:(\d+)>/, 1].to_i
-      end
-      "say direct + drb recorded"
     end
 
     def servo_health

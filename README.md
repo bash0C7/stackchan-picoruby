@@ -22,9 +22,9 @@ the Stack-chan community.
 ## Architecture
 
 ```
-+-----------+   BLE NUS (frame protocol + ACK queue)   +---------------------+
++-----------+     BLE NUS, pair 6e400004/5 (dRuby)      +---------------------+
 |  macOS    | <--------------------------------------> |  CoreS3 / R2P2      |
-|  iPhone   |   second pair 6e400004/5 (dRuby)         |  PicoRuby + mrbgems |
+|  iPhone   |                                          |  PicoRuby + mrbgems |
 |  Watch    |                                          |  LCD / LED / servo  |
 +-----------+                                          |  / BLE / speaker    |
                                                        +---------------------+
@@ -36,20 +36,17 @@ advertises the Nordic UART Service, and listens for control frames.
 
 The controllers — the macOS daemon and the iPhone and Apple Watch apps — are
 the orchestrators. They send control frames (face, LED, servo position, audio)
-and read single-byte ACK or ERR replies plus detail frames.
+and read the reply lines (an ACK or ERR line plus a detail line).
 
-Every command, reply and head touch travels as dRuby over BLE on the
-service's second characteristic pair (`6e400004` write, `6e400005` notify).
+Every command, reply, head touch and audio clip travels as dRuby over BLE on the
+service's characteristic pair (`6e400004` write, `6e400005` notify).
 The controller calls the robot's front object; a command is a Hash in the
 key-value vocabulary that the FrameParser in the
 `mrbgems/picoruby-stackchan-protocol` gem reads, and the reply is the lines
 the robot answers with.
 
-Audio has two routes while they are being compared on the robot. The default
-sends a length-prefixed `<A:nbytes>` frame followed by raw mu-law bytes in
-180-byte writes on the first pair (`6e400002` / `6e400003`), which carries
-nothing else. `stackchan say --drb` sends the same bytes through dRuby calls
-instead.
+Audio is a sequence of dRuby calls: `audio_begin`, `audio_chunk` (2048 bytes
+each), `audio_play`, then polling `audio_done`.
 
 ## Code layout
 
@@ -83,7 +80,7 @@ apps/robot/app.rb    The autostart payload: requires and one
                      the face index, the head-touch reactions and the blink.
 mrbgems/             picoruby-stackchan-robot (the engine: DSL, cold-boot
                      init sequence, BLE peripheral, command dispatcher, face
-                     rendering, audio receive, tick loop, dRuby front),
+                     rendering, audio playback, tick loop, dRuby front),
                      picoruby-stackchan-led (WS2812 ring), picoruby-si12t
                      (head touch), picoruby-aw88298 (amp + mu-law playback),
                      picoruby-drb-ble (dRuby over BLE),
@@ -366,8 +363,8 @@ kill %1 %2
 | Eye-blink animation | yes | eye-only redraw |
 | WS2812 LED ring (12 px) | yes | solid, blink, breathing, off, per side |
 | Servo control (yaw, pitch) | yes | normalized YL/YR/PU protocol, BLE calibration CLI |
-| BLE control (Nordic UART Service) | yes | dRuby over BLE for commands, direct pair for audio, 20 ms link loop |
-| Speaker (AW88298 over I2S) | yes | mu-law audio streamed from macOS over BLE |
+| BLE control (Nordic UART Service) | yes | dRuby over BLE for commands, replies, touch and audio, 20 ms link loop |
+| Speaker (AW88298 over I2S) | yes | mu-law audio sent from macOS as dRuby calls over BLE |
 | Microphone | no | planned |
 | IMU (BMI270 + BMM150) | no | planned |
 | 3-zone head touch (Si12T) | yes | on-device face + LED pulse per tap, polled by the controller over dRuby |
@@ -392,17 +389,12 @@ kill %1 %2
 - The robot's GATT table ends with Service Changed, but whether that stops
   the Mac from reusing an old table has not been tried on the robot; until it
   has, `sudo pkill bluetoothd` after a table change. (#19)
-- Which audio route stays is undecided until both are timed on the robot. (#19)
 - `rake ios:run` (and so `ios:all`) stops at `open -a Simulator` and never
   installs or launches the app.
 - There is no retry path: `StackChan::Controller::Central` raises `TimeoutError` on an ACK
   timeout and the CLI command fails rather than the frame being resent once.
   This is a gap in the code, not an observed symptom; it has no effect until a
   frame is actually dropped.
-- `<A:done>` taking about 45 s on the first `say` after a long idle rests on a
-  single observation after ten hours. It has not recurred, and a `say` on a
-  warm device answers in seconds, so recreating a long idle is what would
-  settle whether this is still real.
 - A client that hangs up mid-call is dropped, not fatal: the daemon's sockets
   carry `SO_NOSIGPIPE` (inherited from the listening socket), so the write to
   the gone peer fails with EPIPE and the dRuby server logs
@@ -414,22 +406,14 @@ kill %1 %2
 ## Audio path
 
 macOS synthesizes speech with `say`, converts 8 kHz mono PCM to G.711 mu-law,
-and streams it over BLE using a half-duplex receive-then-play protocol.
+and sends it to the robot as dRuby calls over BLE.
 
-The PC side sends `<A:N>` (N = mu-law byte count), sleeps a fixed 1.5 s
-(`READY_WAIT_MS`; it does not wait for `<A:ready>`), sends the bytes in
-180-byte writes paced 20 ms apart, then waits for the device's `<A:done>` for
-`3300 + N × 6 / 5` ms clamped to 30-180 s. The device, on receiving `<A:N>`,
-replies `<A:ready>`, spends `T = (N × 1000 / 8000) + 3000 ms` taking the
-received writes off the queue in 50 ms steps, plays the buffer, and sends
-`<A:done>`. The phase separation prevents the NimBLE host thread and the
-PicoRuby main task from racing on the mruby heap.
-
-That window is sized from an assumed 8000 bytes/s blast, while the PC paces at a
-nominal 9000 bytes/s and measures slower than that. Long clips can therefore
-outrun the window and lose their tail; where the ceiling actually falls has not
-been characterised. The limit is a byte count, so it buys half as many seconds
-of speech for every doubling of the sample rate.
+The PC side calls `audio_begin(N)` (N = mu-law byte count), sends the bytes with
+`audio_chunk` in 2048-byte calls, and calls `audio_play`, which reserves the
+playback and returns. The robot plays the buffer after it has written the
+reply, on its next link-loop tick. The PC waits `N / 8` ms plus 1 s, then
+asks `audio_done` every 500 ms until it answers true, for at most
+`3300 + N × 6 / 5` ms clamped to 30-180 s.
 
 The AW88298 Class-D amplifier requires its boost rail (SY7088, via AW9523) and
 its 1.8 V digital rail (AXP2101 ALDO1) powered at cold-boot. The I2S link uses

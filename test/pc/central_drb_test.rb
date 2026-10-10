@@ -1,5 +1,4 @@
 class CentralDrbTest < Picotest::Test
-  RX = 0x11; TX = 0x14; CCCD = 0x16
   DRX = 0x21; DTX = 0x24; DCCCD = 0x26
 
   class Front
@@ -35,11 +34,7 @@ class CentralDrbTest < Picotest::Test
   end
 
   def services(with_drb: true)
-    chars = [
-      { uuid128: StackChan::Controller::Nus.rx_uuid, value_handle: RX, descriptors: [] },
-      { uuid128: StackChan::Controller::Nus.tx_uuid, value_handle: TX,
-        descriptors: [{ uuid128: StackChan::Controller::Nus.cccd_uuid, handle: CCCD }] },
-    ]
+    chars = []
     if with_drb
       chars << { uuid128: StackChan::Controller::Nus.drb_rx_uuid, value_handle: DRX, descriptors: [] }
       chars << { uuid128: StackChan::Controller::Nus.drb_tx_uuid, value_handle: DTX,
@@ -96,12 +91,5 @@ class CentralDrbTest < Picotest::Test
     radio.deliver_scheduled_on_next_poll
     radio.reply_delay = 0
     assert_equal ["fresh"], central.remote.echo("fresh")
-  end
-
-  def test_text_notifications_do_not_reach_the_drb_inbox
-    radio = DrbRadio.new(services: services)
-    central = build(radio)
-    radio.schedule_notification(TX, ".\n")
-    assert_equal [".\n", "face 1"], central.remote.face(1)
   end
 end

@@ -239,7 +239,7 @@ class AcceptanceTest < Test::Unit::TestCase
   APP_STEPS = DEPLOY_STEPS.dup.insert(DEPLOY_STEPS.index("app upload"), "pins hold", "qemu gate").freeze
   GATE_ENV = { "QEMU_PROBE_APP" => "apps/robot/app.rb" }.freeze
   CHECK_STEPS = ["flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
-                 "remote servo detail", "servo health", "remote face", "say", "say routes", "timings", "quiet wait",
+                 "remote servo detail", "servo health", "remote face", "say", "timings", "quiet wait",
                  "selftest detail", "touch listen", "calibrate", "release and reconnect", "stack high-water",
                  "questions", "torque off", "chat"].freeze
 
@@ -749,18 +749,6 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal [842], t.report["check"]["timings"]["connect ms"]
   end
 
-  def test_a_failing_drb_say_is_recorded_without_stopping_the_check_or_failing_the_verdict
-    @ops.cli_out["say"] = lambda do |args, _env|
-      args.include?("--drb") ? [1, "error: drb route failed\n"] : "OK say bytes=9000"
-    end
-    t = checked
-    assert_equal "pass", t.report["verdict"]
-    assert step(t.report, "say")["ok"]
-    assert step(t.report, "say routes")["ok"]
-    assert_equal 1, t.report["check"]["timings"]["say drb"].size
-    assert_equal 1, t.report["check"]["timings"]["say direct"].size
-  end
-
   def test_unanswered_questions_leave_it_incomplete_until_answered
     @ops.answers = []
     t = checked
@@ -828,8 +816,6 @@ class AcceptanceTest < Test::Unit::TestCase
     notice = index_of { |c| c == [:notice, "touch the back of the head"] }
     listen = index_of { |c| cli_call?(c, "touch", "listen", "--count", "1", "--timeout", "30") }
     assert_operator notice, :<, listen
-    assert @ops.calls[0...listen].any? { |c| cli_call?(c, "remote", "stack_free") },
-           "say routes should have read stack_free before touch listen"
     assert @ops.calls[listen..].any? { |c| cli_call?(c, "remote", "stack_free") },
            "stack high-water should read stack_free after touch listen"
   end
@@ -1139,7 +1125,6 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_match(/\| text \| \d\.\d{3} \|/, md)
     assert_match(/\| servo \| \d\.\d{3} \|/, md)
     assert_match(/\| connect ms \| \d+\.\d{3} \|/, md)
-    assert_match(/\| say drb \| \d\.\d{3} \|/, md)
     assert_match(/- サーボが指示どおりに動いた: y/, md)
     assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, md)
     assert_match(/\| iPhone batch \| ok \| <YL_actual:50,PU_actual:29> \|/, md)

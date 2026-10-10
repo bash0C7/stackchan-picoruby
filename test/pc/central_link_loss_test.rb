@@ -1,6 +1,4 @@
 class CentralLinkLossTest < Picotest::Test
-  RX  = FakeRobotRadio::RX
-  TX  = FakeRobotRadio::TX
   DRX = FakeRobotRadio::DRX
   DTX = FakeRobotRadio::DTX
 
@@ -123,12 +121,6 @@ class CentralLinkLossTest < Picotest::Test
     assert_true @radio.writes_after_drop.size >= 1
   end
 
-  def test_a_drop_during_the_audio_wait_raises_connection_error
-    @radio.drop_link(event: true)
-    assert_raise(StackChan::Controller::ConnectionError) { @central.await_audio_done(240) }
-    assert_equal [], FakeClock.sleeps
-  end
-
   def test_a_drop_during_a_drb_reply_wait_raises_connection_error
     front = @central.remote
     @radio.drop_link(event: true)
@@ -183,13 +175,5 @@ class CentralLinkLossTest < Picotest::Test
     @central.connect
     @central.raw_send("<F:3>\n")
     assert_equal :open, @radio.dispatcher.current_face.mouth
-  end
-
-  def test_audio_is_answered_ready_then_done_after_n_bytes
-    @central.write_without_ack("<A:4>\n")
-    @central.write_without_ack("ab")
-    @central.write_without_ack("cd")
-    @central.await_audio_done(4)
-    assert_equal ["<A:4>\n"], @radio.rx_frames
   end
 end

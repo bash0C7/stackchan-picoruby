@@ -19,15 +19,11 @@ module StackChan
         @radio.on_notification = method(:handle_notification)
         @radio.on_disconnect   = method(:link_lost)
         @log_fn             = log_fn   || ->(line) { $stderr.write(line + "\n"); $stderr.flush }
-        @rx_handle          = nil
-        @tx_handle          = nil
-        @cccd_handle        = nil
         @drb_rx_handle      = nil
         @drb_tx_handle      = nil
         @drb_cccd_handle    = nil
         @drb_inbox          = []
         @drb_sent_at        = nil
-        @inbox              = []
         @connected          = false
         @last_detail_frame  = nil
         @lost               = false
@@ -51,11 +47,7 @@ module StackChan
         @connected         = false
         @drb_inbox.clear
         @drb_sent_at       = nil
-        @inbox.clear
         @last_detail_frame = nil
-        @rx_handle         = nil
-        @tx_handle         = nil
-        @cccd_handle       = nil
         @drb_rx_handle     = nil
         @drb_tx_handle     = nil
         @drb_cccd_handle   = nil
@@ -102,12 +94,6 @@ module StackChan
         remote_call { remote.touches }
       end
 
-      def write_without_ack(payload)
-        raise ConnectionError, "not connected" unless @connected
-        write_rx(payload)
-        self
-      end
-
       def audio_begin(n)
         raise ConnectionError, "not connected" unless @connected
         remote_call { remote.audio_begin(n) }
@@ -133,25 +119,6 @@ module StackChan
         return AUDIO_DONE_TIMEOUT_MIN_MS if ms < AUDIO_DONE_TIMEOUT_MIN_MS
         return AUDIO_DONE_TIMEOUT_MAX_MS if ms > AUDIO_DONE_TIMEOUT_MAX_MS
         ms
-      end
-
-      def await_audio_done(n)
-        raise ConnectionError, "not connected" unless @connected
-        @inbox.clear
-        polls = polls_for(audio_done_timeout_ms(n))
-        i = 0
-        while true
-          drain
-          raise_if_lost
-          idx = @inbox.index { |f| f.start_with?("<A:done>") }
-          if idx
-            @inbox.delete_at(idx)
-            return self
-          end
-          raise TimeoutError, "<A:done> timeout" if i >= polls
-          sleep_ms(POLLING_UNIT_MS)
-          i += 1
-        end
       end
 
       def drain
@@ -201,14 +168,6 @@ module StackChan
 
       def resolve_handles
         services = @radio.services
-        rx = Nus.find_characteristic(services, Nus.rx_uuid)
-        tx = Nus.find_characteristic(services, Nus.tx_uuid)
-        raise ConnectionError, "NUS RX not found" unless rx
-        raise ConnectionError, "NUS TX not found" unless tx
-        @rx_handle   = rx[:value_handle]
-        @tx_handle   = tx[:value_handle]
-        @cccd_handle = Nus.cccd_handle(tx)
-        raise ConnectionError, "NUS TX CCCD not found; discovery did not finish" unless @cccd_handle
         drb_rx = Nus.find_characteristic(services, Nus.drb_rx_uuid)
         drb_tx = Nus.find_characteristic(services, Nus.drb_tx_uuid)
         raise ConnectionError, "dRuby pair not found" unless drb_rx && drb_tx
@@ -219,9 +178,7 @@ module StackChan
       end
 
       def subscribe_tx
-        [@cccd_handle, @drb_cccd_handle].each do |h|
-          @radio.write_characteristic_descriptor_using_descriptor_handle(@radio.conn_handle, h, SUBSCRIBE_ENABLE)
-        end
+        @radio.write_characteristic_descriptor_using_descriptor_handle(@radio.conn_handle, @drb_cccd_handle, SUBSCRIBE_ENABLE)
         settle(SUBSCRIBE_SETTLE_MS)
       end
 
@@ -233,16 +190,7 @@ module StackChan
       end
 
       def handle_notification(handle, value)
-        if handle == @drb_tx_handle
-          @drb_inbox << value
-          return
-        end
-        return unless handle == @tx_handle
-        @inbox << value
-      end
-
-      def write_rx(payload)
-        @radio.write_value_of_characteristic_without_response(@radio.conn_handle, @rx_handle, payload)
+        @drb_inbox << value if handle == @drb_tx_handle
       end
 
       def command_frame(frame)

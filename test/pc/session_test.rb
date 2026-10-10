@@ -83,16 +83,6 @@ class SessionTest < Picotest::Test
     tick while FakeClock.now < t
   end
 
-  def audio_writes_after(announce)
-    sizes = []
-    seen = false
-    @radio.writes.each do |_handle, value|
-      sizes << value.bytesize if seen
-      seen = true if value == announce
-    end
-    sizes
-  end
-
   def test_a_touch_while_held_reaches_on_touch_and_poll_touch_after_the_next_keepalive
     seen = []
     @daemon.on_touch { |_s, zone| seen << zone }
@@ -169,7 +159,7 @@ class SessionTest < Picotest::Test
     face("neutral")
     assert_equal "hello", chat("hi", speak: true)[:out]
     assert_equal [["hello", ["<F:0>\n"]]], seen
-    assert_equal ["<F:0>\n", "<text:hello>\n", "<A:400>\n"], @radio.rx_frames
+    assert_equal ["<F:0>\n", "<text:hello>\n"], @radio.rx_frames
   end
 
   def test_chat_without_on_reply_sends_no_text_frame
@@ -225,12 +215,12 @@ class SessionTest < Picotest::Test
     assert_equal :held, @link.state
   end
 
-  def test_say_announces_waits_then_paces_180_byte_chunks_until_done
+  def test_say_hands_the_audio_over_druby_and_waits_out_the_playback
     face("neutral")
     FakeClock.sleeps.clear
     assert_equal "OK say bytes=400", say("hello")[:out]
-    assert_equal [180, 180, 40], audio_writes_after("<A:400>\n")
-    assert_equal [20, 1500, 20, 20, 20], FakeClock.sleeps
+    assert_equal [400], @radio.speaker.played.map(&:bytesize)
+    assert_equal 1050, FakeClock.sleeps.last
     assert_equal [[:synthesize, 1]], @voice.token_sizes
   end
 

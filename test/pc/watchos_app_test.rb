@@ -62,6 +62,32 @@ class WatchosAppTest < Picotest::Test
   def test_speak_audio_from_the_bridge_takes_hex
     WatchosApp.__send__(:speak_audio, "7f7f")
     assert_equal ["OK speak_audio bytes=2"], @lines
-    assert_equal ["<A:2>\n"], @radio.rx_frames
+    assert_equal [], @radio.rx_frames
+    assert_equal [[0x7f, 0x7f]], @radio.speaker.played.map(&:bytes)
+  end
+
+  def passing_bridge_lines
+    central = StackChan::Controller::Central.new(name_prefix: "StackChan", radio: PassingRadio.new, log_fn: ->(_line) {})
+    lines = []
+    WatchosApp.wire(central: central, clock: -> { FakeClock.now }, log: ->(_line) {}, out: ->(line) { lines << line })
+    lines
+  end
+
+  def test_a_declared_action_from_the_bridge_runs_without_a_c_frame_around_the_scheduler
+    lines = passing_bridge_lines
+    WatchosApp.__send__(:face, "joy")
+    assert_equal ["OK face=joy"], lines
+  end
+
+  def test_a_built_in_action_from_the_bridge_runs_without_a_c_frame_around_the_scheduler
+    lines = passing_bridge_lines
+    WatchosApp.__send__(:raw, "<torque:on>")
+    assert_equal ["OK raw"], lines
+  end
+
+  def test_every_action_name_answers_respond_to
+    [:connect, :status, :stop, :raw, :calibrate, :speak_audio, :face].each do |name|
+      assert WatchosApp.respond_to?(name)
+    end
   end
 end

@@ -1,5 +1,4 @@
 class DrbChannelTest < Picotest::Test
-  RX = 0x11; TX = 0x14; CCCD = 0x15
   DRX = 0x21; DTX = 0x24; DCCCD = 0x25
 
   class FakeServo
@@ -23,10 +22,6 @@ class DrbChannelTest < Picotest::Test
 
   class NullTicker
     def tick(_now); end
-  end
-
-  class NullAudio
-    def reset; end
   end
 
   class CentralLink
@@ -69,9 +64,8 @@ class DrbChannelTest < Picotest::Test
       responder: DRbBle::Responder.new(@front, allow: @front.exposed)
     )
     @loop = StackChan::Robot::LinkLoop.new(
-      port: @port, rx_handle: RX, tx_handle: TX, cccd_handle: CCCD,
-      ticker: NullTicker.new, on_packet: ->(_p) {}, on_rx: ->(_d) {},
-      clock: -> { 0 }, log: ->(_l) {}, drb: @channel, audio: NullAudio.new, remote: @front
+      port: @port, ticker: NullTicker.new, on_packet: ->(_p) {},
+      clock: -> { 0 }, drb: @channel, remote: @front
     )
     DRbBle.register("drbble://stackchan", CentralLink.new(@port, @loop), timeout_ms: 200)
     @remote = DRb::DRbObject.new_with_uri("drbble://stackchan")
@@ -103,12 +97,6 @@ class DrbChannelTest < Picotest::Test
     @port.queue_write(DRX, req.out)
     @loop.tick
     assert_equal [], @port.notifies
-  end
-
-  def test_text_link_output_is_untouched_by_a_drb_call
-    subscribe
-    @remote.face(2)
-    assert_equal [], @port.notifies.select { |n| n[0] == TX }
   end
 
   def test_service_reports_whether_the_central_wrote_to_the_drb_pair

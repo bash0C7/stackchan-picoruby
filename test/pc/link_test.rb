@@ -1,6 +1,4 @@
 class LinkTest < Picotest::Test
-  RX    = FakeRobotRadio::RX
-  CCCD  = FakeRobotRadio::CCCD
   DCCCD = FakeRobotRadio::DCCCD
   TICK_MS = 250
 
@@ -37,7 +35,6 @@ class LinkTest < Picotest::Test
     end
   end
 
-  TX = FakeRobotRadio::TX
 
   def build(hold: 10_000, radio: nil)
     FakeClock.reset(0)
@@ -126,7 +123,7 @@ class LinkTest < Picotest::Test
     act_frame("<F:3>\n")
     assert_equal 2, @radio.connect_and_discover_calls
     assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
-    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "command"]], @radio.events
+    assert_equal [[:descriptor, DCCCD], [:frame, "command"]], @radio.events
     assert_equal :held, @link.state
   end
 
@@ -151,7 +148,7 @@ class LinkTest < Picotest::Test
     act_frame("<F:3>\n")
     assert_equal 2, @radio.connect_and_discover_calls
     assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
-    assert_equal [[:descriptor, CCCD], [:descriptor, DCCCD], [:frame, "command"]], @radio.events
+    assert_equal [[:descriptor, DCCCD], [:frame, "command"]], @radio.events
     assert_equal :held, @link.state
   end
 

@@ -8,8 +8,6 @@ module StackChan
       HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
 
       NUS_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
-      NUS_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x02\x00\x40\x6e"
-      NUS_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x03\x00\x40\x6e"
       DRB_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x04\x00\x40\x6e"
       DRB_TX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x05\x00\x40\x6e"
 
@@ -25,17 +23,8 @@ module StackChan
       def initialize(robot, display:, led:, head: nil, touch: nil, speaker: nil)
         @adv_data = build_adv_data
         db = build_gatt_database
-        @rx_handle = nus_handle(db, NUS_RX_CHAR_UUID, :value_handle)
-        @audio = StackChan::Robot::AudioReceiver.new(
-          speaker: speaker,
-          parser:  StackchanProtocol::FrameParser.new,
-          notify:  ->(msg) { write(msg) },
-          drain:   -> { pop_write_value(@rx_handle) },
-          pump:    -> { @link.pump }
-        )
         wiring = robot.wire(
-          display: display, led: led, head: head, touch: touch, speaker: speaker,
-          stdout: self
+          display: display, led: led, head: head, touch: touch, speaker: speaker
         )
         @dispatcher = wiring.dispatcher
         @robot_handle = wiring.handle
@@ -49,24 +38,14 @@ module StackChan
         )
         @link = StackChan::Robot::LinkLoop.new(
           port: self,
-          rx_handle: @rx_handle,
-          tx_handle: nus_handle(db, NUS_TX_CHAR_UUID, :value_handle),
-          cccd_handle: nus_handle(db, NUS_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
           ticker: ticker,
           on_packet: ->(pkt) { packet_callback(pkt) },
-          on_rx: ->(data) { consume_rx(data) },
           clock: -> { Machine.uptime_us },
-          log: ->(line) { puts line },
           drb: drb,
-          audio: @audio,
           remote: remote,
           release_after: robot.release_after
         )
         super(:peripheral, db.profile_data)
-      end
-
-      def write(frame)
-        @link.write(frame)
       end
 
       def pop_event(timeout_ms:)
@@ -114,10 +93,6 @@ module StackChan
             s.add_characteristic(BLE::READ, BLE::GAP_DEVICE_NAME_UUID, BLE::READ, "StackChan-PicoRuby")
           end
           db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, NUS_SERVICE_UUID) do |s|
-            s.add_characteristic(NUS_RX_PROPS, NUS_RX_CHAR_UUID, NUS_RX_PROPS, "")
-            s.add_characteristic(NUS_TX_PROPS, NUS_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
-              c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
-            end
             s.add_characteristic(NUS_RX_PROPS, DRB_RX_CHAR_UUID, NUS_RX_PROPS, "")
             s.add_characteristic(NUS_TX_PROPS, DRB_TX_CHAR_UUID, NUS_TX_VAL_PROPS, "") do |c|
               c.add_descriptor(NUS_CCCD_PROPS, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION, "\x00\x00")
@@ -146,10 +121,6 @@ module StackChan
           @link.disconnected
           advertise(@adv_data)
         end
-      end
-
-      def consume_rx(rx_data)
-        write("<A:done>\n") if @audio.consume(rx_data) { |frame| write("?\n") }
       end
     end
   end

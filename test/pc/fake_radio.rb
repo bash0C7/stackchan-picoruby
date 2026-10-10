@@ -171,9 +171,6 @@ class LoggingRemote < StackChan::Robot::Remote
 end
 
 class FakeRobotRadio < FakeRadio
-  RX    = 0x11
-  TX    = 0x14
-  CCCD  = 0x16
   DRX   = 0x21
   DTX   = 0x24
   DCCCD = 0x26
@@ -181,8 +178,6 @@ class FakeRobotRadio < FakeRadio
   def self.nus_services
     nus = StackChan::Controller::Nus
     [{ characteristics: [
-      { uuid128: nus.rx_uuid, value_handle: RX, descriptors: [] },
-      { uuid128: nus.tx_uuid, value_handle: TX, descriptors: [{ uuid128: nus.cccd_uuid, handle: CCCD }] },
       { uuid128: nus.drb_rx_uuid, value_handle: DRX, descriptors: [] },
       { uuid128: nus.drb_tx_uuid, value_handle: DTX, descriptors: [{ uuid128: nus.cccd_uuid, handle: DCCCD }] },
     ] }]
@@ -194,7 +189,6 @@ class FakeRobotRadio < FakeRadio
     super(services: services, conn_handle: conn_handle, target: target)
     @rx_frames = []
     @touches_calls = 0
-    @audio_left = 0
     @release_after_ms = nil
     @last_rx_at = FakeClock.now
     @display = FakeDisplay.new
@@ -226,7 +220,6 @@ class FakeRobotRadio < FakeRadio
   end
 
   def link_up
-    @audio_left = 0
     @last_rx_at = FakeClock.now
   end
 
@@ -245,23 +238,6 @@ class FakeRobotRadio < FakeRadio
       DRbBle.chunks(reply, 20).each { |chunk| schedule_notification(DTX, chunk) }
       return true
     end
-    return true unless handle == RX
-    if @audio_left > 0
-      @audio_left -= value.bytesize
-      schedule_notification(TX, "<A:done>\n") if @audio_left <= 0
-      return true
-    end
-    @rx_frames << value
-    answer(value)
     true
-  end
-
-  def answer(frame)
-    if frame.start_with?("<A:")
-      @audio_left = frame[3, frame.length - 3].to_i
-      schedule_notification(TX, "<A:ready>\n")
-    else
-      schedule_notification(TX, "?\n")
-    end
   end
 end

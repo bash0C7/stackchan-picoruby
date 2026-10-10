@@ -1,6 +1,6 @@
 {
   "success": false,
-  "error_count": 29,
+  "error_count": 25,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -10,6 +10,19 @@
       "rule": "rbs.coverage.missing-gem",
       "source_family": "builtin",
       "message": "7 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, ruby-termios, serialport, and 2 more. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
+    },
+    {
+      "path": "acceptance/runner.rb",
+      "line": 296,
+      "column": 54,
+      "severity": "error",
+      "rule": "call.undefined-method",
+      "source_family": "builtin",
+      "message": "undefined method `[]' for nil",
+      "receiver_type": "nil",
+      "method_name": "[]",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "lib/deploy/picomodem.rb",
@@ -46,19 +59,6 @@
       "method_name": "byteslice",
       "evidence_tier": "high",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
-    },
-    {
-      "path": "acceptance/runner.rb",
-      "line": 297,
-      "column": 54,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `[]' for nil",
-      "receiver_type": "nil",
-      "method_name": "[]",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "mrbgems/picoruby-drb-ble/test/drb_ble_test.rb",
@@ -131,47 +131,8 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
-      "path": "test/device/audio_receiver_test.rb",
-      "line": 61,
-      "column": 24,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `ulaw_decode' for singleton(AW88298)",
-      "receiver_type": "singleton(AW88298)",
-      "method_name": "ulaw_decode",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
-    },
-    {
-      "path": "test/device/audio_receiver_test.rb",
-      "line": 145,
-      "column": 34,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `reset' for nil",
-      "receiver_type": "nil",
-      "method_name": "reset",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
-    },
-    {
-      "path": "test/device/audio_receiver_test.rb",
-      "line": 164,
-      "column": 34,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `reset' for nil",
-      "receiver_type": "nil",
-      "method_name": "reset",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
-    },
-    {
       "path": "test/device/drb_channel_test.rb",
-      "line": 168,
+      "line": 156,
       "column": 61,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -180,19 +141,6 @@
       "method_name": "message",
       "evidence_tier": "high",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
-    },
-    {
-      "path": "test/device/link_loop_test.rb",
-      "line": 340,
-      "column": 92,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `disconnected' for nil",
-      "receiver_type": "nil",
-      "method_name": "disconnected",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "test/device/ticker_test.rb",

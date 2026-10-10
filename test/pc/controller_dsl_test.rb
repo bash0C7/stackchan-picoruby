@@ -58,16 +58,6 @@ class ControllerDslTest < Picotest::Test
     end
   end
 
-  def audio_writes_after(announce)
-    out = []
-    seen = false
-    @radio.writes.each do |_handle, value|
-      out << value if seen
-      seen = true if value == announce
-    end
-    out
-  end
-
   def builder_error(&blk)
     StackChan.controller(&blk)
     nil
@@ -254,13 +244,13 @@ class ControllerDslTest < Picotest::Test
 
   def test_speak_audio_takes_hex
     assert_equal "OK speak_audio bytes=2", @app.__send__(:speak_audio, "7f7f")[:out]
-    assert_equal ["<A:2>\n"], @radio.rx_frames
-    assert_equal ["\x7f\x7f"], audio_writes_after("<A:2>\n")
+    assert_equal [], @radio.rx_frames
+    assert_equal [[0x7f, 0x7f]], @radio.speaker.played.map(&:bytes)
   end
 
   def test_speak_audio_takes_raw_bytes
     assert_equal :ok, @app.act(:speak_audio, ["\x01 \xff"])[:status]
-    assert_equal ["\x01 \xff"], audio_writes_after("<A:3>\n")
+    assert_equal [[0x01, 0x20, 0xff]], @radio.speaker.played.map(&:bytes)
   end
 
   def test_status_does_not_touch_the_link
@@ -354,9 +344,9 @@ class ControllerDslTest < Picotest::Test
     assert_equal :busy, fresh.act(:a, [])[:status]
   end
 
-  def test_speak_audio_over_druby_takes_raw_bytes_even_when_they_look_like_hex
+  def test_speak_audio_takes_raw_bytes_even_when_they_look_like_hex
     assert_equal "OK speak_audio bytes=4", @app.act(:speak_audio, ["7f7f"])[:out]
-    assert_equal ["7f7f"], audio_writes_after("<A:4>\n")
+    assert_equal [[0x37, 0x66, 0x37, 0x66]], @radio.speaker.played.map(&:bytes)
   end
 
   def test_speak_audio_from_the_bridge_that_is_not_hex_is_an_error

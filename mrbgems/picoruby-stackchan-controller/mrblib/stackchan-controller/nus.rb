@@ -7,8 +7,6 @@ module StackChan
          0xe5, 0x0e, 0x24, 0xdc, 0xca, 0x9e].pack("C*")
       end
 
-      def rx_uuid; nus_uuid(0x00, 0x02); end
-      def tx_uuid; nus_uuid(0x00, 0x03); end
       def drb_rx_uuid; nus_uuid(0x00, 0x04); end
       def drb_tx_uuid; nus_uuid(0x00, 0x05); end
 
@@ -31,7 +29,7 @@ module StackChan
         descriptor && descriptor[:handle]
       end
 
-      module_function :nus_uuid, :rx_uuid, :tx_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
+      module_function :nus_uuid, :drb_rx_uuid, :drb_tx_uuid, :cccd_uuid,
                       :find_characteristic, :cccd_handle
     end
   end

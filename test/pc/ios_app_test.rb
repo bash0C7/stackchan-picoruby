@@ -19,16 +19,6 @@ class IosAppTest < Picotest::Test
     { status: :ok, out: out, message: nil }
   end
 
-  def audio_writes_after(announce)
-    out = []
-    seen = false
-    @radio.writes.each do |_handle, value|
-      out << value if seen
-      seen = true if value == announce
-    end
-    out
-  end
-
   def test_face_takes_the_name_from_the_text
     assert_equal ok("OK face=joy"), @daemon.act("face", "joy")
     assert_equal ["<F:2>\n"], @radio.rx_frames
@@ -107,7 +97,32 @@ class IosAppTest < Picotest::Test
   def test_speak_audio_from_the_bridge_takes_the_synthesised_hex
     IosApp.__send__(:speak_audio, "7f00ff")
     assert_equal ["OK speak_audio bytes=3"], @lines
-    assert_equal ["<A:3>\n"], @radio.rx_frames
-    assert_equal ["\x7f\x00\xff"], audio_writes_after("<A:3>\n")
+    assert_equal [], @radio.rx_frames
+    assert_equal [[0x7f, 0x00, 0xff]], @radio.speaker.played.map(&:bytes)
+  end
+
+  def passing_bridge_lines
+    central = StackChan::Controller::Central.new(name_prefix: "StackChan", radio: PassingRadio.new, log_fn: ->(_line) {})
+    lines = []
+    IosApp.wire(central: central, clock: -> { FakeClock.now }, log: ->(_line) {}, out: ->(line) { lines << line })
+    lines
+  end
+
+  def test_a_declared_action_from_the_bridge_runs_without_a_c_frame_around_the_scheduler
+    lines = passing_bridge_lines
+    IosApp.__send__(:face, "joy")
+    assert_equal ["OK face=joy"], lines
+  end
+
+  def test_a_built_in_action_from_the_bridge_runs_without_a_c_frame_around_the_scheduler
+    lines = passing_bridge_lines
+    IosApp.__send__(:raw, "<torque:on>")
+    assert_equal ["OK raw"], lines
+  end
+
+  def test_every_action_name_answers_respond_to
+    [:connect, :status, :stop, :raw, :calibrate, :speak_audio, :face].each do |name|
+      assert IosApp.respond_to?(name)
+    end
   end
 end

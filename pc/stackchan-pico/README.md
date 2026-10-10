@@ -36,7 +36,7 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   `StackChan::Controller::Radio` (the `BLE` subclass) and
   `StackChan::Controller::Central` (verb-facing wrapper) are host-tested in `test/pc` (`SUITE=pc bundle exec rake test` from
   the repo root) against a `BLE` stub and `FakeRadio`. They implement
-  scan/connect/GATT-discover/CCCD-subscribe/write/ACK, half-duplex audio, and
+  scan/connect/GATT-discover/CCCD-subscribe/write/ACK, dRuby audio, and
   reconnect. `scan` re-powers the controller and the port flushes in-flight
   packets, so it runs only from `connect` (the initial connect and a
   reconnect); everything else drains with `pop_and_dispatch`. `app/fake_ble.rb`

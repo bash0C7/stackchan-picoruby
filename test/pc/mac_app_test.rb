@@ -81,12 +81,12 @@ class MacAppTest < Picotest::Test
 
   def test_say
     assert_equal ok("OK say bytes=400"), act("say", "こんにちは")
-    assert_equal ["<text:こんにちは>\n", "<A:400>\n"], @radio.rx_frames
+    assert_equal ["<text:こんにちは>\n"], @radio.rx_frames
   end
 
   def test_chat_shows_the_reply_with_a_smile_then_says_it
     assert_equal ok("reply=stub返答:こんにちは"), act("chat", "こんにちは")
-    assert_equal ["<F:1,text:stub返答:こんにちは>\n", "<text:stub返答:こんにちは>\n", "<A:960>\n"], @radio.rx_frames
+    assert_equal ["<F:1,text:stub返答:こんにちは>\n", "<text:stub返答:こんにちは>\n"], @radio.rx_frames
   end
 
   def test_chat_no_speak_shows_the_reply_only
@@ -97,18 +97,17 @@ class MacAppTest < Picotest::Test
   def test_demo_of_one_second_has_no_step
     assert_equal ok(["[demo] start", "[demo] done"]), act("demo", "--duration", "1")
     assert_equal ["<L:1,R:255,G:0,B:0,S:R,M:b>\n", "<L:1,R:0,G:0,B:255,S:L,M:p>\n", "<text:ぼくスタックチャン！>\n",
-                  "<A:800>\n", "<F:0>\n", "<L:1,R:0,G:0,B:0,S:B,M:o>\n", "<YL:0,PU:0,T:800>\n",
-                  "<text:タッチしてみて>\n", "<A:560>\n"], @radio.rx_frames
+                  "<F:0>\n", "<L:1,R:0,G:0,B:0,S:B,M:o>\n", "<YL:0,PU:0,T:800>\n",
+                  "<text:タッチしてみて>\n"], @radio.rx_frames
   end
 
   def test_demo_of_three_seconds_has_two_steps
     assert_equal ok(["[demo] start", "[demo] done"]), act("demo", "--duration", "3")
     assert_equal ["<L:1,R:255,G:0,B:0,S:R,M:b>\n", "<L:1,R:0,G:0,B:255,S:L,M:p>\n", "<text:ぼくスタックチャン！>\n",
-                  "<A:800>\n",
                   "<F:2>\n", "<L:1,R:255,G:0,B:0,S:R,M:b>\n", "<L:1,R:0,G:0,B:255,S:L,M:p>\n", "<YL:60,PU:30,T:800>\n",
                   "<F:1>\n", "<L:1,R:255,G:255,B:0,S:R,M:p>\n", "<L:1,R:255,G:0,B:255,S:L,M:s>\n", "<YR:60,PU:30,T:800>\n",
                   "<F:0>\n", "<L:1,R:0,G:0,B:0,S:B,M:o>\n", "<YL:0,PU:0,T:800>\n",
-                  "<text:タッチしてみて>\n", "<A:560>\n"], @radio.rx_frames
+                  "<text:タッチしてみて>\n"], @radio.rx_frames
   end
 
   def test_the_app_holds_the_link_for_ten_seconds

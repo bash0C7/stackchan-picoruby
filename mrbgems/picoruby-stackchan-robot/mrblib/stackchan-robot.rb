@@ -48,7 +48,7 @@ module StackChan
       end
     end
 
-    def wire(display:, led:, head: nil, touch: nil, speaker: nil, stdout:)
+    def wire(display:, led:, head: nil, touch: nil, speaker: nil, stdout: $stdout)
       dispatcher = Dispatcher.new(
         display: display, led: led, stdout: stdout, head: head, speaker: speaker,
         faces: @faces, face_index: @face_index, frame_handlers: @frame_handlers

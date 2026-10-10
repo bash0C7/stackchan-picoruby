@@ -1,13 +1,10 @@
 module StackChan
   class Controller
     class Session
-      READY_WAIT_MS      = 1500
-      AUDIO_CHUNK        = 180
-      CHUNK_PACE_MS      = 20
-      DRB_AUDIO_CHUNK    = 2048
-      DRB_AUDIO_POLL_MS  = 500
-      DRB_AUDIO_TAIL_MS  = 400
-      DRB_AUDIO_MARGIN_MS = 600
+      AUDIO_CHUNK         = 2048
+      AUDIO_POLL_MS       = 500
+      AUDIO_TAIL_MS       = 400
+      AUDIO_MARGIN_MS     = 600
 
       attr_reader :state
       attr_accessor :fallback_audio
@@ -66,57 +63,34 @@ module StackChan
         nil
       end
 
-      def speak_audio(ulaw, route: :direct)
-        route == :drb ? speak_audio_drb(ulaw) : speak_audio_direct(ulaw)
-      end
-
-      def speak_audio_direct(ulaw)
-        n = ulaw.bytesize
-        @central.write_without_ack("<A:#{n}>\n")
-        @log.call("[checkpoint] announce_done n=#{n}")
-        sleep_ms READY_WAIT_MS
-        i = 0
-        chunk_count = 0
-        while i < n
-          @central.write_without_ack(ulaw.byteslice(i, AUDIO_CHUNK))
-          i += AUDIO_CHUNK
-          chunk_count += 1
-          @log.call("[checkpoint] blast_progress i=#{i} n=#{n}") if chunk_count % 100 == 0
-          sleep_ms CHUNK_PACE_MS
-        end
-        @log.call("[checkpoint] blast_done i=#{i} n=#{n}, entering await")
-        @central.await_audio_done(n)
-        nil
-      end
-
-      def speak_audio_drb(ulaw)
+      def speak_audio(ulaw)
         n = ulaw.bytesize
         @central.audio_begin(n)
         i = 0
         while i < n
-          @central.audio_chunk(ulaw.byteslice(i, DRB_AUDIO_CHUNK))
-          i += DRB_AUDIO_CHUNK
+          @central.audio_chunk(ulaw.byteslice(i, AUDIO_CHUNK))
+          i += AUDIO_CHUNK
         end
         @central.audio_play
-        sleep_ms((n / 8) + DRB_AUDIO_TAIL_MS + DRB_AUDIO_MARGIN_MS)
+        sleep_ms((n / 8) + AUDIO_TAIL_MS + AUDIO_MARGIN_MS)
         limit = @central.audio_done_timeout_ms(n)
         waited = 0
         until @central.audio_done?
           raise TimeoutError, "<audio_done> timeout" if waited >= limit
-          sleep_ms DRB_AUDIO_POLL_MS
-          waited += DRB_AUDIO_POLL_MS
+          sleep_ms AUDIO_POLL_MS
+          waited += AUDIO_POLL_MS
         end
         nil
       end
 
-      def say(text, gain: nil, rate: nil, route: :direct)
+      def say(text, gain: nil, rate: nil)
         v = voice
         @log.call("[checkpoint] synth_start")
         ulaw = @engine.unlocked { v.synthesize(text, gain, rate) }
         @log.call("[checkpoint] synth_done bytes=#{ulaw ? ulaw.bytesize : 0}")
         @central.raw_send(Stackchan::AI::FrameText.build(face_index: nil, text: text))
         @log.call("[checkpoint] subtitle_write_done")
-        speak_audio(ulaw, route: route) if ulaw
+        speak_audio(ulaw) if ulaw
         record(:say, last_say: text)
         return "NG say: synthesis failed or timed out" unless ulaw
         "OK say bytes=#{ulaw.bytesize}"

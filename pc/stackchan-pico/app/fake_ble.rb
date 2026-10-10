@@ -54,16 +54,6 @@ class FakeBleClient
     self
   end
 
-  def write_without_ack(payload)
-    raise StackChan::Controller::ConnectionError, "not connected" unless @connected
-    $stderr.write("[fake_ble] write_without_ack #{payload.inspect}\n"); $stderr.flush
-    self
-  end
-
-  def await_audio_done(n)
-    self
-  end
-
   def call_front(msg, args)
     raise StackChan::Controller::ConnectionError, "not connected" unless @connected
     $stderr.write("[fake_ble] remote #{msg} #{args.inspect}\n"); $stderr.flush
