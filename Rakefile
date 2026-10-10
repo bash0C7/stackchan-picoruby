@@ -947,7 +947,7 @@ namespace :acceptance do
     acceptance_do(acceptance_report) { |t| t.check(from: ENV["FROM"]) }
   end
 
-  desc "Build apps/ios and apps/watchos at the locked R2P2-darwin, run each in batch mode against the deployed firmware, then hand the robot Mac → iPhone → Watch → Mac (a paired iPhone + Watch). STAMP= or the latest report"
+  desc "Build apps/ios and apps/watchos for the device at the locked R2P2-darwin, run the iPhone app in batch mode against the deployed firmware, then hand the robot Mac → iPhone → Mac (a paired iPhone, no one tapping). STAMP= or the latest report"
   task :darwin do
     acceptance_do(acceptance_report) { |t| t.run_darwin }
   end

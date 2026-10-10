@@ -220,54 +220,45 @@ module Acceptance
       head_is!(darwin_picoruby, lock.fetch("picoruby"))
     end
 
-    APPS = { "ios" => "iPhone", "watchos" => "Watch" }.freeze
+    BUILT_APPS = %w[ios watchos].freeze
     APP_CONNECTED = "[batch] Connected; dRuby pair bound"
     APP_END = "[batch] end"
-    APP_BATCH = {
-      "ios" => { batch: "connect;joy;selftest", wants: [APP_CONNECTED, "[batch] OK face=joy"], selftest: true },
-      "watchos" => { batch: "connect;face joy;head_sweep",
-                     wants: [APP_CONNECTED, "[batch] OK face=joy", "[batch] OK head_sweep"], selftest: false }
-    }.freeze
+    APP_WANTS = [APP_CONNECTED, "[batch] OK face=joy"].freeze
 
     def run_darwin
       d = @report["darwin"] = { "steps" => [], "timings" => {} }
       settle do
         step(d, "pin R2P2-darwin") { pin_darwin }
-        APPS.each_key do |platform|
+        BUILT_APPS.each do |platform|
           %W[#{platform}:device:lib #{platform}:gen #{platform}:device:build].each { |t| step(d, t) { rake(t) } }
         end
         step(d, "pin R2P2-darwin holds") { darwin_pins_hold! }
         step(d, "quiet wait") { @quiet = quiet_wait_s; "#{@quiet} s" }
-        APPS.each do |platform, device|
-          step(d, "#{device} batch") do
-            @ops.sleep(quiet)
-            plan = APP_BATCH.fetch(platform)
-            out, = app_batch!(platform, plan.fetch(:batch))
-            plan.fetch(:wants).each { |line| want!(out, line, device) }
-            next plan.fetch(:wants).drop(1).map { |l| l.delete_prefix("[batch] ") }.join(", ") unless plan.fetch(:selftest)
-            detail = out.lines.find { |l| l.start_with?("[batch] OK selftest detail=") }.to_s[DETAIL]
-            raise Stop, "#{device}: no selftest detail in #{out.inspect}" unless detail
-            detail
-          end
+        step(d, "iPhone batch") do
+          @ops.sleep(quiet)
+          out, = app_batch!("connect;joy;selftest")
+          APP_WANTS.each { |line| want!(out, line) }
+          detail = out.lines.find { |l| l.start_with?("[batch] OK selftest detail=") }.to_s[DETAIL]
+          raise Stop, "iPhone: no selftest detail in #{out.inspect}" unless detail
+          detail
         end
-        step(d, "hand-off Mac → iPhone → Watch → Mac") { apple_hand_off(d) }
+        step(d, "hand-off Mac → iPhone → Mac") { apple_hand_off(d) }
       end
     end
 
-    def app_batch!(platform, lines)
+    def app_batch!(lines)
       t0 = @ops.now
-      ok, out, = run_rake(["#{platform}:device:run"],
+      ok, out, = run_rake(["ios:device:run"],
                           { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => "-StackchanBatch \"#{lines}\"" })
       t = @ops.now - t0
-      device = APPS.fetch(platform)
-      raise Stop, "#{device}: #{platform}:device:run failed:\n#{out.to_s.lines.last(20).join}" unless ok
-      want!(out, APP_END, device)
+      raise Stop, "iPhone: ios:device:run failed:\n#{out.to_s.lines.last(20).join}" unless ok
+      want!(out, APP_END)
       [out, t]
     end
 
-    def want!(out, line, device)
+    def want!(out, line)
       return if out.to_s.lines.map(&:strip).include?(line)
-      raise Stop, "#{device}: no #{line.inspect} in #{out.inspect}"
+      raise Stop, "iPhone: no #{line.inspect} in #{out.inspect}"
     end
 
     def apple_hand_off(d)
@@ -275,17 +266,14 @@ module Acceptance
       cli!("face", "neutral")
       c0 = status["connects"].to_i
       @ops.sleep(quiet)
-      out, ti = app_batch!("ios", "joy")
-      want!(out, "[batch] OK face=joy", "iPhone")
-      @ops.sleep(quiet)
-      out, tw = app_batch!("watchos", "face smile")
-      want!(out, "[batch] OK face=smile", "Watch")
+      out, ti = app_batch!("joy")
+      want!(out, "[batch] OK face=joy")
       @ops.sleep(quiet)
       tm = face!("neutral", {}, "the Mac does not get the robot back")
       c1 = status["connects"].to_i
       raise Stop, "Mac connects #{c0} -> #{c1}; want more than #{c0}" unless c1 > c0
-      { "hand-off iPhone" => ti, "hand-off Watch" => tw, "hand-off Mac" => tm }.each { |k, v| (d["timings"][k] ||= []) << v }
-      format("iPhone %.2f s, Watch %.2f s, Mac %.2f s", ti, tw, tm)
+      { "hand-off iPhone" => ti, "hand-off Mac" => tm }.each { |k, v| (d["timings"][k] ||= []) << v }
+      format("iPhone %.2f s, Mac %.2f s", ti, tm)
     end
 
     def run_touch

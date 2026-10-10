@@ -25,10 +25,10 @@ firmware:
     - "[application] BLE peripheral starting"
 
 # The Apple platform. pc:vm_build builds the Mac VM from it, and `rake
-# acceptance:darwin` builds apps/ios and apps/watchos from this checkout with it,
-# runs each app in batch mode against the deployed firmware, and hands the
-# robot Mac → iPhone → Watch → Mac. That run is optional; the verdict does not
-# need it.
+# acceptance:darwin` builds apps/ios and apps/watchos for the device from this
+# checkout with it, runs the iPhone app in batch mode against the deployed
+# firmware, and hands the robot Mac → iPhone → Mac. That run is optional; the
+# verdict does not need it.
 darwin:
   R2P2-darwin: 095fccc36bd3401e8281709575b221392ebcdd1f             # main
   picoruby: 121c6b51fbe827f35e54dfdf9c4cfce144ae4d11                # port-darwin, vendor/R2P2-darwin/vendor/picoruby

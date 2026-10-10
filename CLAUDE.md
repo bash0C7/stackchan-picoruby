@@ -135,7 +135,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 | 用途 | 手段 |
 |---|---|
 | app だけ変えた | `/stackchan-device-iterate` (picomodem upload、flash に優しい) |
-| iOS / watchOS app を変えた | Mac で `rake ios:device:all` / `watchos:device:all` (Simulator は `/stackchan-apple-simulator`)。`rake acceptance:darwin` は署名できる証明書がある時に任意で流す (verdict の条件ではない) |
+| iOS / watchOS app を変えた | Mac で `rake ios:device:all` / `watchos:device:all` (Simulator は `/stackchan-apple-simulator`)。`rake acceptance:darwin` は署名できる証明書がある時に任意で流す (両 app を device 向けに build し、iPhone だけで batch を走らせて robot を Mac → iPhone → Mac と渡す。verdict の条件ではない)。Apple Watch app は手で操作するか Simulator で動かす: 誰も起こしていない watch は app を foreground で動かさず、Mac から起こす手段もない |
 | firmware / gem / sdkconfig を変えた | `/stackchan-device-build-flash` → `/stackchan-device-cold-recovery`、または `/stackchan-device-full-rebuild` |
 | 初回・target 切替 | `/stackchan-device-setup` |
 | 復旧 | `rake r2p2:boards` → cold-recovery → full-rebuild → 人手 (CoreS3 の USB serial が `r2p2:boards` に無い時だけ) |

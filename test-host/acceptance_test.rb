@@ -103,12 +103,9 @@ class AcceptanceTest < Test::Unit::TestCase
       custom = @app_out[platform]
       return custom.call(lines) if custom
       out = lines.map do |line|
-        verb, arg = line.split(" ", 2)
-        case verb
+        case line
         when "connect" then app_take(platform) ? "Connected; dRuby pair bound" : APP_BUSY
-        when "face" then app_take(platform) ? "OK face=#{arg}" : APP_BUSY
         when "joy" then app_take(platform) ? "OK face=joy" : APP_BUSY
-        when "head_sweep" then "OK head_sweep"
         when "selftest" then "OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\""
         end
       end
@@ -980,8 +977,7 @@ class AcceptanceTest < Test::Unit::TestCase
   # --- darwin -----------------------------------------------------------------
 
   APP_ENV = {
-    "ios" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;joy;selftest") },
-    "watchos" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;face joy;head_sweep") }
+    "ios" => { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "connect;joy;selftest") }
   }.freeze
 
   def darwin_step(report, name) = report["darwin"]["steps"].find { |s| s["name"] == name }
@@ -1002,10 +998,11 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
   end
 
-  def test_each_app_runs_connect_a_face_and_selftest_once_on_its_console_after_the_builds
+  def test_only_the_iphone_runs_a_batch_after_both_builds
     run_darwin_only
     runs = rakes.select { |c| c[2].end_with?(":device:run") }
-    assert_equal [["ios:device:run", APP_ENV["ios"]], ["watchos:device:run", APP_ENV["watchos"]]], runs.first(2).map { |c| [c[2], c[3]] }
+    assert_equal [["ios:device:run", APP_ENV["ios"]], ["ios:device:run", { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => %q(-StackchanBatch "joy") }]],
+                 runs.map { |c| [c[2], c[3]] }
     last_build = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:build" }
     assert_operator last_build, :<, @ops.calls.index(runs.first)
   end
@@ -1014,16 +1011,15 @@ class AcceptanceTest < Test::Unit::TestCase
     r = run_darwin_only
     assert_equal ["pin R2P2-darwin", "ios:device:lib", "ios:gen", "ios:device:build", "watchos:device:lib",
                   "watchos:gen", "watchos:device:build", "pin R2P2-darwin holds", "quiet wait", "iPhone batch",
-                  "Watch batch", "hand-off Mac → iPhone → Watch → Mac"], names(r["darwin"])
+                  "hand-off Mac → iPhone → Mac"], names(r["darwin"])
     assert r["darwin"]["steps"].all? { |s| s["ok"] }
     assert_equal "<YL_actual:50,PU_actual:29>", darwin_step(r, "iPhone batch")["detail"]
-    assert_equal "OK face=joy, OK head_sweep", darwin_step(r, "Watch batch")["detail"]
     assert_empty @ops.calls.select { |c| c[0] == :prompt }
   end
 
   def test_darwin_hand_off_order
     run_darwin_only
-    start = @ops.calls.rindex { |c| c[0] == :rake && c[2] == "watchos:device:run" && c[3] == APP_ENV["watchos"] } + 1
+    start = @ops.calls.index { |c| c[0] == :rake && c[2] == "ios:device:run" && c[3] == APP_ENV["ios"] } + 1
     seq = @ops.calls[start..].reject { |c| c[0] == :now }.map do |c|
       case c[0]
       when :cli then c[2]
@@ -1033,16 +1029,15 @@ class AcceptanceTest < Test::Unit::TestCase
     end
     assert_equal [[:sleep, 30], %w[face neutral], %w[status], [:sleep, 30],
                   ["ios:device:run", %q(-StackchanBatch "joy")], [:sleep, 30],
-                  ["watchos:device:run", %q(-StackchanBatch "face smile")], [:sleep, 30],
                   %w[face neutral], %w[status]], seq
   end
 
   def test_the_hand_off_records_seconds_for_each_device
     r = run_darwin_only
-    assert_equal ["hand-off iPhone", "hand-off Watch", "hand-off Mac"], r["darwin"]["timings"].keys
+    assert_equal ["hand-off iPhone", "hand-off Mac"], r["darwin"]["timings"].keys
     assert r["darwin"]["timings"].values.all? { |v| v.size == 1 && v[0] > 0 }
-    assert_match(/iPhone \d+\.\d\d s, Watch \d+\.\d\d s, Mac \d+\.\d\d s/,
-                 darwin_step(r, "hand-off Mac → iPhone → Watch → Mac")["detail"])
+    assert_match(/\AiPhone \d+\.\d\d s, Mac \d+\.\d\d s\z/,
+                 darwin_step(r, "hand-off Mac → iPhone → Mac")["detail"])
   end
 
   def test_a_failing_device_build_stops_darwin_before_any_app_runs
@@ -1061,13 +1056,6 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal "fail", r["verdict"]
   end
 
-  def test_an_app_whose_face_is_not_ok_fails_its_batch
-    @ops.app_out["watchos"] = ->(_lines) { "[batch] Connected; dRuby pair bound\n[batch] error: timeout\n[batch] end\n" }
-    r = run_darwin_only
-    assert_equal "Watch batch", darwin_failed(r)["name"]
-    assert_match(/OK face=joy/, darwin_failed(r)["detail"])
-  end
-
   def test_an_app_without_the_selftest_detail_fails_its_batch
     @ops.app_out["ios"] = lambda do |_lines|
       "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] OK selftest detail=nil\n[batch] end\n"
@@ -1075,23 +1063,6 @@ class AcceptanceTest < Test::Unit::TestCase
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
     assert_match(/no selftest detail in/, darwin_failed(r)["detail"])
-  end
-
-  def test_a_watch_without_head_sweep_fails_its_batch
-    @ops.app_out["watchos"] = lambda do |_lines|
-      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] error: servo\n[batch] end\n"
-    end
-    r = run_darwin_only
-    assert_equal "Watch batch", darwin_failed(r)["name"]
-    assert_match(/Watch: no "\[batch\] OK head_sweep"/, darwin_failed(r)["detail"])
-  end
-
-  def test_a_watch_needs_no_selftest_detail
-    @ops.app_out["watchos"] = lambda do |_lines|
-      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] OK head_sweep\n[batch] end\n"
-    end
-    r = run_darwin_only
-    assert_equal "OK face=joy, OK head_sweep", darwin_step(r, "Watch batch")["detail"]
   end
 
   def test_an_app_that_never_ends_its_batch_fails
@@ -1110,26 +1081,14 @@ class AcceptanceTest < Test::Unit::TestCase
         "[batch] OK selftest detail=\"<YL_actual:50,PU_actual:29>\\n\"\n[batch] end\n"
     end
     r = run_darwin_only
-    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_equal "hand-off Mac → iPhone → Mac", darwin_failed(r)["name"]
     assert_match(/iPhone: no "\[batch\] OK face=joy"/, darwin_failed(r)["detail"])
-  end
-
-  def test_a_watch_that_does_not_show_smile_in_the_hand_off_fails_it
-    runs = 0
-    @ops.app_out["watchos"] = lambda do |_lines|
-      runs += 1
-      next "[batch] OK face=joy\n[batch] end\n" if runs == 2
-      "[batch] Connected; dRuby pair bound\n[batch] OK face=joy\n[batch] OK head_sweep\n[batch] end\n"
-    end
-    r = run_darwin_only
-    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
-    assert_match(/Watch: no "\[batch\] OK face=smile"/, darwin_failed(r)["detail"])
   end
 
   def test_a_mac_whose_connects_do_not_grow_fails_the_hand_off
     @ops.cli_out["status"] = "link=held connects=3 releases=0 last_connect_ms=1 hold_ms=10000\n"
     r = run_darwin_only
-    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_equal "hand-off Mac → iPhone → Mac", darwin_failed(r)["name"]
     assert_match(/Mac connects 3 -> 3/, darwin_failed(r)["detail"])
   end
 
@@ -1140,7 +1099,7 @@ class AcceptanceTest < Test::Unit::TestCase
       faces == 2 ? [8, FakeOps::BUSY[1]] : @ops.mac_cli("face", args)
     end
     r = run_darwin_only
-    assert_equal "hand-off Mac → iPhone → Watch → Mac", darwin_failed(r)["name"]
+    assert_equal "hand-off Mac → iPhone → Mac", darwin_failed(r)["name"]
     assert_match(/the Mac does not get the robot back/, darwin_failed(r)["detail"])
   end
 
@@ -1162,7 +1121,7 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_match(/\| servo \| \d\.\d{3} \|/, md)
     assert_match(/\| connect ms \| \d+\.\d{3} \|/, md)
     assert_match(/- サーボが指示どおりに動いた: y/, md)
-    assert_match(/\| hand-off Mac → iPhone → Watch → Mac \| ok \| iPhone /, md)
+    assert_match(/\| hand-off Mac → iPhone → Mac \| ok \| iPhone /, md)
     assert_match(/\| iPhone batch \| ok \| <YL_actual:50,PU_actual:29> \|/, md)
   end
 

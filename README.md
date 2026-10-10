@@ -217,9 +217,12 @@ the app with `-StackchanBatch "actions"` and reads its console.
 Device builds are signed and need a valid Apple Development certificate.
 
 Launched with `-StackchanBatch "connect;face joy"` an app runs those actions,
-prints each output line as `[batch] <line>`, then `[batch] end`, and exits;
-`rake acceptance:darwin` runs the device builds that way. It is optional: the
-verdict does not need it.
+prints each output line as `[batch] <line>`, then `[batch] end`, and exits.
+`rake acceptance:darwin` builds both apps for the device, runs the iPhone app
+that way against the robot, and hands the robot Mac → iPhone → Mac. It is
+optional: the verdict does not need it. The Apple Watch app is driven by hand
+or in the Simulator: a watch nobody has woken does not run an app in the
+foreground, and the Mac cannot wake it.
 
 Re-run `pc:app_bundle` after every `pc:vm_build`: it copies the new VM into the
 bundle and signs it ad hoc with the designated requirement
