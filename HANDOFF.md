@@ -34,7 +34,9 @@ reconnecting. The robot carries the app that report ran.
 
 An iPhone drives the robot: it connects in about 2.3 s and `raw`, the face
 and LED buttons, the head moves, `subtitle`, `selftest` and `speak_audio`
-all answer over dRuby. An Apple Watch does not yet (A).
+all answer over dRuby. An Apple Watch drives it too: worn, with the app in
+front, `connect`, `顔をかえる`, `LEDを光らせる` and `ぐるっと` all answer over
+dRuby.
 
 `rake test` and the CRuby host tests pass. The iOS and watchOS apps start in
 the Simulators and answer `status` through the bridge
@@ -49,40 +51,33 @@ after changing anything it covers.
 
 ## Next
 
-### A. The Apple Watch against the robot
+### A. The Apple apps from the command line
 
-The watch app installs and starts. Against the robot, `connect` finds no
-advertiser on its first tries (about 50 s each), then connects and ends in
-`dRuby pair not found; discovered services=1
-characteristics=6e400002,6e400003`. The robot's table holds `6e400004` and
-`6e400005` and neither of those two, and the same controller code connects
-from the iPhone and the Mac, so the watch is answering discovery from a
-table it remembered from an older robot. That remembered table has no
-Service Changed characteristic, so nothing the robot sends makes the watch
-read the table again.
+The apps work in the hand. What does not work is driving them unattended.
 
-- Next: have the watch forget the table (restart the watch, or turn its
-  Bluetooth off and on in its Settings), then run the batch again. Not
-  tried yet.
-- After a failed connect the watch still holds the link, so the robot is
+- A watch app started with `-StackchanBatch` while nobody keeps the watch
+  awake finds no advertiser: a scan whose timeout is 15 s takes 34 s to
+  60 s there, and a later batch line can stay silent for minutes. The same
+  app, worn and tapped, connects at once. The scan's wait counts passes of
+  the VM's idle loop, not a clock, so an app the watch is not running in
+  front neither scans nor times out on time.
+- A watch that has seen an older robot answers discovery from the table it
+  remembered (`dRuby pair not found; discovered services=1
+  characteristics=6e400002,6e400003` against a robot that holds
+  `6e400004` and `6e400005`). Restarting the watch makes it forget.
+- After a failed connect the central still holds the link, so the robot is
   not advertising and every later try finds no advertiser. Nothing drops
   such a link. picoruby-ble's central has no disconnect, and the robot
   releases a central only once it has seen dRuby traffic from it, because
   the ESP32 port hands the robot no event when a central connects
   (`ports/esp32/ble.c`, `BLE_GAP_EVENT_CONNECT` enqueues nothing for a
   peripheral). Closing that needs the port to deliver a connection event,
-  which is a firmware change. Until then, end the watch app to free the
-  robot: `xcrun devicectl device info processes --device <UDID>` for the
-  pid, then `xcrun devicectl device process terminate --device <UDID>
-  --pid <pid> --kill`.
-- The batch printed nothing more after its fourth line (`led_show`) for
-  over four minutes. Not looked into; the watch app may have been
-  suspended when the screen went dark.
+  which is a firmware change. Until then, end the app to free the robot:
+  `xcrun devicectl device info processes --device <UDID>` for the pid,
+  then `xcrun devicectl device process terminate --device <UDID> --pid
+  <pid> --kill`.
 - The Mac sees the watch only while it is unlocked, awake and near; it
-  drops to `unavailable` within seconds otherwise. A launch while the
-  watch shows the clock in a state it will not leave is refused
-  (`Navigation away from clock is not allowed`); the next launch went
-  through.
+  drops to `unavailable` within seconds otherwise.
 
 `rake ios:device:run` and `watchos:device:run` pick a Simulator on this
 Xcode (bash0C7/R2P2-darwin issue 21), and `watchos:device:build` stops
@@ -94,9 +89,10 @@ vendor/R2P2-darwin/build/watchos-stackchan-app-device ARCHS=arm64_32
 watchos:gen`, then install and launch with `xcrun devicectl device install
 app --device <UDID> <app>` and `xcrun devicectl device process launch
 --console --terminate-existing --device <UDID> -- <bundle id>
--StackchanBatch "<lines>"`. `rake acceptance:darwin` goes through the rake
-tasks and so cannot pass yet. Its watchOS batch also asks for `selftest`,
-an action the watch app does not have.
+-StackchanBatch "<lines>"`; without `-StackchanBatch` the same launch
+attaches the console to an app a person taps. `rake acceptance:darwin`
+goes through the rake tasks and so cannot pass yet. Its watchOS batch also
+asks for `selftest`, an action the watch app does not have.
 
 ### B. Things found on the way, not yet acted on
 
@@ -119,8 +115,6 @@ and `review/2026-10-10-pr11-closing-notes.md`.
 
 ### Open issues
 
-- #19: done from the Mac and the iPhone; what is left of it is the Watch
-  (A).
 - #22: what is left needs the robot or a decision. A pitch position read can
   fail several times in a row; the ESP32 receive path is ruled out by source
   (vault `review/2026-10-03-pitch-read-pos/`), and `servo health` tells a
