@@ -20,31 +20,30 @@ driven on the hardware: cold boot, BLE link, faces, LEDs, servos on both axes,
 head touch, audio, and selftest. Servo absolute positioning — the point of the
 whole thing — lands where it is told.
 
-The robot carries the firmware and app of the latest report in
-`acceptance/results/`, and that report's verdict is `pass`: one check run
-start to finish in a TTY, with the owner at the robot answering the
-questions.
-
 Everything between a controller and the robot is dRuby over BLE, audio
-included; there is no second route and no first NUS pair. The design is
-`docs/superpowers/specs/2026-10-10-druby-single-route-design.md`. What the
-report's run showed on the robot: `torque`, `face`, `led`, `servo`,
-`selftest`, `calibrate`, the `remote` verb, `servo health` (no read error,
-status 0 on both servos), `say`, `chat` against the real sidecar, and the
-robot releasing a quiet central with the next action reconnecting. The head
-was not touched within the 30 s of that run; the touch path (the one-second
-`touches` poll feeding `touch listen`) is the one an earlier run of the same
-firmware passed, and the app change since did not touch it.
+included. The robot's GATT table holds GAP, one service with the dRuby pair,
+and Service Changed. The design is
+`docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
 
-`rake test` and the CRuby host tests pass.
+The latest report in `acceptance/results/` has verdict `pass`: one check run
+start to finish in a TTY, from the Mac, with the owner at the robot. It
+covers `torque`, `face`, `led`, `servo`, `selftest`, `calibrate`, the
+`remote` verb, `servo health`, `say`, `chat` against the real sidecar, and
+the robot releasing a quiet central with the next action reconnecting. The
+head was not touched within the 30 s of that run.
 
-The iOS and watchOS apps have never driven the robot with this controller.
-Two faults that stopped every action inside their VMs are fixed and seen
-fixed in the Simulators, where `status` now answers through the bridge
-(`/stackchan-apple-simulator`): actions were reached through
-`method_missing`, which the bridge's `__send__` runs as a C call that
-starves the BLE pump, and the central used `method(:name)`, which those VMs
-do not have. A Simulator has no Bluetooth, so nothing past `status` has run.
+The robot gem on `main` differs from the app that report ran: its GATT
+constants are renamed (`DRB_*`), same values. The robot does not carry that
+app yet, so `acceptance:check` refuses until `acceptance:app` has sent it
+(A).
+
+An iPhone drives the robot: it connects in about 2.3 s and `raw`, the face
+and LED buttons, the head moves, `subtitle`, `selftest` and `speak_audio`
+all answer over dRuby. An Apple Watch does not yet (B).
+
+`rake test` and the CRuby host tests pass. The iOS and watchOS apps start in
+the Simulators and answer `status` through the bridge
+(`/stackchan-apple-simulator`).
 
 `rake test` runs `rigor:check` first, a host-side type analysis that fails on
 any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
@@ -55,56 +54,74 @@ after changing anything it covers.
 
 ## Next
 
-### A. The iPhone and the Watch against the robot
+### A. Send the app and run the check
 
-Blocked on signing, which only the owner can clear: Xcode has no Apple ID
-(`No Accounts`), every Apple Development certificate in the keychain is
-revoked, and the provisioning profile does not include the iPhone on USB.
-With an account signed in under Xcode's Settings → Accounts, the build
-registers the device and makes the certificate itself.
+With the CoreS3 on USB (`rake r2p2:boards` marks it): `acceptance:app`,
+then one `acceptance:check` in tmux with the owner answering the questions.
+The commits after the report are local until that check passes.
 
-Then: `rake ios:device:lib ios:gen ios:device:build`, and
-`ios:device:run` with `APP_CONSOLE=1` and
-`APP_LAUNCH_ARGS='-StackchanBatch "connect;face joy;selftest;speak_audio <hex>"'`
-while the Mac leaves the robot alone (no action for `c.hold` plus the
-robot's `release_after`). `speak_audio` takes μ-law as hex; the Mac's
-sidecar synthesises it (`synthesize(text, nil, nil)` on
-`druby://127.0.0.1:8788`). The same for `watchos:` once a Watch is
-reachable; the one paired with this Mac shows as unavailable. This is the
-first time waits inside an action run on those VMs against a real link, so
-read a timeout there as a finding about the VM's scheduler, not the robot.
+### B. The Apple Watch against the robot
 
-### B. Things found on the way, not yet acted on
+The watch app installs and starts, and its first run against the robot went:
+no advertiser for about 30 s, then a connection that ended in
+`dRuby pair not found`, then no advertiser on every later try. The same
+controller code connects from the iPhone.
+
+- The first scan may have sat behind the watch's Bluetooth permission
+  dialog; the owner has not said whether one appeared.
+- `dRuby pair not found` lists what discovery found
+  (`discovered services=N characteristics=…`), so the next run tells an
+  empty or cut-short discovery from a table the watch remembered from an
+  older robot. That run has not happened: the watch must be unlocked, on the
+  wrist and near the Mac for `watchos:device:build` to see it.
+- The later failures have one cause: after the failed connect the watch
+  still held the link, so the robot was not advertising. Nothing drops such
+  a link. picoruby-ble's central has no disconnect, and the robot releases
+  a central only once it has seen dRuby traffic from it, because the ESP32
+  port hands the robot no event when a central connects
+  (`ports/esp32/ble.c`, `BLE_GAP_EVENT_CONNECT` enqueues nothing for a
+  peripheral). A central that connects and never subscribes holds the robot
+  until it goes away by itself. Closing that needs the port to deliver a
+  connection event, which is a firmware change.
+
+`rake ios:device:run` and `watchos:device:run` pick a Simulator on this
+Xcode (bash0C7/R2P2-darwin issue 21). Until that is fixed, install and
+launch with `xcrun devicectl device install app --device <UDID> <app>` and
+`xcrun devicectl device process launch --console --terminate-existing
+--device <UDID> -- <bundle id> -StackchanBatch "<lines>"`; `rake
+acceptance:darwin` goes through the rake tasks and so cannot pass yet. Its
+watchOS batch also asks for `selftest`, an action the watch app does not
+have.
+
+### C. Things found on the way, not yet acted on
 
 - `DRbBle::Responder#reply` calls the front with `send`. For a method the
   front defines that is direct, but a `bot.remote` handler is reached through
   `method_missing`, so on the robot it would run inside a nested VM and cost
   about 3 KB of the 8 KB task stack. `apps/robot/app.rb` declares no such
-  handler today.
-- `Daemon::CONNECTED_LINE` still reads `Connected; RX value_handle bound`, a
-  handle that no longer exists. The Swift views of both apps, the darwin
-  acceptance step and four tests match on that exact string, so changing it
-  is one edit across all of them.
-- R2P2-darwin's own watchOS build_config still lists `hal-io-darwin`, which
-  no longer satisfies mruby's HAL provider contract at the picoruby this
-  project pins, so its watchOS build should fail the same way this
-  repository's did. That is R2P2-darwin's and the picoruby fork's to fix.
+  handler.
+- Frames as text (`<F:0>`) are how the controller's `Session` hands a
+  command to `Central`, which parses them back into the Hash that dRuby
+  carries. The CLI's `raw` verb needs that format; the rest could build the
+  Hash directly.
+- R2P2-darwin's own watchOS build_config lists `hal-io-darwin`, which does
+  not satisfy mruby's HAL provider contract at the picoruby this project
+  pins. That is R2P2-darwin's and the picoruby fork's to fix.
 
-Why the daemon froze in the previous report, what closed it, and what is
-still unexplained are in the vault: `review/2026-10-01-daemon-freeze/`,
-`plans/2026-10-03-daemon-tick-thread.md` and
-`review/2026-10-10-pr11-closing-notes.md`.
+What is known about the Mac daemon freezing is in the vault:
+`review/2026-10-01-daemon-freeze/`, `plans/2026-10-03-daemon-tick-thread.md`
+and `review/2026-10-10-pr11-closing-notes.md`.
 
 ### Open issues
 
-- #19: done and passed on the robot from the Mac; what is left of it is the
-  iPhone and Watch run (A).
-- #22: what is left needs the robot or a decision. The pitch position read
-  that failed three times in a row once: the ESP32 receive path is ruled out
-  by source (vault `review/2026-10-03-pitch-read-pos/`), and `servo health`
-  now tells a silent servo from a bad reply the next time it happens. The
-  stack headroom and `PICORB_TASK_STACK_SIZE` are a design decision
-  (CLAUDE.md). Discovery time is recorded as `connect ms`.
+- #19: done from the Mac and the iPhone; what is left of it is the Watch
+  (B).
+- #22: what is left needs the robot or a decision. A pitch position read can
+  fail several times in a row; the ESP32 receive path is ruled out by source
+  (vault `review/2026-10-03-pitch-read-pos/`), and `servo health` tells a
+  silent servo from a bad reply when it happens. The stack headroom and
+  `PICORB_TASK_STACK_SIZE` are a design decision (CLAUDE.md). Discovery time
+  is recorded as `connect ms`.
 - #24: LCD touch.
 - The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
   upstream picoruby-socket / picoruby-drb. That is upstream PR material.
