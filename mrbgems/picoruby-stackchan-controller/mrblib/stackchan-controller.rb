@@ -27,6 +27,7 @@ module StackChan
       @hold_ms        = nil
       @daemon         = nil
       @out            = ->(line) { puts line }
+      BUILTINS.each { |name| define_action(name) }
     end
 
     def wire(central:, voice: nil, clock: -> { Machine.board_millis }, log: nil, port: 8787, host: "127.0.0.1",
@@ -63,12 +64,19 @@ module StackChan
       wired.tick
     end
 
-    def respond_to_missing?(name, include_private = false)
-      action?(name) || super
+    def define_action(name)
+      singleton_class_of.define_method(name) { |arg = nil| run_action(name, arg) }
     end
 
-    def method_missing(name, arg = nil)
-      return super unless action?(name)
+    private
+
+    def singleton_class_of
+      class << self
+        self
+      end
+    end
+
+    def run_action(name, arg)
       result = act(name, arg)
       case result[:status]
       when :ok      then print_out(result[:out])
@@ -78,16 +86,10 @@ module StackChan
       result
     end
 
-    private
-
     def wired
       return @daemon if @daemon
       log = ->(line) { puts line }
       wire(central: Central.new(log_fn: log), log: log)
-    end
-
-    def action?(name)
-      BUILTINS.include?(name) || @declared.key?(name)
     end
 
     def print_out(value)

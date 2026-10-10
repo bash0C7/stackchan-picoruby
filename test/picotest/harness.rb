@@ -32,6 +32,7 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
   DEVICE_FAKES        = %w[fake_display fake_led fake_py32 fake_uart fake_i2c fake_i2s fake_multicore].map { |f| File.join(REPO_ROOT, "test", "#{f}.rb") }
   PC_STUBS_RB         = File.join(REPO_ROOT, "test", "pc", "stubs.rb")
   PC_FAKE_RADIO_RB    = File.join(REPO_ROOT, "test", "pc", "fake_radio.rb")
+  PC_PASSING_RADIO_RB = File.join(REPO_ROOT, "test", "pc", "passing_radio.rb")
   PC_DRB_PATCH_RB     = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "drb_eintr_retry.rb")
   PC_FAKE_BLE_RB      = File.join(REPO_ROOT, "pc", "stackchan-pico", "app", "fake_ble.rb")
   # picoruby-drb is not in the host VM: suites that need it load its mrblib as
@@ -75,12 +76,14 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
         CONTROLLER_MRBLIB.each { |f| load f }
         load PC_DRB_PATCH_RB
         load PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
+        load PC_PASSING_RADIO_RB
       },
       load_files: lambda {
         # Real picoruby-drb first: the stubs then replace the parts the daemon tests observe.
         files = [*DRB_MRBLIB, PC_STUBS_RB, *DEVICE_FAKES, *PROTOCOL_MRBLIB, *ROBOT_MRBLIB, ROBOT_TABLES_RB,
                  *CONTROLLER_MRBLIB, PC_DRB_PATCH_RB, *DRB_BLE_MRBLIB]
         files << PC_FAKE_RADIO_RB if File.exist?(PC_FAKE_RADIO_RB)
+        files << PC_PASSING_RADIO_RB
         files << PC_FAKE_BLE_RB
         files << MAC_APP_RB
         files

@@ -9,13 +9,6 @@ class MacAppTest < Picotest::Test
     end
   end
 
-  class PassingRadio < FakeRobotRadio
-    def before_drx_write(_value)
-      Task.pass
-      :continue
-    end
-  end
-
   def setup
     FakeClock.reset(0)
     @radio = FakeRobotRadio.new

@@ -18,6 +18,7 @@ module StackChan
           raise ArgumentError, "action: flags must be an Array of Strings, got #{flags.inspect}"
         end
         @controller.declared[name] = { label: label, flags: flags, blk: handler }
+        @controller.define_action(name)
       end
 
       def on_touch(&handler)
