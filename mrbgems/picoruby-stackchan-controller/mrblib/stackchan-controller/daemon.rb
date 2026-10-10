@@ -138,7 +138,12 @@ module StackChan
       end
 
       def remote(msg, args = [])
-        with_link { @session.remote(msg, *args) }
+        { status: :ok, out: with_link { @session.remote(msg, *args) }, message: nil }
+      rescue Busy => e
+        { status: :busy, out: nil, message: e.message }
+      rescue StandardError => e
+        log "remote #{msg} #{e.class}: #{e.message}"
+        { status: :error, out: nil, message: e.message }
       end
 
       def poll_touch

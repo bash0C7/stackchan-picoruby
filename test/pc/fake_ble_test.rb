@@ -15,7 +15,7 @@ class FakeBleTest < Picotest::Test
   end
 
   def test_remote_answers_lines
-    assert_equal ["<face:fake>\n"], @daemon.remote("face", ["joy"])
+    assert_equal({ status: :ok, out: ["<face:fake>\n"], message: nil }, @daemon.remote("face", ["joy"]))
   end
 
   def test_ticks_keep_the_link_then_go_quiet_after_the_hold

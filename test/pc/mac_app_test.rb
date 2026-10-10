@@ -26,6 +26,20 @@ class MacAppTest < Picotest::Test
     { status: :ok, out: out, message: nil }
   end
 
+  def test_remote_servo_right_after_a_servo_action_answers_the_ack_and_the_detail
+    act("servo", "--yaw-left", "50", "--pitch-up", "30", "--time", "500")
+    result = @daemon.remote("servo", [{ "YL" => "40", "PU" => "20", "T" => "500" }])
+    assert_equal :ok, result[:status]
+    assert_equal ".\n", result[:out][0]
+    assert result[:out][1].start_with?("<YL_actual:")
+  end
+  
+  def test_a_remote_call_the_robot_does_not_expose_answers_an_error_result
+    result = @daemon.remote("reboot", [])
+    assert_equal :error, result[:status]
+    assert result[:message].include?("not exposed")
+  end
+  
   def test_face
     assert_equal ok("OK face=joy"), act("face", "joy")
     assert_equal ["<F:2>\n"], @radio.rx_frames

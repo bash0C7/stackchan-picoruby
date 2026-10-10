@@ -2,12 +2,12 @@ class CliDispatchTest < Picotest::Test
   class ScriptedDaemon
     attr_reader :calls
 
-    def initialize(results: {}, touches: [], remote_results: {}, remote_raises: nil)
+    def initialize(results: {}, touches: [], remote_results: {}, remote_result: nil)
       @calls = []
       @results = results
       @touches = touches
       @remote_results = remote_results
-      @remote_raises = remote_raises
+      @remote_result = remote_result
     end
 
     def act(name, args)
@@ -27,8 +27,8 @@ class CliDispatchTest < Picotest::Test
 
     def remote(msg, args = [])
       @calls << [:remote, msg.to_s, args]
-      raise @remote_raises if @remote_raises
-      @remote_results.fetch(msg.to_s) { [] }
+      return @remote_result if @remote_result
+      { status: :ok, out: @remote_results.fetch(msg.to_s) { [] }, message: nil }
     end
   end
 
@@ -163,10 +163,17 @@ class CliDispatchTest < Picotest::Test
   end
 
   def test_remote_busy_exits_8
-    daemon = ScriptedDaemon.new(remote_raises: StackChan::Controller::Busy.new("robot is held"))
+    daemon = ScriptedDaemon.new(remote_result: { status: :busy, out: nil, message: "robot is held" })
     cli = ScriptedCLI.new(daemon)
     assert_equal 8, cli.dispatch("remote", ["command", "F=2"])
     assert_equal ["busy: robot is held"], cli.lines
+  end
+
+  def test_remote_that_failed_in_the_daemon_prints_the_error_and_exits_1
+    daemon = ScriptedDaemon.new(remote_result: { status: :error, out: nil, message: "drbble: no reply in 3000 ms" })
+    cli = ScriptedCLI.new(daemon)
+    assert_equal 1, cli.dispatch("remote", ["servo", "YL=40"])
+    assert_equal ["error: drbble: no reply in 3000 ms"], cli.lines
   end
 
   def test_tui_runs_each_line_as_an_action_until_quit

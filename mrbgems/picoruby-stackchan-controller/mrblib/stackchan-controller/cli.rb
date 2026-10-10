@@ -110,20 +110,11 @@ module StackChan
           end
           call_args = [frame]
         end
-        begin
-          result = @daemon.remote(msg, call_args)
-        rescue Busy => e
-          out "busy: #{e.message}"
-          return 8
-        end
-        if result.is_a?(Array)
-          result.each { |line| out line.to_s.chomp }
-          first = result[0]
-          return 1 if first.is_a?(String) && (first == "?" || first == "?\n")
-        else
-          out result.to_s
-        end
-        0
+        result = @daemon.remote(msg, call_args)
+        code = report(result)
+        return code unless code == 0
+        first = result[:out].is_a?(Array) ? result[:out][0] : nil
+        first == "?" || first == "?\n" ? 1 : 0
       end
 
       def verb_touch(args)
