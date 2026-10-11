@@ -25,17 +25,22 @@ report holds one full check from the Mac with the owner at the robot, and a
 touching it.
 
 Everything between a controller and the robot is dRuby over BLE, audio
-included. The Mac, an iPhone and an Apple Watch (worn, with the app in front)
-have each driven the robot that way on hardware.
+included. The Mac and the iPhone run the Apple line pinned in
+`acceptance/lock.yml`. The Apple Watch carries an app built before that pin;
+`rake watchos:device:all` puts the current one on it.
 
 `rake test` and the CRuby host tests pass.
 
 ## Next
 
-The bug issues, taken together in one worktree, because several look like
-they share a root cause: find the common causes first, then fix. They are
-#25, #26, #27 and #30 here, the pitch read failure in #22, and #22 in
-bash0C7/R2P2-darwin.
+The robot panics now and then while it idles, and reboots (#31). The BLE port
+of the picoruby line the firmware is built from pushes its heartbeat into the
+VM from the timer task; the ESP32 port under picoruby/picoruby#427 does not.
+Moving the firmware onto that port is a firmware change: a flash and a new
+acceptance report. What such a line has to keep so that it boots is in
+`CLAUDE.md` ("picoruby-ble の lineage を乗り換える時") and #30. Until then a
+`rake acceptance:darwin` run fails at the hand-off when the robot reboots
+under it; the robot takes about 15 s from reset to advertising.
 
 Other work that has not been started is in the issue tracker
 (`gh issue list`).
