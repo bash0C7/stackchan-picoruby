@@ -26,8 +26,8 @@ touching it.
 
 Everything between a controller and the robot is dRuby over BLE, audio
 included. The Mac, the iPhone and the Apple Watch carry the Apple line pinned
-in `acceptance/lock.yml`. The watch app is installed and has not been run on
-the watch since.
+in `acceptance/lock.yml`; the owner ran the watch app by hand after it was
+installed.
 
 `rake test` and the CRuby host tests pass.
 
