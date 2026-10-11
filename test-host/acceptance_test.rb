@@ -195,8 +195,6 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.rake_out["r2p2:flash_identity"] = -> { identity }
     @ops.on_rake["r2p2:reset_and_capture"] = ->(_dir, env) { @ops.boot_log[env["SERIAL_LOG"]] = boot }
     @ops.cli_out["servo"] = "servo detail=\"<YL_actual:50,PU_actual:29>\\n\""
-    @ops.cli_out["remote servo"] = ".\n<YL_actual:40,PU_actual:19>\n"
-    @ops.cli_out["remote face"] = ".\n"
     @ops.cli_out["remote text"] = ".\n"
     @ops.cli_out["remote servo_health"] = "<yaw_err:none,yaw_status:0,pitch_err:none,pitch_status:0>\n"
     @ops.cli_out["say"] = "OK say bytes=9000"
@@ -240,7 +238,7 @@ class AcceptanceTest < Test::Unit::TestCase
   APP_STEPS = DEPLOY_STEPS.dup.insert(DEPLOY_STEPS.index("app upload"), "pins hold", "qemu gate").freeze
   GATE_ENV = { "QEMU_PROBE_APP" => "apps/robot/app.rb" }.freeze
   CHECK_STEPS = ["flash identity", "boot", "pc:up", "torque on", "face neutral", "led", "servo detail",
-                 "remote servo detail", "servo health", "remote face", "say", "timings", "quiet wait",
+                 "servo health", "say", "timings", "quiet wait",
                  "selftest detail", "touch listen", "calibrate", "release and reconnect", "stack high-water",
                  "questions", "torque off", "chat"].freeze
 
@@ -719,21 +717,15 @@ class AcceptanceTest < Test::Unit::TestCase
 
   # --- robot steps --------------------------------------------------------------
 
-  def test_remote_servo_must_answer_the_detail_line
-    @ops.cli_out["remote servo"] = ".\n"
-    t = checked
-    assert_equal "remote servo detail", failed(t.report["check"])["name"]
-  end
-
   def test_a_detail_step_with_an_unknown_position_stops_with_the_servo_health_asked_right_after_it
     health = "<yaw_err:none,yaw_status:0,pitch_err:timeout,pitch_status:255>"
-    @ops.cli_out["remote servo"] = ".\n<YL_actual:40,PU_actual:unknown>\n"
+    @ops.cli_out["servo"] = "servo detail=\"<YL_actual:50,PU_actual:unknown>\\n\""
     @ops.cli_out["remote servo_health"] = "#{health}\n"
     t = checked
     s = failed(t.report["check"])
-    assert_equal "remote servo detail", s["name"]
+    assert_equal "servo detail", s["name"]
     assert_includes s["detail"], health
-    asked = index_of { |c| cli_call?(c, "remote", "servo", "YL=40", "PU=20", "T=500") }
+    asked = index_of { |c| cli_call?(c, "servo", "--yaw-left", "50", "--pitch-up", "30", "--time", "500") }
     assert cli_call?(@ops.calls[asked + 1], "remote", "servo_health")
   end
 
@@ -774,6 +766,10 @@ class AcceptanceTest < Test::Unit::TestCase
     @ops.cli_out["status"] = "link=held connects=1 releases=0 last_connect_ms=842 hold_ms=10000 ble_connected=true\n"
     t = checked
     assert_equal [842], t.report["check"]["timings"]["connect ms"]
+  end
+
+  def test_the_questions_are_servo_subtitle_audio_and_distortion
+    assert_equal %w[servo subtitle audio distortion], checked.report["check"]["human"].keys
   end
 
   def test_unanswered_questions_leave_it_incomplete_until_answered

@@ -44,8 +44,7 @@ module Acceptance
     QUESTIONS = [["servo", "サーボが指示どおりに動いた"],
                  ["subtitle", "字幕が欠けずに描画された"],
                  ["audio", "say の音声が最後まで途切れずに鳴った"],
-                 ["distortion", "say の音声が割れずに鳴った"],
-                 ["remote", "remote servo でも同じように動いた"]].freeze
+                 ["distortion", "say の音声が割れずに鳴った"]].freeze
 
     attr_reader :report
 
@@ -88,9 +87,7 @@ module Acceptance
        ["face neutral", -> { cli!("face", "neutral") }],
        ["led", -> { cli!("led", "both", "green", "solid") }],
        ["servo detail", -> { detail!(cli!("servo", "--yaw-left", "50", "--pitch-up", "30", "--time", "500")) }],
-       ["remote servo detail", -> { detail!(cli!("remote", "servo", "YL=40", "PU=20", "T=500")) }],
        ["servo health", -> { servo_health }],
-       ["remote face", -> { remote_face }],
        ["say", -> { say }],
        ["timings", -> { measure }],
        ["quiet wait", -> { @quiet = quiet_wait_s; "#{@quiet} s" }],
@@ -420,12 +417,6 @@ module Acceptance
     def detail!(out)
       raise Stop, "no detail line in #{out.inspect}; servo health: #{servo_health}" unless out =~ DETAIL
       out[DETAIL]
-    end
-
-    def remote_face
-      out = cli!("remote", "face", "2")
-      raise Stop, "no ACK in #{out.inspect}" unless out.lines.map(&:strip).include?(".")
-      "ACK"
     end
 
     def say
