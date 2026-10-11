@@ -116,9 +116,8 @@ To watch an app a person taps, launch it with its console on the Mac:
 `xcrun devicectl device process launch --console --terminate-existing
 --device <UDID> <bundle id>`.
 
-Next step: keep the phone awake while a batch runs (`isIdleTimerDisabled`
-in batch mode), and confirm on the phone that a batch longer than its
-Auto-Lock time runs to `[batch] end`.
+The app is not made to keep the phone awake. A phone that locks mid-run
+is a failed run, which the 120 s bound ends.
 
 ### B. Things found on the way, not yet acted on
 
