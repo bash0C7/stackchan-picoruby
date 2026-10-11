@@ -11,6 +11,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - 実機・ビルド・deploy は `stackchan-device-*` skill 経由。`rake r2p2:*` を main context から直接叩かない。
 - 長い rake (setup / build_flash / full_rebuild) は subagent (haiku) の foreground で 1 chain task として回し、log は `/tmp/stackchan-picoruby-debug/` に tee する。
 - spec と plan は repo の `docs/superpowers/{specs,plans}/` に置いて commit する。実行し終えた plan と、コードが先へ進んだ spec は vault の `02_dev_docs/stackchan-picoruby/{plans,specs}/` に移して repo から外す。review・調査レポート・計測の証拠は Obsidian vault の `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ObsidianVault/02_dev_docs/stackchan-picoruby/review/` に置く。PR #427 関連は隣の `picoruby-ble-esp32-port/`。記事・WIP メモは esa (team `ksbrb`、カテゴリ `ｽﾀｯｸﾁｬﾝ`)。
+- `HANDOFF.md` には次の session への引き継ぎだけを書く。恒久的に使う知識 (実測した挙動、手順、制約) はこの file に、未着手の作業は issue に置く。
 - 日付・経緯・「以前は」を doc やコメントに残さない。現在の挙動を現在形で書く。経緯は git log に任せる。
 - コメントを書かない。コードは How、テストは What (テスト名)、コミットログは Why を担う。残すのは toolchain が読むもの (magic comment、suppify の `#:` 型注釈、rigor/steep 指示) と `# REQUIRED FOR PY32 COLD-BOOT` だけ。
 
