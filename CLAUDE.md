@@ -110,6 +110,7 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 - `hal-task-darwin` (R2P2-darwin が引く picoruby の gem) は Mac の config (`build_config/darwin-stackchan-pc.rb`) にだけ入れる。iOS / watchOS の config には入れない (`bridge/task_hal_ios.c` と二重定義になる)。
 - Ruby 4.0 の default gem に `drb` は無い。root の `Gemfile` に `gem 'drb'` が要る。host test は verifier を注入して本物の DRb 経路を通らないので、テストは緑のまま実機で LoadError になる。
 - CoreBluetooth の許可 (TCC) は app の designated requirement に付く。`codesign -s -` だけの ad-hoc 署名では requirement が cdhash になり、`pc:vm_build` → `pc:app_bundle` で VM が変わるたびに別の app として扱われ、launchd から起動した daemon は許可ダイアログ待ちのまま scan 結果を 1 件も受け取らない (`no StackChan advertiser found`、状態通知も来ない)。Terminal から走らせた scan は Terminal の許可で動くので切り分けにならない。`pc:app_bundle` は requirement を `identifier "com.bash0c7.stackchanpico"` に固定して署名する。この Mac の Apple Development 証明書は全部失効している。
+- Mac daemon が固まる件で分かっていることは vault の `review/2026-10-01-daemon-freeze/`、`plans/2026-10-03-daemon-tick-thread.md`、`review/2026-10-10-pr11-closing-notes.md` にある。
 
 ## テスト
 
@@ -126,6 +127,8 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - face geometry golden は `spec/golden/face_<name>.dump`。更新は `rake face:register_golden FACE=<name>`。
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
 - host VM は `vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host-picotest` に建つ。R2P2-ESP32 自身の host ツールは同じ picoruby の `build/host` なので衝突しない。全 suite が `uninitialized constant Picotest` になったら、順序ではなく build 名の衝突を疑う。
+- `rake test` が先に走らせる `rigor:check` は host 側の型解析で、`rigor.baseline.json` に無い diagnostic が 1 つでもあれば落ちる。`rake vendor:setup` 済みが前提で、初回に自分の gemset を `vendor/rigor-tool` に入れる。reference は `docs/rigor.md`。
+- CI は `deps.yml` が push ごと、`firmware.yml` が週次と手動。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
 
 ## ビルド・deploy
 
@@ -160,6 +163,18 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - boot 失敗は cold-boot 全体の log を取り `LoadError|cannot load|NameError|Guru Meditation` を最初の異常から読む。
 - picoruby-uart: unit は `:ESP32_UART0..2`、`write` は String のみ、`read` は timeout を無視するので `readpartial` で poll。
 - R2P2 の `$>` は POSIX 風 shell。Ruby 式は `irb` に入ってから。
+- device の task は esp-idf を `~/esp/esp-idf` に期待する (`ESP_IDF_EXPORT` で変える)。version は firmware workflow の image tag が pin し、python venv は名前ではなく version で探す。
+
+### Apple 実機 (`rake acceptance:darwin` / `devicectl`) の実測挙動
+
+- `rake acceptance:darwin` は、始まる時点で iPhone のロックが解除されていて robot に電源が入っていることを要る。ロックされた iPhone は起動を拒む (`the device was not, or could not be, unlocked`)。ロック解除は本人認証なので Mac からはできない。app に iPhone を起こし続けさせることはしない。
+- 走るたびに両 platform の VM library・Xcode project・build を作り直す (`apps/*/*.xcodeproj` と `apps/*/Vendor` は生成物)。変更が無ければ 1 分かからない。watch 向けの build は watch が手元に無くても通る。
+- iPhone の段は 120 s で打ち切る (`Runner::APP_BATCH_LIMIT_S`)。`devicectl … launch --console` は app の終了を待つので、iPhone がロックされて iOS が app を止めると戻らない (止められた app の中の timeout は進まない)。打ち切られた run は失敗になる。app は iPhone に残り robot を握っていることがあるので、`xcrun devicectl device info processes --device <UDID>` で pid を引き、`xcrun devicectl device process terminate --device <UDID> --pid <pid> --kill` で終わらせる。
+- 失敗した darwin の run は最新 report の verdict を `fail` に書き換える。robot に原因が無ければ `git checkout acceptance/results/` で commit 済みの report に戻す。
+- Apple Watch の app は Mac から無人では動かせない。誰も起こしていない watch で Mac から起動した app は active にならず、`WKExtendedRuntimeSession` は拒まれ (`The app must be active and before applicationWillResignActive`)、timeout 15 s の scan が 34〜60 s かかって何も見つけない。Mac から watch を起こす手段は無い。腕に着けて tap すれば同じ app が直ちに繋がる。BLE central は iOS と watchOS で 1 つの実装なので、実機での確認は iPhone が担う。
+- Mac から watch が見えるのは、watch がロック解除済み・起きている・近くにある間だけ。外れると数秒で `unavailable` になる。
+- 古い GATT 表の robot を見たことのある watch は、discovery に覚えた表で答える (`dRuby pair not found; discovered services=1 characteristics=6e400002,6e400003`)。watch を再起動すると忘れる。
+- 人が tap する app の console を Mac で見るには `xcrun devicectl device process launch --console --terminate-existing --device <UDID> <bundle id>`。
 
 ## push guard hook
 
@@ -169,6 +184,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - hook 設定の変更は session 再起動なしで次の tool call から有効。
 - exit 2 で tool call が block される。**block 時に表示されるのは stderr だけ**で stdout は捨てられる。理由は stderr に書く。
 - pin を公開する push は guard 自身に止められるので `STACKCHAN_DEPS_GUARD=off` を前置する。
+- guard が届かない範囲: `--pins-only` は pin だけを見るので、腐った gem ref や編集された vendored tree は push 時に通り、full run でしか捕まらない。`reachable_from_github` は fetch の前に remote-tracking ref で答えるので、force-push で消えた branch は CI の fresh clone が食い違うまで公開済みに見える。fork の長寿命 integration branch は branch protection の対象にならないので、検出だけになる。
 
 ## picoruby-ble の lineage を乗り換える時
 

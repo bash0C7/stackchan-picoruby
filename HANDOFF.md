@@ -1,13 +1,14 @@
 # HANDOFF
 
-Where the work stands and what comes next. **Current state only.**
+What the next session needs to pick the work up. **Current state only.**
 
 Rewritten in place, never appended to. It carries no history: a reader arriving
 cold has no reference point for a past state, so "previously" and "as of
-<date>" do not belong here. Durable knowledge does not belong here either —
-README.md is what the robot is and does, CLAUDE.md is how to work on it, specs
-and plans live in `docs/superpowers/`, and reviews and evidence live in the
-Obsidian vault under `02_dev_docs/stackchan-picoruby/review/`.
+<date>" do not belong here. Nothing durable belongs here either — README.md is
+what the robot is and does, CLAUDE.md is how to work on it and what has been
+measured, work that is not started is an issue, specs and plans live in
+`docs/superpowers/`, and reviews and evidence live in the Obsidian vault under
+`02_dev_docs/stackchan-picoruby/review/`.
 
 Branch names and commit ids are not written here. What a build runs is read
 from where a machine reads it: `acceptance/lock.yml` for every sha, `Rakefile`
@@ -15,170 +16,21 @@ and `build_config/esp32-stackchan.rb` for the refs the build follows.
 
 ## Now
 
-Everything is on `main`. The robot works, and every subsystem it has has been
-driven on the hardware: cold boot, BLE link, faces, LEDs, servos on both axes,
-head touch, audio, and selftest. Servo absolute positioning — the point of the
-whole thing — lands where it is told.
+Everything is on `main` and pushed. Nothing is in progress.
+
+The robot carries the firmware pinned in `acceptance/lock.yml` and the app of
+the latest report in `acceptance/results/`, whose verdict is `pass`. That
+report holds one full check from the Mac with the owner at the robot, and a
+`rake acceptance:darwin` run in which the iPhone drove the robot with nobody
+touching it.
 
 Everything between a controller and the robot is dRuby over BLE, audio
-included. The robot's GATT table holds GAP, one service with the dRuby pair,
-and Service Changed. The design is
-`docs/superpowers/specs/2026-10-10-druby-single-route-design.md`.
+included. The Mac, an iPhone and an Apple Watch (worn, with the app in front)
+have each driven the robot that way on hardware.
 
-The latest report in `acceptance/results/` has verdict `pass`: one check run
-start to finish in a TTY, from the Mac, with the owner at the robot. It
-covers `torque`, `face`, `led`, `servo`, `selftest`, head touch,
-`calibrate`, the `remote` verb, `servo health`, `say`, `chat` against the
-real sidecar, and the robot releasing a quiet central with the next action
-reconnecting. The robot carries the app that report ran.
-
-An iPhone drives the robot: it connects in about 2.3 s and `raw`, the face
-and LED buttons, the head moves, `subtitle`, `selftest` and `speak_audio`
-all answer over dRuby. An Apple Watch drives it too: worn, with the app in
-front, `connect`, `顔をかえる`, `LEDを光らせる` and `ぐるっと` all answer over
-dRuby.
-
-`rake test` and the CRuby host tests pass. The iOS and watchOS apps start in
-the Simulators and answer `status` through the bridge
-(`/stackchan-apple-simulator`).
-
-`rake test` runs `rigor:check` first, a host-side type analysis that fails on
-any diagnostic absent from `rigor.baseline.json`. It needs `rake vendor:setup`
-to have run, and installs its own gemset into `vendor/rigor-tool` on first use.
-`docs/rigor.md` is the reference. `deps.yml` runs on every push; `firmware.yml`
-runs weekly and on demand, so trigger it with `gh workflow run firmware.yml`
-after changing anything it covers.
+`rake test` and the CRuby host tests pass.
 
 ## Next
 
-### A. The Apple apps run without a person
-
-The apps work in the hand. `rake acceptance:darwin` is the wiring that
-drives them from the Mac with nobody tapping, and the latest report carries
-a run of it that passed: both device builds, the iPhone batch (`connect`,
-`joy`, `selftest`) and the robot handed Mac → iPhone → Mac.
-
-- What runs by itself: both device builds (the watch build needs no watch
-  in reach; the six build steps take under a minute when nothing changed),
-  and on the iPhone the choice of the device, the install, the launch and
-  the batch. The phone connects in about 2.3 s. In the run that passed it
-  was still unlocked at the hand-off's second launch, about 70 s after the
-  batch; whether a phone nobody is near stays unlocked that long depends
-  on its Auto-Lock time.
-- What the run needs from a person: the iPhone unlocked when it starts (a
-  locked phone refuses the launch: `the device was not, or could not be,
-  unlocked`) and the robot powered.
-- A batch can stop answering. Against a robot that was off, `connect` came
-  back after 54 s with `no StackChan advertiser found` and the next action
-  returned nothing for 13 minutes. Every wait in the app is bounded at
-  about 15 s while the app runs, so the likeliest cause is the phone
-  locking: iOS stops scheduling the app, nothing in the app keeps the phone
-  awake during a batch (`isIdleTimerDisabled` is not set, no background
-  mode), and a stopped app's timeouts do not fire. That is a conclusion by
-  elimination from source; the phone's own log was not read.
-- The run bounds the iPhone step at 120 s: it ends the launch and
-  everything under it, and the step fails with `the batch did not end
-  within 120 s`. The host tests cover that with a real child process; the
-  real `devicectl` launch has not been stopped this way yet. The app stays
-  on the phone after such a stop and may still hold the robot, so end it
-  (below). A failed run writes `fail` into the latest report; when the
-  robot was not at fault, put the report back with `git checkout`.
-- The Apple Watch is not driven by that run. A watch app launched from the
-  Mac on a watch nobody has woken is not active: watchOS refuses it a
-  `WKExtendedRuntimeSession` (`The app must be active and before
-  applicationWillResignActive`), a scan whose timeout is 15 s takes 34 s
-  to 60 s and finds nothing, and the Mac has no way to wake a watch. Worn
-  and tapped, the same app connects at once. The Bluetooth central is one
-  implementation for iOS and watchOS, so the iPhone exercises it on
-  hardware.
-- A batch's lines can come out nested (`[batch] [batch] …`) when the main
-  thread is slow: the bridge captures the whole process's stdout during a
-  call, so a line printed for one call lands in the output of the next.
-- A watch that has seen an older robot answers discovery from the table it
-  remembered (`dRuby pair not found; discovered services=1
-  characteristics=6e400002,6e400003` against a robot that holds
-  `6e400004` and `6e400005`). Restarting the watch makes it forget.
-- After a failed connect the central still holds the link, so the robot is
-  not advertising and every later try finds no advertiser. Nothing drops
-  such a link. picoruby-ble's central has no disconnect, and the robot
-  releases a central only once it has seen dRuby traffic from it, because
-  the ESP32 port hands the robot no event when a central connects
-  (`ports/esp32/ble.c`, `BLE_GAP_EVENT_CONNECT` enqueues nothing for a
-  peripheral). Closing that needs the port to deliver a connection event,
-  which is a firmware change. Until then, end the app to free the robot:
-  `xcrun devicectl device info processes --device <UDID>` for the pid,
-  then `xcrun devicectl device process terminate --device <UDID> --pid
-  <pid> --kill`.
-- The Mac sees the watch only while it is unlocked, awake and near; it
-  drops to `unavailable` within seconds otherwise.
-
-To watch an app a person taps, launch it with its console on the Mac:
-`xcrun devicectl device process launch --console --terminate-existing
---device <UDID> <bundle id>`.
-
-The app is not made to keep the phone awake. A phone that locks mid-run
-is a failed run, which the 120 s bound ends.
-
-### B. Things found on the way, not yet acted on
-
-- `DRbBle::Responder#reply` calls the front with `send`. For a method the
-  front defines that is direct, but a `bot.remote` handler is reached through
-  `method_missing`, so on the robot it would run inside a nested VM and cost
-  about 3 KB of the 8 KB task stack. `apps/robot/app.rb` declares no such
-  handler.
-- Frames as text (`<F:0>`) are how the controller's `Session` hands a
-  command to `Central`, which parses them back into the Hash that dRuby
-  carries. The CLI's `raw` verb needs that format; the rest could build the
-  Hash directly.
-- R2P2-darwin's own watchOS build_config lists `hal-io-darwin`, which does
-  not satisfy mruby's HAL provider contract at the picoruby this project
-  pins. That is R2P2-darwin's and the picoruby fork's to fix.
-
-What is known about the Mac daemon freezing is in the vault:
-`review/2026-10-01-daemon-freeze/`, `plans/2026-10-03-daemon-tick-thread.md`
-and `review/2026-10-10-pr11-closing-notes.md`.
-
-### Open issues
-
-- #22: what is left needs the robot or a decision. A pitch position read can
-  fail several times in a row; the ESP32 receive path is ruled out by source
-  (vault `review/2026-10-03-pitch-read-pos/`), and `servo health` tells a
-  silent servo from a bad reply when it happens. The stack headroom and
-  `PICORB_TASK_STACK_SIZE` are a design decision (CLAUDE.md). Discovery time
-  is recorded as `connect ms`.
-- #24: LCD touch.
-- The holes closed in the Mac VM are also in mruby's POSIX task HAL and in
-  upstream picoruby-socket / picoruby-drb. That is upstream PR material.
-
-### Adopting upstream picoruby for the firmware
-
-The firmware's picoruby line, rebased onto upstream master, overflows the 8 KB
-picoruby task stack during its own startup and boot-loops on the CoreS3. The
-line in use leaves the picoruby task only a few hundred bytes at startup, so
-the rebased one needs just a little more depth to cross the line. Raising
-`PICORB_TASK_STACK_SIZE` is a design decision, not a tweak (CLAUDE.md).
-
-The NimBLE ESP32 port itself is not waiting on this; it is what the device
-runs. What the boot loop blocks is adopting that port as upstream carries it.
-Its plan is in the vault under `02_dev_docs/picoruby-ble-esp32-port/plans/`.
-
-### What the dependency guard does not reach
-
-`--pins-only` checks pins and nothing else, so a rotted gem ref or an edited
-vendored tree passes at push time and is caught only by a full run.
-`reachable_from_github` answers from remote-tracking refs before fetching, so a
-branch force-pushed away reads as published until CI's fresh clone disagrees.
-And `STACKCHAN_DEPS_GUARD=off` is one string away for whoever finds the guard
-inconvenient.
-
-Branch protection is handled separately, and would cover default branches
-only. The refs this build depends on in the two forks are long-lived
-integration branches, which protection would not cover, so those stay
-detection-only.
-
-## Known and deliberately left alone
-
-- The device tasks expect esp-idf at `~/esp/esp-idf` unless `ESP_IDF_EXPORT`
-  says otherwise. The version is pinned where a machine reads it — the image
-  tag in the firmware workflow — and the python venv is found by version rather
-  than named.
+Nothing is waiting. Work that has not been started is in the issue tracker
+(`gh issue list`).
