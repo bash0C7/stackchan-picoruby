@@ -589,12 +589,14 @@ BLE support (`mrbgems/picoruby-ble/`), on two lines:
   [#427](https://github.com/picoruby/picoruby/pull/427) carries.
 - The Apple line (what R2P2-darwin fetches) — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
-  role can receive a GAP disconnect but cannot initiate one (this port has
-  no such API) — `StackChan::Controller::Central#disconnect` in
+  role can receive a GAP disconnect but has no call to initiate one —
+  `StackChan::Controller::Central#disconnect` in
   `mrbgems/picoruby-stackchan-controller` is therefore a local-state-only
-  no-op. An ACK timeout on a live link does not drop the link; the robot
-  frees it after `release_after` (15 s in `apps/robot/app.rb`) without
-  traffic.
+  no-op. The port itself gives back a connection the decoder abandoned: a
+  connect still pending when a scan ends, and whatever is still held when
+  the next scan starts. An ACK timeout on a live link does not drop the
+  link; the robot frees it `release_after` (15 s in `apps/robot/app.rb`)
+  after the central arrived or last spoke.
 
 ### [rb-corebluetooth-mac](https://github.com/bash0C7/rb-corebluetooth-mac)
 

@@ -30,5 +30,5 @@ firmware:
 # firmware, and hands the robot Mac → iPhone → Mac. That run is optional; the
 # verdict does not need it.
 darwin:
-  R2P2-darwin: 095fccc36bd3401e8281709575b221392ebcdd1f             # main
-  picoruby: 121c6b51fbe827f35e54dfdf9c4cfce144ae4d11                # port-darwin, vendor/R2P2-darwin/vendor/picoruby
+  R2P2-darwin: 08986d975576b3c836d54d0801ec32ebc0ee5a90             # main
+  picoruby: 31de548847e0a45e5f6619b0eb3edfa154fa18c2                # port-darwin, vendor/R2P2-darwin/vendor/picoruby
