@@ -21,7 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     # The version this firmware is actually built with; `git describe` in the
     # esp-idf on the development machine says v5.4.2.
-    container: espressif/idf:v5.4.2
+    container:
+      image: espressif/idf:v5.4.2
+      options: --init
     timeout-minutes: 90
     env:
       LC_ALL: C.UTF-8
