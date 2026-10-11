@@ -25,6 +25,10 @@ module StackChan
         @active_at = @clock.call if @remote.perform_audio_play && @active_at
       end
 
+      def central_arrived
+        @active_at = @clock.call
+      end
+
       def disconnected
         @active_at = nil
         @drb.disconnected

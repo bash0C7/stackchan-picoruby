@@ -191,6 +191,51 @@ class LinkLoopTest < Picotest::Test
     assert_equal 0, @port.releases
   end
 
+  def test_a_central_that_arrives_and_stays_silent_is_released_release_after_ms_after_it_arrived
+    link = link_with(release_after: 1000)
+    link.central_arrived
+    @now += 999_999
+    link.tick
+    assert_equal 0, @port.releases
+    @now += 1
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_drb_traffic_after_the_arrival_restarts_the_release_timer
+    link = link_with(release_after: 1000)
+    link.central_arrived
+    @now += 800_000
+    drb_tick(link)
+    @now += 800_000
+    link.tick
+    assert_equal 0, @port.releases
+    @now += 200_000
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
+  def test_an_arrival_does_nothing_without_release_after
+    link = link_with(release_after: nil)
+    link.central_arrived
+    @now += 3_600_000_000
+    link.tick
+    assert_equal 0, @port.releases
+  end
+
+  def test_no_release_fires_after_disconnected_until_the_next_arrival
+    link = link_with(release_after: 1000)
+    link.central_arrived
+    link.disconnected
+    @now += 10_000_000
+    link.tick
+    assert_equal 0, @port.releases
+    link.central_arrived
+    @now += 1_000_000
+    link.tick
+    assert_equal 1, @port.releases
+  end
+
   def test_without_release_after_the_link_is_never_released
     drb_tick(@link)
     @now += 3_600_000_000

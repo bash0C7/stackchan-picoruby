@@ -6,6 +6,7 @@ module StackChan
       AD_FLAGS = 0x06
       BTSTACK_EVENT_STATE = 0x60
       HCI_EVENT_DISCONNECTION_COMPLETE = 0x05
+      ATT_EVENT_MTU_EXCHANGE_COMPLETE = 0xB5
 
       DRB_SERVICE_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x01\x00\x40\x6e"
       DRB_RX_CHAR_UUID = "\x9e\xca\xdc\x24\x0e\xe5\xa9\xe0\x93\xf3\xa3\xb5\x04\x00\x40\x6e"
@@ -116,6 +117,8 @@ module StackChan
           return unless event_packet.getbyte(2) == BLE::HCI_STATE_WORKING
           puts "[application] HCI WORKING — advertising"
           advertise(@adv_data)
+        when ATT_EVENT_MTU_EXCHANGE_COMPLETE
+          @link.central_arrived
         when HCI_EVENT_DISCONNECTION_COMPLETE
           puts "[application] disconnected"
           @link.disconnected
