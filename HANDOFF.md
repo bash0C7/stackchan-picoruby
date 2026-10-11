@@ -32,5 +32,10 @@ have each driven the robot that way on hardware.
 
 ## Next
 
-Nothing is waiting. Work that has not been started is in the issue tracker
+The bug issues, taken together in one worktree, because several look like
+they share a root cause: find the common causes first, then fix. They are
+#25, #26, #27 and #30 here, the pitch read failure in #22, and #22 in
+bash0C7/R2P2-darwin.
+
+Other work that has not been started is in the issue tracker
 (`gh issue list`).
