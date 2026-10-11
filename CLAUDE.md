@@ -175,7 +175,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - iPhone の段は 120 s で打ち切る (`Runner::APP_BATCH_LIMIT_S`)。`devicectl … launch --console` は app の終了を待つので、iPhone がロックされて iOS が app を止めると戻らない (止められた app の中の timeout は進まない)。打ち切られた run は失敗になる。app は iPhone に残り robot を握っていることがあるので、`xcrun devicectl device info processes --device <UDID>` で pid を引き、`xcrun devicectl device process terminate --device <UDID> --pid <pid> --kill` で終わらせる。
 - 失敗した darwin の run は最新 report の verdict を `fail` に書き換える。robot に原因が無ければ `git checkout acceptance/results/` で commit 済みの report に戻す。
 - Apple Watch の app は Mac から無人では動かせない。誰も起こしていない watch で Mac から起動した app は active にならず、`WKExtendedRuntimeSession` は拒まれ (`The app must be active and before applicationWillResignActive`)、timeout 15 s の scan が 34〜60 s かかって何も見つけない。Mac から watch を起こす手段は無い。腕に着けて tap すれば同じ app が直ちに繋がる。BLE central は iOS と watchOS で 1 つの実装なので、実機での確認は iPhone が担う。
-- Mac から watch が見えるのは、watch がロック解除済み・起きている・近くにある間だけ。外れると数秒で `unavailable` になる。
+- Mac から watch が見えるのは、watch がロック解除済み・起きている・近くにある間だけ。外れると数秒で `unavailable` になる。Mac の画面がロックされている間は、watch への `xcrun devicectl device install app` が通らない (`The device is not able to fulfill the requested usage assertion requirements`、接続の確立の失敗や timeout にもなる)。Mac のロックを解除すると通る。
 - 古い GATT 表の robot を見たことのある watch は、discovery に覚えた表で答える (`dRuby pair not found; discovered services=1 characteristics=6e400002,6e400003`)。watch を再起動すると忘れる。
 - 人が tap する app の console を Mac で見るには `xcrun devicectl device process launch --console --terminate-existing --device <UDID> <bundle id>`。
 

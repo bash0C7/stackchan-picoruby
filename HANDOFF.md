@@ -25,9 +25,9 @@ report holds one full check from the Mac with the owner at the robot, and a
 touching it.
 
 Everything between a controller and the robot is dRuby over BLE, audio
-included. The Mac and the iPhone run the Apple line pinned in
-`acceptance/lock.yml`. The Apple Watch carries an app built before that pin;
-`rake watchos:device:all` puts the current one on it.
+included. The Mac, the iPhone and the Apple Watch carry the Apple line pinned
+in `acceptance/lock.yml`. The watch app is installed and has not been run on
+the watch since.
 
 `rake test` and the CRuby host tests pass.
 
