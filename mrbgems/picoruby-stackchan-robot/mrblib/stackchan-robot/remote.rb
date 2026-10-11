@@ -18,7 +18,6 @@ module StackChan
 
       def initialize(dispatcher, remote_handlers: {}, speaker: nil, head: nil)
         @dispatcher   = dispatcher
-        @handlers     = remote_handlers
         @exposed      = BUILT_INS + remote_handlers.keys
         @speaker      = speaker
         @head         = head
@@ -26,6 +25,12 @@ module StackChan
         @audio_buf    = String.new
         @audio_pending = false
         @audio_done   = false
+        names = remote_handlers.keys
+        i = 0
+        while i < names.size
+          define_handler(names[i], remote_handlers[names[i]])
+          i += 1
+        end
       end
 
       def command(frame)
@@ -126,13 +131,12 @@ module StackChan
         @audio_done = true
       end
 
-      def method_missing(name, *args)
-        handler = @handlers[name]
-        raise NoMethodError, "undefined method '#{name}' for StackChan::Robot::Remote" unless handler
-        handler.call(@dispatcher.robot_handle, *args)
-      end
-
       private
+
+      def define_handler(name, handler)
+        return if respond_to?(name, true)
+        define_singleton_method(name) { |*args| handler.call(@dispatcher.robot_handle, *args) }
+      end
 
       def err_label(err)
         err.nil? ? "none" : err.to_s

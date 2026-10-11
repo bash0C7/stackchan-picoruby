@@ -132,7 +132,7 @@
     },
     {
       "path": "test/device/drb_channel_test.rb",
-      "line": 156,
+      "line": 173,
       "column": 61,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
