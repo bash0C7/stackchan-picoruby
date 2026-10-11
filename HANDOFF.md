@@ -61,17 +61,28 @@ a run of it that passed: both device builds, the iPhone batch (`connect`,
 - What runs by itself: both device builds (the watch build needs no watch
   in reach; the six build steps take under a minute when nothing changed),
   and on the iPhone the choice of the device, the install, the launch and
-  the batch. The phone connects in about 2.3 s and stays unlocked from the
-  batch to the hand-off's second launch, about 70 s later.
+  the batch. The phone connects in about 2.3 s. In the run that passed it
+  was still unlocked at the hand-off's second launch, about 70 s after the
+  batch; whether a phone nobody is near stays unlocked that long depends
+  on its Auto-Lock time.
 - What the run needs from a person: the iPhone unlocked when it starts (a
   locked phone refuses the launch: `the device was not, or could not be,
   unlocked`) and the robot powered.
-- A batch against a robot that is off does not end. `connect` came back
-  after 54 s with `no StackChan advertiser found`, and the next action
-  returned nothing for 13 minutes; `devicectl … launch --console` waits on
-  the app, so the run waits with it. Nothing bounds the iPhone step. End
-  the app by hand (below) to stop such a run, and put the committed report
-  back with `git checkout`, because the stopped run writes `fail` into it.
+- A batch can stop answering. Against a robot that was off, `connect` came
+  back after 54 s with `no StackChan advertiser found` and the next action
+  returned nothing for 13 minutes. Every wait in the app is bounded at
+  about 15 s while the app runs, so the likeliest cause is the phone
+  locking: iOS stops scheduling the app, nothing in the app keeps the phone
+  awake during a batch (`isIdleTimerDisabled` is not set, no background
+  mode), and a stopped app's timeouts do not fire. That is a conclusion by
+  elimination from source; the phone's own log was not read.
+- The run bounds the iPhone step at 120 s: it ends the launch and
+  everything under it, and the step fails with `the batch did not end
+  within 120 s`. The host tests cover that with a real child process; the
+  real `devicectl` launch has not been stopped this way yet. The app stays
+  on the phone after such a stop and may still hold the robot, so end it
+  (below). A failed run writes `fail` into the latest report; when the
+  robot was not at fault, put the report back with `git checkout`.
 - The Apple Watch is not driven by that run. A watch app launched from the
   Mac on a watch nobody has woken is not active: watchOS refuses it a
   `WKExtendedRuntimeSession` (`The app must be active and before
@@ -105,8 +116,9 @@ To watch an app a person taps, launch it with its console on the Mac:
 `xcrun devicectl device process launch --console --terminate-existing
 --device <UDID> <bundle id>`.
 
-Next step: bound the iPhone step, so a robot that is off fails the run
-instead of holding it, and find where the app's second action blocks.
+Next step: keep the phone awake while a batch runs (`isIdleTimerDisabled`
+in batch mode), and confirm on the phone that a batch longer than its
+Auto-Lock time runs to `[batch] end`.
 
 ### B. Things found on the way, not yet acted on
 
