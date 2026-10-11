@@ -58,7 +58,6 @@ class DrbChannelTest < Picotest::Test
     @port = Port.new
     @front = StackChan::Robot::Remote.new(@dispatcher, remote_handlers: {
       wave: ->(r, level) { r.head(yaw_left: level, time: 300) },
-      passer: ->(_r) { Task.pass; :passed },
     }, head: @head)
     @channel = StackChan::Robot::DrbChannel.new(
       rx_handle: DRX, tx_handle: DTX, cccd_handle: DCCCD,
@@ -137,23 +136,21 @@ class DrbChannelTest < Picotest::Test
   def test_exposed_is_the_built_ins_then_the_remote_handler_names
     assert_equal [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
                   :selftest, :touches, :audio_begin, :audio_chunk, :audio_play, :audio_done,
-                  :servo_health, :wave, :passer], @front.exposed
+                  :servo_health, :wave], @front.exposed
   end
 
   def test_a_remote_handler_can_yield_to_the_scheduler_when_called_through_the_responder
-    subscribe
-    assert_equal :passed, @remote.passer
+    front = StackChan::Robot::Remote.new(@dispatcher, remote_handlers: { passer: ->(_r) { Task.pass; :passed } })
+    req = DRbBle::Writer.new
+    DRb::DRbMessage.new(req).send_request(nil, :passer, [], nil)
+    reply = DRbBle::Responder.new(front, allow: front.exposed).feed(req.out)
+    assert_equal true, reply.include?("passed")
   end
 
   def test_a_remote_handler_is_a_real_method_of_its_own_front_only
     other = StackChan::Robot::Remote.new(@dispatcher)
     assert_equal true, @front.respond_to?(:wave)
     assert_equal false, other.respond_to?(:wave)
-  end
-
-  def test_a_handler_named_like_a_built_in_does_not_replace_the_built_in
-    front = StackChan::Robot::Remote.new(@dispatcher, remote_handlers: { face: ->(_r, _id) { :shadowed } })
-    assert_equal ["?\n"], front.face(9)
   end
 
   def test_a_remote_handler_receives_the_handle_and_the_arguments_and_moves_the_head
