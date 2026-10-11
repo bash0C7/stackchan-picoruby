@@ -725,6 +725,18 @@ class AcceptanceTest < Test::Unit::TestCase
     assert_equal "remote servo detail", failed(t.report["check"])["name"]
   end
 
+  def test_a_detail_step_with_an_unknown_position_stops_with_the_servo_health_asked_right_after_it
+    health = "<yaw_err:none,yaw_status:0,pitch_err:timeout,pitch_status:255>"
+    @ops.cli_out["remote servo"] = ".\n<YL_actual:40,PU_actual:unknown>\n"
+    @ops.cli_out["remote servo_health"] = "#{health}\n"
+    t = checked
+    s = failed(t.report["check"])
+    assert_equal "remote servo detail", s["name"]
+    assert_includes s["detail"], health
+    asked = index_of { |c| cli_call?(c, "remote", "servo", "YL=40", "PU=20", "T=500") }
+    assert cli_call?(@ops.calls[asked + 1], "remote", "servo_health")
+  end
+
   def test_less_than_512_b_of_stack_left_stops_the_check_and_856_b_passes
     @ops.cli_out["remote stack_free"] = "<stack_free:511>\n"
     assert_equal "stack high-water", failed(checked.report["check"])["name"]

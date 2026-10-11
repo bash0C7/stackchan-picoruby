@@ -418,7 +418,7 @@ module Acceptance
     end
 
     def detail!(out)
-      raise Stop, "no detail line in #{out.inspect}" unless out =~ DETAIL
+      raise Stop, "no detail line in #{out.inspect}; servo health: #{servo_health}" unless out =~ DETAIL
       out[DETAIL]
     end
 
