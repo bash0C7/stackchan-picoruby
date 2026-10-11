@@ -23,19 +23,22 @@ final class VMExecutor {
         }
     }
 
+    private func invoke(_ vm: UnsafeMutableRawPointer, _ method: String, _ arg: String) -> String {
+        let out = method.withCString { m in
+            arg.withCString { a in vm_call(vm, m, a) }
+        }
+        let result = out.map { String(cString: $0) } ?? ""
+        if let out = out { free(out) }
+        return result
+    }
+
     func call(_ method: String, _ arg: String, onResult: @escaping (String) -> Void) {
         queue.async {
             guard let vm = self.vm else {
                 DispatchQueue.main.async { onResult("(VM not ready)") }
                 return
             }
-            let out = method.withCString { m in
-                arg.withCString { a in
-                    vm_call(vm, m, a)
-                }
-            }
-            let result = out.map { String(cString: $0) } ?? ""
-            if let out = out { free(out) }
+            let result = self.invoke(vm, method, arg)
             NSLog("[Stackchan] %@(%@) ->\n%@", method, arg, result)
             DispatchQueue.main.async { onResult(result) }
         }
@@ -45,15 +48,20 @@ final class VMExecutor {
         let lines = spec.split(separator: ";")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        if lines.isEmpty { finishBatch() }
+        if lines.isEmpty { queue.async { self.finishBatch() } }
         for (i, line) in lines.enumerated() {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
-            call(parts[0], parts.count > 1 ? parts[1] : "") { result in
+            let method = parts[0]
+            let arg = parts.count > 1 ? parts[1] : ""
+            let last = i == lines.count - 1
+            queue.async {
+                let result = self.vm.map { self.invoke($0, method, arg) } ?? "(VM not ready)"
+                NSLog("[Stackchan] %@(%@) ->\n%@", method, arg, result)
                 for out in result.split(separator: "\n", omittingEmptySubsequences: true) {
                     print("[batch] \(out)")
                 }
                 fflush(stdout)
-                if i == lines.count - 1 { self.finishBatch() }
+                if last { self.finishBatch() }
             }
         }
     }
@@ -69,11 +77,7 @@ final class VMExecutor {
         t.schedule(deadline: .now() + 1.0, repeating: 1.0)
         t.setEventHandler { [weak self] in
             guard let self = self, let vm = self.vm else { return }
-            let out = "tick".withCString { m in
-                "".withCString { a in vm_call(vm, m, a) }
-            }
-            let result = out.map { String(cString: $0) } ?? ""
-            if let out = out { free(out) }
+            let result = self.invoke(vm, "tick", "")
             if !result.isEmpty { NSLog("[Stackchan] tick ->\n%@", result) }
         }
         t.resume()
