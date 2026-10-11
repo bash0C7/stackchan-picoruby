@@ -14,11 +14,12 @@ class AcceptanceTest < Test::Unit::TestCase
   # A machine made of git HEADs: every directory is a checkout at some sha.
   # rake / cli / prompt are scripted; every call is recorded in order.
   class FakeOps
-    attr_reader :calls, :heads, :dirty, :submodules, :files, :robot, :exists, :trees
+    attr_reader :limits, :calls, :heads, :dirty, :submodules, :files, :robot, :exists, :trees
     attr_accessor :boot_log, :cli_out, :answers, :on_rake, :fail_rake, :tty, :on_now, :app_out, :rake_out
 
     def initialize
       @calls = []
+      @limits = []
       @heads = {}
       @dirty = {}
       @trees = {}
@@ -81,8 +82,9 @@ class AcceptanceTest < Test::Unit::TestCase
       end
     end
 
-    def rake(dir, *tasks, env: {}, bundle: true)
+    def rake(dir, *tasks, env: {}, bundle: true, limit: nil)
       @calls << [:rake, dir, *tasks, env]
+      @limits << [tasks.first, limit]
       hook = @on_rake[tasks.first]
       hook.call(dir, env) if hook
       failing = @fail_rake[tasks.first]
@@ -1063,6 +1065,24 @@ class AcceptanceTest < Test::Unit::TestCase
     r = run_darwin_only
     assert_equal "iPhone batch", darwin_failed(r)["name"]
     assert_match(/no selftest detail in/, darwin_failed(r)["detail"])
+  end
+
+  def test_the_iphone_batch_is_asked_with_a_limit_of_120_seconds
+    run_darwin_only
+    assert_include @ops.limits, ["ios:device:run", 120]
+    assert_equal [nil], @ops.limits.reject { |t, _| t == "ios:device:run" }.map { |_, l| l }.uniq
+  end
+
+  def test_an_iphone_batch_stopped_by_the_limit_fails_the_step
+    def @ops.rake(dir, *tasks, env: {}, bundle: true, limit: nil)
+      return super unless tasks.first == "ios:device:run"
+      @calls << [:rake, dir, *tasks, env]
+      [false, "[batch] Connected; dRuby pair bound\n[acceptance] stopped after 120 s\n", 0]
+    end
+    r = run_darwin_only
+    assert_equal "iPhone batch", darwin_failed(r)["name"]
+    assert_match(/did not end within 120 s/, darwin_failed(r)["detail"])
+    assert_equal "fail", r["verdict"]
   end
 
   def test_an_app_that_never_ends_its_batch_fails

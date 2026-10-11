@@ -223,6 +223,8 @@ module Acceptance
     BUILT_APPS = %w[ios watchos].freeze
     APP_CONNECTED = "[batch] Connected; dRuby pair bound"
     APP_END = "[batch] end"
+    APP_BATCH_LIMIT_S = 120
+    STOPPED_MARK = "[acceptance] stopped after"
     APP_WANTS = [APP_CONNECTED, "[batch] OK face=joy"].freeze
 
     def run_darwin
@@ -249,8 +251,10 @@ module Acceptance
     def app_batch!(lines)
       t0 = @ops.now
       ok, out, = run_rake(["ios:device:run"],
-                          { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => "-StackchanBatch \"#{lines}\"" })
+                          { "APP_CONSOLE" => "1", "APP_LAUNCH_ARGS" => "-StackchanBatch \"#{lines}\"" },
+                          APP_BATCH_LIMIT_S)
       t = @ops.now - t0
+      raise Stop, "iPhone: the batch did not end within #{APP_BATCH_LIMIT_S} s:\n#{out.to_s.lines.last(20).join}" if !ok && out.to_s.include?(STOPPED_MARK)
       raise Stop, "iPhone: ios:device:run failed:\n#{out.to_s.lines.last(20).join}" unless ok
       want!(out, APP_END)
       [out, t]
@@ -561,13 +565,14 @@ module Acceptance
       out
     end
 
-    def run_rake(tasks, env)
+    def run_rake(tasks, env, limit = nil)
       task = tasks.first
       if (FIRMWARE_WRITES + APP_WRITES).include?(task) && !@may_write.include?(task)
         raise Stop, "#{task} writes flash; the firmware only in acceptance:deploy, the app only in its app upload or acceptance:app"
       end
       @report["resets"] += 1 if RESETS.include?(task)
-      @ops.rake(@root, *tasks, env: env)
+      return @ops.rake(@root, *tasks, env: env) unless limit
+      @ops.rake(@root, *tasks, env: env, limit: limit)
     end
 
     def rake(*tasks, env: {})

@@ -26,27 +26,45 @@ module Acceptance
 
     # Streams to the terminal and to one log per call; the caller gets the output
     # and the command's own exit status (no pipe in between).
-    def rake(dir, *tasks, env: {}, bundle: true)
-      return run_rake(dir, *tasks, env: env, bundle: bundle) unless DEVICE_TASKS.include?(tasks.first)
+    def rake(dir, *tasks, env: {}, bundle: true, limit: nil)
+      return run_rake(dir, *tasks, env: env, bundle: bundle, limit: limit) unless DEVICE_TASKS.include?(tasks.first)
       DeviceLock.synchronize("esp32") do
         key = DeviceLock.env_key("esp32")
-        run_rake(dir, *tasks, env: @device_env.call.merge(key => ENV[key]).merge(env), bundle: bundle)
+        run_rake(dir, *tasks, env: @device_env.call.merge(key => ENV[key]).merge(env), bundle: bundle, limit: limit)
       end
     end
 
-    def run_rake(dir, *tasks, env: {}, bundle: true)
+    def run_rake(dir, *tasks, env: {}, bundle: true, limit: nil)
       @n += 1
       log = File.join(@log_dir, format("%02d-%s.log", @n, tasks.first.tr(":", "_")))
       cmd = bundle ? ["bundle", "exec", "rake", *tasks] : ["rake", *tasks]
       puts "[acceptance] (#{dir}) #{cmd.join(' ')}  -> #{log}"
       out = +""
+      stopped = false
       ok = Bundler.with_unbundled_env do
-        IO.popen(env, cmd, chdir: dir, err: [:child, :out]) do |io|
+        opts = { chdir: dir, err: [:child, :out] }
+        opts[:pgroup] = true if limit
+        IO.popen(env, cmd, **opts) do |io|
+          watcher = limit && Thread.new do
+            Kernel.sleep(limit)
+            stopped = true
+            Process.kill("TERM", -io.pid)
+          rescue Errno::ESRCH
+            nil
+          end
           File.open(log, "w") do |f|
             io.each_line { |l| print l; f.write(l); out << l }
+            if stopped
+              line = "[acceptance] stopped after #{limit} s\n"
+              print line
+              f.write(line)
+              out << line
+            end
           end
+          watcher&.kill
+          watcher&.join
         end
-        $?.success?
+        $?.success? && !stopped
       end
       [ok, out, 0]
     end
