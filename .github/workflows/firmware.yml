@@ -51,13 +51,6 @@ jobs:
       - name: Fetch the firmware tree at the ref the Rakefile pins
         run: bundle exec rake vendor:r2p2_esp32:setup
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            build/qemu
-            vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/repos
-          key: firmware-fetch-${{ hashFiles('Rakefile', 'build_config/**', 'lib/qemu_gate.rb') }}
-
       - name: Set the target and generate sdkconfig from the CoreS3 fragments
         env:
           ESP_IDF_EXPORT: /opt/esp/idf/export.sh
