@@ -8,6 +8,9 @@ name: firmware builds from nothing
 # compiles and its own suites pass on a machine that is not that Mac. Whether the
 # robot then moves is still something only the bench can say.
 #
+# The QEMU boot gate configures and builds its own tree, so it runs as a job
+# beside the firmware build rather than after it.
+#
 # Deliberately not on every push: a full esp-idf build is tens of minutes, and
 # the cheap check in deps.yml already runs on each one.
 
@@ -61,27 +64,6 @@ jobs:
           ESP_IDF_EXPORT: /opt/esp/idf/export.sh
         run: bundle exec rake r2p2:build
 
-      - name: Install the QEMU boot gate's shared libraries
-        run: apt-get install -y -qq libsdl2-2.0-0 libslirp0
-
-      - name: Run the QEMU boot gate
-        env:
-          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
-        run: |
-          bundle exec rake qemu:setup
-          bundle exec rake r2p2:qemu_check
-
-      - name: Print the QEMU boot log on failure
-        if: failure()
-        run: |
-          log=$(ls -t /tmp/stackchan-picoruby-debug/qemu-*.log 2>/dev/null | head -1)
-          if [ -n "$log" ]; then
-            echo "== $log =="
-            cat "$log"
-          else
-            echo "no qemu boot log found under /tmp/stackchan-picoruby-debug/"
-          fi
-
       - name: Report what was produced
         run: |
           find vendor/R2P2-ESP32/build -maxdepth 1 -name '*.bin' -exec ls -l {} +
@@ -112,3 +94,63 @@ jobs:
 
       - name: Run the CRuby host tests
         run: bundle exec rake test:host
+
+  qemu-gate:
+    runs-on: ubuntu-latest
+    # The version this firmware is actually built with; `git describe` in the
+    # esp-idf on the development machine says v5.4.2.
+    container:
+      image: espressif/idf:v5.4.2
+      options: --init
+    timeout-minutes: 90
+    env:
+      LC_ALL: C.UTF-8
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install ruby and what the host build links against
+        run: |
+          apt-get update -qq
+          # ruby-dev and a compiler because the Gemfile has a native gem, and
+          # libssl-dev because linking the host mrbc ends in -lm -lssl -lcrypto.
+          # The Espressif image carries the cross toolchain and nothing else.
+          # lsof because PcLifecycle#port_listening? shells out to it, and the
+          # test that pins it to never opening a connection is the only place
+          # that regression is caught off the development Mac.
+          apt-get install -y -qq ruby-full ruby-dev build-essential libssl-dev lsof
+          ruby -v
+
+      - name: Install the gems the Rakefile needs
+        run: |
+          gem install bundler --no-document
+          bundle install --jobs 4
+
+      - name: Fetch the firmware tree at the ref the Rakefile pins
+        run: bundle exec rake vendor:r2p2_esp32:setup
+
+      - name: Set the target and generate sdkconfig from the CoreS3 fragments
+        env:
+          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
+        run: bundle exec rake r2p2:setup
+
+      - name: Install the QEMU boot gate's shared libraries
+        run: apt-get install -y -qq libsdl2-2.0-0 libslirp0
+
+      - name: Run the QEMU boot gate
+        env:
+          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
+        run: |
+          bundle exec rake qemu:setup
+          bundle exec rake r2p2:qemu_check
+
+      - name: Print the QEMU boot log on failure
+        if: failure()
+        run: |
+          log=$(ls -t /tmp/stackchan-picoruby-debug/qemu-*.log 2>/dev/null | head -1)
+          if [ -n "$log" ]; then
+            echo "== $log =="
+            cat "$log"
+          else
+            echo "no qemu boot log found under /tmp/stackchan-picoruby-debug/"
+          fi
