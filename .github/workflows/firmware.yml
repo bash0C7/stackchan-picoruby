@@ -129,11 +129,6 @@ jobs:
       - name: Fetch the firmware tree at the ref the Rakefile pins
         run: bundle exec rake vendor:r2p2_esp32:setup
 
-      - name: Set the target and generate sdkconfig from the CoreS3 fragments
-        env:
-          ESP_IDF_EXPORT: /opt/esp/idf/export.sh
-        run: bundle exec rake r2p2:setup
-
       - name: Install the QEMU boot gate's shared libraries
         run: apt-get install -y -qq libsdl2-2.0-0 libslirp0
 
