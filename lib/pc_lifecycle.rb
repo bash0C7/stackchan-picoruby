@@ -5,13 +5,17 @@ require_relative "launch_agent"
 
 # Starts and stops the PC sidecar and daemon as launchd jobs and verifies the daemon's status.
 class PcLifecycle
-  # @rbs @c: Hash[Symbol, untyped]
+  # @rbs!
+  #   type config = { root: String, vm_app: String, ruby: String, port: Integer, sidecar_port: Integer, prefix: String, ble_fake: bool, ?allow_busy: bool, stub: bool, logdir: String, ns: String? }
+  #   type status = { link: String, connects: Integer, ?releases: Integer, ?last_connect_ms: Integer?, ?hold_ms: Integer?, ?ble_connected: bool, ?last_face: String?, ?last_action: String?, ?host: String, ?port: Integer }
+
+  # @rbs @c: config
   # @rbs @dir: String
   # @rbs @runner: ^(*String) -> [String, bool]
   # @rbs @waiter: ^(Integer, Numeric) -> bool
   # @rbs @releaser: ^(Integer, Numeric) -> String?
-  # @rbs @verifier: ^(Integer) -> Hash[Symbol, untyped]?
-  # @rbs @sleep_fn: ^(Numeric) -> untyped
+  # @rbs @verifier: ^(Integer) -> status?
+  # @rbs @sleep_fn: ^(Numeric) -> void
   # @rbs @clock: ^() -> Time
 
   # Raised when a job cannot be started, never listens, or reports an unhealthy status.
@@ -24,7 +28,7 @@ class PcLifecycle
   STATUS_WAIT_S  = 10   # a wedged daemon accepts TCP but never answers DRb
 
   # Stores the config hash and the collaborators; each defaults to the real launchctl, lsof and DRb implementation.
-  #: (Hash[Symbol, untyped] config, dir: String, ?runner: ^(*String) -> [String, bool]?, ?waiter: ^(Integer, Numeric) -> bool?, ?releaser: ^(Integer, Numeric) -> String?, ?verifier: ^(Integer) -> Hash[Symbol, untyped]?, ?sleep_fn: ^(Numeric) -> untyped, ?clock_fn: ^() -> Time) -> void
+  #: (config config, dir: String, ?runner: (^(*String) -> [String, bool])?, ?waiter: (^(Integer, Numeric) -> bool)?, ?releaser: (^(Integer, Numeric) -> String?)?, ?verifier: (^(Integer) -> status?)?, ?sleep_fn: (^(Numeric) -> void)?, ?clock_fn: (^() -> Time)?) -> void
   def initialize(config, dir:, runner: nil, waiter: nil, releaser: nil, verifier: nil,
                  sleep_fn: nil, clock_fn: nil)
     @c        = config
@@ -39,7 +43,7 @@ class PcLifecycle
 
   # Boots out and bootstraps the sidecar, then the daemon, waits for each port to listen and returns the daemon status hash.
   # Raises Error when the app bundle is missing, a port stays silent, the status does not answer, or the robot is not connected.
-  #: () -> Hash[Symbol, untyped]
+  #: () -> status
   def up
     # launchd does not create StandardOutPath's parent.
     FileUtils.mkdir_p(@c[:logdir])
@@ -91,7 +95,7 @@ class PcLifecycle
   # bootout then bootstrap, never kickstart: kickstart reuses the cached plist.
   # Boots out the job, waits until it is unloaded and its port is free, writes its plist and bootstraps it.
   # Raises Error when the label stays loaded, the port stays held, or bootstrap fails.
-  #: (Hash[String, untyped] job, Integer port) -> void
+  #: (LaunchAgent::job job, Integer port) -> void
   def start(job, port)
     label = job["Label"]
     @runner.call("launchctl", "bootout", domain(label))
@@ -119,7 +123,7 @@ class PcLifecycle
   end
 
   # Returns the status when the daemon is connected to the robot (or busy with allow_busy); raises Error otherwise.
-  #: (Hash[Symbol, untyped] status) -> Hash[Symbol, untyped]
+  #: (status status) -> status
   def check_status(status)
     if status[:link] == "busy"
       return status if @c[:allow_busy]
@@ -196,7 +200,7 @@ class PcLifecycle
   end
 
   # Asks the daemon over DRb for its status hash; returns nil when it errors or does not answer within the status wait.
-  #: (Integer port) -> Hash[Symbol, untyped]?
+  #: (Integer port) -> status?
   def daemon_status(port)
     require "drb"
     require "timeout"

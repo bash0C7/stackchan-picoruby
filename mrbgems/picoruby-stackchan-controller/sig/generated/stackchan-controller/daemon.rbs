@@ -18,7 +18,7 @@ module StackChan
 
       @link: Link
 
-      @ble: Central
+      @ble: Controller::_Central
 
       @port: Integer
 
@@ -30,37 +30,43 @@ module StackChan
 
       @session: Session
 
-      @token: untyped
+      @token: Task::Queue
 
-      @touch_handlers: Array[^(Session, Symbol) -> void]
+      @touch_handlers: Array[^(Session, Symbol?) -> void]
 
       @reply_handlers: Array[^(Session, String) -> void]
 
-      @every: Array[Hash[Symbol, untyped]]
+      @every: Array[{ ms: Integer, blk: ^(Session) -> void, last_at: Integer? }]
 
-      @listen: Array[Hash[Symbol, untyped]]
+      @listen: Array[touch]
 
       @acting: Integer
 
-      @actions: Hash[Symbol, Hash[Symbol, untyped]]
+      @actions: Hash[Symbol, Controller::action_entry]
 
-      @server_task: untyped
+      @server_task: Task?
 
-      @tick_task: untyped
+      @tick_task: Task?
 
-      @shutdown_task: untyped
+      @shutdown_task: Task?
+
+      type touch = { zone: Integer, name: Symbol? }
+
+      type touch_event = touch | { released: true }
+
+      type daemon_status = { link: String, connects: Integer, releases: Integer, last_connect_ms: Integer?, hold_ms: Integer?, ble_connected: bool, last_face: String?, last_action: String?, host: String, port: Integer }
 
       attr_reader session: Session
 
       attr_reader reply_handlers: Array[^(Session, String) -> void]
 
       # Builds a daemon over the link and central; voice defaults to the dRuby sidecar at sidecar_uri when that is set.
-      # : (link: Link, central: Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Hash[Symbol, untyped]]) -> void
-      def initialize: (link: Link, central: Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Hash[Symbol, untyped]]) -> void
+      # : (link: Link, central: Controller::_Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Controller::action_entry]) -> void
+      def initialize: (link: Link, central: Controller::_Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Controller::action_entry]) -> void
 
       # Registers a handler called with the session and the zone name on every head touch. Returns self.
-      # : () { (Session, Symbol) -> void } -> self
-      def on_touch: () { (Session, Symbol) -> void } -> self
+      # : () { (Session, Symbol?) -> void } -> self
+      def on_touch: () { (Session, Symbol?) -> void } -> self
 
       # Registers a handler called with the session and the reply of every chat. Returns self.
       # : () { (Session, String) -> void } -> self
@@ -79,56 +85,56 @@ module StackChan
       # : () -> self
       def start: () -> self
 
-      # Blocks until the dRuby server task ends.
-      # : () -> untyped
-      def join: () -> untyped
+      # Blocks until the dRuby server task ends and returns it.
+      # : () -> Task
+      def join: () -> Task
 
       # Stops the tick task and schedules a shutdown task that disconnects BLE and stops the dRuby service. Returns true.
       # : () -> bool
       def stop: () -> bool
 
       # Returns the link status merged with ble_connected, last_face, last_action, host and port.
-      # : () -> Hash[Symbol, untyped]
-      def status: () -> Hash[Symbol, untyped]
+      # : () -> daemon_status
+      def status: () -> daemon_status
 
       # Returns the action table as [name, label] pairs.
       # : () -> Array[[Symbol, String?]]
       def actions: () -> Array[[ Symbol, String? ]]
 
       # Runs a built-in or declared action by name and returns { status:, out:, message: } where status is :ok, :busy, :unknown or :error.
-      # : (String | Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
-      def act: (String | Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
+      # : (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
+      def act: (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
 
       # Runs one tick: expires or keeps alive the link, dispatches queued touches and runs due periodic blocks.
       # : () -> void
       def tick: () -> void
 
       # Calls msg on the robot's dRuby front and returns { status:, out:, message: } with the reply lines in out.
-      # : (String | Symbol msg, ?Array[untyped] args) -> Hash[Symbol, untyped]
-      def remote: (String | Symbol msg, ?Array[untyped] args) -> Hash[Symbol, untyped]
+      # : (String | Symbol msg, ?Array[untyped] args) -> Controller::result
+      def remote: (String | Symbol msg, ?Array[untyped] args) -> Controller::result
 
       # Returns the oldest queued touch event, { released: true } when the link is not held, or nil.
-      # : () -> Hash[Symbol, untyped]?
-      def poll_touch: () -> Hash[Symbol, untyped]?
+      # : () -> touch_event?
+      def poll_touch: () -> touch_event?
 
       private
 
       # Executes a built-in action or the declared block for key and returns its output.
-      # : (Symbol key, untyped arg) -> untyped
-      def perform: (Symbol key, untyped arg) -> untyped
+      # : (Symbol key, Controller::action_arg arg) -> untyped
+      def perform: (Symbol key, Controller::action_arg arg) -> untyped
 
       # Runs a calibrate step (begin, sample N or end). Raises ArgumentError for any other step.
-      # : (Args args) -> (String | Hash[Symbol, Integer])
-      def calibrate: (Args args) -> (String | Hash[Symbol, Integer])
+      # : (Args args) -> (String | Calibration::pose)
+      def calibrate: (Args args) -> (String | Calibration::pose)
 
       # Reads the position n times and returns the median yaw_raw and pitch_raw.
-      # : (Integer n) -> Hash[Symbol, Integer]
-      def sample_pose: (Integer n) -> Hash[Symbol, Integer]
+      # : (Integer n) -> Calibration::pose
+      def sample_pose: (Integer n) -> Calibration::pose
 
       # Returns the mu-law bytes of a speak_audio argument: the first element of an Array, or the decoded hex String.
       # Raises ArgumentError for a non-hex String.
-      # : (untyped arg) -> String
-      def audio_bytes: (untyped arg) -> String
+      # : (Controller::action_arg arg) -> String
+      def audio_bytes: (Controller::action_arg arg) -> String
 
       # Returns true when s is a non-empty even-length hex string.
       # : (String s) -> bool
@@ -155,8 +161,8 @@ module StackChan
       def guarded: (String what) { () -> void } -> void
 
       # Starts the task that calls tick every TICK_MS and returns it.
-      # : () -> untyped
-      def start_tick: () -> untyped
+      # : () -> Task
+      def start_tick: () -> Task
 
       # Writes msg to the log function.
       # : (String msg) -> void

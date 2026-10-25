@@ -1,10 +1,10 @@
 # In-process BLE client that logs frames to stderr instead of talking to a robot.
 class FakeBleClient
   # @rbs @last_detail_frame: String?
-  # @rbs @on_unsolicited: Proc?
+  # @rbs @on_unsolicited: (^(String frame) -> void)?
   # @rbs @connected: bool
 
-  attr_accessor :on_unsolicited #: Proc?
+  attr_accessor :on_unsolicited #: (^(String frame) -> void)?
   attr_reader :last_detail_frame #: String?
 
   # Builds a disconnected client.
@@ -80,7 +80,7 @@ class FakeBleClient
   end
 
   # Logs a remote call and returns a fake reply line. Raises ConnectionError when not connected.
-  #: (Symbol | String msg, Array[untyped] args) -> Array[String]
+  #: (Symbol msg, Array[untyped] args) -> Array[String]
   def call_front(msg, args)
     raise StackChan::Controller::ConnectionError, "not connected" unless @connected
     $stderr.write("[fake_ble] remote #{msg} #{args.inspect}\n"); $stderr.flush

@@ -4,6 +4,12 @@ module StackChan
   class Robot
     # Face geometry (eyes, mouth, brows) and its drawing on the LCD.
     class Face
+      type eyes = :open | :closed
+
+      type mouth = :open | :none | Integer
+
+      type brows = :angry
+
       EYE_LEFT_CX: ::Integer
 
       EYE_LEFT_CY: ::Integer
@@ -66,16 +72,16 @@ module StackChan
 
       MOUTH_BAND_H: untyped
 
-      attr_reader eyes: Symbol
+      attr_reader eyes: eyes
 
-      attr_reader mouth: Symbol | Integer
+      attr_reader mouth: mouth
 
-      attr_reader brows: Symbol?
+      attr_reader brows: brows?
 
       # Validates and stores the geometry: eyes :open or :closed, mouth :open, :none or an Integer curve, brows nil or :angry.
       # Raises ArgumentError for any other value.
-      # : (?eyes: Symbol, ?mouth: (Symbol | Integer), ?brows: Symbol?) -> void
-      def initialize: (?eyes: Symbol, ?mouth: Symbol | Integer, ?brows: Symbol?) -> void
+      # : (?eyes: eyes, ?mouth: mouth, ?brows: brows?) -> void
+      def initialize: (?eyes: eyes, ?mouth: mouth, ?brows: brows?) -> void
 
       # Draws the open or closed eyes.
       # : (_Display display) -> void

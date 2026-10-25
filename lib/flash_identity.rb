@@ -5,13 +5,17 @@ module FlashIdentity
   READ = [PARTITION_TABLE[0], APP_HEADER.sum - PARTITION_TABLE[0]].freeze
   APP_DESC_MAGIC = 0xABCD5432
 
+  # @rbs!
+  #   type partition = { "label" => String, "type" => Integer, "subtype" => Integer, "offset" => String, "size" => String }
+  #   type identity = { "partitions" => Hash[String, { "offset" => String, "size" => String }], "app_version" => String? }
+
   # Raised when the app image carries no esp_app_desc_t.
   class Error < StandardError; end
 
   module_function
 
   # Returns one hash per partition table entry with label, type, subtype, offset and size.
-  #: (String bin) -> Array[Hash[String, untyped]]
+  #: (String bin) -> Array[partition]
   def partitions(bin)
     bin.b.scan(/.{32}/m).take_while { |e| e.start_with?("\xAA\x50".b) }.map do |e|
       type, subtype, offset, size = e.unpack("x2CCVV")
@@ -45,7 +49,7 @@ module FlashIdentity
   end
 
   # Parses report lines into partitions (label to offset and size) and the app version.
-  #: (String text) -> Hash[String, untyped]
+  #: (String text) -> identity
   def parse(text)
     parts = text.scan(/^\[flash_identity\] partition (\S+) (\S+) (\S+)$/).to_h { |l, o, s| [l, { "offset" => o, "size" => s }] }
     { "partitions" => parts, "app_version" => text[/^\[flash_identity\] app_version (\S+)$/, 1] }

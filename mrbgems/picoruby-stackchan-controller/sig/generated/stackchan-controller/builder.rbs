@@ -17,18 +17,18 @@ module StackChan
 
       # Registers a handler called for each head touch.
       # Raises ArgumentError without a block.
-      # : () { (untyped) -> void } -> void
-      def on_touch: () { (untyped) -> void } -> void
+      # : () { (Session, Symbol?) -> void } -> void
+      def on_touch: () { (Session, Symbol?) -> void } -> void
 
       # Registers a handler called for each reply line.
       # Raises ArgumentError without a block.
-      # : () { (untyped) -> void } -> void
-      def on_reply: () { (untyped) -> void } -> void
+      # : () { (Session, String) -> void } -> void
+      def on_reply: () { (Session, String) -> void } -> void
 
       # Registers a handler run every ms milliseconds.
       # Raises ArgumentError without a block or when ms is not a positive Integer.
-      # : (Integer ms) { () -> void } -> void
-      def every: (Integer ms) { () -> void } -> void
+      # : (Integer ms) { (Session) -> void } -> void
+      def every: (Integer ms) { (Session) -> void } -> void
 
       # Sets how long the link is held after the last action, in milliseconds.
       # Raises ArgumentError when ms is not a positive Integer.

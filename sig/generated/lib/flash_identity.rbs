@@ -10,13 +10,17 @@ module FlashIdentity
 
   APP_DESC_MAGIC: ::Integer
 
+  type partition = { "label" => String, "type" => Integer, "subtype" => Integer, "offset" => String, "size" => String }
+
+  type identity = { "partitions" => Hash[String, { "offset" => String, "size" => String }], "app_version" => String? }
+
   # Raised when the app image carries no esp_app_desc_t.
   class Error < StandardError
   end
 
   # Returns one hash per partition table entry with label, type, subtype, offset and size.
-  # : (String bin) -> Array[Hash[String, untyped]]
-  def self?.partitions: (String bin) -> Array[Hash[String, untyped]]
+  # : (String bin) -> Array[partition]
+  def self?.partitions: (String bin) -> Array[partition]
 
   # Splits a flash read into the partition table bytes and the app header bytes.
   # : (String bin) -> Array[String]
@@ -32,8 +36,8 @@ module FlashIdentity
   def self?.lines: (String partition_bin, String app_bin) -> Array[String]
 
   # Parses report lines into partitions (label to offset and size) and the app version.
-  # : (String text) -> Hash[String, untyped]
-  def self?.parse: (String text) -> Hash[String, untyped]
+  # : (String text) -> identity
+  def self?.parse: (String text) -> identity
 
   # Returns the git sha of a clean version string, or nil for a dirty or untagged one.
   # : (String? version) -> String?

@@ -12,7 +12,19 @@ module StackChan
 
       @clock: ^() -> Integer
 
-      @daemon: untyped
+      @daemon: _Daemon
+
+      interface _Daemon
+        def status: () -> Daemon::daemon_status
+
+        def act: (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
+
+        def actions: () -> Array[[ Symbol, String? ]]
+
+        def remote: (String | Symbol msg, ?Array[untyped] args) -> Controller::result
+
+        def poll_touch: () -> Daemon::touch_event?
+      end
 
       # Attaches to the daemon at host:port, dispatches argv and returns the exit status.
       # Prints a start hint and returns 1 (0 for status) when no daemon is running.
@@ -22,16 +34,16 @@ module StackChan
       NOT_RUNNING_MESSAGE: ::String
 
       # Returns the daemon proxy at host:port after a status call, or nil (reporting through warn_fn) when it cannot be reached.
-      # : (String host, Integer port, ?drb_factory: (^(String) -> untyped)?, ?warn_fn: (^(StandardError) -> void)?) -> untyped
-      def self.attach: (String host, Integer port, ?drb_factory: (^(String) -> untyped)?, ?warn_fn: (^(StandardError) -> void)?) -> untyped
+      # : (String host, Integer port, ?drb_factory: (^(String) -> _Daemon)?, ?warn_fn: (^(StandardError) -> void)?) -> _Daemon?
+      def self.attach: (String host, Integer port, ?drb_factory: (^(String) -> _Daemon)?, ?warn_fn: (^(StandardError) -> void)?) -> _Daemon?
 
       # Writes s and a newline to stdout and flushes.
       # : (String s) -> void
       def self.out: (String s) -> void
 
       # Builds a CLI over the daemon proxy.
-      # : (untyped daemon, ?clock: ^() -> Integer) -> void
-      def initialize: (untyped daemon, ?clock: ^() -> Integer) -> void
+      # : (_Daemon daemon, ?clock: ^() -> Integer) -> void
+      def initialize: (_Daemon daemon, ?clock: ^() -> Integer) -> void
 
       # Runs one verb with its arguments and returns the exit status.
       # : (String verb, Array[String] args) -> Integer
@@ -48,8 +60,8 @@ module StackChan
       def out: (String s) -> void
 
       # Prints an act result and returns the exit status: 0 ok, 8 busy, 1 otherwise (the usage for an unknown action).
-      # : (Hash[Symbol, untyped] result) -> Integer
-      def report: (Hash[Symbol, untyped] result) -> Integer
+      # : (Controller::result result) -> Integer
+      def report: (Controller::result result) -> Integer
 
       # Prints an Array one line per element, a Hash as key=value pairs, and any other non-nil value with to_s.
       # : (untyped value) -> void
@@ -84,8 +96,8 @@ module StackChan
       def calibrate_full: (Integer samples, Symbol fmt, bool engage, bool skip_torque) -> Integer
 
       # Runs one calibrate step on the daemon and returns [output, nil] on success or [nil, exit status] on failure.
-      # : (Array[String] words) -> [untyped, Integer?]
-      def calibrate_step: (Array[String] words) -> [ untyped, Integer? ]
+      # : (Array[String] words) -> [(String | Calibration::pose)?, Integer?]
+      def calibrate_step: (Array[String] words) -> [ (String | Calibration::pose)?, Integer? ]
 
       # Prints msg and waits for the operator to press Enter.
       # : (String msg) -> void

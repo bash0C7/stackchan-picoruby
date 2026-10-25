@@ -71,7 +71,7 @@ Writes the initialization registers for the given sample rate in Hz.
 ##### `play_ulaw`
 
 ```rbs
-def play_ulaw: (String ulaw) -> untyped
+def play_ulaw: (String ulaw) -> void
 ```
 
 Decodes mu-law bytes chunk by chunk on the second core and writes the PCM to the sink.

@@ -12,33 +12,45 @@ module StackChan
 
       SERVO_PITCH_ZERO: ::Integer
 
-      @yaw: untyped
+      interface _Servo
+        def write_pos: (Integer pos, time_ms: Integer, speed: Integer) -> bool
 
-      @pitch: untyped
+        def read_pos: () -> Integer?
+
+        def enable_torque: (bool on) -> bool
+
+        def last_read_error: () -> Symbol?
+
+        def last_status: () -> Integer?
+      end
+
+      @yaw: _Servo
+
+      @pitch: _Servo
 
       # Stores the yaw and pitch servos.
-      # : (untyped yaw_servo, untyped pitch_servo) -> void
-      def initialize: (untyped yaw_servo, untyped pitch_servo) -> void
+      # : (_Servo yaw_servo, _Servo pitch_servo) -> void
+      def initialize: (_Servo yaw_servo, _Servo pitch_servo) -> void
 
       # Writes the given raw positions (nil skips that axis) with time_ms and velocity.
-      # : (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> untyped
-      def apply: (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> untyped
+      # : (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> bool?
+      def apply: (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> bool?
 
       # Switches torque on both servos.
-      # : (bool on) -> untyped
-      def enable_torque: (bool on) -> untyped
+      # : (bool on) -> bool
+      def enable_torque: (bool on) -> bool
 
       # Reads the current raw position of each servo.
-      # : () -> Hash[Symbol, untyped]
-      def read_actual: () -> Hash[Symbol, untyped]
+      # : () -> { yaw: Integer?, pitch: Integer? }
+      def read_actual: () -> { yaw: Integer?, pitch: Integer? }
 
       # Returns each servo's last read error and status byte as [error, status].
-      # : () -> Hash[Symbol, Array[untyped]]
-      def read_health: () -> Hash[Symbol, Array[untyped]]
+      # : () -> { yaw: [Symbol?, Integer?], pitch: [Symbol?, Integer?] }
+      def read_health: () -> { yaw: [ Symbol?, Integer? ], pitch: [ Symbol?, Integer? ] }
 
       # Wiggles the yaw servo by 10 raw units each way and back to zero.
-      # : () -> untyped
-      def selftest: () -> untyped
+      # : () -> Array[Integer]
+      def selftest: () -> Array[Integer]
     end
   end
 end

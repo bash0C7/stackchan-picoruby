@@ -17,7 +17,7 @@ module StackChan
 
       # Initializes every device in order and returns them keyed :display, :led, :head, :touch, :speaker.
       # :touch, :head and :speaker are nil when their init raised; :display and :led failures propagate.
-      #: () -> Hash[Symbol, untyped]
+      #: () -> devices
       def self.run
         puts ""
         puts "[application] boot"

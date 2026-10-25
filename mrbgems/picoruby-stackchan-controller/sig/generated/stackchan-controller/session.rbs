@@ -14,7 +14,7 @@ module StackChan
 
       @fallback_audio: String?
 
-      @state: Hash[Symbol, String?]
+      @state: state
 
       @log: ^(String) -> void
 
@@ -22,12 +22,16 @@ module StackChan
 
       @engine: _Engine
 
-      @central: Central
+      @central: Controller::_Central
+
+      type state = { last_face: String?, last_say: String?, last_heard: String?, last_action: String? }
+
+      type state_update = { ?last_face: String, ?last_say: String, ?last_heard: String }
 
       interface _Voice
-        def synthesize: (String text, ?Numeric? gain, ?Numeric? rate) -> String?
+        def synthesize: (String text, ?Float? gain, ?Integer? rate) -> String?
 
-        def respond: (String text, Hash[Symbol, String?] state) -> String?
+        def respond: (String text, state state) -> String?
       end
 
       interface _Engine
@@ -36,21 +40,21 @@ module StackChan
         def reply_handlers: () -> Array[^(Session, String) -> void]
       end
 
-      attr_reader state: Hash[Symbol, String?]
+      attr_reader state: state
 
       attr_accessor fallback_audio: String?
 
       # Builds a session over the central and the engine; voice supplies synthesize and respond for say and chat.
-      # : (central: Central, engine: _Engine, ?voice: _Voice?, log: ^(String) -> void) -> void
-      def initialize: (central: Central, engine: _Engine, log: ^(String) -> void, ?voice: _Voice?) -> void
+      # : (central: Controller::_Central, engine: _Engine, ?voice: _Voice?, log: ^(String) -> void) -> void
+      def initialize: (central: Controller::_Central, engine: _Engine, log: ^(String) -> void, ?voice: _Voice?) -> void
 
       # Sends the face frame and records the action. Returns nil.
       # : (String | Symbol name) -> nil
       def face: (String | Symbol name) -> nil
 
       # Sends the LED frame for a side and color and records the action. Returns nil.
-      # : (Stackchan::BLE::FrameCodec::side side, SendBuilder::color_name color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
-      def led: (Stackchan::BLE::FrameCodec::side side, SendBuilder::color_name color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
+      # : (Stackchan::BLE::FrameCodec::side side, Symbol color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
+      def led: (Stackchan::BLE::FrameCodec::side side, Symbol color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
 
       # Sends one head frame and returns the detail frame of the reply (the pose at receive time), or nil.
       # : (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time_ms: Integer?, ?velocity: Integer?) -> String?
@@ -79,14 +83,15 @@ module StackChan
 
       # Synthesizes text with the voice, sends the subtitle and plays the audio. Returns an OK line with the byte count, or an NG line when synthesis failed.
       # Raises ArgumentError when there is no voice.
-      # : (String text, ?gain: Numeric?, ?rate: Numeric?) -> String
-      def say: (String text, ?gain: Numeric?, ?rate: Numeric?) -> String
+      # : (String text, ?gain: Float?, ?rate: Integer?) -> String
+      def say: (String text, ?gain: Float?, ?rate: Integer?) -> String
 
       # Asks the voice for a reply to text, runs the reply handlers and speaks the reply (or the fallback audio when there is none). Returns the reply or nil.
       # : (String text, ?speak: bool) -> String?
       def chat: (String text, ?speak: bool) -> String?
 
-      # Calls a method on the robot's dRuby front and returns its reply lines.
+      # Calls a method on the robot's dRuby front and returns its reply.
+      # The arguments are forwarded to whichever front method msg names and the reply is that method's return value (reply lines, touch zones, a bool, an Integer or an app handler's value), so both stay untyped.
       # : (String | Symbol msg, *untyped args) -> untyped
       def remote: (String | Symbol msg, *untyped args) -> untyped
 
@@ -101,8 +106,8 @@ module StackChan
       def voice: () -> _Voice
 
       # Stores the action name as last_action and merges extras into the state.
-      # : (Symbol | String action, ?Hash[Symbol, String?] extras) -> void
-      def record: (Symbol | String action, ?Hash[Symbol, String?] extras) -> void
+      # : (Symbol action, ?state_update extras) -> void
+      def record: (Symbol action, ?state_update extras) -> void
     end
   end
 end

@@ -22,9 +22,29 @@ module StackChan
 
       @log_fn: ^(String) -> void
 
-      @radio: untyped
+      @radio: _Radio
 
       @name_prefix: String
+
+      interface _Radio
+        def on_notification=: ((^(Integer, String) -> void)? handler) -> void
+
+        def on_disconnect=: ((^() -> void)? handler) -> void
+
+        def connect_and_discover: (Integer timeout_ms) -> void
+
+        def target: () -> BLE::AdvertisingReport?
+
+        def conn_handle: () -> Integer
+
+        def services: () -> Array[BLE::service_t]
+
+        def pop_and_dispatch: () -> (String | Symbol)?
+
+        def write_value_of_characteristic_without_response: (Integer conn_handle, Integer value_handle, String data) -> void
+
+        def write_characteristic_descriptor_using_descriptor_handle: (Integer conn_handle, Integer descriptor_handle, String data) -> void
+      end
 
       CONNECT_TIMEOUT_MS: ::Integer
 
@@ -47,8 +67,8 @@ module StackChan
       attr_reader last_detail_frame: String?
 
       # Creates a central that scans for advertisers named name_prefix; radio defaults to a Radio.
-      # : (?name_prefix: String, ?radio: untyped, ?log_fn: ^(String) -> void?) -> void
-      def initialize: (?name_prefix: untyped, ?radio: untyped, ?log_fn: untyped) -> untyped
+      # : (?name_prefix: String, ?radio: _Radio?, ?log_fn: (^(String) -> void)?) -> void
+      def initialize: (?name_prefix: String, ?radio: _Radio?, ?log_fn: (^(String) -> void)?) -> void
 
       # Returns whether a link is established.
       # : () -> bool
@@ -90,25 +110,25 @@ module StackChan
       # : () -> Array[Integer]
       def keepalive: () -> Array[Integer]
 
-      # Starts an audio transfer of n bytes on the robot and returns its reply lines.
+      # Starts an audio transfer of n bytes on the robot and returns true (the robot's Remote#audio_begin reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      # : (Integer n) -> untyped
-      def audio_begin: (Integer n) -> untyped
+      # : (Integer n) -> bool
+      def audio_begin: (Integer n) -> bool
 
-      # Sends one audio chunk to the robot and returns its reply lines.
+      # Sends one audio chunk to the robot and returns the size of the robot's audio buffer (Remote#audio_chunk reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      # : (String bytes) -> untyped
-      def audio_chunk: (String bytes) -> untyped
+      # : (String bytes) -> Integer
+      def audio_chunk: (String bytes) -> Integer
 
-      # Asks the robot to play the transferred audio and returns its reply lines.
+      # Asks the robot to play the transferred audio and returns true (Remote#audio_play reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      # : () -> untyped
-      def audio_play: () -> untyped
+      # : () -> bool
+      def audio_play: () -> bool
 
-      # Asks the robot whether playback has finished.
+      # Asks the robot whether playback has finished and returns its answer (Remote#audio_done reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      # : () -> untyped
-      def audio_done?: () -> untyped
+      # : () -> bool
+      def audio_done?: () -> bool
 
       # Returns the playback wait limit in ms for n audio bytes, clamped between the minimum and maximum.
       # : (Integer n) -> Integer
@@ -120,10 +140,11 @@ module StackChan
 
       # Drains events, registers the dRuby transport and returns the robot's dRuby front object.
       # Raises ConnectionError when the link is lost or not connected.
-      # : () -> untyped
-      def remote: () -> untyped
+      # : () -> DRb::DRbObject
+      def remote: () -> DRb::DRbObject
 
       # Calls the front method msg with args through DRb.send_message and returns its result.
+      # The result is whatever the named front method returns (reply lines, touch zones, a bool, an Integer or an app remote handler's value), so it stays untyped.
       # : (Symbol msg, Array[untyped] args) -> untyped
       def call_front: (Symbol msg, Array[untyped] args) -> untyped
 
@@ -170,8 +191,8 @@ module StackChan
       def command_frame: (String frame) -> void
 
       # Yields and returns the block's value; re-raises ConnectionError and TimeoutError, turns DRb::DRbConnError into TimeoutError and any other error into DeviceError.
-      # : () { () -> untyped } -> untyped
-      def remote_call: () { () -> untyped } -> untyped
+      # : [T] () { () -> T } -> T
+      def remote_call: [T] () { () -> T } -> T
     end
   end
 end

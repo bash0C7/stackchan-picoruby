@@ -20,17 +20,17 @@ class StackchanLed
   type mode = :solid | :blink | :breathing | :off
 
   interface _Expander
-    def set_direction: (Integer pin, bool output) -> untyped
+    def set_direction: (Integer pin, bool output) -> void
 
-    def set_pull_mode: (Integer pin, bool up) -> untyped
+    def set_pull_mode: (Integer pin, bool up) -> void
 
-    def set_drive_mode: (Integer pin, bool open_drain) -> untyped
+    def set_drive_mode: (Integer pin, bool open_drain) -> void
 
-    def set_led_count: (Integer count) -> untyped
+    def set_led_count: (Integer count) -> void
 
-    def write_led_ram: (Array[Array[Integer]] pixels) -> untyped
+    def write_led_ram: (Array[Array[Integer]] pixels) -> void
 
-    def refresh_leds: () -> untyped
+    def refresh_leds: () -> void
   end
 
   PIXEL_COUNT: ::Integer

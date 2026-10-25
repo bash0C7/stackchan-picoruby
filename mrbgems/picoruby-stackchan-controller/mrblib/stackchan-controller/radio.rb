@@ -2,7 +2,7 @@ module StackChan
   class Controller
     # BLE central radio that scans for a StackChan advertiser, connects, and forwards notifications and disconnects.
     class Radio < BLE
-      attr_reader :target #: Object?
+      attr_reader :target #: BLE::AdvertisingReport?
       attr_reader :conn_handle #: Integer
       attr_accessor :on_notification #: (^(Integer, String) -> void)?
       attr_accessor :on_disconnect #: (^() -> void)?
@@ -17,12 +17,13 @@ module StackChan
         super(:central)
       end
       # @rbs @name_prefix: String
-      # @rbs @target: Object?
+      # @rbs @target: BLE::AdvertisingReport?
       # @rbs @on_notification: (^(Integer, String) -> void)?
       # @rbs @on_disconnect: (^() -> void)?
 
       # Pops one event from the queue without blocking, dispatches a packet to packet_callback and returns the event, or nil when empty.
-      #: () -> untyped
+      # The event is a packet String or the :heartbeat Symbol the BLE port pushes.
+      #: () -> (String | Symbol)?
       def pop_and_dispatch
         _event_popped
         event = @event_queue.pop(timeout_ms: 0)
@@ -32,7 +33,7 @@ module StackChan
       end
 
       # Remembers and connects to the first report whose name includes the prefix; ignores later reports.
-      #: (untyped report) -> void
+      #: (BLE::AdvertisingReport report) -> void
       def advertising_report_callback(report)
         return if @target
         return unless report.name_include?(@name_prefix)
@@ -55,7 +56,7 @@ module StackChan
       end
 
       # Clears the target, connection and services, then scans for timeout_ms until the central is idle.
-      #: (Integer timeout_ms) -> untyped
+      #: (Integer timeout_ms) -> void
       def connect_and_discover(timeout_ms)
         @target = nil
         @conn_handle = HCI_CON_HANDLE_INVALID

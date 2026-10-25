@@ -3,12 +3,12 @@ module StackChan
     # Connection state machine of the BLE link: released, held, quiet or busy, with keepalive and hold expiry.
     class Link
       BUSY_MESSAGE = "robot is held by another controller or unreachable"
-      # @rbs @central: Central
+      # @rbs @central: Controller::_Central
       # @rbs @clock: ^() -> Integer
       # @rbs @hold: Integer?
       # @rbs @keepalive_ms: Integer
       # @rbs @log: ^(String) -> void
-      # @rbs @state: Symbol
+      # @rbs @state: link_state
       # @rbs @touches: Array[Integer]
       # @rbs @connects: Integer
       # @rbs @releases: Integer
@@ -17,12 +17,16 @@ module StackChan
       # @rbs @last_sent_at: Integer?
       # @rbs @on_lost: (^() -> void)?
 
-      attr_reader :state #: Symbol
+      # @rbs!
+      #   type link_state = :released | :held | :quiet | :busy
+      #   type link_status = { link: String, connects: Integer, releases: Integer, last_connect_ms: Integer?, hold_ms: Integer? }
+
+      attr_reader :state #: link_state
       attr_reader :touches #: Array[Integer]
       attr_accessor :on_lost #: (^() -> void)?
 
       # Builds a released link over the central; hold is the idle time in ms before the link goes quiet (nil never expires).
-      #: (central: Central, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer, log: ^(String) -> void) -> void
+      #: (central: Controller::_Central, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer, log: ^(String) -> void) -> void
       def initialize(central:, clock: -> { Machine.board_millis }, hold: nil, keepalive_ms: 1_000, log:)
         @central         = central
         @clock           = clock
@@ -120,7 +124,7 @@ module StackChan
       end
 
       # Returns link, connects, releases, last_connect_ms and hold_ms as a Hash.
-      #: () -> Hash[Symbol, untyped]
+      #: () -> link_status
       def status
         { link: @state.to_s, connects: @connects, releases: @releases, last_connect_ms: @last_connect_ms, hold_ms: @hold }
       end

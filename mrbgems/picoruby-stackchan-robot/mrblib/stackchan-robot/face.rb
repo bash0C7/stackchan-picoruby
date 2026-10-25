@@ -2,6 +2,11 @@ module StackChan
   class Robot
     # Face geometry (eyes, mouth, brows) and its drawing on the LCD.
     class Face
+      # @rbs!
+      #   type eyes = :open | :closed
+      #   type mouth = :open | :none | Integer
+      #   type brows = :angry
+
       EYE_LEFT_CX  = 110
       EYE_LEFT_CY  = 100
       EYE_RIGHT_CX = 210
@@ -41,13 +46,13 @@ module StackChan
       MOUTH_BAND_Y = MOUTH_CY - MOUTH_MAX_RISE - FEATURE_MARGIN
       MOUTH_BAND_H = (MOUTH_CY + SURPRISED_MOUTH_HALF_H + FEATURE_MARGIN) - MOUTH_BAND_Y
 
-      attr_reader :eyes #: Symbol
-      attr_reader :mouth #: (Symbol | Integer)
-      attr_reader :brows #: Symbol?
+      attr_reader :eyes #: eyes
+      attr_reader :mouth #: mouth
+      attr_reader :brows #: brows?
 
       # Validates and stores the geometry: eyes :open or :closed, mouth :open, :none or an Integer curve, brows nil or :angry.
       # Raises ArgumentError for any other value.
-      #: (?eyes: Symbol, ?mouth: (Symbol | Integer), ?brows: Symbol?) -> void
+      #: (?eyes: eyes, ?mouth: mouth, ?brows: brows?) -> void
       def initialize(eyes: :open, mouth: 0, brows: nil)
         unless eyes == :open || eyes == :closed
           raise ArgumentError, "eyes: #{eyes.inspect}"

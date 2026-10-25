@@ -3,7 +3,7 @@ module StackChan
     # BLE central that connects to the robot, discovers the dRuby GATT pair and calls the robot's dRuby front over it.
     class Central
       # @rbs @name_prefix: String
-      # @rbs @radio: untyped
+      # @rbs @radio: _Radio
       # @rbs @log_fn: ^(String) -> void
       # @rbs @drb_rx_handle: Integer?
       # @rbs @drb_tx_handle: Integer?
@@ -13,6 +13,19 @@ module StackChan
       # @rbs @connected: bool
       # @rbs @lost: bool
       # @rbs @parser: StackchanProtocol::FrameParser
+
+      # @rbs!
+      #   interface _Radio
+      #     def on_notification=: ((^(Integer, String) -> void)? handler) -> void
+      #     def on_disconnect=: ((^() -> void)? handler) -> void
+      #     def connect_and_discover: (Integer timeout_ms) -> void
+      #     def target: () -> BLE::AdvertisingReport?
+      #     def conn_handle: () -> Integer
+      #     def services: () -> Array[BLE::service_t]
+      #     def pop_and_dispatch: () -> (String | Symbol)?
+      #     def write_value_of_characteristic_without_response: (Integer conn_handle, Integer value_handle, String data) -> void
+      #     def write_characteristic_descriptor_using_descriptor_handle: (Integer conn_handle, Integer descriptor_handle, String data) -> void
+      #   end
 
       CONNECT_TIMEOUT_MS        = 15_000
       POLLING_UNIT_MS           = 20
@@ -27,7 +40,7 @@ module StackChan
       attr_reader   :last_detail_frame #: String?
 
       # Creates a central that scans for advertisers named name_prefix; radio defaults to a Radio.
-      #: (?name_prefix: String, ?radio: untyped, ?log_fn: ^(String) -> void?) -> void
+      #: (?name_prefix: String, ?radio: _Radio?, ?log_fn: (^(String) -> void)?) -> void
       def initialize(name_prefix: "StackChan", radio: nil, log_fn: nil)
         @name_prefix        = name_prefix
         @radio              = radio || Radio.new(name_prefix: name_prefix)
@@ -131,33 +144,33 @@ module StackChan
         remote_call { remote.touches }
       end
 
-      # Starts an audio transfer of n bytes on the robot and returns its reply lines.
+      # Starts an audio transfer of n bytes on the robot and returns true (the robot's Remote#audio_begin reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      #: (Integer n) -> untyped
+      #: (Integer n) -> bool
       def audio_begin(n)
         raise ConnectionError, "not connected" unless @connected
         remote_call { remote.audio_begin(n) }
       end
 
-      # Sends one audio chunk to the robot and returns its reply lines.
+      # Sends one audio chunk to the robot and returns the size of the robot's audio buffer (Remote#audio_chunk reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      #: (String bytes) -> untyped
+      #: (String bytes) -> Integer
       def audio_chunk(bytes)
         raise ConnectionError, "not connected" unless @connected
         remote_call { remote.audio_chunk(bytes) }
       end
 
-      # Asks the robot to play the transferred audio and returns its reply lines.
+      # Asks the robot to play the transferred audio and returns true (Remote#audio_play reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      #: () -> untyped
+      #: () -> bool
       def audio_play
         raise ConnectionError, "not connected" unless @connected
         remote_call { remote.audio_play }
       end
 
-      # Asks the robot whether playback has finished.
+      # Asks the robot whether playback has finished and returns its answer (Remote#audio_done reply).
       # Raises ConnectionError, TimeoutError or DeviceError.
-      #: () -> untyped
+      #: () -> bool
       def audio_done?
         raise ConnectionError, "not connected" unless @connected
         remote_call { remote.audio_done }
@@ -181,7 +194,7 @@ module StackChan
 
       # Drains events, registers the dRuby transport and returns the robot's dRuby front object.
       # Raises ConnectionError when the link is lost or not connected.
-      #: () -> untyped
+      #: () -> DRb::DRbObject
       def remote
         drain
         raise_if_lost
@@ -192,6 +205,7 @@ module StackChan
       end
 
       # Calls the front method msg with args through DRb.send_message and returns its result.
+      # The result is whatever the named front method returns (reply lines, touch zones, a bool, an Integer or an app remote handler's value), so it stays untyped.
       #: (Symbol msg, Array[untyped] args) -> untyped
       def call_front(msg, args)
         remote
@@ -282,7 +296,7 @@ module StackChan
       end
 
       # Yields and returns the block's value; re-raises ConnectionError and TimeoutError, turns DRb::DRbConnError into TimeoutError and any other error into DeviceError.
-      #: () { () -> untyped } -> untyped
+      #: [T] () { () -> T } -> T
       def remote_call
         yield
       rescue ConnectionError, TimeoutError => e

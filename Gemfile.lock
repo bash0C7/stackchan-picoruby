@@ -2,12 +2,12 @@ GEM
   remote: https://rubygems.org/
   specs:
     drb (2.2.3)
-    power_assert (3.0.1)
+    power_assert (3.1.0)
     prism (0.30.0)
     rake (13.4.2)
-    ruby-termios (1.1.0)
+    ruby-termios (1.2.0)
     serialport (1.4.0)
-    test-unit (3.7.7)
+    test-unit (3.7.8)
       power_assert
     uart (1.0.0)
       ruby-termios
@@ -26,12 +26,12 @@ DEPENDENCIES
 
 CHECKSUMS
   drb (2.2.3) sha256=0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373
-  power_assert (3.0.1) sha256=8ce9876716cc74e863fcd4cdcdc52d792bd983598d1af3447083a3a9a4d34103
+  power_assert (3.1.0) sha256=fefe98ed5d3140628138f3f9f9194d6ece01f1320e69700d3c928adca7518251
   prism (0.30.0) sha256=59b0ad8cf2f13f53c43b3b8fce2b4277691c246ffb8b6165b68e9bdf3a5b4916
   rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
-  ruby-termios (1.1.0) sha256=d05b3f18d64c27da81ebab32540b3fbeb4428a4b2f6238c290d42acdd20ff375
+  ruby-termios (1.2.0) sha256=1f00672827b526e9ba2162962a39bc1efe26e80ac1d49b77cd48f5c0f37b6604
   serialport (1.4.0) sha256=a9a790bf252449e59d9973625205af5123e9ee2e5583b77ddfcd8bd091b78c69
-  test-unit (3.7.7) sha256=3c89d5ff0690a16bef9946156c4624390402b9d54dfcf4ce9cbd5b06bead1e45
+  test-unit (3.7.8) sha256=689d1ca53f4d46f678b4e5d68d8e4294f87fc5e8b9238cc4de7c5727e8d65943
   uart (1.0.0) sha256=99ec585ec576157cfce61f327a91483fe2ccba2d31aafca63b1d7ec44b68118f
 
 BUNDLED WITH

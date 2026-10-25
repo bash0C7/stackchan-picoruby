@@ -166,14 +166,14 @@ Source: `acceptance/runner.rb`
 
 #### Attributes
 
-- `report`: `Hash[String, untyped]`
+- `report`: `report`
 
 #### Methods
 
 ##### `initialize`
 
 ```rbs
-def initialize: (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
+def initialize: (lock: lock, root: String, ops: _Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
 ```
 
 Builds a runner over the lock contents, the checkout root, the ops adapter and the app input paths.
@@ -181,7 +181,7 @@ Builds a runner over the lock contents, the checkout root, the ops adapter and t
 ##### `firmware`
 
 ```rbs
-def firmware: () -> Hash[String, untyped]
+def firmware: () -> firmware_lock
 ```
 
 Returns the firmware section of the lock.
@@ -237,7 +237,7 @@ Returns the picoruby checkout path inside R2P2-darwin.
 ##### `deploy_plan`
 
 ```rbs
-def deploy_plan: () -> Array[[ String, ^() -> untyped ]]
+def deploy_plan: () -> Array[[ String, ^() -> String ]]
 ```
 
 Returns the ordered deploy steps as [name, body] pairs.
@@ -245,7 +245,7 @@ Returns the ordered deploy steps as [name, body] pairs.
 ##### `check_plan`
 
 ```rbs
-def check_plan: () -> Array[[ String, ^() -> untyped ]]
+def check_plan: () -> Array[[ String, ^() -> String ]]
 ```
 
 Returns the ordered check steps as [name, body] pairs.
@@ -253,7 +253,7 @@ Returns the ordered check steps as [name, body] pairs.
 ##### `deploy`
 
 ```rbs
-def deploy: () -> Hash[String, untyped]
+def deploy: () -> report
 ```
 
 Pins the trees, builds and flashes the firmware, then sends the app. Returns the report. Raises Stop when the report already has a deploy.
@@ -261,7 +261,7 @@ Pins the trees, builds and flashes the firmware, then sends the app. Returns the
 ##### `upload_app`
 
 ```rbs
-def upload_app: () -> Hash[String, untyped]
+def upload_app: () -> report
 ```
 
 Re-sends only the app after a finished firmware deploy. Returns the report. Raises Stop when the firmware pins or inputs moved.
@@ -277,7 +277,7 @@ Uploads the lock's app with app writes allowed and records the commit it came fr
 ##### `check`
 
 ```rbs
-def check: (?from: String?) -> Hash[String, untyped]
+def check: (?from: String?) -> report
 ```
 
 Runs the check steps, optionally starting at step from and keeping the earlier steps of the previous check. Returns the report. Raises Stop without a finished deploy.
@@ -333,7 +333,7 @@ Returns whether the report has a deploy whose steps all finished ok.
 ##### `settle`
 
 ```rbs
-def settle: () { () -> void } -> Hash[String, untyped]
+def settle: () { () -> void } -> report
 ```
 
 Yields, sets the verdict, and returns the report; a Stop sets the verdict to fail.
@@ -357,7 +357,7 @@ Raises Stop unless the R2P2-darwin checkouts are at their pins.
 ##### `run_darwin`
 
 ```rbs
-def run_darwin: () -> Hash[String, untyped]
+def run_darwin: () -> report
 ```
 
 Builds the iOS and watchOS apps, runs the iPhone batch and the Mac to iPhone to Mac hand-off. Returns the report.
@@ -381,7 +381,7 @@ Raises Stop unless out contains line as a whole line.
 ##### `apple_hand_off`
 
 ```rbs
-def apple_hand_off: (Hash[String, untyped] d) -> String
+def apple_hand_off: (part d) -> String
 ```
 
 Hands the robot Mac to iPhone to Mac, records the timings in d, and returns a summary line.
@@ -389,7 +389,7 @@ Hands the robot Mac to iPhone to Mac, records the timings in d, and returns a su
 ##### `run_touch`
 
 ```rbs
-def run_touch: () -> Hash[String, untyped]
+def run_touch: () -> report
 ```
 
 Re-runs only the touch step of the check and replaces it in the report. Returns the report. Raises Stop without a check.
@@ -397,7 +397,7 @@ Re-runs only the touch step of the check and replaces it in the report. Returns 
 ##### `answer`
 
 ```rbs
-def answer: () -> Hash[String, untyped]
+def answer: () -> report
 ```
 
 Asks every question the check left unanswered (it ran without a TTY).
@@ -521,7 +521,7 @@ Returns the servo health reply of the robot.
 ##### `record_connect_ms`
 
 ```rbs
-def record_connect_ms: () -> Array[Integer]?
+def record_connect_ms: () -> Array[Numeric]?
 ```
 
 Records the last connect time in the check timings.
@@ -617,7 +617,7 @@ Sends a face and returns the seconds taken. Raises Stop with why on failure.
 ##### `step`
 
 ```rbs
-def step: (Hash[String, untyped] part, String name) { () -> untyped } -> void
+def step: (part part, String name) { () -> String } -> void
 ```
 
 Runs the block and appends its result to part's steps; Pending records an incomplete step, Stop a failed step and re-raises.
@@ -681,7 +681,7 @@ Returns the median of xs, or nil when empty.
 ##### `mark`
 
 ```rbs
-def mark: (Hash[String, untyped] s) -> String
+def mark: (step s) -> String
 ```
 
 Returns the report label of a step.
@@ -689,7 +689,7 @@ Returns the report label of a step.
 ##### `table`
 
 ```rbs
-def table: (String title, Hash[String, untyped] part) -> String
+def table: (String title, part part) -> String
 ```
 
 Returns the Markdown table of part's steps under title.

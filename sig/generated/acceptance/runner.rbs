@@ -12,19 +12,55 @@ module Acceptance
 
   # Runs the deploy, check and darwin phases of acceptance/lock.yml and builds the report.
   class Runner
+    type step = { "name" => String, "ok" => bool?, "detail" => String }
+
+    type human = { "question" => String, "answer" => String? }
+
+    type part = { "steps" => Array[step], ?"timings" => Hash[String, Array[Numeric]], ?"human" => Hash[String, human], ?"lock_digest" => String, ?"app_root" => String, ?"root" => String? }
+
+    type firmware_lock = { "R2P2-ESP32" => String, "picoruby" => String, "repos" => Hash[String, String], ?"aot" => Hash[String, String], "app" => String, "boot_markers" => Array[String] }
+
+    type darwin_lock = { "R2P2-darwin" => String, "picoruby" => String }
+
+    type lock = { "firmware" => firmware_lock, ?"darwin" => darwin_lock }
+
+    type report = { "stamp" => String, "lock" => lock, "root" => String?, "deploy" => part?, "check" => part?, "darwin" => part?, "resets" => Integer, "verdict" => String }
+
+    interface _Ops
+      def git: (String dir, *String args) -> [ bool, String, Integer ]
+
+      def rake: (String dir, *String tasks, ?env: Hash[String, String?], ?bundle: bool, ?limit: Numeric?) -> [ bool, String, Integer ]
+
+      def cli: (String root, *String args, ?env: Hash[String, String], ?stdin: String?) -> [ bool, String, Float, Integer ]
+
+      def read: (String path) -> String?
+
+      def exist?: (String path) -> bool
+
+      def prompt: (String question) -> String?
+
+      def sleep: (Numeric seconds) -> void
+
+      def notice: (String text) -> void
+
+      def now: () -> Float
+
+      def tty?: () -> bool
+    end
+
     @quiet: Integer?
 
-    @report: Hash[String, untyped]
+    @report: report
 
     @may_write: Array[String]
 
     @rounds: Integer
 
-    @ops: Ops
+    @ops: _Ops
 
     @root: String
 
-    @lock: Hash[String, untyped]
+    @lock: lock
 
     @bundled: Array[String]
 
@@ -63,15 +99,15 @@ module Acceptance
 
     QUESTIONS: untyped
 
-    attr_reader report: Hash[String, untyped]
+    attr_reader report: report
 
     # Builds a runner over the lock contents, the checkout root, the ops adapter and the app input paths.
-    # : (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
-    def initialize: (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
+    # : (lock: lock, root: String, ops: _Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
+    def initialize: (lock: lock, root: String, ops: _Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
 
     # Returns the firmware section of the lock.
-    # : () -> Hash[String, untyped]
-    def firmware: () -> Hash[String, untyped]
+    # : () -> firmware_lock
+    def firmware: () -> firmware_lock
 
     # Returns the R2P2-ESP32 checkout path.
     # : () -> String
@@ -98,28 +134,28 @@ module Acceptance
     def darwin_picoruby: () -> String
 
     # Returns the ordered deploy steps as [name, body] pairs.
-    # : () -> Array[[String, ^() -> untyped]]
-    def deploy_plan: () -> Array[[ String, ^() -> untyped ]]
+    # : () -> Array[[String, ^() -> String]]
+    def deploy_plan: () -> Array[[ String, ^() -> String ]]
 
     # Returns the ordered check steps as [name, body] pairs.
-    # : () -> Array[[String, ^() -> untyped]]
-    def check_plan: () -> Array[[ String, ^() -> untyped ]]
+    # : () -> Array[[String, ^() -> String]]
+    def check_plan: () -> Array[[ String, ^() -> String ]]
 
     # Pins the trees, builds and flashes the firmware, then sends the app. Returns the report. Raises Stop when the report already has a deploy.
-    # : () -> Hash[String, untyped]
-    def deploy: () -> Hash[String, untyped]
+    # : () -> report
+    def deploy: () -> report
 
     # Re-sends only the app after a finished firmware deploy. Returns the report. Raises Stop when the firmware pins or inputs moved.
-    # : () -> Hash[String, untyped]
-    def upload_app: () -> Hash[String, untyped]
+    # : () -> report
+    def upload_app: () -> report
 
     # Uploads the lock's app with app writes allowed and records the commit it came from. Returns "ok".
     # : () -> String
     def app_upload: () -> String
 
     # Runs the check steps, optionally starting at step from and keeping the earlier steps of the previous check. Returns the report. Raises Stop without a finished deploy.
-    # : (?from: String?) -> Hash[String, untyped]
-    def check: (?from: String?) -> Hash[String, untyped]
+    # : (?from: String?) -> report
+    def check: (?from: String?) -> report
 
     # Returns the SHA-256 of the firmware pins.
     # : () -> String
@@ -146,8 +182,8 @@ module Acceptance
     def deployed?: () -> bool?
 
     # Yields, sets the verdict, and returns the report; a Stop sets the verdict to fail.
-    # : () { () -> void } -> Hash[String, untyped]
-    def settle: () { () -> void } -> Hash[String, untyped]
+    # : () { () -> void } -> report
+    def settle: () { () -> void } -> report
 
     # Checks out the R2P2-darwin pins and returns a summary line.
     # : () -> String
@@ -170,8 +206,8 @@ module Acceptance
     APP_WANTS: untyped
 
     # Builds the iOS and watchOS apps, runs the iPhone batch and the Mac to iPhone to Mac hand-off. Returns the report.
-    # : () -> Hash[String, untyped]
-    def run_darwin: () -> Hash[String, untyped]
+    # : () -> report
+    def run_darwin: () -> report
 
     # Runs the batch lines on the iPhone and returns [console output, seconds]. Raises Stop on failure or timeout.
     # : (String lines) -> [String, Float]
@@ -182,17 +218,17 @@ module Acceptance
     def want!: (String out, String line) -> void
 
     # Hands the robot Mac to iPhone to Mac, records the timings in d, and returns a summary line.
-    # : (Hash[String, untyped] d) -> String
-    def apple_hand_off: (Hash[String, untyped] d) -> String
+    # : (part d) -> String
+    def apple_hand_off: (part d) -> String
 
     # Re-runs only the touch step of the check and replaces it in the report. Returns the report. Raises Stop without a check.
-    # : () -> Hash[String, untyped]
-    def run_touch: () -> Hash[String, untyped]
+    # : () -> report
+    def run_touch: () -> report
 
     # Asks every question the check left unanswered (it ran without a TTY).
     # Asks every check question that is still unanswered. Returns the report.
-    # : () -> Hash[String, untyped]
-    def answer: () -> Hash[String, untyped]
+    # : () -> report
+    def answer: () -> report
 
     # Returns "pass", "fail" or "incomplete" from the steps and the answers.
     # : () -> String
@@ -254,8 +290,8 @@ module Acceptance
     def servo_health: () -> String
 
     # Records the last connect time in the check timings.
-    # : () -> Array[Integer]?
-    def record_connect_ms: () -> Array[Integer]?
+    # : () -> Array[Numeric]?
+    def record_connect_ms: () -> Array[Numeric]?
 
     # Returns the free robot stack. Raises Stop below STACK_FLOOR.
     # : () -> String
@@ -302,8 +338,8 @@ module Acceptance
     def face!: (String face, Hash[String, String] env, String why) -> Float
 
     # Runs the block and appends its result to part's steps; Pending records an incomplete step, Stop a failed step and re-raises.
-    # : (Hash[String, untyped] part, String name) { () -> untyped } -> void
-    def step: (Hash[String, untyped] part, String name) { () -> untyped } -> void
+    # : (part part, String name) { () -> String } -> void
+    def step: (part part, String name) { () -> String } -> void
 
     # Returns the output of git in dir. Raises Stop on failure.
     # : (String dir, *String args) -> String
@@ -334,12 +370,12 @@ module Acceptance
     def self.median: (Array[Numeric] xs) -> Numeric?
 
     # Returns the report label of a step.
-    # : (Hash[String, untyped] s) -> String
-    def mark: (Hash[String, untyped] s) -> String
+    # : (step s) -> String
+    def mark: (step s) -> String
 
     # Returns the Markdown table of part's steps under title.
-    # : (String title, Hash[String, untyped] part) -> String
-    def table: (String title, Hash[String, untyped] part) -> String
+    # : (String title, part part) -> String
+    def table: (String title, part part) -> String
 
     # Returns the report as Markdown.
     # : () -> String

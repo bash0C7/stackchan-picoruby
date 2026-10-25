@@ -7,27 +7,27 @@ module StackChan
     class Handle
       @dispatcher: Dispatcher
 
-      @display: untyped
+      @display: _Display
 
-      @led: untyped
+      @led: StackchanLed
 
-      @speaker: untyped
+      @speaker: AW88298?
 
       @ticker: Ticker?
 
       attr_accessor ticker: Ticker?
 
       # Stores the collaborators. head: is accepted and not stored.
-      # : (dispatcher: Dispatcher, display: untyped, led: untyped, ?head: untyped, ?speaker: untyped) -> void
-      def initialize: (dispatcher: Dispatcher, display: untyped, led: untyped, ?head: untyped, ?speaker: untyped) -> void
+      # : (dispatcher: Dispatcher, display: _Display, led: StackchanLed, ?head: Head?, ?speaker: AW88298?) -> void
+      def initialize: (dispatcher: Dispatcher, display: _Display, led: StackchanLed, ?head: Head?, ?speaker: AW88298?) -> void
 
       # Shows the named face. Returns false when the face is not defined.
       # : (Symbol name) -> bool
       def face: (Symbol name) -> bool
 
       # Sets the LED animation for a side, or flashes it when flash: (ms) is given. Returns true.
-      # : (Symbol side, Array[Integer] rgb, ?mode: Symbol, ?flash: Integer?) -> bool
-      def led: (Symbol side, Array[Integer] rgb, ?mode: Symbol, ?flash: Integer?) -> bool
+      # : (StackchanLed::side side, Array[Integer] rgb, ?mode: StackchanLed::mode, ?flash: Integer?) -> bool
+      def led: (StackchanLed::side side, Array[Integer] rgb, ?mode: StackchanLed::mode, ?flash: Integer?) -> bool
 
       # Moves the head to normalized 0..100 positions over time ms. Returns false for out-of-range or empty requests.
       # : (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time: Integer) -> bool

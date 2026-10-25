@@ -6,7 +6,7 @@ module StackChan
     class SendBuilder
       LED_COLORS: Hash[color_name, Array[Integer]]
 
-      @frames: Hash[untyped, String]
+      @frames: Hash[Symbol | [ Symbol, Stackchan::BLE::FrameCodec::side ], String]
 
       type color_name = :red | :green | :blue | :yellow | :cyan | :magenta | :white | :off
 
@@ -15,12 +15,13 @@ module StackChan
       def initialize: () -> void
 
       # Records the face frame for the named face and returns it.
-      # : (Stackchan::BLE::FrameCodec::face_name name) -> String
-      def face: (Stackchan::BLE::FrameCodec::face_name name) -> String
+      # Raises KeyError (from FrameCodec.encode_face) when name is not one of the face names.
+      # : (Symbol name) -> String
+      def face: (Symbol name) -> String
 
-      # Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for an unknown color.
-      # : (color_name color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
-      def led: (color_name color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
+      # Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for a color not in LED_COLORS.
+      # : (Symbol color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
+      def led: (Symbol color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
 
       # Records the head (servo) frame and returns it; yaw_left and yaw_right are 0..100, time_ms and velocity are exclusive.
       # : (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time_ms: Integer?, ?velocity: Integer?) -> String

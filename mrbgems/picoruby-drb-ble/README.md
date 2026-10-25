@@ -137,7 +137,7 @@ Source: `mrbgems/picoruby-drb-ble/mrblib/drb-ble.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (untyped front, allow: Array[Symbol]) -> void
+def initialize: (Object front, allow: Array[Symbol]) -> void
 ```
 
 Creates a responder for front that exposes only the method names in allow.
@@ -215,7 +215,7 @@ Source: `mrbgems/picoruby-drb-ble/mrblib/drb-ble.rb`
 ##### `self.create_socket`
 
 ```rbs
-def self.create_socket: (untyped uri) -> untyped
+def self.create_socket: (String uri) -> DRbBle::_Stream
 ```
 
 Returns a DRbBle socket for "drbble://" URIs and otherwise defers to the original create_socket.

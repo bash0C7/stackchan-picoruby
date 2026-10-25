@@ -89,8 +89,8 @@ module ApiDocs
   def self.scopes: (Target target, String out_root) -> Array[Scope]
 
   # Walks RBS declarations, adding classes, modules, methods, attributes and constants to scopes.
-  # : (Array[untyped] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
-  def self.collect: (Array[untyped] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
+  # : (Array[RBS::AST::Declarations::Base] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
+  def self.collect: (Array[RBS::AST::Declarations::Base] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
 
   # Returns the prose of an RBS comment without signature and @rbs lines.
   # : (String? comment) -> String

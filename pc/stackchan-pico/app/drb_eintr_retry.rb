@@ -47,7 +47,7 @@ if Object.const_defined?(:DRb)
       alias_method :_create_socket_without_eintr_retry, :create_socket
 
       # Opens the DRb socket for uri, retrying up to 5 times when the call is interrupted.
-      #: (String uri) -> untyped
+      #: (String uri) -> DRbBle::_Stream
       def create_socket(uri)
         tries = 0
         begin

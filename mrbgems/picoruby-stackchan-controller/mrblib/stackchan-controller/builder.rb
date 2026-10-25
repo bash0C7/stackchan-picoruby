@@ -31,7 +31,7 @@ module StackChan
 
       # Registers a handler called for each head touch.
       # Raises ArgumentError without a block.
-      #: () { (untyped) -> void } -> void
+      #: () { (Session, Symbol?) -> void } -> void
       def on_touch(&handler)
         require_block(:on_touch, handler)
         @controller.touch_handlers << handler
@@ -39,7 +39,7 @@ module StackChan
 
       # Registers a handler called for each reply line.
       # Raises ArgumentError without a block.
-      #: () { (untyped) -> void } -> void
+      #: () { (Session, String) -> void } -> void
       def on_reply(&handler)
         require_block(:on_reply, handler)
         @controller.reply_handlers << handler
@@ -47,7 +47,7 @@ module StackChan
 
       # Registers a handler run every ms milliseconds.
       # Raises ArgumentError without a block or when ms is not a positive Integer.
-      #: (Integer ms) { () -> void } -> void
+      #: (Integer ms) { (Session) -> void } -> void
       def every(ms, &handler)
         require_block(:every, handler)
         unless ms.is_a?(Integer) && ms > 0

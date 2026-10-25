@@ -12,7 +12,7 @@ module StackChan
       end
 
       # Defines face name from Face.new keywords and returns it.
-      #: (Symbol name, ?eyes: Symbol, ?mouth: (Symbol | Integer), ?brows: Symbol?) -> Face
+      #: (Symbol name, ?eyes: Face::eyes, ?mouth: Face::mouth, ?brows: Face::brows?) -> Face
       def face(name, **geometry)
         @robot.faces[name] = Face.new(**geometry)
       end
@@ -46,7 +46,7 @@ module StackChan
 
       # Registers a handler for a frame key; its truthy result means ACK.
       # Raises ArgumentError for a non-String key, an engine frame key or no block.
-      #: (String key) { (Handle, String) -> bool } -> void
+      #: (String key) { (Handle, String) -> boolish } -> void
       def on_frame(key, &handler)
         require_block(:on_frame, handler)
         raise ArgumentError, "on_frame: key must be a String, got #{key.inspect}" unless key.is_a?(String)

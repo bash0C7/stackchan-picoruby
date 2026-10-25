@@ -72,10 +72,10 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller.rb`, 
 
 #### Attributes
 
-- `declared`: `Hash[Symbol, Hash[Symbol, untyped]]`
-- `touch_handlers`: `Array[Proc]`
-- `reply_handlers`: `Array[Proc]`
-- `periodic`: `Array[[ Integer, Proc ]]`
+- `declared`: `Hash[Symbol, action_entry]`
+- `touch_handlers`: `Array[^(Session, Symbol?) -> void]`
+- `reply_handlers`: `Array[^(Session, String) -> void]`
+- `periodic`: `Array[[ Integer, ^(Session) -> void ]]`
 - `hold_ms`: `Integer?`
 
 #### Methods
@@ -83,7 +83,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller.rb`, 
 ##### `self.listing`
 
 ```rbs
-def self.listing: (Hash[Symbol, Hash[Symbol, untyped]] declared) -> Array[[ Symbol, String? ]]
+def self.listing: (Hash[Symbol, action_entry] declared) -> Array[[ Symbol, String? ]]
 ```
 
 Returns [name, label] pairs for the button built-ins (label nil) followed by the declared actions.
@@ -99,7 +99,7 @@ Creates an empty controller and defines the built-in actions as methods.
 ##### `wire`
 
 ```rbs
-def wire: (central: untyped, ?voice: untyped, ?clock: ^() -> Integer, ?log: ^(String) -> void, ?port: Integer, ?host: String, ?out: ^(String) -> void) -> Daemon
+def wire: (central: _Central, ?voice: Session::_Voice?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?port: Integer, ?host: String, ?out: ^(String) -> void) -> Daemon
 ```
 
 Builds the Link and Daemon over the given central, registers the touch, reply and periodic handlers, and returns the Daemon.
@@ -115,7 +115,7 @@ Starts the daemon over a BLE central (a fake one when name_prefix is "fake") wit
 ##### `act`
 
 ```rbs
-def act: (Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
+def act: (Symbol | String name, ?action_arg arg) -> result
 ```
 
 Runs the named action on the wired daemon and returns its result Hash (:status is :ok, :busy or :error).
@@ -131,7 +131,7 @@ Returns the [name, label] action list; with an argument, also writes one "name<T
 ##### `tick`
 
 ```rbs
-def tick: (?String? _arg) -> untyped
+def tick: (?String? _arg) -> void
 ```
 
 Runs one daemon tick on the wired daemon.
@@ -242,7 +242,7 @@ Raises ArgumentError for a missing block, a non-Symbol or built-in or already us
 ##### `on_touch`
 
 ```rbs
-def on_touch: () { (untyped) -> void } -> void
+def on_touch: () { (Session, Symbol?) -> void } -> void
 ```
 
 Registers a handler called for each head touch.
@@ -251,7 +251,7 @@ Raises ArgumentError without a block.
 ##### `on_reply`
 
 ```rbs
-def on_reply: () { (untyped) -> void } -> void
+def on_reply: () { (Session, String) -> void } -> void
 ```
 
 Registers a handler called for each reply line.
@@ -260,7 +260,7 @@ Raises ArgumentError without a block.
 ##### `every`
 
 ```rbs
-def every: (Integer ms) { () -> void } -> void
+def every: (Integer ms) { (Session) -> void } -> void
 ```
 
 Registers a handler run every ms milliseconds.
@@ -303,7 +303,7 @@ Raises ArgumentError when values is empty.
 ##### `compute_anchors`
 
 ```rbs
-def compute_anchors: (Hash[Symbol, Hash[Symbol, Integer]] poses) -> Hash[Symbol, untyped]
+def compute_anchors: (poses poses) -> anchors
 ```
 
 Returns the servo zero positions, the smaller of the left and right yaw radii, the pitch range and the forward re-check deltas from the five recorded poses.
@@ -311,7 +311,7 @@ Returns the servo zero positions, the smaller of the left and right yaw radii, t
 ##### `classify_verify`
 
 ```rbs
-def classify_verify: (Hash[Symbol, Integer] forward_verify) -> (:pass | :warn | :fail)
+def classify_verify: (forward_verify forward_verify) -> (:pass | :warn | :fail)
 ```
 
 Returns :fail when the larger forward delta exceeds FAIL_TOLERANCE, :warn when it exceeds PASS_TOLERANCE, otherwise :pass.
@@ -319,7 +319,7 @@ Returns :fail when the larger forward delta exceeds FAIL_TOLERANCE, :warn when i
 ##### `format`
 
 ```rbs
-def format: (Hash[Symbol, untyped] anchors, Symbol | String fmt) -> String
+def format: (anchors anchors, Symbol | String fmt) -> String
 ```
 
 Renders the anchors as Ruby constants, env lines or JSON; fmt is :ruby, :env, :json or the same as a String.
@@ -328,7 +328,7 @@ Raises ArgumentError for any other fmt.
 ##### `parse_raw_detail`
 
 ```rbs
-def parse_raw_detail: (String? frame) -> Hash[Symbol, Integer?]
+def parse_raw_detail: (String? frame) -> { yaw_raw: Integer?, pitch_raw: Integer? }
 ```
 
 Parses a "<yaw_raw:N,pitch_raw:M>" detail frame into {yaw_raw:, pitch_raw:}; a missing or "unknown" value is nil.
@@ -360,7 +360,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/centr
 ##### `initialize`
 
 ```rbs
-def initialize: (?name_prefix: untyped, ?radio: untyped, ?log_fn: untyped) -> untyped
+def initialize: (?name_prefix: String, ?radio: _Radio?, ?log_fn: (^(String) -> void)?) -> void
 ```
 
 Creates a central that scans for advertisers named name_prefix; radio defaults to a Radio.
@@ -444,37 +444,37 @@ Raises ConnectionError, TimeoutError or DeviceError.
 ##### `audio_begin`
 
 ```rbs
-def audio_begin: (Integer n) -> untyped
+def audio_begin: (Integer n) -> bool
 ```
 
-Starts an audio transfer of n bytes on the robot and returns its reply lines.
+Starts an audio transfer of n bytes on the robot and returns true (the robot's Remote#audio_begin reply).
 Raises ConnectionError, TimeoutError or DeviceError.
 
 ##### `audio_chunk`
 
 ```rbs
-def audio_chunk: (String bytes) -> untyped
+def audio_chunk: (String bytes) -> Integer
 ```
 
-Sends one audio chunk to the robot and returns its reply lines.
+Sends one audio chunk to the robot and returns the size of the robot's audio buffer (Remote#audio_chunk reply).
 Raises ConnectionError, TimeoutError or DeviceError.
 
 ##### `audio_play`
 
 ```rbs
-def audio_play: () -> untyped
+def audio_play: () -> bool
 ```
 
-Asks the robot to play the transferred audio and returns its reply lines.
+Asks the robot to play the transferred audio and returns true (Remote#audio_play reply).
 Raises ConnectionError, TimeoutError or DeviceError.
 
 ##### `audio_done?`
 
 ```rbs
-def audio_done?: () -> untyped
+def audio_done?: () -> bool
 ```
 
-Asks the robot whether playback has finished.
+Asks the robot whether playback has finished and returns its answer (Remote#audio_done reply).
 Raises ConnectionError, TimeoutError or DeviceError.
 
 ##### `audio_done_timeout_ms`
@@ -496,7 +496,7 @@ Dispatches every pending radio event.
 ##### `remote`
 
 ```rbs
-def remote: () -> untyped
+def remote: () -> DRb::DRbObject
 ```
 
 Drains events, registers the dRuby transport and returns the robot's dRuby front object.
@@ -509,6 +509,7 @@ def call_front: (Symbol msg, Array[untyped] args) -> untyped
 ```
 
 Calls the front method msg with args through DRb.send_message and returns its result.
+The result is whatever the named front method returns (reply lines, touch zones, a bool, an Integer or an app remote handler's value), so it stays untyped.
 
 ##### `send_chunk`
 
@@ -555,7 +556,7 @@ Prints a start hint and returns 1 (0 for status) when no daemon is running.
 ##### `self.attach`
 
 ```rbs
-def self.attach: (String host, Integer port, ?drb_factory: (^(String) -> untyped)?, ?warn_fn: (^(StandardError) -> void)?) -> untyped
+def self.attach: (String host, Integer port, ?drb_factory: (^(String) -> _Daemon)?, ?warn_fn: (^(StandardError) -> void)?) -> _Daemon?
 ```
 
 Returns the daemon proxy at host:port after a status call, or nil (reporting through warn_fn) when it cannot be reached.
@@ -571,7 +572,7 @@ Writes s and a newline to stdout and flushes.
 ##### `initialize`
 
 ```rbs
-def initialize: (untyped daemon, ?clock: ^() -> Integer) -> void
+def initialize: (_Daemon daemon, ?clock: ^() -> Integer) -> void
 ```
 
 Builds a CLI over the daemon proxy.
@@ -617,7 +618,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemo
 ##### `initialize`
 
 ```rbs
-def initialize: (link: Link, central: Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Hash[Symbol, untyped]]) -> void
+def initialize: (link: Link, central: Controller::_Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Controller::action_entry]) -> void
 ```
 
 Builds a daemon over the link and central; voice defaults to the dRuby sidecar at sidecar_uri when that is set.
@@ -625,7 +626,7 @@ Builds a daemon over the link and central; voice defaults to the dRuby sidecar a
 ##### `on_touch`
 
 ```rbs
-def on_touch: () { (Session, Symbol) -> void } -> self
+def on_touch: () { (Session, Symbol?) -> void } -> self
 ```
 
 Registers a handler called with the session and the zone name on every head touch. Returns self.
@@ -666,10 +667,10 @@ Connects the link (logging Busy), starts the dRuby service and the tick task, an
 ##### `join`
 
 ```rbs
-def join: () -> untyped
+def join: () -> Task
 ```
 
-Blocks until the dRuby server task ends.
+Blocks until the dRuby server task ends and returns it.
 
 ##### `stop`
 
@@ -682,7 +683,7 @@ Stops the tick task and schedules a shutdown task that disconnects BLE and stops
 ##### `status`
 
 ```rbs
-def status: () -> Hash[Symbol, untyped]
+def status: () -> daemon_status
 ```
 
 Returns the link status merged with ble_connected, last_face, last_action, host and port.
@@ -698,7 +699,7 @@ Returns the action table as [name, label] pairs.
 ##### `act`
 
 ```rbs
-def act: (String | Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
+def act: (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
 ```
 
 Runs a built-in or declared action by name and returns { status:, out:, message: } where status is :ok, :busy, :unknown or :error.
@@ -714,7 +715,7 @@ Runs one tick: expires or keeps alive the link, dispatches queued touches and ru
 ##### `remote`
 
 ```rbs
-def remote: (String | Symbol msg, ?Array[untyped] args) -> Hash[Symbol, untyped]
+def remote: (String | Symbol msg, ?Array[untyped] args) -> Controller::result
 ```
 
 Calls msg on the robot's dRuby front and returns { status:, out:, message: } with the reply lines in out.
@@ -722,7 +723,7 @@ Calls msg on the robot's dRuby front and returns { status:, out:, message: } wit
 ##### `poll_touch`
 
 ```rbs
-def poll_touch: () -> Hash[Symbol, untyped]?
+def poll_touch: () -> touch_event?
 ```
 
 Returns the oldest queued touch event, { released: true } when the link is not held, or nil.
@@ -811,7 +812,7 @@ Returns the 128-bit UUID of the Client Characteristic Configuration descriptor (
 ##### `find_characteristic`
 
 ```rbs
-def find_characteristic: (Array[Hash[Symbol, untyped]] services, String uuid128) -> Hash[Symbol, untyped]?
+def find_characteristic: (Array[BLE::service_t] services, String uuid128) -> BLE::characteristic_t?
 ```
 
 Returns the first characteristic whose uuid128 matches across all services, or nil.
@@ -819,7 +820,7 @@ Returns the first characteristic whose uuid128 matches across all services, or n
 ##### `cccd_handle`
 
 ```rbs
-def cccd_handle: (Hash[Symbol, untyped]? characteristic) -> Integer?
+def cccd_handle: (BLE::characteristic_t? characteristic) -> Integer?
 ```
 
 Returns the handle of the CCCD descriptor of the characteristic, or nil when there is none.
@@ -835,7 +836,7 @@ Returns count bytes of uuid128 starting at index from as lowercase hex.
 ##### `short_uuid`
 
 ```rbs
-def short_uuid: (untyped uuid128) -> String
+def short_uuid: (String uuid128) -> String
 ```
 
 Returns the short hex form of a 128-bit UUID (4 digits on the Bluetooth base, 8 digits otherwise), or "?" for a non-UUID.
@@ -843,7 +844,7 @@ Returns the short hex form of a 128-bit UUID (4 digits on the Bluetooth base, 8 
 ##### `describe_services`
 
 ```rbs
-def describe_services: (Array[Hash[Symbol, untyped]] services) -> String
+def describe_services: (Array[BLE::service_t] services) -> String
 ```
 
 Returns a one-line summary of the discovered services and the short UUIDs of their characteristics.
@@ -860,7 +861,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/link.
 
 #### Attributes
 
-- `state`: `Symbol`
+- `state`: `link_state`
 - `touches`: `Array[Integer]`
 - `on_lost`: `(^() -> void)?`
 
@@ -869,7 +870,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/link.
 ##### `initialize`
 
 ```rbs
-def initialize: (central: Central, log: ^(String) -> void, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer) -> void
+def initialize: (central: Controller::_Central, log: ^(String) -> void, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer) -> void
 ```
 
 Builds a released link over the central; hold is the idle time in ms before the link goes quiet (nil never expires).
@@ -918,7 +919,7 @@ Extends the hold by recording now as the last action while held.
 ##### `status`
 
 ```rbs
-def status: () -> Hash[Symbol, untyped]
+def status: () -> link_status
 ```
 
 Returns link, connects, releases, last_connect_ms and hold_ms as a Hash.
@@ -931,7 +932,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/radio
 
 #### Attributes
 
-- `target`: `Object?`
+- `target`: `BLE::AdvertisingReport?`
 - `conn_handle`: `Integer`
 - `on_notification`: `(^(Integer, String) -> void)?`
 - `on_disconnect`: `(^() -> void)?`
@@ -949,15 +950,16 @@ Builds a central radio that connects to the first advertiser whose name includes
 ##### `pop_and_dispatch`
 
 ```rbs
-def pop_and_dispatch: () -> untyped
+def pop_and_dispatch: () -> (String | Symbol)?
 ```
 
 Pops one event from the queue without blocking, dispatches a packet to packet_callback and returns the event, or nil when empty.
+The event is a packet String or the :heartbeat Symbol the BLE port pushes.
 
 ##### `advertising_report_callback`
 
 ```rbs
-def advertising_report_callback: (untyped report) -> void
+def advertising_report_callback: (BLE::AdvertisingReport report) -> void
 ```
 
 Remembers and connects to the first report whose name includes the prefix; ignores later reports.
@@ -973,7 +975,7 @@ Handles a packet: invalidates the connection handle and calls on_disconnect on d
 ##### `connect_and_discover`
 
 ```rbs
-def connect_and_discover: (Integer timeout_ms) -> untyped
+def connect_and_discover: (Integer timeout_ms) -> void
 ```
 
 Clears the target, connection and services, then scans for timeout_ms until the central is idle.
@@ -1001,18 +1003,19 @@ Builds an empty frame collection.
 ##### `face`
 
 ```rbs
-def face: (Stackchan::BLE::FrameCodec::face_name name) -> String
+def face: (Symbol name) -> String
 ```
 
 Records the face frame for the named face and returns it.
+Raises KeyError (from FrameCodec.encode_face) when name is not one of the face names.
 
 ##### `led`
 
 ```rbs
-def led: (color_name color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
+def led: (Symbol color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
 ```
 
-Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for an unknown color.
+Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for a color not in LED_COLORS.
 
 ##### `head`
 
@@ -1069,7 +1072,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/sessi
 
 #### Attributes
 
-- `state`: `Hash[Symbol, String?]`
+- `state`: `state`
 - `fallback_audio`: `String?`
 
 #### Methods
@@ -1077,7 +1080,7 @@ Source: `mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/sessi
 ##### `initialize`
 
 ```rbs
-def initialize: (central: Central, engine: _Engine, log: ^(String) -> void, ?voice: _Voice?) -> void
+def initialize: (central: Controller::_Central, engine: _Engine, log: ^(String) -> void, ?voice: _Voice?) -> void
 ```
 
 Builds a session over the central and the engine; voice supplies synthesize and respond for say and chat.
@@ -1093,7 +1096,7 @@ Sends the face frame and records the action. Returns nil.
 ##### `led`
 
 ```rbs
-def led: (Stackchan::BLE::FrameCodec::side side, SendBuilder::color_name color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
+def led: (Stackchan::BLE::FrameCodec::side side, Symbol color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
 ```
 
 Sends the LED frame for a side and color and records the action. Returns nil.
@@ -1150,7 +1153,7 @@ Raises TimeoutError when playback does not finish within the limit. Returns nil.
 ##### `say`
 
 ```rbs
-def say: (String text, ?gain: Numeric?, ?rate: Numeric?) -> String
+def say: (String text, ?gain: Float?, ?rate: Integer?) -> String
 ```
 
 Synthesizes text with the voice, sends the subtitle and plays the audio. Returns an OK line with the byte count, or an NG line when synthesis failed.
@@ -1170,7 +1173,8 @@ Asks the voice for a reply to text, runs the reply handlers and speaks the reply
 def remote: (String | Symbol msg, *untyped args) -> untyped
 ```
 
-Calls a method on the robot's dRuby front and returns its reply lines.
+Calls a method on the robot's dRuby front and returns its reply.
+The arguments are forwarded to whichever front method msg names and the reply is that method's return value (reply lines, touch zones, a bool, an Integer or an app handler's value), so both stay untyped.
 
 ##### `prime`
 

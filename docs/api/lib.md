@@ -244,7 +244,7 @@ Acquires the lock, yields, and releases the lock afterwards if this call acquire
 ##### `self.acquire`
 
 ```rbs
-def self.acquire: (String target, ?wait: Float, ?root: String, ?pid: Integer, ?env: _Env, ?alive_fn: ^(Integer) -> bool, ?sleep_fn: ^(Float) -> untyped, ?now_fn: ^() -> Time, ?out: IO) -> bool
+def self.acquire: (String target, ?wait: Numeric, ?root: String, ?pid: Integer, ?env: _Env, ?alive_fn: ^(Integer) -> bool, ?sleep_fn: ^(Float) -> void, ?now_fn: ^() -> Time, ?out: IO) -> bool
 ```
 
 Takes the lock, waiting up to wait seconds and taking over locks whose owner is dead.
@@ -285,7 +285,7 @@ Returns true when a process with this pid exists.
 ##### `self.timeout_message`
 
 ```rbs
-def self.timeout_message: (String target, String lock, Integer? owner_pid, String? owner_cmd, Float wait) -> String
+def self.timeout_message: (String target, String lock, Integer? owner_pid, String? owner_cmd, Numeric wait) -> String
 ```
 
 Returns the error text for a lock still held after wait seconds.
@@ -381,7 +381,7 @@ Source: `lib/flash_identity.rb`
 ##### `self.partitions`
 
 ```rbs
-def self.partitions: (String bin) -> Array[Hash[String, untyped]]
+def self.partitions: (String bin) -> Array[partition]
 ```
 
 Returns one hash per partition table entry with label, type, subtype, offset and size.
@@ -414,7 +414,7 @@ Returns the `[flash_identity]` report lines for the partitions, app version and 
 ##### `self.parse`
 
 ```rbs
-def self.parse: (String text) -> Hash[String, untyped]
+def self.parse: (String text) -> identity
 ```
 
 Parses report lines into partitions (label to offset and size) and the app version.
@@ -464,7 +464,7 @@ Returns the launchd label of the sidecar job, namespaced when ns is given.
 ##### `self.daemon_job`
 
 ```rbs
-def self.daemon_job: (root: String, vm_app: String, port: Integer, sidecar_port: Integer, prefix: String, ble_fake: bool, logdir: String, ?ns: String?) -> Hash[String, untyped]
+def self.daemon_job: (root: String, vm_app: String, port: Integer, sidecar_port: Integer, prefix: String, ble_fake: bool, logdir: String, ?ns: String?) -> job
 ```
 
 launchd is an acceptable responsible process for TCC; a shell fork/exec is not.
@@ -473,7 +473,7 @@ Returns the job hash that runs the PicoRuby daemon from the signed app bundle.
 ##### `self.sidecar_job`
 
 ```rbs
-def self.sidecar_job: (root: String, ruby: String, port: Integer, stub: bool, logdir: String, ?ns: String?) -> Hash[String, untyped]
+def self.sidecar_job: (root: String, ruby: String, port: Integer, stub: bool, logdir: String, ?ns: String?) -> job
 ```
 
 launchd runs no login shell: absolute ruby + RUBYOPT instead of bundle exec.
@@ -482,7 +482,7 @@ Returns the job hash that runs the CRuby sidecar with an absolute ruby.
 ##### `self.job`
 
 ```rbs
-def self.job: (String label, Array[String] args, String logdir, String log_basename) -> Hash[String, untyped]
+def self.job: (String label, Array[String] args, String logdir, String log_basename) -> job
 ```
 
 Returns the common job hash: label, arguments, run at load, restart on abnormal exit, log paths.
@@ -490,7 +490,7 @@ Returns the common job hash: label, arguments, run at load, restart on abnormal 
 ##### `self.write`
 
 ```rbs
-def self.write: (Hash[String, untyped] job, dir: String) -> String
+def self.write: (job job, dir: String) -> String
 ```
 
 plutil does the XML escaping.
@@ -516,7 +516,7 @@ Source: `lib/pc_lifecycle.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (Hash[Symbol, untyped] config, dir: String, ?runner: ^(*String) -> [ String, bool ]?, ?waiter: ^(Integer, Numeric) -> bool?, ?releaser: ^(Integer, Numeric) -> String?, ?verifier: ^(Integer) -> Hash[Symbol, untyped]?, ?sleep_fn: ^(Numeric) -> untyped, ?clock_fn: ^() -> Time) -> void
+def initialize: (config config, dir: String, ?runner: (^(*String) -> [ String, bool ])?, ?waiter: (^(Integer, Numeric) -> bool)?, ?releaser: (^(Integer, Numeric) -> String?)?, ?verifier: (^(Integer) -> status?)?, ?sleep_fn: (^(Numeric) -> void)?, ?clock_fn: (^() -> Time)?) -> void
 ```
 
 Stores the config hash and the collaborators; each defaults to the real launchctl, lsof and DRb implementation.
@@ -524,7 +524,7 @@ Stores the config hash and the collaborators; each defaults to the real launchct
 ##### `up`
 
 ```rbs
-def up: () -> Hash[Symbol, untyped]
+def up: () -> status
 ```
 
 Boots out and bootstraps the sidecar, then the daemon, waits for each port to listen and returns the daemon status hash.

@@ -4,6 +4,12 @@ module StackChan
   class Controller
     # Pure functions that turn recorded servo poses into calibration anchors and format them.
     module Calibration
+      # @rbs!
+      #   type pose = { yaw_raw: Integer, pitch_raw: Integer }
+      #   type poses = { forward: pose, left_max: pose, right_max: pose, up_max: pose, fwd_verify: pose }
+      #   type forward_verify = { yaw_delta: Integer, pitch_delta: Integer }
+      #   type anchors = { servo_yaw_zero: Integer, servo_pitch_zero: Integer, yaw_range_raw: Integer, pitch_range_raw: Integer, forward_verify: forward_verify }
+
       PASS_TOLERANCE = 3
       FAIL_TOLERANCE = 10
       FORMATS = %i[ruby env json]
@@ -27,7 +33,7 @@ module StackChan
       end
 
       # Returns the servo zero positions, the smaller of the left and right yaw radii, the pitch range and the forward re-check deltas from the five recorded poses.
-      #: (Hash[Symbol, Hash[Symbol, Integer]] poses) -> Hash[Symbol, untyped]
+      #: (poses poses) -> anchors
       def compute_anchors(poses)
         yaw_zero   = poses[:forward][:yaw_raw]
         pitch_zero = poses[:forward][:pitch_raw]
@@ -46,7 +52,7 @@ module StackChan
       end
 
       # Returns :fail when the larger forward delta exceeds FAIL_TOLERANCE, :warn when it exceeds PASS_TOLERANCE, otherwise :pass.
-      #: (Hash[Symbol, Integer] forward_verify) -> (:pass | :warn | :fail)
+      #: (forward_verify forward_verify) -> (:pass | :warn | :fail)
       def classify_verify(forward_verify)
         yd = forward_verify[:yaw_delta].abs
         pd = forward_verify[:pitch_delta].abs
@@ -58,7 +64,7 @@ module StackChan
 
       # Renders the anchors as Ruby constants, env lines or JSON; fmt is :ruby, :env, :json or the same as a String.
       # Raises ArgumentError for any other fmt.
-      #: (Hash[Symbol, untyped] anchors, Symbol | String fmt) -> String
+      #: (anchors anchors, Symbol | String fmt) -> String
       def format(anchors, fmt)
         case fmt
         when :ruby, "ruby"
@@ -85,7 +91,7 @@ module StackChan
       end
 
       # Parses a "<yaw_raw:N,pitch_raw:M>" detail frame into {yaw_raw:, pitch_raw:}; a missing or "unknown" value is nil.
-      #: (String? frame) -> Hash[Symbol, Integer?]
+      #: (String? frame) -> { yaw_raw: Integer?, pitch_raw: Integer? }
       def parse_raw_detail(frame)
         s = frame.to_s
         s = s[0, s.length - 1] while s.length > 0 && (s[-1] == "\n" || s[-1] == "\r")

@@ -4,15 +4,15 @@ module StackChan
     # Forwards to the Dispatcher, the LED driver and the Ticker.
     class Handle
       # @rbs @dispatcher: Dispatcher
-      # @rbs @display: untyped
-      # @rbs @led: untyped
-      # @rbs @speaker: untyped
+      # @rbs @display: _Display
+      # @rbs @led: StackchanLed
+      # @rbs @speaker: AW88298?
       # @rbs @ticker: Ticker?
 
       attr_accessor :ticker #: Ticker?
 
       # Stores the collaborators. head: is accepted and not stored.
-      #: (dispatcher: Dispatcher, display: untyped, led: untyped, ?head: untyped, ?speaker: untyped) -> void
+      #: (dispatcher: Dispatcher, display: _Display, led: StackchanLed, ?head: Head?, ?speaker: AW88298?) -> void
       def initialize(dispatcher:, display:, led:, head: nil, speaker: nil)
         @dispatcher = dispatcher
         @display    = display
@@ -28,7 +28,7 @@ module StackChan
       end
 
       # Sets the LED animation for a side, or flashes it when flash: (ms) is given. Returns true.
-      #: (Symbol side, Array[Integer] rgb, ?mode: Symbol, ?flash: Integer?) -> bool
+      #: (StackchanLed::side side, Array[Integer] rgb, ?mode: StackchanLed::mode, ?flash: Integer?) -> bool
       def led(side, rgb, mode: :solid, flash: nil)
         if flash
           @led.flash_side(side, rgb[0], rgb[1], rgb[2], flash)

@@ -98,7 +98,7 @@ Returns the class and module scopes declared in the generated RBS of target.
 ##### `self.collect`
 
 ```rbs
-def self.collect: (Array[untyped] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
+def self.collect: (Array[RBS::AST::Declarations::Base] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
 ```
 
 Walks RBS declarations, adding classes, modules, methods, attributes and constants to scopes.
@@ -288,7 +288,7 @@ Median of an ascending array; nil when empty.
 ##### `self.summarize`
 
 ```rbs
-def self.summarize: (Array[Row] rows) -> Array[Hash[Symbol, untyped]]
+def self.summarize: (Array[Row] rows) -> Array[summary_row]
 ```
 
 Returns per verb the sample count, median, p90, max of the successful samples and the failure count.
@@ -296,7 +296,7 @@ Returns per verb the sample count, median, p90, max of the successful samples an
 ##### `self.to_markdown`
 
 ```rbs
-def self.to_markdown: (Array[Hash[Symbol, untyped]] summary) -> String
+def self.to_markdown: (Array[summary_row] summary) -> String
 ```
 
 Renders the summary as a Markdown table.

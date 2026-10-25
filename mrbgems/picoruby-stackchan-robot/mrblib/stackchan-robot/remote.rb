@@ -13,14 +13,16 @@ module StackChan
       # @rbs inherits Array[String]
       class Lines < Array
         # Appends s.
-        #: (String s) -> Array[String]
+        #: (String s) -> self
         def write(s)
           push(s)
         end
       end
 
-      # @rbs @dispatcher: Dispatcher
-      # @rbs @speaker: untyped
+      # @rbs!
+      #   type wire_frame = Hash[String | Symbol, String | Integer]
+      # @rbs @dispatcher: Dispatcher?
+      # @rbs @speaker: AW88298?
       # @rbs @head: Head?
       # @rbs @touch_queue: Array[Integer]
       # @rbs @audio_buf: String
@@ -30,7 +32,7 @@ module StackChan
       attr_reader :exposed #: Array[Symbol]
 
       # Stores the collaborators and defines one method per app remote handler.
-      #: (Dispatcher dispatcher, ?remote_handlers: Hash[Symbol, ^(Handle, *untyped) -> untyped], ?speaker: untyped, ?head: Head?) -> void
+      #: (Dispatcher? dispatcher, ?remote_handlers: Hash[Symbol, remote_handler], ?speaker: AW88298?, ?head: Head?) -> void
       def initialize(dispatcher, remote_handlers: {}, speaker: nil, head: nil)
         @dispatcher   = dispatcher
         @exposed      = BUILT_INS + remote_handlers.keys
@@ -49,7 +51,7 @@ module StackChan
       end
 
       # Converts the frame Hash to string pairs, dispatches it and returns the reply lines (first line ".\n" or "?\n", then optional detail).
-      #: (Hash[untyped, untyped] frame) -> Lines
+      #: (wire_frame frame) -> Lines
       def command(frame)
         pairs = {}
         keys = frame.keys
@@ -66,7 +68,7 @@ module StackChan
       alias led command
 
       # Dispatches a face frame with index id.
-      #: (untyped id) -> Lines
+      #: (String | Integer id) -> Lines
       def face(id)
         command({ "F" => id })
       end
@@ -78,7 +80,7 @@ module StackChan
       end
 
       # Dispatches torque on when on is true or "on", otherwise off.
-      #: (untyped on) -> Lines
+      #: (bool | String on) -> Lines
       def torque(on)
         command({ "torque" => (on == true || on.to_s == "on") ? "on" : "off" })
       end
@@ -105,7 +107,7 @@ module StackChan
       end
 
       # Queues a touch zone, dropping the oldest beyond 16.
-      #: (Integer zone) -> Array[Integer]?
+      #: (Integer zone) -> nil
       def push_touch(zone)
         @touch_queue.push(zone)
         @touch_queue.shift while @touch_queue.size > TOUCH_QUEUE_CAP
@@ -165,7 +167,7 @@ module StackChan
       end
 
       # Plays the buffered audio on the speaker if playback was reserved, then marks it done. Returns nil when nothing was reserved.
-      #: () -> bool?
+      #: () -> (true | nil)
       def perform_audio_play
         return unless @audio_pending
         @audio_pending = false
@@ -179,20 +181,20 @@ module StackChan
       private
 
       # Defines a singleton method name that calls handler with the robot handle and the arguments; skips names already defined.
-      #: (Symbol name, ^(Handle, *untyped) -> untyped handler) -> void
+      #: (Symbol name, remote_handler handler) -> Symbol?
       def define_handler(name, handler)
         return if respond_to?(name, true)
         define_singleton_method(name) { |*args| handler.call(@dispatcher.robot_handle, *args) }
       end
 
       # Returns err as a string, or "none" for nil.
-      #: (untyped err) -> String
+      #: (Symbol? err) -> String
       def err_label(err)
         err.nil? ? "none" : err.to_s
       end
 
       # Returns status as a string, or "unknown" for nil.
-      #: (untyped status) -> String
+      #: (Integer? status) -> String
       def status_label(status)
         status.nil? ? "unknown" : status.to_s
       end

@@ -13,8 +13,8 @@ module StackChan
       def initialize: (Robot robot) -> void
 
       # Defines face name from Face.new keywords and returns it.
-      # : (Symbol name, ?eyes: Symbol, ?mouth: (Symbol | Integer), ?brows: Symbol?) -> Face
-      def face: (Symbol name, ?eyes: Symbol, ?mouth: Symbol | Integer, ?brows: Symbol?) -> Face
+      # : (Symbol name, ?eyes: Face::eyes, ?mouth: Face::mouth, ?brows: Face::brows?) -> Face
+      def face: (Symbol name, ?eyes: Face::eyes, ?mouth: Face::mouth, ?brows: Face::brows?) -> Face
 
       # Merges map (frame F value to face name) into the robot's face index.
       # : (Hash[String, Symbol] map) -> void
@@ -30,8 +30,8 @@ module StackChan
 
       # Registers a handler for a frame key; its truthy result means ACK.
       # Raises ArgumentError for a non-String key, an engine frame key or no block.
-      # : (String key) { (Handle, String) -> bool } -> void
-      def on_frame: (String key) { (Handle, String) -> bool } -> void
+      # : (String key) { (Handle, String) -> boolish } -> void
+      def on_frame: (String key) { (Handle, String) -> boolish } -> void
 
       # Exposes a dRuby front method name backed by the handler.
       # Raises ArgumentError for a non-Symbol name, a name the front already defines or no block.

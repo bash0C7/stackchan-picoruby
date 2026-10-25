@@ -6,6 +6,9 @@
 #   ruby tools/latency_summary.rb [/tmp/stackchan-picoruby-debug/baseline.log]
 # Summarizes latency_baseline.zsh logs per verb.
 module LatencySummary
+  # @rbs!
+  #   type summary_row = { verb: String, n: Integer, median: Float?, p90: Float?, max: Float?, failures: Integer }
+
   # One sample: its label, the verb derived from the label, seconds taken and the exit code.
   Row = Struct.new(
     :label, #: String
@@ -48,7 +51,7 @@ module LatencySummary
   end
 
   # Returns per verb the sample count, median, p90, max of the successful samples and the failure count.
-  #: (Array[Row] rows) -> Array[Hash[Symbol, untyped]]
+  #: (Array[Row] rows) -> Array[summary_row]
   def summarize(rows)
     rows.group_by(&:verb).map do |verb, rs|
       ok = rs.select { |r| r.rc == 0 }.map(&:seconds).sort
@@ -64,7 +67,7 @@ module LatencySummary
   end
 
   # Renders the summary as a Markdown table.
-  #: (Array[Hash[Symbol, untyped]] summary) -> String
+  #: (Array[summary_row] summary) -> String
   def to_markdown(summary)
     fmt = ->(v) { v.nil? ? "-" : format("%.2f", v) }
     lines = ["| verb | n | median s | p90 s | max s | failures |", "|---|---|---|---|---|---|"]

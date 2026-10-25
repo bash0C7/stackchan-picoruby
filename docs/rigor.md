@@ -59,8 +59,6 @@ Not false positives:
   `String#byteslice`, `Array#first`, `Enumerable#find`, a `rescue`-assigned local read after the
   block, a regexp capture read after `assert_not_nil` — which the code relies on being non-nil
   without saying so.
-- `test/pc/send_builder_test.rb` passes `:rgb` to `SendBuilder#led` on purpose, to see it
-  rejected; the RBS is right that it is outside the colour union.
 - An info that the Gemfile carries gems with no RBS.
 - `def.return-type-mismatch` where the inference loses the shape: a `while true` loop that only
   leaves through `return` (`CLI#verb_touch`), a `case` over symbols with no `else`

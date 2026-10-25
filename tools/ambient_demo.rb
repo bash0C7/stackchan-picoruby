@@ -29,7 +29,7 @@ def run(*args)
 end
 
 # Runs `connect` until it exits 0 (true), retrying while the robot is busy (exit 8) and giving up (false) on any other code.
-#: (?cli: String, ?sleep_fn: ^(Integer) -> untyped) -> bool
+#: (?cli: String, ?sleep_fn: ^(Integer) -> void) -> bool
 def wait_until_connected(cli: STACKCHAN, sleep_fn: ->(s) { sleep(s) })
   loop do
     system(cli, "connect")

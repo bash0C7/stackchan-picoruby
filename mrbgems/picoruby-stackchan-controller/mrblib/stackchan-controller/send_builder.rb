@@ -12,7 +12,7 @@ module StackChan
         white:   [255, 255, 255],
         off:     [0,   0,   0],
       }.freeze #: Hash[color_name, Array[Integer]]
-      # @rbs @frames: Hash[untyped, String]
+      # @rbs @frames: Hash[Symbol | [Symbol, Stackchan::BLE::FrameCodec::side], String]
 
       #
       # @rbs!
@@ -25,13 +25,14 @@ module StackChan
       end
 
       # Records the face frame for the named face and returns it.
-      #: (Stackchan::BLE::FrameCodec::face_name name) -> String
+      # Raises KeyError (from FrameCodec.encode_face) when name is not one of the face names.
+      #: (Symbol name) -> String
       def face(name)
         @frames[:face] = Stackchan::BLE::FrameCodec.encode_face(face_name: name)
       end
 
-      # Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for an unknown color.
-      #: (color_name color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
+      # Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for a color not in LED_COLORS.
+      #: (Symbol color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
       def led(color, side: :both, mode: :solid)
         r, g, b = LED_COLORS.fetch(color) { raise ArgumentError, "unknown LED color: #{color.inspect}" }
         @frames[[:led, side]] = Stackchan::BLE::FrameCodec.encode_led(r: r, g: g, b: b, side: side, mode: mode)

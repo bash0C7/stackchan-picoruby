@@ -21,14 +21,25 @@ module StackChan
     #     def draw_text: (Integer x, Integer y, String text, font: String, fg: Integer, bg: Integer) -> void
     #   end
     #   interface _Writer
-    #     def write: (String data) -> untyped
+    #     def write: (String data) -> void
     #   end
     #   type frame = Hash[String, String]
     #   type boot_handler = ^(Handle) -> void
     #   type touch_handler = ^(Handle) -> void
     #   type periodic_handler = ^(Handle) -> void
-    #   type frame_handler = ^(Handle, String) -> bool
+    #   type frame_handler = ^(Handle, String) -> boolish
     #   type remote_handler = ^(Handle, *untyped) -> untyped
+    #   type devices = { display: _Display, led: StackchanLed, head: Head?, touch: Si12T?, speaker: AW88298? }
+    #   interface _Peripheral
+    #     def robot_handle: () -> Handle
+    #     def run: () -> void
+    #   end
+    #   interface _BootClass
+    #     def run: () -> devices
+    #   end
+    #   interface _PeripheralClass
+    #     def new: (Robot robot, display: _Display, led: StackchanLed, head: Head?, touch: Si12T?, speaker: AW88298?) -> _Peripheral
+    #   end
 
     # Wired runtime objects of one robot: dispatcher, ticker, dRuby front and the handle given to handlers.
     class Wiring
@@ -109,7 +120,7 @@ module StackChan
 
     # Waits, runs boot.run, waits again, creates the peripheral, runs the on_boot handlers and runs the peripheral.
     # Does not return.
-    #: (singleton(Boot) boot, singleton(Peripheral) peripheral_class) -> void
+    #: (_BootClass boot, _PeripheralClass peripheral_class) -> void
     def serve(boot, peripheral_class)
       sleep_ms 5000
       devices = boot.run

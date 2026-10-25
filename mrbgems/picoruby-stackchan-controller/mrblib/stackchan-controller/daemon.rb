@@ -9,28 +9,33 @@ module StackChan
       LISTEN_CAP = 16
       CONNECTED_LINE = "Connected; dRuby pair bound"
       # @rbs @link: Link
-      # @rbs @ble: Central
+      # @rbs @ble: Controller::_Central
       # @rbs @port: Integer
       # @rbs @host: String
       # @rbs @clock: ^() -> Integer
       # @rbs @log_fn: ^(String) -> void
       # @rbs @session: Session
-      # @rbs @token: untyped
-      # @rbs @touch_handlers: Array[^(Session, Symbol) -> void]
+      # @rbs @token: Task::Queue
+      # @rbs @touch_handlers: Array[^(Session, Symbol?) -> void]
       # @rbs @reply_handlers: Array[^(Session, String) -> void]
-      # @rbs @every: Array[Hash[Symbol, untyped]]
-      # @rbs @listen: Array[Hash[Symbol, untyped]]
+      # @rbs @every: Array[{ ms: Integer, blk: ^(Session) -> void, last_at: Integer? }]
+      # @rbs @listen: Array[touch]
       # @rbs @acting: Integer
-      # @rbs @actions: Hash[Symbol, Hash[Symbol, untyped]]
-      # @rbs @server_task: untyped
-      # @rbs @tick_task: untyped
-      # @rbs @shutdown_task: untyped
+      # @rbs @actions: Hash[Symbol, Controller::action_entry]
+      # @rbs @server_task: Task?
+      # @rbs @tick_task: Task?
+      # @rbs @shutdown_task: Task?
+
+      # @rbs!
+      #   type touch = { zone: Integer, name: Symbol? }
+      #   type touch_event = touch | { released: true }
+      #   type daemon_status = { link: String, connects: Integer, releases: Integer, last_connect_ms: Integer?, hold_ms: Integer?, ble_connected: bool, last_face: String?, last_action: String?, host: String, port: Integer }
 
       attr_reader :session #: Session
       attr_reader :reply_handlers #: Array[^(Session, String) -> void]
 
       # Builds a daemon over the link and central; voice defaults to the dRuby sidecar at sidecar_uri when that is set.
-      #: (link: Link, central: Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Hash[Symbol, untyped]]) -> void
+      #: (link: Link, central: Controller::_Central, ?voice: Session::_Voice?, ?port: Integer, ?host: String, ?sidecar_uri: String?, ?clock: ^() -> Integer, ?log: (^(String) -> void)?, ?actions: Hash[Symbol, Controller::action_entry]) -> void
       def initialize(link:, central:, voice: nil, port: 8787, host: "127.0.0.1", sidecar_uri: "druby://127.0.0.1:8788",
                      clock: -> { Machine.board_millis }, log: nil, actions: {})
         @link           = link
@@ -53,7 +58,7 @@ module StackChan
       end
 
       # Registers a handler called with the session and the zone name on every head touch. Returns self.
-      #: () { (Session, Symbol) -> void } -> self
+      #: () { (Session, Symbol?) -> void } -> self
       def on_touch(&blk)
         @touch_handlers << blk
         self
@@ -110,8 +115,8 @@ module StackChan
         self
       end
 
-      # Blocks until the dRuby server task ends.
-      #: () -> untyped
+      # Blocks until the dRuby server task ends and returns it.
+      #: () -> Task
       def join
         @server_task.join
       end
@@ -130,7 +135,7 @@ module StackChan
       end
 
       # Returns the link status merged with ble_connected, last_face, last_action, host and port.
-      #: () -> Hash[Symbol, untyped]
+      #: () -> daemon_status
       def status
         @link.status.merge(
           ble_connected: @ble.connected?,
@@ -148,7 +153,7 @@ module StackChan
       end
 
       # Runs a built-in or declared action by name and returns { status:, out:, message: } where status is :ok, :busy, :unknown or :error.
-      #: (String | Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
+      #: (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
       def act(name, arg = nil)
         key = name.to_s.to_sym
         unless BUILTINS.include?(key) || @actions.key?(key)
@@ -182,7 +187,7 @@ module StackChan
       end
 
       # Calls msg on the robot's dRuby front and returns { status:, out:, message: } with the reply lines in out.
-      #: (String | Symbol msg, ?Array[untyped] args) -> Hash[Symbol, untyped]
+      #: (String | Symbol msg, ?Array[untyped] args) -> Controller::result
       def remote(msg, args = [])
         { status: :ok, out: with_link { @session.remote(msg, *args) }, message: nil }
       rescue Busy => e
@@ -193,7 +198,7 @@ module StackChan
       end
 
       # Returns the oldest queued touch event, { released: true } when the link is not held, or nil.
-      #: () -> Hash[Symbol, untyped]?
+      #: () -> touch_event?
       def poll_touch
         @token.pop
         begin
@@ -210,7 +215,7 @@ module StackChan
       private
 
       # Executes a built-in action or the declared block for key and returns its output.
-      #: (Symbol key, untyped arg) -> untyped
+      #: (Symbol key, Controller::action_arg arg) -> untyped
       def perform(key, arg)
         case key
         when :connect
@@ -240,7 +245,7 @@ module StackChan
       end
 
       # Runs a calibrate step (begin, sample N or end). Raises ArgumentError for any other step.
-      #: (Args args) -> (String | Hash[Symbol, Integer])
+      #: (Args args) -> (String | Calibration::pose)
       def calibrate(args)
         case args[0]
         when "begin"
@@ -257,7 +262,7 @@ module StackChan
       end
 
       # Reads the position n times and returns the median yaw_raw and pitch_raw.
-      #: (Integer n) -> Hash[Symbol, Integer]
+      #: (Integer n) -> Calibration::pose
       def sample_pose(n)
         readings = []
         i = 0
@@ -273,7 +278,7 @@ module StackChan
 
       # Returns the mu-law bytes of a speak_audio argument: the first element of an Array, or the decoded hex String.
       # Raises ArgumentError for a non-hex String.
-      #: (untyped arg) -> String
+      #: (Controller::action_arg arg) -> String
       def audio_bytes(arg)
         return arg[0].to_s if arg.is_a?(Array)
         data = arg.to_s
@@ -370,7 +375,7 @@ module StackChan
       end
 
       # Starts the task that calls tick every TICK_MS and returns it.
-      #: () -> untyped
+      #: () -> Task
       def start_tick
         daemon = self
         Task.new(name: "tick") do

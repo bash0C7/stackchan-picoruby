@@ -37,7 +37,7 @@ Builds the service; unless stub, loads the Foundation Models session and the TTS
 ##### `respond`
 
 ```rbs
-def respond: (String prompt, ?Hash[untyped, untyped] ctx) -> String?
+def respond: (String prompt, ?Hash[Symbol, String?] ctx) -> String?
 ```
 
 Returns the model reply for prompt with the robot state in ctx, or nil on error or timeout.
@@ -117,7 +117,7 @@ Source: `pc/stackchan-pico/app/drb_eintr_retry.rb`
 ##### `self.create_socket`
 
 ```rbs
-def self.create_socket: (String uri) -> untyped
+def self.create_socket: (String uri) -> DRbBle::_Stream
 ```
 
 Opens the DRb socket for uri, retrying up to 5 times when the call is interrupted.
@@ -130,7 +130,7 @@ Source: `pc/stackchan-pico/app/fake_ble.rb`
 
 #### Attributes
 
-- `on_unsolicited`: `Proc?`
+- `on_unsolicited`: `(^(String frame) -> void)?`
 - `last_detail_frame`: `String?`
 
 #### Methods
@@ -218,7 +218,7 @@ Logs one frame. Raises ConnectionError when not connected.
 ##### `call_front`
 
 ```rbs
-def call_front: (Symbol | String msg, Array[untyped] args) -> Array[String]
+def call_front: (Symbol msg, Array[untyped] args) -> Array[String]
 ```
 
 Logs a remote call and returns a fake reply line. Raises ConnectionError when not connected.

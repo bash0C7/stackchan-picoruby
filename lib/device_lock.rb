@@ -48,7 +48,7 @@ module DeviceLock
 
   # Takes the lock, waiting up to wait seconds and taking over locks whose owner is dead.
   # Returns true when acquired, false when this process already holds it. Raises Timeout when the wait elapses.
-  #: (String target, ?wait: Float, ?root: String, ?pid: Integer, ?env: _Env, ?alive_fn: ^(Integer) -> bool, ?sleep_fn: ^(Float) -> untyped, ?now_fn: ^() -> Time, ?out: IO) -> bool
+  #: (String target, ?wait: Numeric, ?root: String, ?pid: Integer, ?env: _Env, ?alive_fn: ^(Integer) -> bool, ?sleep_fn: ^(Float) -> void, ?now_fn: ^() -> Time, ?out: IO) -> bool
   def acquire(target, wait: (ENV["DEVICE_LOCK_WAIT"] || DEFAULT_WAIT).to_f, root: dir,
               pid: Process.pid, env: ENV, alive_fn: method(:alive?),
               sleep_fn: method(:sleep), now_fn: -> { Time.now }, out: $stderr)
@@ -123,7 +123,7 @@ module DeviceLock
   end
 
   # Returns the error text for a lock still held after wait seconds.
-  #: (String target, String lock, Integer? owner_pid, String? owner_cmd, Float wait) -> String
+  #: (String target, String lock, Integer? owner_pid, String? owner_cmd, Numeric wait) -> String
   def timeout_message(target, lock, owner_pid, owner_cmd, wait)
     "#{target} board is still held after #{wait.to_i}s by pid #{owner_pid || '?'} (#{owner_cmd}). " \
     "Wait for it, raise DEVICE_LOCK_WAIT, or if that process is gone for good: rm -r #{lock}"

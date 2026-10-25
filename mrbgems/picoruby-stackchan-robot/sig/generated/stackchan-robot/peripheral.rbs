@@ -36,49 +36,49 @@ module StackChan
 
       @dispatcher: Dispatcher
 
-      @adv_data: untyped
+      @adv_data: String
 
       attr_reader robot_handle: Handle
 
       # Wires the robot to the devices, builds the GATT database and the link loop, and starts the BLE peripheral.
-      # : (Robot robot, display: untyped, led: untyped, ?head: untyped, ?touch: untyped, ?speaker: untyped) -> void
-      def initialize: (Robot robot, display: untyped, led: untyped, ?head: untyped, ?touch: untyped, ?speaker: untyped) -> void
+      # : (Robot robot, display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?) -> void
+      def initialize: (Robot robot, display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?) -> void
 
       # Pops the next BLE event, waiting up to timeout_ms. Returns nil on timeout.
-      # : (timeout_ms: Integer) -> untyped
-      def pop_event: (timeout_ms: Integer) -> untyped
+      # : (timeout_ms: Integer) -> (String | Symbol)?
+      def pop_event: (timeout_ms: Integer) -> (String | Symbol)?
 
       # Tells the BLE layer an event pop has finished.
-      # : () -> untyped
-      def event_popped: () -> untyped
+      # : () -> nil
+      def event_popped: () -> nil
 
       # Returns the value last written by the central to the characteristic handle.
-      # : (Integer handle) -> untyped
-      def take_write: (Integer handle) -> untyped
+      # : (Integer handle) -> String?
+      def take_write: (Integer handle) -> String?
 
       # Disconnects the connected central.
-      # : () -> untyped
-      def disconnect_central: () -> untyped
+      # : () -> 0
+      def disconnect_central: () -> 0
 
       # Stores frame as the characteristic value and notifies the central.
-      # : (Integer handle, String frame) -> untyped
-      def send_notification: (Integer handle, String frame) -> untyped
+      # : (Integer handle, String frame) -> 0
+      def send_notification: (Integer handle, String frame) -> 0
 
       # Powers the HCI on and loops over LinkLoop#tick forever; powers it off on exit.
       # : () -> void
       def run: () -> void
 
       # Builds the advertising data: flags and the local name StackChan-PicoRuby.
-      # : () -> untyped
-      def build_adv_data: () -> untyped
+      # : () -> String
+      def build_adv_data: () -> String
 
       # Builds the GATT table: GAP device name, the dRuby RX/TX pair with its CCCD, and Service Changed.
-      # : () -> untyped
-      def build_gatt_database: () -> untyped
+      # : () -> BLE::GattDatabase
+      def build_gatt_database: () -> BLE::GattDatabase
 
       # Looks up an attribute handle of the dRuby service in the GATT database.
-      # : (untyped db, String char_uuid, untyped key) -> Integer
-      def drb_handle: (untyped db, String char_uuid, untyped key) -> Integer
+      # : (BLE::GattDatabase db, String char_uuid, (Symbol | Integer) key) -> Integer
+      def drb_handle: (BLE::GattDatabase db, String char_uuid, Symbol | Integer key) -> Integer
 
       # Handles a BLE event packet: advertises when the HCI is working or after a disconnect, starts the idle timer on MTU exchange.
       # : (String event_packet) -> void

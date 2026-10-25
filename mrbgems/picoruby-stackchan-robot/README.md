@@ -101,7 +101,7 @@ Boots the hardware and serves the BLE peripheral. Does not return.
 ##### `serve`
 
 ```rbs
-def serve: (singleton(Boot) boot, singleton(Peripheral) peripheral_class) -> void
+def serve: (_BootClass boot, _PeripheralClass peripheral_class) -> void
 ```
 
 Waits, runs boot.run, waits again, creates the peripheral, runs the on_boot handlers and runs the peripheral.
@@ -164,7 +164,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/boot.rb`
 ##### `self.run`
 
 ```rbs
-def self.run: () -> Hash[Symbol, untyped]
+def self.run: () -> devices
 ```
 
 Initializes every device in order and returns them keyed :display, :led, :head, :touch, :speaker.
@@ -194,7 +194,7 @@ Binds the builder to the Robot it fills.
 ##### `face`
 
 ```rbs
-def face: (Symbol name, ?eyes: Symbol, ?mouth: Symbol | Integer, ?brows: Symbol?) -> Face
+def face: (Symbol name, ?eyes: Face::eyes, ?mouth: Face::mouth, ?brows: Face::brows?) -> Face
 ```
 
 Defines face name from Face.new keywords and returns it.
@@ -226,7 +226,7 @@ Registers the handler for a head touch zone (:back, :right or :left). Raises Arg
 ##### `on_frame`
 
 ```rbs
-def on_frame: (String key) { (Handle, String) -> bool } -> void
+def on_frame: (String key) { (Handle, String) -> boolish } -> void
 ```
 
 Registers a handler for a frame key; its truthy result means ACK.
@@ -355,7 +355,7 @@ Stores the three attribute handles and the responder; notifications start disabl
 ##### `service`
 
 ```rbs
-def service: (untyped port) -> bool
+def service: (_Port port) -> bool
 ```
 
 Applies a pending CCCD write, feeds received data to the responder and notifies the reply chunks.
@@ -411,16 +411,16 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/face.rb`
 
 #### Attributes
 
-- `eyes`: `Symbol`
-- `mouth`: `Symbol | Integer`
-- `brows`: `Symbol?`
+- `eyes`: `eyes`
+- `mouth`: `mouth`
+- `brows`: `brows?`
 
 #### Methods
 
 ##### `initialize`
 
 ```rbs
-def initialize: (?eyes: Symbol, ?mouth: Symbol | Integer, ?brows: Symbol?) -> void
+def initialize: (?eyes: eyes, ?mouth: mouth, ?brows: brows?) -> void
 ```
 
 Validates and stores the geometry: eyes :open or :closed, mouth :open, :none or an Integer curve, brows nil or :angry.
@@ -514,7 +514,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/handle.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (dispatcher: Dispatcher, display: untyped, led: untyped, ?head: untyped, ?speaker: untyped) -> void
+def initialize: (dispatcher: Dispatcher, display: _Display, led: StackchanLed, ?head: Head?, ?speaker: AW88298?) -> void
 ```
 
 Stores the collaborators. head: is accepted and not stored.
@@ -530,7 +530,7 @@ Shows the named face. Returns false when the face is not defined.
 ##### `led`
 
 ```rbs
-def led: (Symbol side, Array[Integer] rgb, ?mode: Symbol, ?flash: Integer?) -> bool
+def led: (StackchanLed::side side, Array[Integer] rgb, ?mode: StackchanLed::mode, ?flash: Integer?) -> bool
 ```
 
 Sets the LED animation for a side, or flashes it when flash: (ms) is given. Returns true.
@@ -585,7 +585,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/head.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (untyped yaw_servo, untyped pitch_servo) -> void
+def initialize: (_Servo yaw_servo, _Servo pitch_servo) -> void
 ```
 
 Stores the yaw and pitch servos.
@@ -593,7 +593,7 @@ Stores the yaw and pitch servos.
 ##### `apply`
 
 ```rbs
-def apply: (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> untyped
+def apply: (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> bool?
 ```
 
 Writes the given raw positions (nil skips that axis) with time_ms and velocity.
@@ -601,7 +601,7 @@ Writes the given raw positions (nil skips that axis) with time_ms and velocity.
 ##### `enable_torque`
 
 ```rbs
-def enable_torque: (bool on) -> untyped
+def enable_torque: (bool on) -> bool
 ```
 
 Switches torque on both servos.
@@ -609,7 +609,7 @@ Switches torque on both servos.
 ##### `read_actual`
 
 ```rbs
-def read_actual: () -> Hash[Symbol, untyped]
+def read_actual: () -> { yaw: Integer?, pitch: Integer? }
 ```
 
 Reads the current raw position of each servo.
@@ -617,7 +617,7 @@ Reads the current raw position of each servo.
 ##### `read_health`
 
 ```rbs
-def read_health: () -> Hash[Symbol, Array[untyped]]
+def read_health: () -> { yaw: [ Symbol?, Integer? ], pitch: [ Symbol?, Integer? ] }
 ```
 
 Returns each servo's last read error and status byte as [error, status].
@@ -625,7 +625,7 @@ Returns each servo's last read error and status byte as [error, status].
 ##### `selftest`
 
 ```rbs
-def selftest: () -> untyped
+def selftest: () -> Array[Integer]
 ```
 
 Wiggles the yaw servo by 10 raw units each way and back to zero.
@@ -646,7 +646,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/link_loop.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (port: untyped, ticker: Ticker, on_packet: ^(String) -> untyped, clock: ^() -> Integer, drb: DrbChannel, remote: Remote, ?release_after: Integer?) -> void
+def initialize: (port: _Port, ticker: Ticker, on_packet: ^(String) -> void, clock: ^() -> Integer, drb: DrbChannel, remote: Remote, ?release_after: Integer?) -> void
 ```
 
 Stores the collaborators. release_after (ms) enables idle release; clock returns microseconds.
@@ -654,7 +654,7 @@ Stores the collaborators. release_after (ms) enables idle release; clock returns
 ##### `tick`
 
 ```rbs
-def tick: () -> untyped
+def tick: () -> void
 ```
 
 Runs one loop iteration. dRuby traffic and audio playback refresh the activity time of a connected central.
@@ -670,7 +670,7 @@ Starts the idle timer for a newly arrived central.
 ##### `disconnected`
 
 ```rbs
-def disconnected: () -> untyped
+def disconnected: () -> void
 ```
 
 Stops the idle timer and resets the dRuby channel.
@@ -707,7 +707,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/peripheral.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (Robot robot, display: untyped, led: untyped, ?head: untyped, ?touch: untyped, ?speaker: untyped) -> void
+def initialize: (Robot robot, display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?) -> void
 ```
 
 Wires the robot to the devices, builds the GATT database and the link loop, and starts the BLE peripheral.
@@ -715,7 +715,7 @@ Wires the robot to the devices, builds the GATT database and the link loop, and 
 ##### `pop_event`
 
 ```rbs
-def pop_event: (timeout_ms: Integer) -> untyped
+def pop_event: (timeout_ms: Integer) -> (String | Symbol)?
 ```
 
 Pops the next BLE event, waiting up to timeout_ms. Returns nil on timeout.
@@ -723,7 +723,7 @@ Pops the next BLE event, waiting up to timeout_ms. Returns nil on timeout.
 ##### `event_popped`
 
 ```rbs
-def event_popped: () -> untyped
+def event_popped: () -> nil
 ```
 
 Tells the BLE layer an event pop has finished.
@@ -731,7 +731,7 @@ Tells the BLE layer an event pop has finished.
 ##### `take_write`
 
 ```rbs
-def take_write: (Integer handle) -> untyped
+def take_write: (Integer handle) -> String?
 ```
 
 Returns the value last written by the central to the characteristic handle.
@@ -739,7 +739,7 @@ Returns the value last written by the central to the characteristic handle.
 ##### `disconnect_central`
 
 ```rbs
-def disconnect_central: () -> untyped
+def disconnect_central: () -> 0
 ```
 
 Disconnects the connected central.
@@ -747,7 +747,7 @@ Disconnects the connected central.
 ##### `send_notification`
 
 ```rbs
-def send_notification: (Integer handle, String frame) -> untyped
+def send_notification: (Integer handle, String frame) -> 0
 ```
 
 Stores frame as the characteristic value and notifies the central.
@@ -763,7 +763,7 @@ Powers the HCI on and loops over LinkLoop#tick forever; powers it off on exit.
 ##### `build_adv_data`
 
 ```rbs
-def build_adv_data: () -> untyped
+def build_adv_data: () -> String
 ```
 
 Builds the advertising data: flags and the local name StackChan-PicoRuby.
@@ -771,7 +771,7 @@ Builds the advertising data: flags and the local name StackChan-PicoRuby.
 ##### `build_gatt_database`
 
 ```rbs
-def build_gatt_database: () -> untyped
+def build_gatt_database: () -> BLE::GattDatabase
 ```
 
 Builds the GATT table: GAP device name, the dRuby RX/TX pair with its CCCD, and Service Changed.
@@ -779,7 +779,7 @@ Builds the GATT table: GAP device name, the dRuby RX/TX pair with its CCCD, and 
 ##### `drb_handle`
 
 ```rbs
-def drb_handle: (untyped db, String char_uuid, untyped key) -> Integer
+def drb_handle: (BLE::GattDatabase db, String char_uuid, Symbol | Integer key) -> Integer
 ```
 
 Looks up an attribute handle of the dRuby service in the GATT database.
@@ -813,7 +813,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/remote.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (Dispatcher dispatcher, ?remote_handlers: Hash[Symbol, ^(Handle, *untyped) -> untyped], ?speaker: untyped, ?head: Head?) -> void
+def initialize: (Dispatcher? dispatcher, ?remote_handlers: Hash[Symbol, remote_handler], ?speaker: AW88298?, ?head: Head?) -> void
 ```
 
 Stores the collaborators and defines one method per app remote handler.
@@ -821,7 +821,7 @@ Stores the collaborators and defines one method per app remote handler.
 ##### `command`
 
 ```rbs
-def command: (Hash[untyped, untyped] frame) -> Lines
+def command: (wire_frame frame) -> Lines
 ```
 
 Converts the frame Hash to string pairs, dispatches it and returns the reply lines (first line ".\n" or "?\n", then optional detail).
@@ -829,7 +829,7 @@ Converts the frame Hash to string pairs, dispatches it and returns the reply lin
 ##### `face`
 
 ```rbs
-def face: (untyped id) -> Lines
+def face: (String | Integer id) -> Lines
 ```
 
 Dispatches a face frame with index id.
@@ -845,7 +845,7 @@ Dispatches a subtitle frame.
 ##### `torque`
 
 ```rbs
-def torque: (untyped on) -> Lines
+def torque: (bool | String on) -> Lines
 ```
 
 Dispatches torque on when on is true or "on", otherwise off.
@@ -877,7 +877,7 @@ Dispatches the servo selftest.
 ##### `push_touch`
 
 ```rbs
-def push_touch: (Integer zone) -> Array[Integer]?
+def push_touch: (Integer zone) -> nil
 ```
 
 Queues a touch zone, dropping the oldest beyond 16.
@@ -933,7 +933,7 @@ Returns a line with each servo's last read error and status, or "?\n" when there
 ##### `perform_audio_play`
 
 ```rbs
-def perform_audio_play: () -> bool?
+def perform_audio_play: () -> (true | nil)
 ```
 
 Plays the buffered audio on the speaker if playback was reserved, then marks it done. Returns nil when nothing was reserved.
@@ -949,7 +949,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/remote.rb`
 ##### `write`
 
 ```rbs
-def write: (String s) -> Array[String]
+def write: (String s) -> self
 ```
 
 Appends s.
@@ -970,7 +970,7 @@ Source: `mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/ticker.rb`
 ##### `initialize`
 
 ```rbs
-def initialize: (display: untyped, led: untyped, touch: untyped, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, ^(Handle) -> untyped], ?periodic: Array[[ Integer, ^(Handle) -> untyped ]]) -> void
+def initialize: (display: _Display, led: StackchanLed, touch: Si12T?, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, touch_handler], ?periodic: Array[[ Integer, periodic_handler ]]) -> void
 ```
 
 Stores the collaborators and registers itself on the dispatcher's robot handle.
@@ -978,7 +978,7 @@ Stores the collaborators and registers itself on the dispatcher's robot handle.
 ##### `tick`
 
 ```rbs
-def tick: (Integer now_ms) -> untyped
+def tick: (Integer now_ms) -> void
 ```
 
 Runs whatever is due at now_ms (milliseconds): touch poll and LED tick every 50 ms, eye reopening, periodic handlers.

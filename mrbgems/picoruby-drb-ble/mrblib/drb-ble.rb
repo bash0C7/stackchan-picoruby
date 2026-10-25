@@ -3,8 +3,14 @@
 module DRbBle
   # @rbs!
   #   interface _Link
-  #     def send_chunk: (String bytes) -> untyped
+  #     def send_chunk: (String bytes) -> void
   #     def poll: () -> String?
+  #   end
+  #
+  #   interface _Stream
+  #     def write: (String data) -> void
+  #     def read: (Integer n) -> String?
+  #     def close: () -> void
   #   end
 
   CHUNK = 180
@@ -69,7 +75,7 @@ module DRbBle
   # Serves dRuby requests from bytes fed in: assembles request messages and calls allowed methods on the front.
   # Requests larger than MAX_REQUEST and malformed requests are dropped.
   class Responder
-    # @rbs @front: untyped
+    # @rbs @front: Object
     # @rbs @allow: Array[Symbol]
     # @rbs @buf: String
     # @rbs @fields: Array[untyped]
@@ -78,7 +84,7 @@ module DRbBle
     MAX_REQUEST = 4096
 
     # Creates a responder for front that exposes only the method names in allow.
-    #: (untyped front, allow: Array[Symbol]) -> void
+    #: (Object front, allow: Array[Symbol]) -> void
     def initialize(front, allow:)
       @front = front
       @allow = allow
@@ -143,7 +149,7 @@ module DRbBle
 
     # Returns the serialized dRuby reply of calling msg on the front.
     # Replies with a failure for a method not in allow or when the call raises.
-    #: (untyped ref, Symbol msg, Array[untyped] args) -> String
+    #: (Object? ref, Symbol msg, Array[untyped] args) -> String
     def reply(ref, msg, args)
       w = Writer.new
       m = DRb::DRbMessage.new(w)
@@ -236,7 +242,7 @@ module DRb
     alias_method :_ble_base_create_socket, :create_socket
 
     # Returns a DRbBle socket for "drbble://" URIs and otherwise defers to the original create_socket.
-    #: (untyped uri) -> untyped
+    #: (String uri) -> DRbBle::_Stream
     def create_socket(uri)
       uri.to_s.start_with?("drbble://") ? DRbBle.socket(uri.to_s) : _ble_base_create_socket(uri)
     end

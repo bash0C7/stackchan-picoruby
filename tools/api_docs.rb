@@ -101,7 +101,7 @@ module ApiDocs
   end
 
   # Walks RBS declarations, adding classes, modules, methods, attributes and constants to scopes.
-  #: (Array[untyped] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
+  #: (Array[RBS::AST::Declarations::Base] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
   def self.collect(decls, prefix, scopes, source)
     decls.each do |decl|
       case decl

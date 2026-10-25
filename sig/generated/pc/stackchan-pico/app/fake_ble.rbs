@@ -4,11 +4,11 @@
 class FakeBleClient
   @connected: bool
 
-  @on_unsolicited: Proc?
+  @on_unsolicited: (^(String frame) -> void)?
 
   @last_detail_frame: String?
 
-  attr_accessor on_unsolicited: Proc?
+  attr_accessor on_unsolicited: (^(String frame) -> void)?
 
   attr_reader last_detail_frame: String?
 
@@ -53,8 +53,8 @@ class FakeBleClient
   def raw_send: (String frame) -> self
 
   # Logs a remote call and returns a fake reply line. Raises ConnectionError when not connected.
-  # : (Symbol | String msg, Array[untyped] args) -> Array[String]
-  def call_front: (Symbol | String msg, Array[untyped] args) -> Array[String]
+  # : (Symbol msg, Array[untyped] args) -> Array[String]
+  def call_front: (Symbol msg, Array[untyped] args) -> Array[String]
 
   private
 

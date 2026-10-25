@@ -5,8 +5,17 @@ module StackChan
       BUILTIN_VERBS = %w[connect status stop raw calibrate remote touch tui]
       TOUCH_POLL_MS = 200
       TUI_HELP = "commands: <verb> [args] (one action per line) / h / q"
-      # @rbs @daemon: untyped
+      # @rbs @daemon: _Daemon
       # @rbs @clock: ^() -> Integer
+
+      # @rbs!
+      #   interface _Daemon
+      #     def status: () -> Daemon::daemon_status
+      #     def act: (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
+      #     def actions: () -> Array[[Symbol, String?]]
+      #     def remote: (String | Symbol msg, ?Array[untyped] args) -> Controller::result
+      #     def poll_touch: () -> Daemon::touch_event?
+      #   end
 
       # Attaches to the daemon at host:port, dispatches argv and returns the exit status.
       # Prints a start hint and returns 1 (0 for status) when no daemon is running.
@@ -29,7 +38,7 @@ module StackChan
         "  bundle exec rake pc:up"
 
       # Returns the daemon proxy at host:port after a status call, or nil (reporting through warn_fn) when it cannot be reached.
-      #: (String host, Integer port, ?drb_factory: (^(String) -> untyped)?, ?warn_fn: (^(StandardError) -> void)?) -> untyped
+      #: (String host, Integer port, ?drb_factory: (^(String) -> _Daemon)?, ?warn_fn: (^(StandardError) -> void)?) -> _Daemon?
       def self.attach(host, port, drb_factory: nil, warn_fn: nil)
         factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
         d = factory.call("druby://#{host}:#{port}")
@@ -48,7 +57,7 @@ module StackChan
       end
 
       # Builds a CLI over the daemon proxy.
-      #: (untyped daemon, ?clock: ^() -> Integer) -> void
+      #: (_Daemon daemon, ?clock: ^() -> Integer) -> void
       def initialize(daemon, clock: -> { Machine.board_millis })
         @daemon = daemon
         @clock  = clock
@@ -88,7 +97,7 @@ module StackChan
       end
 
       # Prints an act result and returns the exit status: 0 ok, 8 busy, 1 otherwise (the usage for an unknown action).
-      #: (Hash[Symbol, untyped] result) -> Integer
+      #: (Controller::result result) -> Integer
       def report(result)
         case result[:status]
         when :ok
@@ -281,7 +290,7 @@ module StackChan
       end
 
       # Runs one calibrate step on the daemon and returns [output, nil] on success or [nil, exit status] on failure.
-      #: (Array[String] words) -> [untyped, Integer?]
+      #: (Array[String] words) -> [(String | Calibration::pose)?, Integer?]
       def calibrate_step(words)
         result = @daemon.act(:calibrate, words)
         return [result[:out], nil] if result[:status] == :ok

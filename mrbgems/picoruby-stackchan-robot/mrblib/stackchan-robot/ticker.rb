@@ -5,13 +5,13 @@ module StackChan
       TOUCH_PERIOD_MS = 50
       LED_PERIOD_MS   = 50
 
-      # @rbs @display: untyped
-      # @rbs @led: untyped
-      # @rbs @touch: untyped
+      # @rbs @display: _Display
+      # @rbs @led: StackchanLed
+      # @rbs @touch: Si12T?
       # @rbs @dispatcher: Dispatcher
       # @rbs @remote: Remote
-      # @rbs @touch_handlers: Hash[Integer, ^(Handle) -> untyped]
-      # @rbs @periodic: Array[[Integer, ^(Handle) -> untyped]]
+      # @rbs @touch_handlers: Hash[Integer, touch_handler]
+      # @rbs @periodic: Array[[Integer, periodic_handler]]
       # @rbs @periodic_due: Array[Integer?]
       # @rbs @robot_handle: Handle
       # @rbs @now_ms: Integer
@@ -20,7 +20,7 @@ module StackChan
       # @rbs @open_at: Integer?
 
       # Stores the collaborators and registers itself on the dispatcher's robot handle.
-      #: (display: untyped, led: untyped, touch: untyped, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, ^(Handle) -> untyped], ?periodic: Array[[Integer, ^(Handle) -> untyped]]) -> void
+      #: (display: _Display, led: StackchanLed, touch: Si12T?, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, touch_handler], ?periodic: Array[[Integer, periodic_handler]]) -> void
       def initialize(display:, led:, touch:, dispatcher:, remote:, touch_handlers: {}, periodic: [])
         @display        = display
         @led            = led
@@ -39,7 +39,7 @@ module StackChan
       end
 
       # Runs whatever is due at now_ms (milliseconds): touch poll and LED tick every 50 ms, eye reopening, periodic handlers.
-      #: (Integer now_ms) -> untyped
+      #: (Integer now_ms) -> void
       def tick(now_ms)
         @now_ms = now_ms
         if due?(@touch_at, now_ms, TOUCH_PERIOD_MS)
@@ -69,7 +69,7 @@ module StackChan
       end
 
       # Polls the touch sensor; calls the zone's handler and queues the zone on the Remote. Logs errors and continues.
-      #: () -> untyped
+      #: () -> nil
       def poll_touch
         return unless @touch
         zone = @touch.poll
@@ -82,7 +82,7 @@ module StackChan
       end
 
       # Redraws the current face with open eyes once the scheduled time has passed.
-      #: (Integer now_ms) -> untyped
+      #: (Integer now_ms) -> void
       def reopen_eyes(now_ms)
         return unless @open_at && now_ms >= @open_at
         @open_at = nil
@@ -90,7 +90,7 @@ module StackChan
       end
 
       # Calls each periodic handler whose interval has elapsed; the first call is one interval after the first tick.
-      #: (Integer now_ms) -> untyped
+      #: (Integer now_ms) -> void
       def run_periodic(now_ms)
         i = 0
         while i < @periodic.size
@@ -107,7 +107,7 @@ module StackChan
       end
 
       # Calls handler with the robot handle. Logs errors and continues.
-      #: (^(Handle) -> untyped handler) -> untyped
+      #: (periodic_handler handler) -> void
       def call_periodic(handler)
         handler.call(@robot_handle)
       rescue => e

@@ -8,7 +8,7 @@ class AW88298
   end
 
   interface _Sink
-    def write: (String pcm) -> untyped
+    def write: (String pcm) -> Integer
   end
 
   @i2c: _Bus
@@ -41,6 +41,6 @@ class AW88298
 
   # Decodes mu-law bytes chunk by chunk on the second core and writes the PCM to the sink.
   # Returns once the last chunk is written.
-  # : (String ulaw) -> untyped
-  def play_ulaw: (String ulaw) -> untyped
+  # : (String ulaw) -> void
+  def play_ulaw: (String ulaw) -> void
 end

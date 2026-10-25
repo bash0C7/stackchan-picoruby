@@ -7,7 +7,7 @@ class AW88298
   #   end
   #
   #   interface _Sink
-  #     def write: (String pcm) -> untyped
+  #     def write: (String pcm) -> Integer
   #   end
   # @rbs @i2c: _Bus
   # @rbs @i2s: _Sink
@@ -53,7 +53,7 @@ class AW88298
 
   # Decodes mu-law bytes chunk by chunk on the second core and writes the PCM to the sink.
   # Returns once the last chunk is written.
-  #: (String ulaw) -> untyped
+  #: (String ulaw) -> void
   def play_ulaw(ulaw)
     pos = 0
     job = Multicore.spawn(:ulaw_decode, ulaw.byteslice(0, CHUNK))

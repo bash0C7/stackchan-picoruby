@@ -6,18 +6,20 @@ module StackChan
       AUDIO_POLL_MS       = 500
       AUDIO_TAIL_MS       = 400
       AUDIO_MARGIN_MS     = 600
-      # @rbs @central: Central
+      # @rbs @central: Controller::_Central
       # @rbs @engine: _Engine
       # @rbs @voice: _Voice?
       # @rbs @log: ^(String) -> void
-      # @rbs @state: Hash[Symbol, String?]
+      # @rbs @state: state
       # @rbs @fallback_audio: String?
 
       #
       # @rbs!
+      #   type state = { last_face: String?, last_say: String?, last_heard: String?, last_action: String? }
+      #   type state_update = { ?last_face: String, ?last_say: String, ?last_heard: String }
       #   interface _Voice
-      #     def synthesize: (String text, ?Numeric? gain, ?Numeric? rate) -> String?
-      #     def respond: (String text, Hash[Symbol, String?] state) -> String?
+      #     def synthesize: (String text, ?Float? gain, ?Integer? rate) -> String?
+      #     def respond: (String text, state state) -> String?
       #   end
       #
       #   interface _Engine
@@ -25,11 +27,11 @@ module StackChan
       #     def reply_handlers: () -> Array[^(Session, String) -> void]
       #   end
 
-      attr_reader :state #: Hash[Symbol, String?]
+      attr_reader :state #: state
       attr_accessor :fallback_audio #: String?
 
       # Builds a session over the central and the engine; voice supplies synthesize and respond for say and chat.
-      #: (central: Central, engine: _Engine, ?voice: _Voice?, log: ^(String) -> void) -> void
+      #: (central: Controller::_Central, engine: _Engine, ?voice: _Voice?, log: ^(String) -> void) -> void
       def initialize(central:, engine:, voice: nil, log:)
         @central        = central
         @engine         = engine
@@ -48,7 +50,7 @@ module StackChan
       end
 
       # Sends the LED frame for a side and color and records the action. Returns nil.
-      #: (Stackchan::BLE::FrameCodec::side side, SendBuilder::color_name color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
+      #: (Stackchan::BLE::FrameCodec::side side, Symbol color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
       def led(side, color, mode: :solid)
         @central.send { |b| b.led(color, side: side, mode: mode) }
         record(:led)
@@ -123,7 +125,7 @@ module StackChan
 
       # Synthesizes text with the voice, sends the subtitle and plays the audio. Returns an OK line with the byte count, or an NG line when synthesis failed.
       # Raises ArgumentError when there is no voice.
-      #: (String text, ?gain: Numeric?, ?rate: Numeric?) -> String
+      #: (String text, ?gain: Float?, ?rate: Integer?) -> String
       def say(text, gain: nil, rate: nil)
         v = voice
         @log.call("[checkpoint] synth_start")
@@ -153,7 +155,8 @@ module StackChan
         reply
       end
 
-      # Calls a method on the robot's dRuby front and returns its reply lines.
+      # Calls a method on the robot's dRuby front and returns its reply.
+      # The arguments are forwarded to whichever front method msg names and the reply is that method's return value (reply lines, touch zones, a bool, an Integer or an app handler's value), so both stay untyped.
       #: (String | Symbol msg, *untyped args) -> untyped
       def remote(msg, *args)
         lines = @central.call_front(msg.to_sym, args)
@@ -178,7 +181,7 @@ module StackChan
       end
 
       # Stores the action name as last_action and merges extras into the state.
-      #: (Symbol | String action, ?Hash[Symbol, String?] extras) -> void
+      #: (Symbol action, ?state_update extras) -> void
       def record(action, extras = {})
         @state[:last_action] = action.to_s
         extras.each { |k, v| @state[k] = v }

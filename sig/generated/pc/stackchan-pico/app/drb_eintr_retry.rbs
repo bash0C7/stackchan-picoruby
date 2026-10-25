@@ -27,6 +27,6 @@ end
 # DRb with a create_socket that retries an interrupted connect.
 module DRb
   # Opens the DRb socket for uri, retrying up to 5 times when the call is interrupted.
-  # : (String uri) -> untyped
-  def self.create_socket: (String uri) -> untyped
+  # : (String uri) -> DRbBle::_Stream
+  def self.create_socket: (String uri) -> DRbBle::_Stream
 end

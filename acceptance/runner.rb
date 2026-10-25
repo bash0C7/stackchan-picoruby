@@ -26,13 +26,34 @@ module Acceptance
 
   # Runs the deploy, check and darwin phases of acceptance/lock.yml and builds the report.
   class Runner
+    # @rbs!
+    #   type step = { "name" => String, "ok" => bool?, "detail" => String }
+    #   type human = { "question" => String, "answer" => String? }
+    #   type part = { "steps" => Array[step], ?"timings" => Hash[String, Array[Numeric]], ?"human" => Hash[String, human], ?"lock_digest" => String, ?"app_root" => String, ?"root" => String? }
+    #   type firmware_lock = { "R2P2-ESP32" => String, "picoruby" => String, "repos" => Hash[String, String], ?"aot" => Hash[String, String], "app" => String, "boot_markers" => Array[String] }
+    #   type darwin_lock = { "R2P2-darwin" => String, "picoruby" => String }
+    #   type lock = { "firmware" => firmware_lock, ?"darwin" => darwin_lock }
+    #   type report = { "stamp" => String, "lock" => lock, "root" => String?, "deploy" => part?, "check" => part?, "darwin" => part?, "resets" => Integer, "verdict" => String }
+    #   interface _Ops
+    #     def git: (String dir, *String args) -> [bool, String, Integer]
+    #     def rake: (String dir, *String tasks, ?env: Hash[String, String?], ?bundle: bool, ?limit: Numeric?) -> [bool, String, Integer]
+    #     def cli: (String root, *String args, ?env: Hash[String, String], ?stdin: String?) -> [bool, String, Float, Integer]
+    #     def read: (String path) -> String?
+    #     def exist?: (String path) -> bool
+    #     def prompt: (String question) -> String?
+    #     def sleep: (Numeric seconds) -> void
+    #     def notice: (String text) -> void
+    #     def now: () -> Float
+    #     def tty?: () -> bool
+    #   end
+
     # @rbs @bundled: Array[String]
-    # @rbs @lock: Hash[String, untyped]
+    # @rbs @lock: lock
     # @rbs @root: String
-    # @rbs @ops: Ops
+    # @rbs @ops: _Ops
     # @rbs @rounds: Integer
     # @rbs @may_write: Array[String]
-    # @rbs @report: Hash[String, untyped]
+    # @rbs @report: report
     # @rbs @quiet: Integer?
 
     FAULTS = /Guru Meditation|stack overflow|LoadError|cannot load|NameError|task_wdt|abort\(\) was called/
@@ -58,10 +79,10 @@ module Acceptance
                  ["audio", "say の音声が最後まで途切れずに鳴った"],
                  ["distortion", "say の音声が割れずに鳴った"]].freeze
 
-    attr_reader :report #: Hash[String, untyped]
+    attr_reader :report #: report
 
     # Builds a runner over the lock contents, the checkout root, the ops adapter and the app input paths.
-    #: (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
+    #: (lock: lock, root: String, ops: _Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
     def initialize(lock:, root:, ops:, bundled:, rounds: 8, stamp: "now")
       @bundled = bundled
       @lock   = lock
@@ -74,7 +95,7 @@ module Acceptance
     end
 
     # Returns the firmware section of the lock.
-    #: () -> Hash[String, untyped]
+    #: () -> firmware_lock
     def firmware = @lock.fetch("firmware")
     # Returns the R2P2-ESP32 checkout path.
     #: () -> String
@@ -96,7 +117,7 @@ module Acceptance
     def darwin_picoruby = File.join(darwin_dir, "vendor", "picoruby")
 
     # Returns the ordered deploy steps as [name, body] pairs.
-    #: () -> Array[[String, ^() -> untyped]]
+    #: () -> Array[[String, ^() -> String]]
     def deploy_plan
       [["pin trees", -> { pin_trees }],
        ["pins hold before setup", -> { verify(aot: false) }],
@@ -110,7 +131,7 @@ module Acceptance
     end
 
     # Returns the ordered check steps as [name, body] pairs.
-    #: () -> Array[[String, ^() -> untyped]]
+    #: () -> Array[[String, ^() -> String]]
     def check_plan
       [["flash identity", -> { flash_identity }],
        ["boot", -> { boot }],
@@ -134,7 +155,7 @@ module Acceptance
     end
 
     # Pins the trees, builds and flashes the firmware, then sends the app. Returns the report. Raises Stop when the report already has a deploy.
-    #: () -> Hash[String, untyped]
+    #: () -> report
     def deploy
       raise Stop, "report #{@report['stamp']} already has a deploy; one report is one firmware" if @report["deploy"]
       d = @report["deploy"] = { "lock_digest" => lock_digest, "steps" => [] }
@@ -148,7 +169,7 @@ module Acceptance
     end
 
     # Re-sends only the app after a finished firmware deploy. Returns the report. Raises Stop when the firmware pins or inputs moved.
-    #: () -> Hash[String, untyped]
+    #: () -> report
     def upload_app
       names = deploy_plan.map(&:first)
       at = names.index("app upload")
@@ -178,7 +199,7 @@ module Acceptance
     end
 
     # Runs the check steps, optionally starting at step from and keeping the earlier steps of the previous check. Returns the report. Raises Stop without a finished deploy.
-    #: (?from: String?) -> Hash[String, untyped]
+    #: (?from: String?) -> report
     def check(from: nil)
       raise Stop, "report #{@report['stamp']} has no deploy that finished ok; run acceptance:deploy" unless deployed?
       same_tree!
@@ -247,7 +268,7 @@ module Acceptance
     end
 
     # Yields, sets the verdict, and returns the report; a Stop sets the verdict to fail.
-    #: () { () -> void } -> Hash[String, untyped]
+    #: () { () -> void } -> report
     def settle
       yield
       @report["verdict"] = verdict
@@ -283,7 +304,7 @@ module Acceptance
     APP_WANTS = [APP_CONNECTED, "[batch] OK face=joy"].freeze
 
     # Builds the iOS and watchOS apps, runs the iPhone batch and the Mac to iPhone to Mac hand-off. Returns the report.
-    #: () -> Hash[String, untyped]
+    #: () -> report
     def run_darwin
       d = @report["darwin"] = { "steps" => [], "timings" => {} }
       settle do
@@ -327,7 +348,7 @@ module Acceptance
     end
 
     # Hands the robot Mac to iPhone to Mac, records the timings in d, and returns a summary line.
-    #: (Hash[String, untyped] d) -> String
+    #: (part d) -> String
     def apple_hand_off(d)
       @ops.sleep(quiet)
       cli!("face", "neutral")
@@ -344,7 +365,7 @@ module Acceptance
     end
 
     # Re-runs only the touch step of the check and replaces it in the report. Returns the report. Raises Stop without a check.
-    #: () -> Hash[String, untyped]
+    #: () -> report
     def run_touch
       c = @report["check"]
       raise Stop, "report #{@report['stamp']} has no check; run acceptance:check" unless c
@@ -363,7 +384,7 @@ module Acceptance
 
     # Asks every question the check left unanswered (it ran without a TTY).
     # Asks every check question that is still unanswered. Returns the report.
-    #: () -> Hash[String, untyped]
+    #: () -> report
     def answer
       @report["check"]&.dig("human")&.each_value { |h| h["answer"] ||= @ops.prompt(h["question"]) }
       @report["verdict"] = verdict
@@ -531,7 +552,7 @@ module Acceptance
     end
 
     # Records the last connect time in the check timings.
-    #: () -> Array[Integer]?
+    #: () -> Array[Numeric]?
     def record_connect_ms
       ms = status["last_connect_ms"]
       (@report["check"]["timings"]["connect ms"] ||= []) << ms.to_i if ms
@@ -663,7 +684,7 @@ module Acceptance
     # --- plumbing -------------------------------------------------------------
 
     # Runs the block and appends its result to part's steps; Pending records an incomplete step, Stop a failed step and re-raises.
-    #: (Hash[String, untyped] part, String name) { () -> untyped } -> void
+    #: (part part, String name) { () -> String } -> void
     def step(part, name)
       detail = yield
       part["steps"] << { "name" => name, "ok" => true, "detail" => detail.to_s }
@@ -737,11 +758,11 @@ module Acceptance
     end
 
     # Returns the report label of a step.
-    #: (Hash[String, untyped] s) -> String
+    #: (step s) -> String
     def mark(s) = s["ok"].nil? ? "incomplete" : (s["ok"] ? "ok" : "FAIL")
 
     # Returns the Markdown table of part's steps under title.
-    #: (String title, Hash[String, untyped] part) -> String
+    #: (String title, part part) -> String
     def table(title, part)
       out = +"\n## #{title}\n\n| step | ok | detail |\n|---|---|---|\n"
       part["steps"].each { |s| out << "| #{s['name']} | #{mark(s)} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }

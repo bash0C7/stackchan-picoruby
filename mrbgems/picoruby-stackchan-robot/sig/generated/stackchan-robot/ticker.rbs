@@ -20,27 +20,27 @@ module StackChan
 
       @periodic_due: Array[Integer?]
 
-      @periodic: Array[[ Integer, ^(Handle) -> untyped ]]
+      @periodic: Array[[ Integer, periodic_handler ]]
 
-      @touch_handlers: Hash[Integer, ^(Handle) -> untyped]
+      @touch_handlers: Hash[Integer, touch_handler]
 
       @remote: Remote
 
       @dispatcher: Dispatcher
 
-      @touch: untyped
+      @touch: Si12T?
 
-      @led: untyped
+      @led: StackchanLed
 
-      @display: untyped
+      @display: _Display
 
       # Stores the collaborators and registers itself on the dispatcher's robot handle.
-      # : (display: untyped, led: untyped, touch: untyped, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, ^(Handle) -> untyped], ?periodic: Array[[Integer, ^(Handle) -> untyped]]) -> void
-      def initialize: (display: untyped, led: untyped, touch: untyped, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, ^(Handle) -> untyped], ?periodic: Array[[ Integer, ^(Handle) -> untyped ]]) -> void
+      # : (display: _Display, led: StackchanLed, touch: Si12T?, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, touch_handler], ?periodic: Array[[Integer, periodic_handler]]) -> void
+      def initialize: (display: _Display, led: StackchanLed, touch: Si12T?, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, touch_handler], ?periodic: Array[[ Integer, periodic_handler ]]) -> void
 
       # Runs whatever is due at now_ms (milliseconds): touch poll and LED tick every 50 ms, eye reopening, periodic handlers.
-      # : (Integer now_ms) -> untyped
-      def tick: (Integer now_ms) -> untyped
+      # : (Integer now_ms) -> void
+      def tick: (Integer now_ms) -> void
 
       # Schedules the eyes to be redrawn open closed_ms after the last tick time.
       # : (Integer closed_ms) -> Integer
@@ -53,20 +53,20 @@ module StackChan
       def due?: (Integer? last, Integer now_ms, Integer period) -> bool
 
       # Polls the touch sensor; calls the zone's handler and queues the zone on the Remote. Logs errors and continues.
-      # : () -> untyped
-      def poll_touch: () -> untyped
+      # : () -> nil
+      def poll_touch: () -> nil
 
       # Redraws the current face with open eyes once the scheduled time has passed.
-      # : (Integer now_ms) -> untyped
-      def reopen_eyes: (Integer now_ms) -> untyped
+      # : (Integer now_ms) -> void
+      def reopen_eyes: (Integer now_ms) -> void
 
       # Calls each periodic handler whose interval has elapsed; the first call is one interval after the first tick.
-      # : (Integer now_ms) -> untyped
-      def run_periodic: (Integer now_ms) -> untyped
+      # : (Integer now_ms) -> void
+      def run_periodic: (Integer now_ms) -> void
 
       # Calls handler with the robot handle. Logs errors and continues.
-      # : (^(Handle) -> untyped handler) -> untyped
-      def call_periodic: (^(Handle) -> untyped handler) -> untyped
+      # : (periodic_handler handler) -> void
+      def call_periodic: (periodic_handler handler) -> void
     end
   end
 end

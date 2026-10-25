@@ -20,14 +20,14 @@ module StackChan
 
       SERVICE_CHANGED_CHAR_UUID = 0x2A05
 
-      # @rbs @adv_data: untyped
+      # @rbs @adv_data: String
       # @rbs @dispatcher: Dispatcher
       # @rbs @link: LinkLoop
 
       attr_reader :robot_handle #: Handle
 
       # Wires the robot to the devices, builds the GATT database and the link loop, and starts the BLE peripheral.
-      #: (Robot robot, display: untyped, led: untyped, ?head: untyped, ?touch: untyped, ?speaker: untyped) -> void
+      #: (Robot robot, display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?) -> void
       def initialize(robot, display:, led:, head: nil, touch: nil, speaker: nil)
         @adv_data = build_adv_data
         db = build_gatt_database
@@ -57,31 +57,31 @@ module StackChan
       end
 
       # Pops the next BLE event, waiting up to timeout_ms. Returns nil on timeout.
-      #: (timeout_ms: Integer) -> untyped
+      #: (timeout_ms: Integer) -> (String | Symbol)?
       def pop_event(timeout_ms:)
         @event_queue.pop(timeout_ms: timeout_ms)
       end
 
       # Tells the BLE layer an event pop has finished.
-      #: () -> untyped
+      #: () -> nil
       def event_popped
         _event_popped
       end
 
       # Returns the value last written by the central to the characteristic handle.
-      #: (Integer handle) -> untyped
+      #: (Integer handle) -> String?
       def take_write(handle)
         pop_write_value(handle)
       end
 
       # Disconnects the connected central.
-      #: () -> untyped
+      #: () -> 0
       def disconnect_central
         disconnect
       end
 
       # Stores frame as the characteristic value and notifies the central.
-      #: (Integer handle, String frame) -> untyped
+      #: (Integer handle, String frame) -> 0
       def send_notification(handle, frame)
         push_read_value(handle, frame)
         notify(handle)
@@ -101,7 +101,7 @@ module StackChan
       end
 
       # Builds the advertising data: flags and the local name StackChan-PicoRuby.
-      #: () -> untyped
+      #: () -> String
       def build_adv_data
         BLE::AdvertisingData.build do |a|
           a.add(AD_TYPE_FLAGS, AD_FLAGS)
@@ -110,7 +110,7 @@ module StackChan
       end
 
       # Builds the GATT table: GAP device name, the dRuby RX/TX pair with its CCCD, and Service Changed.
-      #: () -> untyped
+      #: () -> BLE::GattDatabase
       def build_gatt_database
         BLE::GattDatabase.new do |db|
           db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GAP_SERVICE_UUID) do |s|
@@ -131,7 +131,7 @@ module StackChan
       end
 
       # Looks up an attribute handle of the dRuby service in the GATT database.
-      #: (untyped db, String char_uuid, untyped key) -> Integer
+      #: (BLE::GattDatabase db, String char_uuid, (Symbol | Integer) key) -> Integer
       def drb_handle(db, char_uuid, key)
         db.handle_table[DRB_SERVICE_UUID][char_uuid][key]
       end

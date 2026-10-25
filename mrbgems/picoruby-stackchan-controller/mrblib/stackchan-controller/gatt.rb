@@ -25,7 +25,7 @@ module StackChan
       end
 
       # Returns the first characteristic whose uuid128 matches across all services, or nil.
-      #: (Array[Hash[Symbol, untyped]] services, String uuid128) -> Hash[Symbol, untyped]?
+      #: (Array[BLE::service_t] services, String uuid128) -> BLE::characteristic_t?
       def find_characteristic(services, uuid128)
         services.each do |service|
           found = service[:characteristics].find { |ch| ch[:uuid128] == uuid128 }
@@ -35,7 +35,7 @@ module StackChan
       end
 
       # Returns the handle of the CCCD descriptor of the characteristic, or nil when there is none.
-      #: (Hash[Symbol, untyped]? characteristic) -> Integer?
+      #: (BLE::characteristic_t? characteristic) -> Integer?
       def cccd_handle(characteristic)
         return nil unless characteristic
         descriptor = characteristic[:descriptors].find { |d| d[:uuid128] == cccd_uuid }
@@ -59,7 +59,7 @@ module StackChan
       end
 
       # Returns the short hex form of a 128-bit UUID (4 digits on the Bluetooth base, 8 digits otherwise), or "?" for a non-UUID.
-      #: (untyped uuid128) -> String
+      #: (String uuid128) -> String
       def short_uuid(uuid128)
         return "?" unless uuid128.is_a?(String) && uuid128.bytesize == 16
         if uuid128.byteslice(4, 12) == GAP_BASE_SUFFIX
@@ -70,7 +70,7 @@ module StackChan
       end
 
       # Returns a one-line summary of the discovered services and the short UUIDs of their characteristics.
-      #: (Array[Hash[Symbol, untyped]] services) -> String
+      #: (Array[BLE::service_t] services) -> String
       def describe_services(services)
         shorts = []
         services.each do |service|

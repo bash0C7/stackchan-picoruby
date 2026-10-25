@@ -51,7 +51,7 @@ PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host-picotest", "bin", "picor
 # Rigor is a standalone CLI, not a bundled gem: it wants prism >= 1.0 while this
 # repo is pinned to the prism ~> 0.30 that picoruby vendors, so bundler cannot
 # resolve both. It gets its own gemset under the gitignored vendor/ tree instead.
-RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.4.0"
+RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.4.6"
 RIGOR_ROOT     = File.expand_path("vendor/rigor-tool", __dir__)
 RIGOR_BIN      = File.join(RIGOR_ROOT, "bin", "rigor")
 RIGOR_ENV      = { "GEM_HOME" => RIGOR_ROOT, "GEM_PATH" => RIGOR_ROOT }
@@ -151,7 +151,7 @@ namespace :docs do
   desc "Validate the mrbgems sig with rbs next to the picoruby sig of .rigor.dist.yml; errors inside vendor/ are not this repo's"
   task validate: :setup do
     config = YAML.load_file(File.expand_path(".rigor.dist.yml", __dir__))
-    dirs = (config["signature_paths"] || []).reject { |d| d.start_with?("mrbgems/") } + Dir["mrbgems/*/sig"].sort
+    dirs = (config["signature_paths"] || []).reject { |d| d.start_with?("mrbgems/") } + %w[picoruby-mruby picoruby-drb].map { |g| "vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems/#{g}/sig" } + Dir["mrbgems/*/sig"].sort
     out, = unbundled { Open3.capture2e(DOCS_ENV, File.join(DOCS_ROOT, "bin", "rbs"), *dirs.flat_map { |d| ["-I", d] }, "validate") }
     own = out.gsub(/\e\[[0-9;]*m/, "").lines.select { |l| l.include?("ERROR") && !l.include?("vendor/") }.uniq
     abort "docs: #{own.size} rbs error(s) in this repo's sig\n#{own.join}" unless own.empty?

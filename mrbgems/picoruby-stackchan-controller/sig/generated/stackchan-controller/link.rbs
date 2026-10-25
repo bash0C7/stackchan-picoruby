@@ -20,7 +20,7 @@ module StackChan
 
       @touches: Array[Integer]
 
-      @state: Symbol
+      @state: link_state
 
       @log: ^(String) -> void
 
@@ -30,17 +30,21 @@ module StackChan
 
       @clock: ^() -> Integer
 
-      @central: Central
+      @central: Controller::_Central
 
-      attr_reader state: Symbol
+      type link_state = :released | :held | :quiet | :busy
+
+      type link_status = { link: String, connects: Integer, releases: Integer, last_connect_ms: Integer?, hold_ms: Integer? }
+
+      attr_reader state: link_state
 
       attr_reader touches: Array[Integer]
 
       attr_accessor on_lost: (^() -> void)?
 
       # Builds a released link over the central; hold is the idle time in ms before the link goes quiet (nil never expires).
-      # : (central: Central, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer, log: ^(String) -> void) -> void
-      def initialize: (central: Central, log: ^(String) -> void, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer) -> void
+      # : (central: Controller::_Central, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer, log: ^(String) -> void) -> void
+      def initialize: (central: Controller::_Central, log: ^(String) -> void, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer) -> void
 
       # Returns how many times the link has connected.
       # : () -> Integer
@@ -64,8 +68,8 @@ module StackChan
       def listening!: () -> void
 
       # Returns link, connects, releases, last_connect_ms and hold_ms as a Hash.
-      # : () -> Hash[Symbol, untyped]
-      def status: () -> Hash[Symbol, untyped]
+      # : () -> link_status
+      def status: () -> link_status
 
       private
 

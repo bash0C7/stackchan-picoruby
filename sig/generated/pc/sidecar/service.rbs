@@ -6,13 +6,17 @@ module StackchanSidecar
 
   # DRb front of the sidecar: generates a reply text and synthesizes mu-law audio.
   class Service
+    interface _Session
+      def respond: (to: String) -> String
+    end
+
     @stub: bool
 
     @delay_s: Numeric?
 
     @timeout_s: Integer
 
-    @session: untyped
+    @session: _Session?
 
     DEFAULT_TIMEOUT_S: untyped
 
@@ -21,8 +25,8 @@ module StackchanSidecar
     def initialize: (?stub: bool, ?delay_s: Numeric?, ?timeout_s: Integer?) -> void
 
     # Returns the model reply for prompt with the robot state in ctx, or nil on error or timeout.
-    # : (String prompt, ?Hash[untyped, untyped] ctx) -> String?
-    def respond: (String prompt, ?Hash[untyped, untyped] ctx) -> String?
+    # : (String prompt, ?Hash[Symbol, String?] ctx) -> String?
+    def respond: (String prompt, ?Hash[Symbol, String?] ctx) -> String?
 
     # Returns mu-law 8 kHz bytes speaking text, or nil on error or timeout.
     # : (String text, ?Float? gain, ?Integer? rate) -> String?
@@ -31,15 +35,15 @@ module StackchanSidecar
     private
 
     # Returns a String relabeled as UTF-8; other values pass through.
-    # : (untyped s) -> untyped
-    def u8: (untyped s) -> untyped
+    # : [T < String?] (T s) -> T
+    def u8: [T < String?] (T s) -> T
 
     # Returns ctx with every value relabeled as UTF-8, or an empty Hash when ctx is not a Hash.
-    # : (untyped ctx) -> Hash[untyped, untyped]
-    def normalize_ctx: (untyped ctx) -> Hash[untyped, untyped]
+    # : (Hash[Symbol, String?] ctx) -> Hash[Symbol, String?]
+    def normalize_ctx: (Hash[Symbol, String?] ctx) -> Hash[Symbol, String?]
 
     # Returns the situation text from last_face, last_say and last_heard, or an empty String.
-    # : (Hash[untyped, untyped] ctx) -> String
-    def build_situation: (Hash[untyped, untyped] ctx) -> String
+    # : (Hash[Symbol, String?] ctx) -> String
+    def build_situation: (Hash[Symbol, String?] ctx) -> String
   end
 end
