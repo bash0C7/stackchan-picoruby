@@ -19,6 +19,8 @@ LED_INTERVAL_RANGE  = (4..9).freeze     # seconds — frequent color changes
 FACE_INTERVAL_RANGE = (12..25).freeze   # seconds
 MOVE_INTERVAL_RANGE = (30..70).freeze   # seconds — infrequent on purpose
 
+# Runs one stackchan CLI command, logs it with a timestamp and returns whether it succeeded.
+#: (*(String | Symbol | Integer) args) -> bool?
 def run(*args)
   ok = system(STACKCHAN, *args.map(&:to_s))
   puts "[#{Time.now.strftime('%H:%M:%S')}] stackchan #{args.join(' ')} #{ok ? 'OK' : 'FAILED'}"
@@ -26,6 +28,8 @@ def run(*args)
   ok
 end
 
+# Runs `connect` until it exits 0 (true), retrying while the robot is busy (exit 8) and giving up (false) on any other code.
+#: (?cli: String, ?sleep_fn: ^(Integer) -> untyped) -> bool
 def wait_until_connected(cli: STACKCHAN, sleep_fn: ->(s) { sleep(s) })
   loop do
     system(cli, "connect")
@@ -38,6 +42,8 @@ def wait_until_connected(cli: STACKCHAN, sleep_fn: ->(s) { sleep(s) })
   end
 end
 
+# Sends a random LED side, color and mode.
+#: () -> bool?
 def random_led
   side = SIDES.sample
   color = COLORS.sample
@@ -45,16 +51,22 @@ def random_led
   run("led", side, color, mode)
 end
 
+# Sends a random face.
+#: () -> bool?
 def random_face
   run("face", FACES.sample)
 end
 
+# Sends a random servo position.
+#: () -> bool?
 def random_move
   yaw_key = %w[--yaw-left --yaw-right].sample
   args = [yaw_key, rand(0..100), "--pitch-up", rand(0..100), "--time", rand(600..1200)]
   run("servo", *args)
 end
 
+# Turns the LEDs off, sets a neutral face, centers the servos and turns torque off.
+#: () -> bool?
 def rest_state
   run("led", :both, :off, :off)
   run("face", :neutral)

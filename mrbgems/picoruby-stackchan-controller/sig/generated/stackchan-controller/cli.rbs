@@ -1,0 +1,103 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # Command-line front end: sends each verb to the running daemon over dRuby and prints the result.
+    class CLI
+      BUILTIN_VERBS: ::Array[::String]
+
+      TOUCH_POLL_MS: ::Integer
+
+      TUI_HELP: ::String
+
+      @clock: ^() -> Integer
+
+      @daemon: untyped
+
+      # Attaches to the daemon at host:port, dispatches argv and returns the exit status.
+      # Prints a start hint and returns 1 (0 for status) when no daemon is running.
+      # : (Array[String] argv, ?host: String, ?port: Integer) -> Integer
+      def self.run: (Array[String] argv, ?host: String, ?port: Integer) -> Integer
+
+      NOT_RUNNING_MESSAGE: ::String
+
+      # Returns the daemon proxy at host:port after a status call, or nil (reporting through warn_fn) when it cannot be reached.
+      # : (String host, Integer port, ?drb_factory: (^(String) -> untyped)?, ?warn_fn: (^(StandardError) -> void)?) -> untyped
+      def self.attach: (String host, Integer port, ?drb_factory: (^(String) -> untyped)?, ?warn_fn: (^(StandardError) -> void)?) -> untyped
+
+      # Writes s and a newline to stdout and flushes.
+      # : (String s) -> void
+      def self.out: (String s) -> void
+
+      # Builds a CLI over the daemon proxy.
+      # : (untyped daemon, ?clock: ^() -> Integer) -> void
+      def initialize: (untyped daemon, ?clock: ^() -> Integer) -> void
+
+      # Runs one verb with its arguments and returns the exit status.
+      # : (String verb, Array[String] args) -> Integer
+      def dispatch: (String verb, Array[String] args) -> Integer
+
+      # Prints the usage and the verb list and returns 1.
+      # : () -> Integer
+      def usage: () -> Integer
+
+      private
+
+      # Instance shortcut for CLI.out.
+      # : (String s) -> void
+      def out: (String s) -> void
+
+      # Prints an act result and returns the exit status: 0 ok, 8 busy, 1 otherwise (the usage for an unknown action).
+      # : (Hash[Symbol, untyped] result) -> Integer
+      def report: (Hash[Symbol, untyped] result) -> Integer
+
+      # Prints an Array one line per element, a Hash as key=value pairs, and any other non-nil value with to_s.
+      # : (untyped value) -> void
+      def print_out: (untyped value) -> void
+
+      # Runs the remote verb: calls a method of the robot's front with KEY=VALUE pairs as one Hash or with plain arguments. Returns 1 when the first reply line is ?.
+      # : (Array[String] args) -> Integer
+      def verb_remote: (Array[String] args) -> Integer
+
+      # Runs touch listen: prints touch zones until --count events, --timeout seconds or a released link. Returns 0 when the count is reached, 1 otherwise.
+      # : (Array[String] args) -> Integer
+      def verb_touch: (Array[String] args) -> Integer
+
+      # Runs the interactive prompt, one action per line, until q. Returns 0.
+      # : () -> Integer
+      def verb_tui: () -> Integer
+
+      # Prints the prompt and returns the next stdin line, or nil at end of input.
+      # : (String prompt) -> String?
+      def read_line: (String prompt) -> String?
+
+      # Runs the calibrate verb (--align-only, --engage-torque, --no-torque-toggle, --samples, --format). Returns 0, 1, 6 (calibration needed), 7 (verify failed or interrupted).
+      # : (Array[String] args) -> Integer
+      def verb_calibrate: (Array[String] args) -> Integer
+
+      # Runs the alignment-only calibration: torque off, wait for the operator, torque on. Returns the exit status.
+      # : (bool skip_torque) -> Integer
+      def calibrate_align: (bool skip_torque) -> Integer
+
+      # Runs the full calibration: samples every pose, prints the anchors and returns 0 (pass or warn) or 7 (fail).
+      # : (Integer samples, Symbol fmt, bool engage, bool skip_torque) -> Integer
+      def calibrate_full: (Integer samples, Symbol fmt, bool engage, bool skip_torque) -> Integer
+
+      # Runs one calibrate step on the daemon and returns [output, nil] on success or [nil, exit status] on failure.
+      # : (Array[String] words) -> [untyped, Integer?]
+      def calibrate_step: (Array[String] words) -> [ untyped, Integer? ]
+
+      # Prints msg and waits for the operator to press Enter.
+      # : (String msg) -> void
+      def prompt_enter: (String msg) -> void
+
+      # Removes flag from args and returns whether it was present.
+      # : (Array[String] args, String flag) -> bool
+      def delete_flag: (Array[String] args, String flag) -> bool
+
+      # Parses --key value pairs from args into a Hash keyed by the name without dashes.
+      # : (Array[String] args) -> Hash[String, String?]
+      def parse_kw: (Array[String] args) -> Hash[String, String?]
+    end
+  end
+end

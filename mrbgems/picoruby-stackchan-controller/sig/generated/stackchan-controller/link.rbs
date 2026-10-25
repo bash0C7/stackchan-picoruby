@@ -1,0 +1,81 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/link.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # Connection state machine of the BLE link: released, held, quiet or busy, with keepalive and hold expiry.
+    class Link
+      BUSY_MESSAGE: ::String
+
+      @on_lost: (^() -> void)?
+
+      @last_sent_at: Integer?
+
+      @last_action_at: Integer?
+
+      @last_connect_ms: Integer?
+
+      @releases: Integer
+
+      @connects: Integer
+
+      @touches: Array[Integer]
+
+      @state: Symbol
+
+      @log: ^(String) -> void
+
+      @keepalive_ms: Integer
+
+      @hold: Integer?
+
+      @clock: ^() -> Integer
+
+      @central: Central
+
+      attr_reader state: Symbol
+
+      attr_reader touches: Array[Integer]
+
+      attr_accessor on_lost: (^() -> void)?
+
+      # Builds a released link over the central; hold is the idle time in ms before the link goes quiet (nil never expires).
+      # : (central: Central, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer, log: ^(String) -> void) -> void
+      def initialize: (central: Central, log: ^(String) -> void, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer) -> void
+
+      # Returns how many times the link has connected.
+      # : () -> Integer
+      def generation: () -> Integer
+
+      # Connects when released or busy, yields, and returns the block result; marks the link held afterwards.
+      # Raises Busy when the connect fails. Releases the link and re-raises on ConnectionError, and on TimeoutError when the central lost the link.
+      # : [T] () { () -> T } -> T
+      def act: [T] () { () -> T } -> T
+
+      # Drains the central, releases a lost link, expires the hold into quiet and sends a keepalive when due; collects touched zones.
+      # : (?expire: bool) -> void
+      def tick: (?expire: bool) -> void
+
+      # Resets the central link, sets the state to released, clears touches and calls on_lost.
+      # : () -> void
+      def lost!: () -> void
+
+      # Extends the hold by recording now as the last action while held.
+      # : () -> void
+      def listening!: () -> void
+
+      # Returns link, connects, releases, last_connect_ms and hold_ms as a Hash.
+      # : () -> Hash[Symbol, untyped]
+      def status: () -> Hash[Symbol, untyped]
+
+      private
+
+      # Connects the central and counts the connection; sets busy and raises Busy when the connect fails.
+      # : () -> void
+      def connect!: () -> void
+
+      # Marks the link held and resets the action and keepalive timestamps.
+      # : () -> void
+      def used!: () -> void
+    end
+  end
+end

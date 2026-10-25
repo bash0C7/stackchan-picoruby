@@ -1,0 +1,72 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/ticker.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # Runs the periodic work of the robot: touch polling, LED animation, eye reopening and app periodic handlers.
+    class Ticker
+      TOUCH_PERIOD_MS: ::Integer
+
+      LED_PERIOD_MS: ::Integer
+
+      @open_at: Integer?
+
+      @led_at: Integer?
+
+      @touch_at: Integer?
+
+      @now_ms: Integer
+
+      @robot_handle: Handle
+
+      @periodic_due: Array[Integer?]
+
+      @periodic: Array[[ Integer, ^(Handle) -> untyped ]]
+
+      @touch_handlers: Hash[Integer, ^(Handle) -> untyped]
+
+      @remote: Remote
+
+      @dispatcher: Dispatcher
+
+      @touch: untyped
+
+      @led: untyped
+
+      @display: untyped
+
+      # Stores the collaborators and registers itself on the dispatcher's robot handle.
+      # : (display: untyped, led: untyped, touch: untyped, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, ^(Handle) -> untyped], ?periodic: Array[[Integer, ^(Handle) -> untyped]]) -> void
+      def initialize: (display: untyped, led: untyped, touch: untyped, dispatcher: Dispatcher, remote: Remote, ?touch_handlers: Hash[Integer, ^(Handle) -> untyped], ?periodic: Array[[ Integer, ^(Handle) -> untyped ]]) -> void
+
+      # Runs whatever is due at now_ms (milliseconds): touch poll and LED tick every 50 ms, eye reopening, periodic handlers.
+      # : (Integer now_ms) -> untyped
+      def tick: (Integer now_ms) -> untyped
+
+      # Schedules the eyes to be redrawn open closed_ms after the last tick time.
+      # : (Integer closed_ms) -> Integer
+      def reopen_eyes_after: (Integer closed_ms) -> Integer
+
+      private
+
+      # Returns true when last is nil or period ms have passed since last.
+      # : (Integer? last, Integer now_ms, Integer period) -> bool
+      def due?: (Integer? last, Integer now_ms, Integer period) -> bool
+
+      # Polls the touch sensor; calls the zone's handler and queues the zone on the Remote. Logs errors and continues.
+      # : () -> untyped
+      def poll_touch: () -> untyped
+
+      # Redraws the current face with open eyes once the scheduled time has passed.
+      # : (Integer now_ms) -> untyped
+      def reopen_eyes: (Integer now_ms) -> untyped
+
+      # Calls each periodic handler whose interval has elapsed; the first call is one interval after the first tick.
+      # : (Integer now_ms) -> untyped
+      def run_periodic: (Integer now_ms) -> untyped
+
+      # Calls handler with the robot handle. Logs errors and continues.
+      # : (^(Handle) -> untyped handler) -> untyped
+      def call_periodic: (^(Handle) -> untyped handler) -> untyped
+    end
+  end
+end

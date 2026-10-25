@@ -1,0 +1,40 @@
+# Generated from lib/esp_port.rb with RBS::Inline
+
+# Finds the CoreS3 USB port by the board's USB serial number from ioreg output.
+module EspPort
+  PRODUCT: ::String
+
+  SERIAL_FILE: ::String
+
+  # Raised when the CoreS3 port cannot be determined unambiguously.
+  class Error < StandardError
+  end
+
+  interface _Lookup
+    def []: (String) -> String?
+  end
+
+  # Returns the ioreg listing of ESP32-S3 USB JTAG/serial devices.
+  # : () -> String
+  def self?.ioreg: () -> String
+
+  # Returns [usb_serial, callout_port] pairs found in ioreg output.
+  # : (String ioreg_out) -> Array[[String, String]]
+  def self?.devices: (String ioreg_out) -> Array[[ String, String ]]
+
+  # Returns the USB serial of the device on port, or nil.
+  # : (String ioreg_out, String port) -> String?
+  def self?.serial_of: (String ioreg_out, String port) -> String?
+
+  # Returns the port of the device with this USB serial (case-insensitive), or nil.
+  # : (String ioreg_out, String? serial) -> String?
+  def self?.port_of: (String ioreg_out, String? serial) -> String?
+
+  # Returns the CoreS3 USB serial from STACKCHAN_USB_SERIAL or the .stackchan-usb-serial file under root; empty when neither exists.
+  # : (_Lookup env, String root) -> String
+  def self?.serial_from: (_Lookup env, String root) -> String
+
+  # Returns the CoreS3 port. Raises Error when the board is missing, ambiguous, or disagrees with espport.
+  # : (ioreg_out: String, serial: String?, espport: String?) -> String
+  def self?.resolve: (ioreg_out: String, serial: String?, espport: String?) -> String
+end

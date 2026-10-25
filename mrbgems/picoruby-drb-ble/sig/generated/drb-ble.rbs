@@ -1,0 +1,142 @@
+# Generated from mrbgems/picoruby-drb-ble/mrblib/drb-ble.rb with RBS::Inline
+
+# dRuby transport over BLE: a socket backed by a chunked link and a responder that serves a front object.
+# DRb uses it for URIs that start with "drbble://".
+module DRbBle
+  interface _Link
+    def send_chunk: (String bytes) -> untyped
+
+    def poll: () -> String?
+  end
+
+  CHUNK: ::Integer
+
+  # Raised by Reader#read when the buffer holds fewer bytes than requested.
+  class Incomplete < StandardError
+  end
+
+  # Splits data into byte slices of at most size bytes.
+  # : (String data, ?Integer size) -> Array[String]
+  def self.chunks: (String data, ?Integer size) -> Array[String]
+
+  # Reads bytes sequentially from a String buffer.
+  class Reader
+    @buf: String
+
+    @pos: Integer
+
+    attr_reader pos: Integer
+
+    # Creates a reader at the start of buf.
+    # : (String buf) -> void
+    def initialize: (String buf) -> void
+
+    # Returns the next n bytes and advances; raises Incomplete when fewer than n remain.
+    # : (Integer n) -> String
+    def read: (Integer n) -> String
+  end
+
+  # Collects written strings into one buffer.
+  class Writer
+    @out: String
+
+    attr_reader out: String
+
+    # Creates a writer with an empty buffer.
+    # : () -> void
+    def initialize: () -> void
+
+    # Appends s to the buffer.
+    # : (String s) -> String
+    def write: (String s) -> String
+  end
+
+  # Serves dRuby requests from bytes fed in: assembles request messages and calls allowed methods on the front.
+  # Requests larger than MAX_REQUEST and malformed requests are dropped.
+  class Responder
+    @front: untyped
+
+    @allow: Array[Symbol]
+
+    @buf: String
+
+    @fields: Array[untyped]
+
+    @taken: Integer
+
+    MAX_REQUEST: ::Integer
+
+    # Creates a responder for front that exposes only the method names in allow.
+    # : (untyped front, allow: Array[Symbol]) -> void
+    def initialize: (untyped front, allow: Array[Symbol]) -> void
+
+    # Discards the buffered bytes and the partly received request.
+    # : () -> void
+    def reset: () -> void
+
+    # Appends bytes and returns the concatenated replies of every request completed by them, or "" if none.
+    # Resets and drops the request when a message does not load or is malformed.
+    # : (String bytes) -> String
+    def feed: (String bytes) -> String
+
+    private
+
+    # Removes and returns the next length-prefixed message from the buffer, or nil if it is not complete.
+    # : () -> String?
+    def take_message: () -> String?
+
+    # Returns false when the fields received so far have the wrong types for a request header.
+    # : () -> bool
+    def well_formed?: () -> bool
+
+    # Returns the serialized dRuby reply of calling msg on the front.
+    # Replies with a failure for a method not in allow or when the call raises.
+    # : (untyped ref, Symbol msg, Array[untyped] args) -> String
+    def reply: (untyped ref, Symbol msg, Array[untyped] args) -> String
+  end
+
+  # Socket-like object for DRb that sends written bytes over a link in chunks and reads the reply from it.
+  class Socket
+    @link: _Link
+
+    @timeout_ms: Integer
+
+    @tx: String
+
+    @rx: String
+
+    POLL_MS: ::Integer
+
+    # Creates a socket over link that gives up a read after timeout_ms without data.
+    # : (_Link link, Integer timeout_ms) -> void
+    def initialize: (_Link link, Integer timeout_ms) -> void
+
+    # Buffers s for the next read.
+    # : (String s) -> String
+    def write: (String s) -> String
+
+    # Sends the buffered bytes in chunks, then returns n bytes of the reply.
+    # Raises DRb::DRbConnError when no data arrives within the timeout.
+    # : (Integer n) -> String
+    def read: (Integer n) -> String
+
+    # Does nothing; the link stays open.
+    # : () -> void
+    def close: () -> void
+  end
+
+  # Registers link and its read timeout for the URI.
+  # : (String uri, _Link link, ?timeout_ms: Integer) -> [_Link, Integer]
+  def self.register: (String uri, _Link link, ?timeout_ms: Integer) -> [ _Link, Integer ]
+
+  # Returns a Socket for the link registered for uri; raises DRb::DRbBadURI when none is registered.
+  # : (String uri) -> Socket
+  def self.socket: (String uri) -> Socket
+end
+
+# Extends DRb.create_socket to open DRbBle sockets.
+module DRb
+  # Returns a DRbBle socket for "drbble://" URIs and otherwise defers to the original create_socket.
+  # : (untyped uri) -> untyped
+  def self.create_socket: (untyped uri) -> untyped
+end

@@ -5,9 +5,12 @@
 require "serialport"
 require_relative "../esp_port"
 
+# Host-side deployment helpers that talk to the board.
 module Deploy
+  # Uploads a file to the board's filesystem over the PicoModem serial protocol of the R2P2 shell.
   module Picomodem
     # /home/app.mrb autostarts and never returns; retrying cannot help.
+    # Raised when /home/app.mrb starts and never returns, so the shell never appears.
     class AutostartBlocked < StandardError; end
 
     # Raised when the board is not enumerated on USB at all.
@@ -45,6 +48,9 @@ module Deploy
 
     module_function
 
+    # Resets the board, waits for the shell, offers the file write and sends the file in chunks, retrying the handshake up to attempts times.
+    # Returns true. Raises PortMissing, AutostartBlocked or RuntimeError when the board never answers.
+    #: (src: String, dst: String, port: String, ?baud: Integer, ?boot_timeout: Float, ?attempts: Integer, ?stdout: IO) -> true
     def upload(src:, dst:, port:, baud: 115_200,
                boot_timeout: DEFAULT_BOOT_TIMEOUT,
                attempts: DEFAULT_ATTEMPTS, stdout: $stdout)
@@ -78,6 +84,8 @@ module Deploy
       true
     end
 
+    # Returns when the port node exists. Raises PortMissing otherwise.
+    #: (String port) -> void
     def assert_port_present(port)
       return if File.exist?(port)
       others = Dir.glob("/dev/cu.usbmodem*").sort
@@ -89,6 +97,9 @@ module Deploy
 
     # Pulses RTS, waits out re-enumeration, returns [serial, port] (the node
     # can come back under another name).
+    # Pulses RTS, waits for USB re-enumeration and returns the reopened serial and its port, which may have a new name.
+    # Raises PortMissing when the board does not come back.
+    #: (String port, Integer baud, IO stdout) -> [IO, String]
     def reset_and_reopen(port, baud, stdout)
       serial = EspPort.serial_of(EspPort.ioreg, port)
       pulse = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
@@ -126,6 +137,9 @@ module Deploy
 
     # Reads the boot log until the shell announces itself, answering the
     # editor's terminal queries throughout.
+    # Reads the boot log until the shell banner appears, answering terminal queries, then lets the output settle.
+    # Raises AutostartBlocked when app.mrb loaded but the banner never came, RuntimeError when the board is silent.
+    #: (IO serial, Float boot_timeout, IO stdout) -> void
     def await_shell(serial, boot_timeout, stdout)
       stdout.puts "[picomodem] waiting up to #{boot_timeout}s for the shell banner"
       seen      = +""
@@ -165,6 +179,9 @@ module Deploy
     # Every sync point is a byte the device emits: "Starting shell" before the
     # editor loop that reads Ctrl-B, ACK 0x06 once PicoModem.session has a reader.
     # Returns nil on success or a string describing where it stopped.
+    # Sends Ctrl-B and the FILE_WRITE frame and waits for the ACKs.
+    # Returns nil on success or a string describing where the handshake stopped.
+    #: (IO serial, String payload, IO stdout, Integer attempt) -> String?
     def offer_file_write(serial, payload, stdout, attempt)
       drain(serial)
       serial.write [STX].pack("C")
@@ -181,6 +198,9 @@ module Deploy
       nil
     end
 
+    # Sends content in CHUNK_SIZE frames, checking each CHUNK_ACK, then checks DONE_ACK.
+    # Raises RuntimeError on a missing or wrong ACK.
+    #: (IO serial, String content, IO stdout) -> void
     def send_chunks(serial, content, stdout)
       offset = 0
       while offset < content.bytesize
@@ -201,6 +221,8 @@ module Deploy
       stdout.puts "[picomodem] DONE_ACK ok"
     end
 
+    # Returns the CRC-16 (polynomial 0x1021) of data, continuing from crc.
+    #: (String data, ?Integer crc) -> Integer
     def crc16(data, crc = 0xFFFF)
       data.each_byte do |b|
         crc ^= b << 8
@@ -211,15 +233,21 @@ module Deploy
       crc
     end
 
+    # Returns a PicoModem frame: STX, length, command byte and payload, CRC-16.
+    #: (Integer cmd, ?String payload) -> String
     def make_frame(cmd, payload = "")
       body = [cmd].pack("C") + payload.b
       [STX, body.bytesize].pack("Cn") + body + [crc16(body)].pack("n")
     end
 
+    # Returns the monotonic clock in seconds.
+    #: () -> Float
     def now
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
+    # Reads exactly n bytes, or returns nil when the timeout passes or the stream ends.
+    #: (IO io, Integer n, ?timeout: Float) -> String?
     def read_exact(io, n, timeout: 5.0)
       buf = +""
       deadline = now + timeout
@@ -234,6 +262,8 @@ module Deploy
       buf
     end
 
+    # Reads one frame and returns [command byte, payload], or nil on timeout or CRC mismatch.
+    #: (IO io, ?timeout: Float) -> [Integer, String]?
     def recv_frame(io, timeout: 5.0)
       deadline = now + timeout
       loop do
@@ -255,6 +285,8 @@ module Deploy
     end
 
     # Answer terminal queries until the device has been quiet for QUIET_SECONDS.
+    # Answers terminal queries until the device has been quiet for QUIET_SECONDS.
+    #: (IO serial, IO stdout) -> void
     def settle(serial, stdout)
       pending  = +""
       replies  = 0
@@ -273,6 +305,8 @@ module Deploy
 
     # Answers every \e[6n / \e[5n in buf, consuming what it answers.
     # Returns how many replies were sent.
+    # Answers each cursor-position and status query in buf and removes them from buf. Returns the number of replies sent.
+    #: (IO serial, String buf) -> Integer
     def answer_queries(serial, buf)
       replies = 0
       while (i = buf.index(CURSOR_QUERY))
@@ -289,6 +323,8 @@ module Deploy
       replies
     end
 
+    # Returns up to 512 bytes if readable within timeout, else nil (also when the endpoint goes away).
+    #: (IO io, Float timeout) -> String?
     def read_available(io, timeout)
       return nil unless io.wait_readable(timeout)
       io.read_nonblock(512)
@@ -297,6 +333,8 @@ module Deploy
       nil
     end
 
+    # Reads until the given byte arrives. Returns false when the timeout passes.
+    #: (IO io, Integer byte, timeout: Float) -> bool
     def wait_for_byte(io, byte, timeout:)
       deadline = now + timeout
       loop do
@@ -308,6 +346,8 @@ module Deploy
       end
     end
 
+    # Discards whatever the serial port has pending.
+    #: (IO serial) -> void
     def drain(serial)
       while serial.wait_readable(0.1)
         begin

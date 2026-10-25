@@ -8,12 +8,17 @@ ROOT = ENV["TEST_MUST_FAIL_ON_REVERT_ROOT"] || File.expand_path("..", __dir__)
 TEST_DIRS = [%r{\Atest/}, %r{\Atest-host/}, %r{\Aaot/test/}, %r{\Amrbgems/[^/]+/test/}].freeze
 TEST_FILE = /_test\.rb\z/
 
+# Runs git in chdir and returns its stripped output.
+# Raises RuntimeError when git exits non-zero.
+#: (*String args, ?chdir: String) -> String
 def git(*args, chdir: ROOT)
   out, status = Open3.capture2e("git", *args, chdir: chdir)
   raise "git #{args.join(' ')}: #{out}" unless status.success?
   out.strip
 end
 
+# Returns the commit to compare against: ARGV[0], else the merge-base of the upstream (or origin/main) and HEAD.
+#: () -> String
 def base_ref
   return git("rev-parse", ARGV[0]) if ARGV[0]
   upstream = Open3.capture2e("git", "rev-parse", "--verify", "--quiet", "@{upstream}", chdir: ROOT)
@@ -21,8 +26,12 @@ def base_ref
   git("merge-base", ref, "HEAD")
 end
 
+# Returns true when path is under a test directory.
+#: (String path) -> bool
 def test_side?(path) = TEST_DIRS.any? { |re| path.match?(re) }
 
+# Returns the picotest suite name for a test path, or nil when the path belongs to no suite.
+#: (String path) -> String?
 def suite_of(path)
   case path
   when %r{\Atest/(device|pc)/} then $1
@@ -31,10 +40,14 @@ def suite_of(path)
   end
 end
 
+# Returns each test_ method name in source mapped to its source text.
+#: (String source) -> Hash[String, String?]
 def test_methods(source)
   source.scan(/^(\s*)def (test_\w+)\b.*?^\1end$/m).to_h { |_, name| [name, source[/^(\s*)def #{name}\b.*?^\1end$/m]] }
 end
 
+# Returns the test methods in path that are new or changed relative to base.
+#: (String base, String path) -> Array[String]
 def touched_methods(base, path)
   now = test_methods(File.read(File.join(ROOT, path)))
   before_src, status = Open3.capture2e("git", "show", "#{base}:#{path}", chdir: ROOT)
@@ -42,6 +55,8 @@ def touched_methods(base, path)
   now.select { |name, body| before[name] != body }.keys
 end
 
+# Parses test runner output into test name => passed.
+#: (String path, String out) -> Hash[String, bool]
 def results(path, out)
   text = out.gsub(/\e\[[0-9;]*m/, "")
   if path.start_with?("test-host/")
@@ -51,6 +66,8 @@ def results(path, out)
   end
 end
 
+# Returns the command that runs one test file.
+#: (String path) -> Array[String]
 def command_for(path)
   if path.start_with?("test-host/")
     ["ruby", "-Ilib", "-Itest-host", path, "--verbose=verbose"]

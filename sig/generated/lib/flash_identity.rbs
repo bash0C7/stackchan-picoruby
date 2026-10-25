@@ -1,0 +1,41 @@
+# Generated from lib/flash_identity.rb with RBS::Inline
+
+# Reads the partition table and app version from a flash dump of the first 0x10100 bytes.
+module FlashIdentity
+  PARTITION_TABLE: untyped
+
+  APP_HEADER: untyped
+
+  READ: untyped
+
+  APP_DESC_MAGIC: ::Integer
+
+  # Raised when the app image carries no esp_app_desc_t.
+  class Error < StandardError
+  end
+
+  # Returns one hash per partition table entry with label, type, subtype, offset and size.
+  # : (String bin) -> Array[Hash[String, untyped]]
+  def self?.partitions: (String bin) -> Array[Hash[String, untyped]]
+
+  # Splits a flash read into the partition table bytes and the app header bytes.
+  # : (String bin) -> Array[String]
+  def self?.split: (String bin) -> Array[String]
+
+  # Returns the version and project name from the esp_app_desc_t of the app header.
+  # Raises Error when the descriptor magic is missing.
+  # : (String bin) -> Hash[String, String]
+  def self?.app_version: (String bin) -> Hash[String, String]
+
+  # Returns the `[flash_identity]` report lines for the partitions, app version and project.
+  # : (String partition_bin, String app_bin) -> Array[String]
+  def self?.lines: (String partition_bin, String app_bin) -> Array[String]
+
+  # Parses report lines into partitions (label to offset and size) and the app version.
+  # : (String text) -> Hash[String, untyped]
+  def self?.parse: (String text) -> Hash[String, untyped]
+
+  # Returns the git sha of a clean version string, or nil for a dirty or untagged one.
+  # : (String? version) -> String?
+  def self?.sha_of: (String? version) -> String?
+end

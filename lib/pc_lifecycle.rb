@@ -3,7 +3,18 @@
 require "fileutils"
 require_relative "launch_agent"
 
+# Starts and stops the PC sidecar and daemon as launchd jobs and verifies the daemon's status.
 class PcLifecycle
+  # @rbs @c: Hash[Symbol, untyped]
+  # @rbs @dir: String
+  # @rbs @runner: ^(*String) -> [String, bool]
+  # @rbs @waiter: ^(Integer, Numeric) -> bool
+  # @rbs @releaser: ^(Integer, Numeric) -> String?
+  # @rbs @verifier: ^(Integer) -> Hash[Symbol, untyped]?
+  # @rbs @sleep_fn: ^(Numeric) -> untyped
+  # @rbs @clock: ^() -> Time
+
+  # Raised when a job cannot be started, never listens, or reports an unhealthy status.
   class Error < StandardError; end
 
   SIDECAR_WAIT_S = 15
@@ -12,6 +23,8 @@ class PcLifecycle
   RELEASE_WAIT_S = 10   # grace for a booted-out job to let go of its port
   STATUS_WAIT_S  = 10   # a wedged daemon accepts TCP but never answers DRb
 
+  # Stores the config hash and the collaborators; each defaults to the real launchctl, lsof and DRb implementation.
+  #: (Hash[Symbol, untyped] config, dir: String, ?runner: ^(*String) -> [String, bool]?, ?waiter: ^(Integer, Numeric) -> bool?, ?releaser: ^(Integer, Numeric) -> String?, ?verifier: ^(Integer) -> Hash[Symbol, untyped]?, ?sleep_fn: ^(Numeric) -> untyped, ?clock_fn: ^() -> Time) -> void
   def initialize(config, dir:, runner: nil, waiter: nil, releaser: nil, verifier: nil,
                  sleep_fn: nil, clock_fn: nil)
     @c        = config
@@ -24,6 +37,9 @@ class PcLifecycle
     @clock    = clock_fn  || -> { Time.now }
   end
 
+  # Boots out and bootstraps the sidecar, then the daemon, waits for each port to listen and returns the daemon status hash.
+  # Raises Error when the app bundle is missing, a port stays silent, the status does not answer, or the robot is not connected.
+  #: () -> Hash[Symbol, untyped]
   def up
     # launchd does not create StandardOutPath's parent.
     FileUtils.mkdir_p(@c[:logdir])
@@ -59,6 +75,8 @@ class PcLifecycle
     check_status(status)
   end
 
+  # Boots out the sidecar and daemon jobs and deletes their plists.
+  #: () -> void
   def down
     [LaunchAgent.sidecar_label(@c[:ns]), LaunchAgent.daemon_label(@c[:ns])].each do |label|
       @runner.call("launchctl", "bootout", domain(label))
@@ -71,6 +89,9 @@ class PcLifecycle
   private
 
   # bootout then bootstrap, never kickstart: kickstart reuses the cached plist.
+  # Boots out the job, waits until it is unloaded and its port is free, writes its plist and bootstraps it.
+  # Raises Error when the label stays loaded, the port stays held, or bootstrap fails.
+  #: (Hash[String, untyped] job, Integer port) -> void
   def start(job, port)
     label = job["Label"]
     @runner.call("launchctl", "bootout", domain(label))
@@ -97,6 +118,8 @@ class PcLifecycle
     end
   end
 
+  # Returns the status when the daemon is connected to the robot (or busy with allow_busy); raises Error otherwise.
+  #: (Hash[Symbol, untyped] status) -> Hash[Symbol, untyped]
   def check_status(status)
     if status[:link] == "busy"
       return status if @c[:allow_busy]
@@ -108,10 +131,14 @@ class PcLifecycle
     status
   end
 
+  # Returns the launchctl domain target gui/<uid>/<label>.
+  #: (String label) -> String
   def domain(label)
     "gui/#{Process.uid}/#{label}"
   end
 
+  # Runs a command and returns its combined output and whether it exited successfully.
+  #: (*String argv) -> [String, bool]
   def run_command(*argv)
     out = IO.popen(argv, err: [:child, :out], &:read)
     [out, $?.success?]
@@ -124,6 +151,8 @@ class PcLifecycle
   # is gone and takes SIGPIPE, which its VM cannot trap: Signal.list carries no
   # PIPE and every Signal.trap form raises SystemStackError. Probing without
   # connecting is the only place this is fixable from here.
+  # Polls lsof until port has a listener or timeout_s passes; never connects to the port. Returns true when listening.
+  #: (Integer port, Numeric timeout_s) -> bool
   def wait_for_port(port, timeout_s)
     deadline = Time.now + timeout_s
     loop do
@@ -133,11 +162,15 @@ class PcLifecycle
     end
   end
 
+  # Returns true when lsof shows a listener on the TCP port.
+  #: (Integer port) -> bool
   def port_listening?(port)
     IO.popen(["lsof", "-nP", "-iTCP:#{port}", "-sTCP:LISTEN"],
              err: [:child, :out], &:read).to_s.include?("LISTEN")
   end
 
+  # Polls launchctl print until label is gone or the unload grace passes. Returns true when unloaded.
+  #: (String label) -> bool
   def wait_until_unloaded(label)
     deadline = @clock.call + UNLOAD_WAIT_S
     loop do
@@ -149,6 +182,8 @@ class PcLifecycle
   end
 
   # nil once nothing listens; otherwise lsof's line for who still does.
+  # Polls lsof until nothing listens on port or timeout_s passes. Returns nil when free, else lsof's output for the holder.
+  #: (Integer port, Numeric timeout_s) -> String?
   def wait_for_port_release(port, timeout_s)
     deadline = Time.now + timeout_s
     loop do
@@ -160,6 +195,8 @@ class PcLifecycle
     end
   end
 
+  # Asks the daemon over DRb for its status hash; returns nil when it errors or does not answer within the status wait.
+  #: (Integer port) -> Hash[Symbol, untyped]?
   def daemon_status(port)
     require "drb"
     require "timeout"

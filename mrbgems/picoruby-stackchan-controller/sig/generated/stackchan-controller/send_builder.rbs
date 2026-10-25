@@ -1,0 +1,46 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/send_builder.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # Collects the frames of one send block, keeping the last frame per kind (face, head, torque, selftest, read_pos, and led per side).
+    class SendBuilder
+      LED_COLORS: Hash[color_name, Array[Integer]]
+
+      @frames: Hash[untyped, String]
+
+      type color_name = :red | :green | :blue | :yellow | :cyan | :magenta | :white | :off
+
+      # Builds an empty frame collection.
+      # : () -> void
+      def initialize: () -> void
+
+      # Records the face frame for the named face and returns it.
+      # : (Stackchan::BLE::FrameCodec::face_name name) -> String
+      def face: (Stackchan::BLE::FrameCodec::face_name name) -> String
+
+      # Records the LED frame for the named color, side and mode and returns it. Raises ArgumentError for an unknown color.
+      # : (color_name color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
+      def led: (color_name color, ?side: Stackchan::BLE::FrameCodec::side, ?mode: Stackchan::BLE::FrameCodec::led_mode) -> String
+
+      # Records the head (servo) frame and returns it; yaw_left and yaw_right are 0..100, time_ms and velocity are exclusive.
+      # : (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time_ms: Integer?, ?velocity: Integer?) -> String
+      def head: (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time_ms: Integer?, ?velocity: Integer?) -> String
+
+      # Records the torque on/off frame and returns it.
+      # : (on: bool) -> String
+      def torque: (on: bool) -> String
+
+      # Records the selftest frame and returns it.
+      # : () -> String
+      def selftest: () -> String
+
+      # Records the read-position frame and returns it.
+      # : () -> String
+      def read_pos: () -> String
+
+      # Returns the recorded frames in recording order.
+      # : () -> Array[String]
+      def to_frames: () -> Array[String]
+    end
+  end
+end

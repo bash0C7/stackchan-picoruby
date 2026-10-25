@@ -17,11 +17,23 @@ require "json"
 require "digest"
 require_relative "../lib/flash_identity"
 
+# Host-side acceptance run of the robot.
 module Acceptance
+  # Raised to end the run with a failed step.
   class Stop < StandardError; end
+  # Raised by a step that cannot finish without a person; the step is recorded as incomplete.
   class Pending < StandardError; end
 
+  # Runs the deploy, check and darwin phases of acceptance/lock.yml and builds the report.
   class Runner
+    # @rbs @bundled: Array[String]
+    # @rbs @lock: Hash[String, untyped]
+    # @rbs @root: String
+    # @rbs @ops: Ops
+    # @rbs @rounds: Integer
+    # @rbs @may_write: Array[String]
+    # @rbs @report: Hash[String, untyped]
+    # @rbs @quiet: Integer?
 
     FAULTS = /Guru Meditation|stack overflow|LoadError|cannot load|NameError|task_wdt|abort\(\) was called/
     STORAGE_OFFSET = "0x410000"
@@ -46,8 +58,10 @@ module Acceptance
                  ["audio", "say の音声が最後まで途切れずに鳴った"],
                  ["distortion", "say の音声が割れずに鳴った"]].freeze
 
-    attr_reader :report
+    attr_reader :report #: Hash[String, untyped]
 
+    # Builds a runner over the lock contents, the checkout root, the ops adapter and the app input paths.
+    #: (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
     def initialize(lock:, root:, ops:, bundled:, rounds: 8, stamp: "now")
       @bundled = bundled
       @lock   = lock
@@ -59,14 +73,30 @@ module Acceptance
                   "darwin" => nil, "resets" => 0, "verdict" => "incomplete" }
     end
 
+    # Returns the firmware section of the lock.
+    #: () -> Hash[String, untyped]
     def firmware = @lock.fetch("firmware")
+    # Returns the R2P2-ESP32 checkout path.
+    #: () -> String
     def r2p2    = File.join(@root, "vendor", "R2P2-ESP32")
+    # Returns the picoruby checkout path inside R2P2-ESP32.
+    #: () -> String
     def picoruby = File.join(r2p2, "components", "picoruby-esp32", "picoruby")
+    # Returns the directory of the fetched gem caches.
+    #: () -> String
     def repos_dir = File.join(picoruby, "build", "repos", "esp32-picoruby")
+    # Returns the boot log path.
+    #: () -> String
     def boot_log = File.join(@root, "build", "acceptance", "boot.log")
+    # Returns the R2P2-darwin checkout path.
+    #: () -> String
     def darwin_dir = File.join(@root, "vendor", "R2P2-darwin")
+    # Returns the picoruby checkout path inside R2P2-darwin.
+    #: () -> String
     def darwin_picoruby = File.join(darwin_dir, "vendor", "picoruby")
 
+    # Returns the ordered deploy steps as [name, body] pairs.
+    #: () -> Array[[String, ^() -> untyped]]
     def deploy_plan
       [["pin trees", -> { pin_trees }],
        ["pins hold before setup", -> { verify(aot: false) }],
@@ -79,6 +109,8 @@ module Acceptance
        ["boot", -> { boot }]]
     end
 
+    # Returns the ordered check steps as [name, body] pairs.
+    #: () -> Array[[String, ^() -> untyped]]
     def check_plan
       [["flash identity", -> { flash_identity }],
        ["boot", -> { boot }],
@@ -101,6 +133,8 @@ module Acceptance
        ["chat", -> { chat }]]
     end
 
+    # Pins the trees, builds and flashes the firmware, then sends the app. Returns the report. Raises Stop when the report already has a deploy.
+    #: () -> Hash[String, untyped]
     def deploy
       raise Stop, "report #{@report['stamp']} already has a deploy; one report is one firmware" if @report["deploy"]
       d = @report["deploy"] = { "lock_digest" => lock_digest, "steps" => [] }
@@ -113,6 +147,8 @@ module Acceptance
       end
     end
 
+    # Re-sends only the app after a finished firmware deploy. Returns the report. Raises Stop when the firmware pins or inputs moved.
+    #: () -> Hash[String, untyped]
     def upload_app
       names = deploy_plan.map(&:first)
       at = names.index("app upload")
@@ -129,6 +165,8 @@ module Acceptance
       end
     end
 
+    # Uploads the lock's app with app writes allowed and records the commit it came from. Returns "ok".
+    #: () -> String
     def app_upload
       allowed = @may_write
       @may_write = allowed + APP_WRITES
@@ -139,6 +177,8 @@ module Acceptance
       @may_write = allowed
     end
 
+    # Runs the check steps, optionally starting at step from and keeping the earlier steps of the previous check. Returns the report. Raises Stop without a finished deploy.
+    #: (?from: String?) -> Hash[String, untyped]
     def check(from: nil)
       raise Stop, "report #{@report['stamp']} has no deploy that finished ok; run acceptance:deploy" unless deployed?
       same_tree!
@@ -164,10 +204,16 @@ module Acceptance
       end
     end
 
+    # Returns the SHA-256 of the firmware pins.
+    #: () -> String
     def lock_digest = Digest::SHA256.hexdigest(JSON.generate(@lock.fetch("firmware")))
 
+    # Returns the paths whose change alters the app on the board.
+    #: () -> Array[String]
     def app_inputs = [firmware.fetch("app"), *@bundled]
 
+    # Raises Stop when the firmware pins or inputs (and the app inputs when app) differ from what the deploy used.
+    #: (?app: bool) -> void
     def same_tree!(app: true)
       raise Stop, "the firmware pins in acceptance/lock.yml differ from the ones report #{@report['stamp']} deployed" unless @report["deploy"]["lock_digest"] == lock_digest
       built = @report["root"]
@@ -179,21 +225,29 @@ module Acceptance
       raise Stop, "#{moved.join(', ')} differ from #{sent[0, 7]}, which the board runs; run acceptance:app" unless moved.empty?
     end
 
+    # Returns the paths whose tree at commit differs from HEAD. Raises Stop when the checkout has local changes there.
+    #: (String commit, Array[String] paths) -> Array[String]
     def moved_since(commit, paths)
       clean!(@root, *paths)
       paths.reject { |path| tree(commit, path) == tree("HEAD", path) }
     end
 
+    # Returns the tree id of path at commit, or nil when absent.
+    #: (String commit, String path) -> String?
     def tree(commit, path)
       ok, out, = @ops.git(@root, "rev-parse", "#{commit}:#{path}")
       ok ? out.strip : nil
     end
 
+    # Returns whether the report has a deploy whose steps all finished ok.
+    #: () -> bool?
     def deployed?
       d = @report["deploy"]
       d && d["steps"].map { |s| s["name"] } - ["pins hold", "qemu gate"] == deploy_plan.map(&:first) && d["steps"].all? { |s| s["ok"] }
     end
 
+    # Yields, sets the verdict, and returns the report; a Stop sets the verdict to fail.
+    #: () { () -> void } -> Hash[String, untyped]
     def settle
       yield
       @report["verdict"] = verdict
@@ -203,6 +257,8 @@ module Acceptance
       @report
     end
 
+    # Checks out the R2P2-darwin pins and returns a summary line.
+    #: () -> String
     def pin_darwin
       lock = @lock.fetch("darwin")
       checkout(darwin_dir, lock.fetch("R2P2-darwin"))
@@ -211,6 +267,8 @@ module Acceptance
       "R2P2-darwin #{lock['R2P2-darwin'][0, 7]}, picoruby #{lock['picoruby'][0, 7]}"
     end
 
+    # Raises Stop unless the R2P2-darwin checkouts are at their pins.
+    #: () -> String
     def darwin_pins_hold!
       lock = @lock.fetch("darwin")
       head_is!(darwin_dir, lock.fetch("R2P2-darwin"))
@@ -224,6 +282,8 @@ module Acceptance
     STOPPED_MARK = "[acceptance] stopped after"
     APP_WANTS = [APP_CONNECTED, "[batch] OK face=joy"].freeze
 
+    # Builds the iOS and watchOS apps, runs the iPhone batch and the Mac to iPhone to Mac hand-off. Returns the report.
+    #: () -> Hash[String, untyped]
     def run_darwin
       d = @report["darwin"] = { "steps" => [], "timings" => {} }
       settle do
@@ -245,6 +305,8 @@ module Acceptance
       end
     end
 
+    # Runs the batch lines on the iPhone and returns [console output, seconds]. Raises Stop on failure or timeout.
+    #: (String lines) -> [String, Float]
     def app_batch!(lines)
       t0 = @ops.now
       ok, out, = run_rake(["ios:device:run"],
@@ -257,11 +319,15 @@ module Acceptance
       [out, t]
     end
 
+    # Raises Stop unless out contains line as a whole line.
+    #: (String out, String line) -> void
     def want!(out, line)
       return if out.to_s.lines.map(&:strip).include?(line)
       raise Stop, "iPhone: no #{line.inspect} in #{out.inspect}"
     end
 
+    # Hands the robot Mac to iPhone to Mac, records the timings in d, and returns a summary line.
+    #: (Hash[String, untyped] d) -> String
     def apple_hand_off(d)
       @ops.sleep(quiet)
       cli!("face", "neutral")
@@ -277,6 +343,8 @@ module Acceptance
       format("iPhone %.2f s, Mac %.2f s", ti, tm)
     end
 
+    # Re-runs only the touch step of the check and replaces it in the report. Returns the report. Raises Stop without a check.
+    #: () -> Hash[String, untyped]
     def run_touch
       c = @report["check"]
       raise Stop, "report #{@report['stamp']} has no check; run acceptance:check" unless c
@@ -294,12 +362,16 @@ module Acceptance
     end
 
     # Asks every question the check left unanswered (it ran without a TTY).
+    # Asks every check question that is still unanswered. Returns the report.
+    #: () -> Hash[String, untyped]
     def answer
       @report["check"]&.dig("human")&.each_value { |h| h["answer"] ||= @ops.prompt(h["question"]) }
       @report["verdict"] = verdict
       @report
     end
 
+    # Returns "pass", "fail" or "incomplete" from the steps and the answers.
+    #: () -> String
     def verdict
       d, c = @report.values_at("deploy", "check")
       all_steps = [d, c, @report["darwin"]].compact.flat_map { |p| p["steps"] }
@@ -314,6 +386,8 @@ module Acceptance
 
     # --- pins -----------------------------------------------------------------
 
+    # Checks out the pinned trees and returns a summary line. Raises Stop when HEAD is missing or a tree has local changes.
+    #: () -> String
     def pin_trees
       root = head(@root)
       raise Stop, "#{@root} has no HEAD" unless root
@@ -330,6 +404,8 @@ module Acceptance
     # mruby's gem loader clones a missing gem at its branch tip and never pulls
     # an existing one, so each cache is put at its sha before anything builds.
     # A moved checkout keeps its old commit on a keep-<sha> branch.
+    # Puts the fetched gem cache name at sha want, keeping a moved commit on a keep-<sha> branch.
+    #: (String name, String want) -> void
     def pin_cache(name, want)
       dir = File.join(repos_dir, name)
       if @ops.exist?(dir)
@@ -344,6 +420,8 @@ module Acceptance
       git!(dir, "checkout", "--quiet", "--detach", want)
     end
 
+    # Raises Stop unless every pinned tree is at its pin and clean. Returns "all pins hold".
+    #: (aot: bool, ?root: bool) -> String
     def verify(aot:, root: true)
       if root
         head_is!(@root, @report["root"])
@@ -357,23 +435,31 @@ module Acceptance
       "all pins hold"
     end
 
+    # Fetches and checks out sha in dir detached. Returns the short sha.
+    #: (String dir, String sha) -> String
     def checkout(dir, sha)
       git!(dir, "fetch", "--quiet", "origin", sha)
       git!(dir, "checkout", "--quiet", "--detach", sha)
       head_is!(dir, sha)
     end
 
+    # Returns the HEAD sha of dir, or nil.
+    #: (String dir) -> String?
     def head(dir)
       ok, out, = @ops.git(dir, "rev-parse", "HEAD")
       ok ? out.strip : nil
     end
 
+    # Returns the short sha of want. Raises Stop unless HEAD of dir is want.
+    #: (String dir, String want) -> String
     def head_is!(dir, want)
       have = head(dir)
       raise Stop, "#{dir} is at #{have.inspect}, lock says #{want}" unless have == want
       want[0, 7]
     end
 
+    # Raises Stop when dir (limited to paths) has local changes.
+    #: (String dir, *String paths) -> void
     def clean!(dir, *paths)
       out = git!(dir, "status", "--porcelain", "--untracked-files=no", *(["--", *paths] unless paths.empty?))
       raise Stop, "#{dir} has local changes:\n#{out}" unless out.strip.empty?
@@ -381,6 +467,8 @@ module Acceptance
 
     # --- device ---------------------------------------------------------------
 
+    # Reads the flash identity and returns a summary line. Raises Stop unless the storage offset and App version match the pins.
+    #: () -> String
     def flash_identity
       id = FlashIdentity.parse(rake_out("r2p2:flash_identity"))
       storage = id["partitions"].dig("storage", "offset")
@@ -393,6 +481,8 @@ module Acceptance
       "App version #{version}, storage #{storage}"
     end
 
+    # Resets the board, captures the boot log and checks for faults and the boot markers. Returns a summary line. Raises Stop on a fault or a missing marker.
+    #: () -> String
     def boot
       rake("r2p2:reset_and_capture", env: { "SERIAL_LOG" => boot_log, "DURATION" => BOOT_CAPTURE_S.to_s })
       text = @ops.read(boot_log).to_s.encode("UTF-8", invalid: :replace, undef: :replace)
@@ -404,6 +494,8 @@ module Acceptance
       "#{firmware['boot_markers'].size} markers, no fault"
     end
 
+    # Runs pc:up until it succeeds. Returns a summary line. Raises Stop after PC_UP_TRIES failures.
+    #: () -> String
     def pc_up
       t0 = @ops.now
       PC_UP_TRIES.times do |i|
@@ -414,11 +506,15 @@ module Acceptance
       end
     end
 
+    # Returns the actual-position detail in out. Raises Stop when there is none.
+    #: (String out) -> String
     def detail!(out)
       raise Stop, "no detail line in #{out.inspect}; servo health: #{servo_health}" unless out =~ DETAIL
       out[DETAIL]
     end
 
+    # Speaks SAY_TEXT and returns the byte count. Raises Stop when the clip is too short.
+    #: () -> String
     def say
       out = cli!("say", SAY_TEXT)
       bytes = out[/OK say bytes=(\d+)/, 1]
@@ -427,16 +523,22 @@ module Acceptance
       "#{bytes} bytes"
     end
 
+    # Returns the servo health reply of the robot.
+    #: () -> String
     def servo_health
       _, out, = @ops.cli(@root, "remote", "servo_health")
       out.to_s.strip
     end
 
+    # Records the last connect time in the check timings.
+    #: () -> Array[Integer]?
     def record_connect_ms
       ms = status["last_connect_ms"]
       (@report["check"]["timings"]["connect ms"] ||= []) << ms.to_i if ms
     end
 
+    # Returns the free robot stack. Raises Stop below STACK_FLOOR.
+    #: () -> String
     def stack_high_water
       out = cli!("remote", "stack_free")
       free = out[/<stack_free:(\d+)>/, 1]
@@ -445,6 +547,8 @@ module Acceptance
       "#{free} B free"
     end
 
+    # Times servo, face, led and text commands for the configured rounds into the check timings. Returns a summary line.
+    #: () -> String
     def measure
       t = @report["check"]["timings"]
       @rounds.times { (t["servo"] ||= []) << timed!("servo", "--yaw-left", "30", "--pitch-up", "10", "--time", "300") }
@@ -454,6 +558,8 @@ module Acceptance
       "#{t.size} series"
     end
 
+    # Asks the operator every question and records the answers. Returns a summary line.
+    #: () -> String
     def ask
       h = @report["check"]["human"] = {}
       QUESTIONS.each { |key, q| h[key] = { "question" => q, "answer" => @ops.prompt(q) } }
@@ -462,8 +568,12 @@ module Acceptance
 
     # --- controller -----------------------------------------------------------
 
+    # Returns the memoized quiet wait in seconds.
+    #: () -> Integer
     def quiet = @quiet ||= quiet_wait_s
 
+    # Returns the seconds the link needs to release, from hold_ms and release_after. Raises Stop when either is missing.
+    #: () -> Integer
     def quiet_wait_s
       app = File.join(@root, firmware.fetch("app"))
       release_after = @ops.read(app).to_s[/release_after\s+([\d_]+)/, 1]
@@ -473,6 +583,8 @@ module Acceptance
       (hold.to_i + release_after.delete("_").to_i) / 1000 + 5
     end
 
+    # Returns the key=value fields of `stackchan status`. Raises Stop without a link line.
+    #: () -> Hash[String, String]
     def status
       out = cli!("status")
       line = out.lines.find { |l| l.start_with?("link=") }
@@ -480,6 +592,8 @@ module Acceptance
       line.split.to_h { |kv| k, v = kv.split("=", 2); [k, v.to_s] }
     end
 
+    # Waits for a head touch. Returns the touch line. Raises Pending without a TTY or a touch, Stop on failure.
+    #: () -> String
     def touch
       raise Pending, "no TTY, nobody to touch the head" unless @ops.tty?
       @ops.notice("touch the back of the head")
@@ -490,6 +604,8 @@ module Acceptance
       zone.strip
     end
 
+    # Runs calibration and checks the zeros and the forward verify. Returns a summary line. Raises Stop on failure.
+    #: () -> String
     def calibrate
       _, out, _, code = @ops.cli(@root, "calibrate", "--no-torque-toggle", "--format", "json", "--samples", "3", stdin: "\n" * 5)
       raise Stop, "calibrate exit #{code}:\n#{out}" unless code == 0
@@ -511,6 +627,8 @@ module Acceptance
       "yaw_zero #{yz}, pitch_zero #{pz}, verify delta #{deltas.join('/')}"
     end
 
+    # Sends a chat prompt and checks for a real sidecar reply. Returns the reply line. Raises Stop otherwise.
+    #: () -> String
     def chat
       _, out, _, code = @ops.cli(@root, "chat", "こんにちは", "--no-speak")
       reply = out.to_s[/^reply=(.*)$/, 1].to_s.strip
@@ -520,6 +638,8 @@ module Acceptance
       "reply=#{reply}"
     end
 
+    # Waits for the link to release, sends a face to reconnect, and checks one new connect. Returns a summary line.
+    #: () -> String
     def release_and_reconnect
       cli!("face", "neutral")
       c0 = status["connects"].to_i
@@ -532,6 +652,8 @@ module Acceptance
       format("release seen: %s, reconnect + face %.2f s", seen ? "yes" : "no", t)
     end
 
+    # Sends a face and returns the seconds taken. Raises Stop with why on failure.
+    #: (String face, Hash[String, String] env, String why) -> Float
     def face!(face, env, why)
       ok, out, t, code = @ops.cli(@root, "face", face, env: env)
       raise Stop, "#{why}: exit #{code}\n#{out}" unless ok && out.include?("OK face=")
@@ -540,6 +662,8 @@ module Acceptance
 
     # --- plumbing -------------------------------------------------------------
 
+    # Runs the block and appends its result to part's steps; Pending records an incomplete step, Stop a failed step and re-raises.
+    #: (Hash[String, untyped] part, String name) { () -> untyped } -> void
     def step(part, name)
       detail = yield
       part["steps"] << { "name" => name, "ok" => true, "detail" => detail.to_s }
@@ -550,12 +674,16 @@ module Acceptance
       raise
     end
 
+    # Returns the output of git in dir. Raises Stop on failure.
+    #: (String dir, *String args) -> String
     def git!(dir, *args)
       ok, out, = @ops.git(dir, *args)
       raise Stop, "git -C #{dir} #{args.join(' ')} failed:\n#{out}" unless ok
       out
     end
 
+    # Runs a rake task through ops, refusing flash writes outside the allowed phases. Returns [success, output, 0].
+    #: (Array[String] tasks, Hash[String, String?] env, ?Numeric? limit) -> [bool, String, Integer]
     def run_rake(tasks, env, limit = nil)
       task = tasks.first
       if (FIRMWARE_WRITES + APP_WRITES).include?(task) && !@may_write.include?(task)
@@ -566,23 +694,31 @@ module Acceptance
       @ops.rake(@root, *tasks, env: env, limit: limit)
     end
 
+    # Runs a rake task and returns "ok". Raises Stop on failure.
+    #: (*String tasks, ?env: Hash[String, String?]) -> String
     def rake(*tasks, env: {})
       rake_out(*tasks, env: env)
       "ok"
     end
 
+    # Runs a rake task and returns its output. Raises Stop on failure.
+    #: (*String tasks, ?env: Hash[String, String?]) -> String
     def rake_out(*tasks, env: {})
       ok, out, = run_rake(tasks, env)
       raise Stop, "rake #{tasks.join(' ')} failed in #{@root}:\n#{out.to_s.lines.last(20).join}" unless ok
       out.to_s
     end
 
+    # Runs the stackchan CLI and returns its output. Raises Stop on failure.
+    #: (*String args) -> String
     def cli!(*args)
       ok, out, = @ops.cli(@root, *args)
       raise Stop, "stackchan #{args.join(' ')} failed:\n#{out}" unless ok
       out
     end
 
+    # Runs the stackchan CLI and returns the seconds taken. Raises Stop on failure.
+    #: (*String args) -> Float
     def timed!(*args)
       ok, out, seconds = @ops.cli(@root, *args)
       raise Stop, "stackchan #{args.join(' ')} failed while timing:\n#{out}" unless ok
@@ -591,6 +727,8 @@ module Acceptance
 
     # --- report ---------------------------------------------------------------
 
+    # Returns the median of xs, or nil when empty.
+    #: (Array[Numeric] xs) -> Numeric?
     def self.median(xs)
       s = xs.sort
       n = s.size
@@ -598,14 +736,20 @@ module Acceptance
       n.odd? ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2.0
     end
 
+    # Returns the report label of a step.
+    #: (Hash[String, untyped] s) -> String
     def mark(s) = s["ok"].nil? ? "incomplete" : (s["ok"] ? "ok" : "FAIL")
 
+    # Returns the Markdown table of part's steps under title.
+    #: (String title, Hash[String, untyped] part) -> String
     def table(title, part)
       out = +"\n## #{title}\n\n| step | ok | detail |\n|---|---|---|\n"
       part["steps"].each { |s| out << "| #{s['name']} | #{mark(s)} | #{s['detail'].to_s.lines.first.to_s.strip} |\n" }
       out
     end
 
+    # Returns the report as Markdown.
+    #: () -> String
     def markdown
       fw = firmware
       out = +"# Device acceptance #{@report['stamp']}\n\n**verdict: #{@report['verdict']}**\n\n"

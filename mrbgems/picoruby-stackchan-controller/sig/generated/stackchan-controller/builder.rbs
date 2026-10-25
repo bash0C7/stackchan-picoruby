@@ -1,0 +1,45 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/builder.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # The DSL object yielded by StackChan.controller; every method validates its arguments and records them on the Controller.
+    class Builder
+      @controller: Controller
+
+      # Wraps the controller the DSL declarations are recorded on.
+      # : (Controller controller) -> void
+      def initialize: (Controller controller) -> void
+
+      # Declares an action and defines it as a method of the controller.
+      # Raises ArgumentError for a missing block, a non-Symbol or built-in or already used name, or a bad label or flags.
+      # : (Symbol name, ?label: String?, ?flags: Array[String]) { (Session, Args) -> untyped } -> void
+      def action: (Symbol name, ?label: String?, ?flags: Array[String]) { (Session, Args) -> untyped } -> void
+
+      # Registers a handler called for each head touch.
+      # Raises ArgumentError without a block.
+      # : () { (untyped) -> void } -> void
+      def on_touch: () { (untyped) -> void } -> void
+
+      # Registers a handler called for each reply line.
+      # Raises ArgumentError without a block.
+      # : () { (untyped) -> void } -> void
+      def on_reply: () { (untyped) -> void } -> void
+
+      # Registers a handler run every ms milliseconds.
+      # Raises ArgumentError without a block or when ms is not a positive Integer.
+      # : (Integer ms) { () -> void } -> void
+      def every: (Integer ms) { () -> void } -> void
+
+      # Sets how long the link is held after the last action, in milliseconds.
+      # Raises ArgumentError when ms is not a positive Integer.
+      # : (Integer ms) -> void
+      def hold: (Integer ms) -> void
+
+      private
+
+      # Raises ArgumentError unless handler is given.
+      # : (Symbol name, Proc? handler) -> void
+      def require_block: (Symbol name, Proc? handler) -> void
+    end
+  end
+end

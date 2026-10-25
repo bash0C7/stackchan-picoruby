@@ -1,9 +1,14 @@
 module StackChan
   class Controller
+    # BLE central radio that scans for a StackChan advertiser, connects, and forwards notifications and disconnects.
     class Radio < BLE
-      attr_reader :target, :conn_handle
-      attr_accessor :on_notification, :on_disconnect
+      attr_reader :target #: Object?
+      attr_reader :conn_handle #: Integer
+      attr_accessor :on_notification #: (^(Integer, String) -> void)?
+      attr_accessor :on_disconnect #: (^() -> void)?
 
+      # Builds a central radio that connects to the first advertiser whose name includes name_prefix.
+      #: (name_prefix: String) -> void
       def initialize(name_prefix:)
         @name_prefix    = name_prefix
         @target         = nil
@@ -11,7 +16,13 @@ module StackChan
         @on_disconnect   = nil
         super(:central)
       end
+      # @rbs @name_prefix: String
+      # @rbs @target: Object?
+      # @rbs @on_notification: (^(Integer, String) -> void)?
+      # @rbs @on_disconnect: (^() -> void)?
 
+      # Pops one event from the queue without blocking, dispatches a packet to packet_callback and returns the event, or nil when empty.
+      #: () -> untyped
       def pop_and_dispatch
         _event_popped
         event = @event_queue.pop(timeout_ms: 0)
@@ -20,6 +31,8 @@ module StackChan
         event
       end
 
+      # Remembers and connects to the first report whose name includes the prefix; ignores later reports.
+      #: (untyped report) -> void
       def advertising_report_callback(report)
         return if @target
         return unless report.name_include?(@name_prefix)
@@ -27,6 +40,8 @@ module StackChan
         connect(report)
       end
 
+      # Handles a packet: invalidates the connection handle and calls on_disconnect on disconnect, then calls on_notification for GATT notifications.
+      #: (String event_packet) -> void
       def packet_callback(event_packet)
         if disconnect_packet?(event_packet)
           @conn_handle = HCI_CON_HANDLE_INVALID
@@ -39,6 +54,8 @@ module StackChan
         cb.call(gatt_event_int16(event_packet, 0), gatt_event_value(event_packet)) if cb
       end
 
+      # Clears the target, connection and services, then scans for timeout_ms until the central is idle.
+      #: (Integer timeout_ms) -> untyped
       def connect_and_discover(timeout_ms)
         @target = nil
         @conn_handle = HCI_CON_HANDLE_INVALID
@@ -48,6 +65,8 @@ module StackChan
 
       private
 
+      # Returns true when the packet is an HCI disconnection-complete event, plain or inside an LE meta event.
+      #: (String event_packet) -> bool
       def disconnect_packet?(event_packet)
         type = event_packet.getbyte(0)
         return true if type == HCI_EVENT_DISCONNECTION_COMPLETE

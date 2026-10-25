@@ -1,0 +1,45 @@
+# Generated from pc/sidecar/service.rb with RBS::Inline
+
+# Sidecar that answers chat prompts with Apple Foundation Models and synthesizes speech.
+module StackchanSidecar
+  PERSONA: ::String
+
+  # DRb front of the sidecar: generates a reply text and synthesizes mu-law audio.
+  class Service
+    @stub: bool
+
+    @delay_s: Numeric?
+
+    @timeout_s: Integer
+
+    @session: untyped
+
+    DEFAULT_TIMEOUT_S: untyped
+
+    # Builds the service; unless stub, loads the Foundation Models session and the TTS.
+    # : (?stub: bool, ?delay_s: Numeric?, ?timeout_s: Integer?) -> void
+    def initialize: (?stub: bool, ?delay_s: Numeric?, ?timeout_s: Integer?) -> void
+
+    # Returns the model reply for prompt with the robot state in ctx, or nil on error or timeout.
+    # : (String prompt, ?Hash[untyped, untyped] ctx) -> String?
+    def respond: (String prompt, ?Hash[untyped, untyped] ctx) -> String?
+
+    # Returns mu-law 8 kHz bytes speaking text, or nil on error or timeout.
+    # : (String text, ?Float? gain, ?Integer? rate) -> String?
+    def synthesize: (String text, ?Float? gain, ?Integer? rate) -> String?
+
+    private
+
+    # Returns a String relabeled as UTF-8; other values pass through.
+    # : (untyped s) -> untyped
+    def u8: (untyped s) -> untyped
+
+    # Returns ctx with every value relabeled as UTF-8, or an empty Hash when ctx is not a Hash.
+    # : (untyped ctx) -> Hash[untyped, untyped]
+    def normalize_ctx: (untyped ctx) -> Hash[untyped, untyped]
+
+    # Returns the situation text from last_face, last_say and last_heard, or an empty String.
+    # : (Hash[untyped, untyped] ctx) -> String
+    def build_situation: (Hash[untyped, untyped] ctx) -> String
+  end
+end

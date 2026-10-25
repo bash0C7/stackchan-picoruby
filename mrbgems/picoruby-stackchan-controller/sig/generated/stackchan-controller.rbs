@@ -1,0 +1,90 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller.rb with RBS::Inline
+
+# Namespace of the StackChan controller; StackChan.controller builds a Controller from a DSL block.
+module StackChan
+  # Builds a Controller by yielding a Controller::Builder to the block.
+  # Raises ArgumentError when no block is given.
+  # : () { (Controller::Builder) -> void } -> Controller
+  def self.controller: () { (Controller::Builder) -> void } -> Controller
+
+  # Declared actions, touch/reply handlers and periodic jobs of one controller application, wired to a Daemon on first use.
+  class Controller
+    @out: ^(String) -> void
+
+    @daemon: Daemon?
+
+    @hold_ms: Integer?
+
+    @periodic: Array[[ Integer, Proc ]]
+
+    @reply_handlers: Array[Proc]
+
+    @touch_handlers: Array[Proc]
+
+    @declared: Hash[Symbol, Hash[Symbol, untyped]]
+
+    BUILTINS: ::Array[::Symbol]
+
+    BUTTONS: ::Array[::Symbol]
+
+    attr_reader declared: Hash[Symbol, Hash[Symbol, untyped]]
+
+    attr_reader touch_handlers: Array[Proc]
+
+    attr_reader reply_handlers: Array[Proc]
+
+    attr_reader periodic: Array[[ Integer, Proc ]]
+
+    attr_accessor hold_ms: Integer?
+
+    # Returns [name, label] pairs for the button built-ins (label nil) followed by the declared actions.
+    # : (Hash[Symbol, Hash[Symbol, untyped]] declared) -> Array[[Symbol, String?]]
+    def self.listing: (Hash[Symbol, Hash[Symbol, untyped]] declared) -> Array[[ Symbol, String? ]]
+
+    # Creates an empty controller and defines the built-in actions as methods.
+    # : () -> void
+    def initialize: () -> void
+
+    # Builds the Link and Daemon over the given central, registers the touch, reply and periodic handlers, and returns the Daemon.
+    # : (central: untyped, ?voice: untyped, ?clock: ^() -> Integer, ?log: ^(String) -> void, ?port: Integer, ?host: String, ?out: ^(String) -> void) -> Daemon
+    def wire: (central: untyped, ?voice: untyped, ?clock: ^() -> Integer, ?log: ^(String) -> void, ?port: Integer, ?host: String, ?out: ^(String) -> void) -> Daemon
+
+    # Starts the daemon over a BLE central (a fake one when name_prefix is "fake") with a dRuby sidecar voice, and blocks until it stops.
+    # : (port: Integer, ?host: String, ?name_prefix: String, ?sidecar_uri: String) -> void
+    def serve: (port: Integer, ?host: String, ?name_prefix: String, ?sidecar_uri: String) -> void
+
+    # Runs the named action on the wired daemon and returns its result Hash (:status is :ok, :busy or :error).
+    # : (Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
+    def act: (Symbol name, ?untyped arg) -> Hash[Symbol, untyped]
+
+    # Returns the [name, label] action list; with an argument, also writes one "name<TAB>label" line per action.
+    # : (?String? arg) -> Array[[Symbol, String?]]
+    def actions: (?String? arg) -> Array[[ Symbol, String? ]]
+
+    # Runs one daemon tick on the wired daemon.
+    # : (?String? _arg) -> untyped
+    def tick: (?String? _arg) -> untyped
+
+    # Defines a singleton method named name that runs the action and prints its result.
+    # : (Symbol name) -> void
+    def define_action: (Symbol name) -> void
+
+    private
+
+    # Returns the singleton class of this controller.
+    # : () -> Class
+    def singleton_class_of: () -> Class
+
+    # Runs the action, writes "busy: ..." or "error: ..." for a non-ok status or the output for an ok one, and returns the result.
+    # : (Symbol name, String? arg) -> Hash[Symbol, untyped]
+    def run_action: (Symbol name, String? arg) -> Hash[Symbol, untyped]
+
+    # Returns the wired daemon, wiring a default Central on first use.
+    # : () -> Daemon
+    def wired: () -> Daemon
+
+    # Writes an Array as one line per element, a Hash as one key=value line, anything else non-nil as its string form.
+    # : (untyped value) -> void
+    def print_out: (untyped value) -> void
+  end
+end

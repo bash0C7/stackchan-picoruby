@@ -1,0 +1,138 @@
+# Generated from lib/deploy/picomodem.rb with RBS::Inline
+
+# Host-side deployment helpers that talk to the board.
+module Deploy
+  # Uploads a file to the board's filesystem over the PicoModem serial protocol of the R2P2 shell.
+  module Picomodem
+    # /home/app.mrb autostarts and never returns; retrying cannot help.
+    # Raised when /home/app.mrb starts and never returns, so the shell never appears.
+    class AutostartBlocked < StandardError
+    end
+
+    # Raised when the board is not enumerated on USB at all.
+    class PortMissing < StandardError
+    end
+
+    STX: ::Integer
+
+    ACK: ::Integer
+
+    FILE_WRITE: ::Integer
+
+    CHUNK: ::Integer
+
+    FILE_ACK: ::Integer
+
+    CHUNK_ACK: ::Integer
+
+    DONE_ACK: ::Integer
+
+    CHUNK_SIZE: ::Integer
+
+    CURSOR_QUERY: ::String
+
+    CURSOR_REPLY: ::String
+
+    DSR_QUERY: ::String
+
+    DSR_REPLY: ::String
+
+    # main_task.rb prints these, in this order, on every boot.
+    APP_AUTOSTART: ::String
+
+    SHELL_BANNER: ::String
+
+    DEFAULT_BOOT_TIMEOUT: ::Float
+
+    DEFAULT_ATTEMPTS: ::Integer
+
+    # The USB-Serial/JTAG CDC endpoint re-enumerates ~0.5-2 s after a reset,
+    # so the handle that issued the reset must be reopened.
+    REENUMERATE_TIMEOUT: ::Float
+
+    # The shell discards input while probing the terminal (read_nonblock in
+    # io-console), so wait for quiescence before offering Ctrl-B.
+    QUIET_SECONDS: ::Float
+
+    QUIET_CAP: ::Float
+
+    # Resets the board, waits for the shell, offers the file write and sends the file in chunks, retrying the handshake up to attempts times.
+    # Returns true. Raises PortMissing, AutostartBlocked or RuntimeError when the board never answers.
+    # : (src: String, dst: String, port: String, ?baud: Integer, ?boot_timeout: Float, ?attempts: Integer, ?stdout: IO) -> true
+    def self?.upload: (src: String, dst: String, port: String, ?baud: Integer, ?boot_timeout: Float, ?attempts: Integer, ?stdout: IO) -> true
+
+    # Returns when the port node exists. Raises PortMissing otherwise.
+    # : (String port) -> void
+    def self?.assert_port_present: (String port) -> void
+
+    # Pulses RTS, waits out re-enumeration, returns [serial, port] (the node
+    # can come back under another name).
+    # Pulses RTS, waits for USB re-enumeration and returns the reopened serial and its port, which may have a new name.
+    # Raises PortMissing when the board does not come back.
+    # : (String port, Integer baud, IO stdout) -> [IO, String]
+    def self?.reset_and_reopen: (String port, Integer baud, IO stdout) -> [ IO, String ]
+
+    # Reads the boot log until the shell announces itself, answering the
+    # editor's terminal queries throughout.
+    # Reads the boot log until the shell banner appears, answering terminal queries, then lets the output settle.
+    # Raises AutostartBlocked when app.mrb loaded but the banner never came, RuntimeError when the board is silent.
+    # : (IO serial, Float boot_timeout, IO stdout) -> void
+    def self?.await_shell: (IO serial, Float boot_timeout, IO stdout) -> void
+
+    # Every sync point is a byte the device emits: "Starting shell" before the
+    # editor loop that reads Ctrl-B, ACK 0x06 once PicoModem.session has a reader.
+    # Returns nil on success or a string describing where it stopped.
+    # Sends Ctrl-B and the FILE_WRITE frame and waits for the ACKs.
+    # Returns nil on success or a string describing where the handshake stopped.
+    # : (IO serial, String payload, IO stdout, Integer attempt) -> String?
+    def self?.offer_file_write: (IO serial, String payload, IO stdout, Integer attempt) -> String?
+
+    # Sends content in CHUNK_SIZE frames, checking each CHUNK_ACK, then checks DONE_ACK.
+    # Raises RuntimeError on a missing or wrong ACK.
+    # : (IO serial, String content, IO stdout) -> void
+    def self?.send_chunks: (IO serial, String content, IO stdout) -> void
+
+    # Returns the CRC-16 (polynomial 0x1021) of data, continuing from crc.
+    # : (String data, ?Integer crc) -> Integer
+    def self?.crc16: (String data, ?Integer crc) -> Integer
+
+    # Returns a PicoModem frame: STX, length, command byte and payload, CRC-16.
+    # : (Integer cmd, ?String payload) -> String
+    def self?.make_frame: (Integer cmd, ?String payload) -> String
+
+    # Returns the monotonic clock in seconds.
+    # : () -> Float
+    def self?.now: () -> Float
+
+    # Reads exactly n bytes, or returns nil when the timeout passes or the stream ends.
+    # : (IO io, Integer n, ?timeout: Float) -> String?
+    def self?.read_exact: (IO io, Integer n, ?timeout: Float) -> String?
+
+    # Reads one frame and returns [command byte, payload], or nil on timeout or CRC mismatch.
+    # : (IO io, ?timeout: Float) -> [Integer, String]?
+    def self?.recv_frame: (IO io, ?timeout: Float) -> [ Integer, String ]?
+
+    # Answer terminal queries until the device has been quiet for QUIET_SECONDS.
+    # Answers terminal queries until the device has been quiet for QUIET_SECONDS.
+    # : (IO serial, IO stdout) -> void
+    def self?.settle: (IO serial, IO stdout) -> void
+
+    # Answers every \e[6n / \e[5n in buf, consuming what it answers.
+    # Returns how many replies were sent.
+    # Answers each cursor-position and status query in buf and removes them from buf. Returns the number of replies sent.
+    # : (IO serial, String buf) -> Integer
+    def self?.answer_queries: (IO serial, String buf) -> Integer
+
+    # Returns up to 512 bytes if readable within timeout, else nil (also when the endpoint goes away).
+    # : (IO io, Float timeout) -> String?
+    def self?.read_available: (IO io, Float timeout) -> String?
+
+    # Reads until the given byte arrives. Returns false when the timeout passes.
+    # : (IO io, Integer byte, timeout: Float) -> bool
+    def self?.wait_for_byte: (IO io, Integer byte, timeout: Float) -> bool
+
+    # Discards whatever the serial port has pending.
+    # : (IO serial) -> void
+    def self?.drain: (IO serial) -> void
+  end
+end

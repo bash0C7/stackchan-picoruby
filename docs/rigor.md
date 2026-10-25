@@ -62,6 +62,10 @@ Not false positives:
 - `test/pc/send_builder_test.rb` passes `:rgb` to `SendBuilder#led` on purpose, to see it
   rejected; the RBS is right that it is outside the colour union.
 - An info that the Gemfile carries gems with no RBS.
+- `def.return-type-mismatch` where the inference loses the shape: a `while true` loop that only
+  leaves through `return` (`CLI#verb_touch`), a `case` over symbols with no `else`
+  (`CLI#calibrate_full`), a Hash filled in a loop (`CLI#parse_kw`) and an Array appended to
+  under `if decoded` (`FrameParser#feed`).
 
 ## Signatures
 
@@ -84,13 +88,13 @@ Two constraints on that list:
 The picoruby paths live under the gitignored `vendor/` checkout, so `rake vendor:setup` must
 have run. That costs nothing: `rake test` already needs the same tree to build the picotest VM.
 
-This repo's own gems carry hand-written `sig/` in the upstream picoruby layout
-(`mrbgems/picoruby-<gem>/sig/*.rbs`), also listed in `signature_paths`. They are hand-written
-rather than generated: `rigor sig-gen` emits only the methods it can fully type and says
-nothing about the rest, writes them to a mirrored
-`sig/<source path>.rbs` instead of the gem's own `sig/`, and with `--params=observed` narrows a
-parameter to whatever one call site happened to pass (`def face: (:smile)`). Useful as a
-cross-check, not as the artifact.
+This repo's own gems carry `sig/generated/` in the upstream picoruby layout
+(`mrbgems/picoruby-<gem>/sig/generated/**/*.rbs`), generated from the `#:` and `# @rbs`
+annotations in `mrblib/` by `rake docs` (see `docs/api/README.md`); the five gems listed in
+`signature_paths` feed rigor. rigor does not read the inline annotations itself because
+`rbs-inline` is not in its gemset, which is the `rbs.coverage.inline-annotations-unsynthesized`
+info in the snapshot. Loading `rbs-inline` there would make rigor read the annotations a
+second time next to `sig/generated`.
 
 Each gem's `sig/` is self-contained. The collaborators the constructors take — the I2C bus,
 the I2S sink, the PY32 expander — are declared as interfaces scoped inside the class

@@ -1,0 +1,30 @@
+# Generated from mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_parser.rb with RBS::Inline
+
+module StackchanProtocol
+  # Splits a byte stream into "<key:value,...>" frames and decodes each into a Hash.
+  # Keeps the last MAX_BUFFER characters of unparsed input.
+  class FrameParser
+    @buffer: String
+
+    MAX_BUFFER: ::Integer
+
+    # Creates a parser with an empty buffer.
+    # : () -> void
+    def initialize: () -> void
+
+    # Appends chunk and returns the Hash of every complete frame now available, in order.
+    # Frames with no key:value pair are dropped.
+    # : (String chunk) -> Array[Hash[String, String]]
+    def feed: (String chunk) -> Array[Hash[String, String]]
+
+    # Discards the buffered input.
+    # : () -> void
+    def reset: () -> void
+
+    private
+
+    # Decodes one "<k:v,k:v>" frame into a Hash, or returns nil when it holds no pair.
+    # : (String raw) -> Hash[String, String]?
+    def decode: (String raw) -> Hash[String, String]?
+  end
+end

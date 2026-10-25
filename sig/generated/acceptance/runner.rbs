@@ -1,0 +1,348 @@
+# Generated from acceptance/runner.rb with RBS::Inline
+
+# Host-side acceptance run of the robot.
+module Acceptance
+  # Raised to end the run with a failed step.
+  class Stop < StandardError
+  end
+
+  # Raised by a step that cannot finish without a person; the step is recorded as incomplete.
+  class Pending < StandardError
+  end
+
+  # Runs the deploy, check and darwin phases of acceptance/lock.yml and builds the report.
+  class Runner
+    @quiet: Integer?
+
+    @report: Hash[String, untyped]
+
+    @may_write: Array[String]
+
+    @rounds: Integer
+
+    @ops: Ops
+
+    @root: String
+
+    @lock: Hash[String, untyped]
+
+    @bundled: Array[String]
+
+    FAULTS: ::Regexp
+
+    STORAGE_OFFSET: ::String
+
+    FACES: untyped
+
+    # 19 JIS X 0208 glyphs: Dispatcher::SUBTITLE_MAX_CHARS, all drawn by blit_glyph.
+    SUBTITLE: ::String
+
+    SAY_TEXT: ::String
+
+    MULTICORE_CHUNK: ::Integer
+
+    BOOT_CAPTURE_S: ::Integer
+
+    DETAIL: ::Regexp
+
+    STACK_FLOOR: ::Integer
+
+    VERIFY_TOLERANCE: ::Integer
+
+    PC_UP_TRIES: ::Integer
+
+    PC_UP_WAIT_S: ::Integer
+
+    RESETS: untyped
+
+    FIRMWARE_WRITES: untyped
+
+    APP_WRITES: untyped
+
+    FIRMWARE_INPUTS: untyped
+
+    QUESTIONS: untyped
+
+    attr_reader report: Hash[String, untyped]
+
+    # Builds a runner over the lock contents, the checkout root, the ops adapter and the app input paths.
+    # : (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
+    def initialize: (lock: Hash[String, untyped], root: String, ops: Ops, bundled: Array[String], ?rounds: Integer, ?stamp: String) -> void
+
+    # Returns the firmware section of the lock.
+    # : () -> Hash[String, untyped]
+    def firmware: () -> Hash[String, untyped]
+
+    # Returns the R2P2-ESP32 checkout path.
+    # : () -> String
+    def r2p2: () -> String
+
+    # Returns the picoruby checkout path inside R2P2-ESP32.
+    # : () -> String
+    def picoruby: () -> String
+
+    # Returns the directory of the fetched gem caches.
+    # : () -> String
+    def repos_dir: () -> String
+
+    # Returns the boot log path.
+    # : () -> String
+    def boot_log: () -> String
+
+    # Returns the R2P2-darwin checkout path.
+    # : () -> String
+    def darwin_dir: () -> String
+
+    # Returns the picoruby checkout path inside R2P2-darwin.
+    # : () -> String
+    def darwin_picoruby: () -> String
+
+    # Returns the ordered deploy steps as [name, body] pairs.
+    # : () -> Array[[String, ^() -> untyped]]
+    def deploy_plan: () -> Array[[ String, ^() -> untyped ]]
+
+    # Returns the ordered check steps as [name, body] pairs.
+    # : () -> Array[[String, ^() -> untyped]]
+    def check_plan: () -> Array[[ String, ^() -> untyped ]]
+
+    # Pins the trees, builds and flashes the firmware, then sends the app. Returns the report. Raises Stop when the report already has a deploy.
+    # : () -> Hash[String, untyped]
+    def deploy: () -> Hash[String, untyped]
+
+    # Re-sends only the app after a finished firmware deploy. Returns the report. Raises Stop when the firmware pins or inputs moved.
+    # : () -> Hash[String, untyped]
+    def upload_app: () -> Hash[String, untyped]
+
+    # Uploads the lock's app with app writes allowed and records the commit it came from. Returns "ok".
+    # : () -> String
+    def app_upload: () -> String
+
+    # Runs the check steps, optionally starting at step from and keeping the earlier steps of the previous check. Returns the report. Raises Stop without a finished deploy.
+    # : (?from: String?) -> Hash[String, untyped]
+    def check: (?from: String?) -> Hash[String, untyped]
+
+    # Returns the SHA-256 of the firmware pins.
+    # : () -> String
+    def lock_digest: () -> String
+
+    # Returns the paths whose change alters the app on the board.
+    # : () -> Array[String]
+    def app_inputs: () -> Array[String]
+
+    # Raises Stop when the firmware pins or inputs (and the app inputs when app) differ from what the deploy used.
+    # : (?app: bool) -> void
+    def same_tree!: (?app: bool) -> void
+
+    # Returns the paths whose tree at commit differs from HEAD. Raises Stop when the checkout has local changes there.
+    # : (String commit, Array[String] paths) -> Array[String]
+    def moved_since: (String commit, Array[String] paths) -> Array[String]
+
+    # Returns the tree id of path at commit, or nil when absent.
+    # : (String commit, String path) -> String?
+    def tree: (String commit, String path) -> String?
+
+    # Returns whether the report has a deploy whose steps all finished ok.
+    # : () -> bool?
+    def deployed?: () -> bool?
+
+    # Yields, sets the verdict, and returns the report; a Stop sets the verdict to fail.
+    # : () { () -> void } -> Hash[String, untyped]
+    def settle: () { () -> void } -> Hash[String, untyped]
+
+    # Checks out the R2P2-darwin pins and returns a summary line.
+    # : () -> String
+    def pin_darwin: () -> String
+
+    # Raises Stop unless the R2P2-darwin checkouts are at their pins.
+    # : () -> String
+    def darwin_pins_hold!: () -> String
+
+    BUILT_APPS: untyped
+
+    APP_CONNECTED: ::String
+
+    APP_END: ::String
+
+    APP_BATCH_LIMIT_S: ::Integer
+
+    STOPPED_MARK: ::String
+
+    APP_WANTS: untyped
+
+    # Builds the iOS and watchOS apps, runs the iPhone batch and the Mac to iPhone to Mac hand-off. Returns the report.
+    # : () -> Hash[String, untyped]
+    def run_darwin: () -> Hash[String, untyped]
+
+    # Runs the batch lines on the iPhone and returns [console output, seconds]. Raises Stop on failure or timeout.
+    # : (String lines) -> [String, Float]
+    def app_batch!: (String lines) -> [ String, Float ]
+
+    # Raises Stop unless out contains line as a whole line.
+    # : (String out, String line) -> void
+    def want!: (String out, String line) -> void
+
+    # Hands the robot Mac to iPhone to Mac, records the timings in d, and returns a summary line.
+    # : (Hash[String, untyped] d) -> String
+    def apple_hand_off: (Hash[String, untyped] d) -> String
+
+    # Re-runs only the touch step of the check and replaces it in the report. Returns the report. Raises Stop without a check.
+    # : () -> Hash[String, untyped]
+    def run_touch: () -> Hash[String, untyped]
+
+    # Asks every question the check left unanswered (it ran without a TTY).
+    # Asks every check question that is still unanswered. Returns the report.
+    # : () -> Hash[String, untyped]
+    def answer: () -> Hash[String, untyped]
+
+    # Returns "pass", "fail" or "incomplete" from the steps and the answers.
+    # : () -> String
+    def verdict: () -> String
+
+    # Checks out the pinned trees and returns a summary line. Raises Stop when HEAD is missing or a tree has local changes.
+    # : () -> String
+    def pin_trees: () -> String
+
+    # mruby's gem loader clones a missing gem at its branch tip and never pulls
+    # an existing one, so each cache is put at its sha before anything builds.
+    # A moved checkout keeps its old commit on a keep-<sha> branch.
+    # Puts the fetched gem cache name at sha want, keeping a moved commit on a keep-<sha> branch.
+    # : (String name, String want) -> void
+    def pin_cache: (String name, String want) -> void
+
+    # Raises Stop unless every pinned tree is at its pin and clean. Returns "all pins hold".
+    # : (aot: bool, ?root: bool) -> String
+    def verify: (aot: bool, ?root: bool) -> String
+
+    # Fetches and checks out sha in dir detached. Returns the short sha.
+    # : (String dir, String sha) -> String
+    def checkout: (String dir, String sha) -> String
+
+    # Returns the HEAD sha of dir, or nil.
+    # : (String dir) -> String?
+    def head: (String dir) -> String?
+
+    # Returns the short sha of want. Raises Stop unless HEAD of dir is want.
+    # : (String dir, String want) -> String
+    def head_is!: (String dir, String want) -> String
+
+    # Raises Stop when dir (limited to paths) has local changes.
+    # : (String dir, *String paths) -> void
+    def clean!: (String dir, *String paths) -> void
+
+    # Reads the flash identity and returns a summary line. Raises Stop unless the storage offset and App version match the pins.
+    # : () -> String
+    def flash_identity: () -> String
+
+    # Resets the board, captures the boot log and checks for faults and the boot markers. Returns a summary line. Raises Stop on a fault or a missing marker.
+    # : () -> String
+    def boot: () -> String
+
+    # Runs pc:up until it succeeds. Returns a summary line. Raises Stop after PC_UP_TRIES failures.
+    # : () -> String
+    def pc_up: () -> String
+
+    # Returns the actual-position detail in out. Raises Stop when there is none.
+    # : (String out) -> String
+    def detail!: (String out) -> String
+
+    # Speaks SAY_TEXT and returns the byte count. Raises Stop when the clip is too short.
+    # : () -> String
+    def say: () -> String
+
+    # Returns the servo health reply of the robot.
+    # : () -> String
+    def servo_health: () -> String
+
+    # Records the last connect time in the check timings.
+    # : () -> Array[Integer]?
+    def record_connect_ms: () -> Array[Integer]?
+
+    # Returns the free robot stack. Raises Stop below STACK_FLOOR.
+    # : () -> String
+    def stack_high_water: () -> String
+
+    # Times servo, face, led and text commands for the configured rounds into the check timings. Returns a summary line.
+    # : () -> String
+    def measure: () -> String
+
+    # Asks the operator every question and records the answers. Returns a summary line.
+    # : () -> String
+    def ask: () -> String
+
+    # Returns the memoized quiet wait in seconds.
+    # : () -> Integer
+    def quiet: () -> Integer
+
+    # Returns the seconds the link needs to release, from hold_ms and release_after. Raises Stop when either is missing.
+    # : () -> Integer
+    def quiet_wait_s: () -> Integer
+
+    # Returns the key=value fields of `stackchan status`. Raises Stop without a link line.
+    # : () -> Hash[String, String]
+    def status: () -> Hash[String, String]
+
+    # Waits for a head touch. Returns the touch line. Raises Pending without a TTY or a touch, Stop on failure.
+    # : () -> String
+    def touch: () -> String
+
+    # Runs calibration and checks the zeros and the forward verify. Returns a summary line. Raises Stop on failure.
+    # : () -> String
+    def calibrate: () -> String
+
+    # Sends a chat prompt and checks for a real sidecar reply. Returns the reply line. Raises Stop otherwise.
+    # : () -> String
+    def chat: () -> String
+
+    # Waits for the link to release, sends a face to reconnect, and checks one new connect. Returns a summary line.
+    # : () -> String
+    def release_and_reconnect: () -> String
+
+    # Sends a face and returns the seconds taken. Raises Stop with why on failure.
+    # : (String face, Hash[String, String] env, String why) -> Float
+    def face!: (String face, Hash[String, String] env, String why) -> Float
+
+    # Runs the block and appends its result to part's steps; Pending records an incomplete step, Stop a failed step and re-raises.
+    # : (Hash[String, untyped] part, String name) { () -> untyped } -> void
+    def step: (Hash[String, untyped] part, String name) { () -> untyped } -> void
+
+    # Returns the output of git in dir. Raises Stop on failure.
+    # : (String dir, *String args) -> String
+    def git!: (String dir, *String args) -> String
+
+    # Runs a rake task through ops, refusing flash writes outside the allowed phases. Returns [success, output, 0].
+    # : (Array[String] tasks, Hash[String, String?] env, ?Numeric? limit) -> [bool, String, Integer]
+    def run_rake: (Array[String] tasks, Hash[String, String?] env, ?Numeric? limit) -> [ bool, String, Integer ]
+
+    # Runs a rake task and returns "ok". Raises Stop on failure.
+    # : (*String tasks, ?env: Hash[String, String?]) -> String
+    def rake: (*String tasks, ?env: Hash[String, String?]) -> String
+
+    # Runs a rake task and returns its output. Raises Stop on failure.
+    # : (*String tasks, ?env: Hash[String, String?]) -> String
+    def rake_out: (*String tasks, ?env: Hash[String, String?]) -> String
+
+    # Runs the stackchan CLI and returns its output. Raises Stop on failure.
+    # : (*String args) -> String
+    def cli!: (*String args) -> String
+
+    # Runs the stackchan CLI and returns the seconds taken. Raises Stop on failure.
+    # : (*String args) -> Float
+    def timed!: (*String args) -> Float
+
+    # Returns the median of xs, or nil when empty.
+    # : (Array[Numeric] xs) -> Numeric?
+    def self.median: (Array[Numeric] xs) -> Numeric?
+
+    # Returns the report label of a step.
+    # : (Hash[String, untyped] s) -> String
+    def mark: (Hash[String, untyped] s) -> String
+
+    # Returns the Markdown table of part's steps under title.
+    # : (String title, Hash[String, untyped] part) -> String
+    def table: (String title, Hash[String, untyped] part) -> String
+
+    # Returns the report as Markdown.
+    # : () -> String
+    def markdown: () -> String
+  end
+end

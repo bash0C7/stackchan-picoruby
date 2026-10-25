@@ -1,5 +1,6 @@
 module StackChan
   class Robot
+    # Face geometry (eyes, mouth, brows) and its drawing on the LCD.
     class Face
       EYE_LEFT_CX  = 110
       EYE_LEFT_CY  = 100
@@ -40,8 +41,13 @@ module StackChan
       MOUTH_BAND_Y = MOUTH_CY - MOUTH_MAX_RISE - FEATURE_MARGIN
       MOUTH_BAND_H = (MOUTH_CY + SURPRISED_MOUTH_HALF_H + FEATURE_MARGIN) - MOUTH_BAND_Y
 
-      attr_reader :eyes, :mouth, :brows
+      attr_reader :eyes #: Symbol
+      attr_reader :mouth #: (Symbol | Integer)
+      attr_reader :brows #: Symbol?
 
+      # Validates and stores the geometry: eyes :open or :closed, mouth :open, :none or an Integer curve, brows nil or :angry.
+      # Raises ArgumentError for any other value.
+      #: (?eyes: Symbol, ?mouth: (Symbol | Integer), ?brows: Symbol?) -> void
       def initialize(eyes: :open, mouth: 0, brows: nil)
         unless eyes == :open || eyes == :closed
           raise ArgumentError, "eyes: #{eyes.inspect}"
@@ -57,6 +63,8 @@ module StackChan
         @brows = brows
       end
 
+      # Draws the open or closed eyes.
+      #: (_Display display) -> void
       def draw_eyes(display)
         if @eyes == :closed
           draw_closed_eyes(display)
@@ -66,6 +74,8 @@ module StackChan
         end
       end
 
+      # Draws the mouth; draws nothing for :none.
+      #: (_Display display) -> void
       def draw_mouth(display)
         if @mouth == :none
           return
@@ -90,11 +100,15 @@ module StackChan
         end
       end
 
+      # Clears the face region and draws every feature.
+      #: (_Display display) -> void
       def draw(display)
         display.draw_rect(0, 0, 320, FACE_REGION_HEIGHT, BACKGROUND_COLOR, fill: true)
         draw_features(display)
       end
 
+      # Draws eyes, mouth and brows without clearing.
+      #: (_Display display) -> void
       def draw_features(display)
         draw_eyes(display)
         draw_mouth(display)
@@ -112,6 +126,8 @@ module StackChan
         end
       end
 
+      # Clears the eye and mouth bands and draws every feature.
+      #: (_Display display) -> void
       def redraw(display)
         display.draw_rect(EYE_BAND_X, EYE_BAND_Y, EYE_BAND_W, EYE_BAND_H,
                           BACKGROUND_COLOR, fill: true)
@@ -120,6 +136,8 @@ module StackChan
         draw_features(display)
       end
 
+      # Fills both eye regions with the background color.
+      #: (_Display display) -> void
       def clear_eye_region(display)
         display.draw_rect(EYE_LEFT_CX  - EYE_REGION_HALF_W, EYE_LEFT_CY  - EYE_REGION_HALF_H,
                           EYE_REGION_HALF_W * 2, EYE_REGION_HALF_H * 2,
@@ -129,16 +147,22 @@ module StackChan
                           BACKGROUND_COLOR, fill: true)
       end
 
+      # Clears the eye regions and draws open eyes.
+      #: (_Display display) -> void
       def redraw_eyes_open(display)
         clear_eye_region(display)
         draw_eyes(display)
       end
 
+      # Clears the eye regions and draws closed eyes.
+      #: (_Display display) -> void
       def redraw_eyes_closed(display)
         clear_eye_region(display)
         draw_closed_eyes(display)
       end
 
+      # Draws a horizontal line over each eye position.
+      #: (_Display display) -> void
       def draw_closed_eyes(display)
         display.draw_line(
           EYE_LEFT_CX - CLOSED_EYE_HALF_W, EYE_LEFT_CY,

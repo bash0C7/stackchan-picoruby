@@ -1,0 +1,49 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/handle.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # The robot API passed to app callbacks (touch, periodic, boot, remote handlers).
+    # Forwards to the Dispatcher, the LED driver and the Ticker.
+    class Handle
+      @dispatcher: Dispatcher
+
+      @display: untyped
+
+      @led: untyped
+
+      @speaker: untyped
+
+      @ticker: Ticker?
+
+      attr_accessor ticker: Ticker?
+
+      # Stores the collaborators. head: is accepted and not stored.
+      # : (dispatcher: Dispatcher, display: untyped, led: untyped, ?head: untyped, ?speaker: untyped) -> void
+      def initialize: (dispatcher: Dispatcher, display: untyped, led: untyped, ?head: untyped, ?speaker: untyped) -> void
+
+      # Shows the named face. Returns false when the face is not defined.
+      # : (Symbol name) -> bool
+      def face: (Symbol name) -> bool
+
+      # Sets the LED animation for a side, or flashes it when flash: (ms) is given. Returns true.
+      # : (Symbol side, Array[Integer] rgb, ?mode: Symbol, ?flash: Integer?) -> bool
+      def led: (Symbol side, Array[Integer] rgb, ?mode: Symbol, ?flash: Integer?) -> bool
+
+      # Moves the head to normalized 0..100 positions over time ms. Returns false for out-of-range or empty requests.
+      # : (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time: Integer) -> bool
+      def head: (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time: Integer) -> bool
+
+      # Draws s as the subtitle band. Returns false when s is nil.
+      # : (String? s) -> bool
+      def text: (String? s) -> bool
+
+      # Draws the current face with closed eyes and schedules them to reopen after closed_ms. Returns true.
+      # : (Integer closed_ms) -> bool
+      def blink: (Integer closed_ms) -> bool
+
+      # Returns true when a speaker is attached.
+      # : () -> bool
+      def say_ready?: () -> bool
+    end
+  end
+end

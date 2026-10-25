@@ -1,5 +1,6 @@
 module StackChan
   class Robot
+    # Executes one parsed frame against the display, LEDs and head and writes the ACK or error reply.
     class Dispatcher
       ERROR_FRAME = "?\n"
       ACK_FRAME   = ".\n"
@@ -26,8 +27,11 @@ module StackChan
       SUBTITLE_FG          = 0xFFFF
       SUBTITLE_BG          = 0x0000
 
-      attr_reader :current_face, :robot_handle
+      attr_reader :current_face #: Face
+      attr_reader :robot_handle #: Handle
 
+      # Requires :neutral and :closed in faces (raises ArgumentError otherwise) and creates the robot handle.
+      #: (display: _Display, led: StackchanLed, ?stdout: _Writer, ?head: Head?, ?speaker: AW88298?, faces: Hash[Symbol, Face], face_index: Hash[String, Symbol], ?frame_handlers: Hash[String, frame_handler]) -> void
       def initialize(display:, led:, stdout: $stdout, head: nil, speaker: nil,
                      faces:, face_index:, frame_handlers: {})
         raise ArgumentError, "faces: :neutral missing" unless faces[:neutral]
@@ -43,6 +47,9 @@ module StackChan
         @robot_handle = Handle.new(dispatcher: self, display: display, led: led, head: head, speaker: speaker)
       end
 
+      # Runs the frame (torque, selftest, read, or face/led/text/head/custom keys) and writes the reply to stdout.
+      # Writes the error reply instead when a step fails or raises.
+      #: (frame frame) -> void
       def handle(frame)
         return handle_torque(frame)   if frame.key?("torque")
         return handle_selftest(frame) if frame.key?("selftest")
@@ -62,6 +69,8 @@ module StackChan
         @stdout.write(ERROR_FRAME)
       end
 
+      # Runs handle with sink as stdout for this call and restores the previous stdout.
+      #: (frame frame, _Writer sink) -> void
       def handle_to(frame, sink)
         saved = @stdout
         @stdout = sink
@@ -70,6 +79,8 @@ module StackChan
         @stdout = saved
       end
 
+      # Makes the named face current and redraws it. Returns false for an unknown name.
+      #: (Symbol name) -> bool
       def show_face(name)
         face = @faces[name]
         return false unless face
@@ -78,6 +89,8 @@ module StackChan
         true
       end
 
+      # Draws text, cut to the subtitle width, in the subtitle band. Returns false when text is nil.
+      #: (String? text) -> bool
       def draw_subtitle(text)
         return false unless text
         text = text[0, SUBTITLE_MAX_CHARS]
@@ -88,6 +101,9 @@ module StackChan
         true
       end
 
+      # Converts 0..100 positions to raw servo targets and applies them. Returns false when a value is out of range or none is given.
+      # Returns true without moving when there is no head.
+      #: (Integer? yaw_left, Integer? yaw_right, Integer? pitch_up, Integer time_ms, Integer velocity) -> bool
       def move_head(yaw_left, yaw_right, pitch_up, time_ms, velocity)
         yaw_raw   = nil
         pitch_raw = nil
@@ -113,12 +129,16 @@ module StackChan
 
       private
 
+      # Shows the face mapped from the F value. Returns false when unmapped.
+      #: (frame frame) -> bool
       def handle_face(frame)
         name = @face_index[frame["F"]]
         return false unless name
         show_face(name)
       end
 
+      # Calls the registered handler of every frame key and returns false if any handler returned falsy.
+      #: (frame frame) -> bool
       def run_frame_handlers(frame)
         ok = true
         keys = frame.keys
@@ -131,10 +151,14 @@ module StackChan
         ok
       end
 
+      # Draws the text value as subtitle.
+      #: (frame frame) -> bool
       def handle_text(frame)
         draw_subtitle(frame["text"])
       end
 
+      # Switches servo torque on (neutral face) or off (closed face) and writes ACK; any other value writes the error reply.
+      #: (frame frame) -> void
       def handle_torque(frame)
         case frame["torque"]
         when "on"
@@ -150,6 +174,8 @@ module StackChan
         end
       end
 
+      # Runs the head self test and writes ACK plus the servo detail. Writes the error reply for another value or without a head.
+      #: (frame frame) -> void
       def handle_selftest(frame)
         unless frame["selftest"] == "run"
           @stdout.write(ERROR_FRAME)
@@ -164,6 +190,8 @@ module StackChan
         emit_servo_detail
       end
 
+      # Writes ACK and the raw yaw and pitch positions. Writes the error reply for another value or without a head.
+      #: (frame frame) -> void
       def handle_read_pos(frame)
         unless frame["read"] == "pos"
           @stdout.write(ERROR_FRAME)
@@ -182,6 +210,8 @@ module StackChan
         @stdout.write("<#{yaw_part},#{pitch_part}>\n")
       end
 
+      # Applies mode M, side S and color R/G/B to the LEDs. Returns false for an unknown mode or side.
+      #: (frame frame) -> bool
       def handle_led(frame)
         mode = MODE_TABLE[frame["M"]]
         return false unless mode
@@ -194,6 +224,8 @@ module StackChan
         true
       end
 
+      # Moves the head from the YL, YR, PU, T and V values.
+      #: (frame frame) -> bool
       def handle_head(frame)
         move_head(
           frame.key?("YL") ? frame["YL"].to_i : nil,
@@ -204,6 +236,8 @@ module StackChan
         )
       end
 
+      # Writes the actual yaw and pitch as 0..100 values, or unknown when unreadable or without a head.
+      #: () -> void
       def emit_servo_detail
         if @head.nil?
           @stdout.write("<YL_actual:unknown,PU_actual:unknown>\n")

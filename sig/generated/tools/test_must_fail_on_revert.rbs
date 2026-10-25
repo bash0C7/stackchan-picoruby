@@ -1,0 +1,9 @@
+# Generated from tools/test_must_fail_on_revert.rb with RBS::Inline
+
+ROOT: untyped
+
+TEST_DIRS: untyped
+
+TEST_FILE: ::Regexp
+
+PROJECT_ROOT: untyped

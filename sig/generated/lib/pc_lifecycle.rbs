@@ -1,0 +1,95 @@
+# Generated from lib/pc_lifecycle.rb with RBS::Inline
+
+# Starts and stops the PC sidecar and daemon as launchd jobs and verifies the daemon's status.
+class PcLifecycle
+  @clock: ^() -> Time
+
+  @sleep_fn: ^(Numeric) -> untyped
+
+  @verifier: ^(Integer) -> Hash[Symbol, untyped]?
+
+  @releaser: ^(Integer, Numeric) -> String?
+
+  @waiter: ^(Integer, Numeric) -> bool
+
+  @runner: ^(*String) -> [ String, bool ]
+
+  @dir: String
+
+  @c: Hash[Symbol, untyped]
+
+  # Raised when a job cannot be started, never listens, or reports an unhealthy status.
+  class Error < StandardError
+  end
+
+  SIDECAR_WAIT_S: ::Integer
+
+  DAEMON_WAIT_S: ::Integer
+
+  UNLOAD_WAIT_S: ::Integer
+
+  RELEASE_WAIT_S: ::Integer
+
+  STATUS_WAIT_S: ::Integer
+
+  # Stores the config hash and the collaborators; each defaults to the real launchctl, lsof and DRb implementation.
+  # : (Hash[Symbol, untyped] config, dir: String, ?runner: ^(*String) -> [String, bool]?, ?waiter: ^(Integer, Numeric) -> bool?, ?releaser: ^(Integer, Numeric) -> String?, ?verifier: ^(Integer) -> Hash[Symbol, untyped]?, ?sleep_fn: ^(Numeric) -> untyped, ?clock_fn: ^() -> Time) -> void
+  def initialize: (Hash[Symbol, untyped] config, dir: String, ?runner: ^(*String) -> [ String, bool ]?, ?waiter: ^(Integer, Numeric) -> bool?, ?releaser: ^(Integer, Numeric) -> String?, ?verifier: ^(Integer) -> Hash[Symbol, untyped]?, ?sleep_fn: ^(Numeric) -> untyped, ?clock_fn: ^() -> Time) -> void
+
+  # Boots out and bootstraps the sidecar, then the daemon, waits for each port to listen and returns the daemon status hash.
+  # Raises Error when the app bundle is missing, a port stays silent, the status does not answer, or the robot is not connected.
+  # : () -> Hash[Symbol, untyped]
+  def up: () -> Hash[Symbol, untyped]
+
+  # Boots out the sidecar and daemon jobs and deletes their plists.
+  # : () -> void
+  def down: () -> void
+
+  private
+
+  # bootout then bootstrap, never kickstart: kickstart reuses the cached plist.
+  # Boots out the job, waits until it is unloaded and its port is free, writes its plist and bootstraps it.
+  # Raises Error when the label stays loaded, the port stays held, or bootstrap fails.
+  # : (Hash[String, untyped] job, Integer port) -> void
+  def start: (Hash[String, untyped] job, Integer port) -> void
+
+  # Returns the status when the daemon is connected to the robot (or busy with allow_busy); raises Error otherwise.
+  # : (Hash[Symbol, untyped] status) -> Hash[Symbol, untyped]
+  def check_status: (Hash[Symbol, untyped] status) -> Hash[Symbol, untyped]
+
+  # Returns the launchctl domain target gui/<uid>/<label>.
+  # : (String label) -> String
+  def domain: (String label) -> String
+
+  # Runs a command and returns its combined output and whether it exited successfully.
+  # : (*String argv) -> [String, bool]
+  def run_command: (*String argv) -> [ String, bool ]
+
+  # Asks the kernel who is listening rather than connecting. A connect-and-close
+  # probe leaves an abandoned connection on the daemon's drb port, and the daemon
+  # cannot service it while its own startup blocks on the sidecar -- PicoRuby
+  # Tasks are cooperative. When it finally does, it writes to a socket whose peer
+  # is gone and takes SIGPIPE, which its VM cannot trap: Signal.list carries no
+  # PIPE and every Signal.trap form raises SystemStackError. Probing without
+  # connecting is the only place this is fixable from here.
+  # Polls lsof until port has a listener or timeout_s passes; never connects to the port. Returns true when listening.
+  # : (Integer port, Numeric timeout_s) -> bool
+  def wait_for_port: (Integer port, Numeric timeout_s) -> bool
+
+  # Returns true when lsof shows a listener on the TCP port.
+  # : (Integer port) -> bool
+  def port_listening?: (Integer port) -> bool
+
+  # Polls launchctl print until label is gone or the unload grace passes. Returns true when unloaded.
+  # : (String label) -> bool
+  def wait_until_unloaded: (String label) -> bool
+
+  # nil once nothing listens; otherwise lsof's line for who still does.
+  # Polls lsof until nothing listens on port or timeout_s passes. Returns nil when free, else lsof's output for the holder.
+  # : (Integer port, Numeric timeout_s) -> String?
+  def wait_for_port_release: (Integer port, Numeric timeout_s) -> String?
+
+  # Asks the daemon over DRb for its status hash; returns nil when it errors or does not answer within the status wait.
+  # : (Integer port) -> Hash[Symbol, untyped]?
+  def daemon_status: (Integer port) -> Hash[Symbol, untyped]?
+end

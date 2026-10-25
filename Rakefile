@@ -127,8 +127,43 @@ namespace :rigor do
   end
 end
 
-desc "Run all PicoRuby-native suites (alias of picotest:run), gated on rigor"
-task :test => ["rigor:check", "picotest:run"]
+DOCS_TOOL_VERSION = ENV["RBS_INLINE_VERSION"] || "0.14.0"
+DOCS_ROOT         = File.expand_path("vendor/docs-tool", __dir__)
+DOCS_ENV          = { "GEM_HOME" => DOCS_ROOT, "GEM_PATH" => DOCS_ROOT }
+
+namespace :docs do
+  desc "Install rbs-inline RBS_INLINE_VERSION into vendor/docs-tool (skip if that version is present)"
+  task :setup do
+    next if File.exist?(File.join(DOCS_ROOT, "specifications", "rbs-inline-#{DOCS_TOOL_VERSION}.gemspec"))
+    unbundled { sh DOCS_ENV, "gem", "install", "rbs-inline", "-v", DOCS_TOOL_VERSION, "--no-document" }
+  end
+
+  desc "Regenerate sig/generated (rbs-inline) and the API sections of mrbgems/*/README.md and docs/api/*.md"
+  task generate: :setup do
+    unbundled { sh DOCS_ENV, "ruby", "tools/api_docs.rb", "generate" }
+  end
+
+  desc "Fail on a missing description or signature, or on generated sig and docs that are out of date. ONLY=<substring> filters"
+  task check: :setup do
+    unbundled { sh DOCS_ENV, "ruby", "tools/api_docs.rb", "check" }
+  end
+
+  desc "Validate the mrbgems sig with rbs next to the picoruby sig of .rigor.dist.yml; errors inside vendor/ are not this repo's"
+  task validate: :setup do
+    config = YAML.load_file(File.expand_path(".rigor.dist.yml", __dir__))
+    dirs = (config["signature_paths"] || []).reject { |d| d.start_with?("mrbgems/") } + Dir["mrbgems/*/sig"].sort
+    out, = unbundled { Open3.capture2e(DOCS_ENV, File.join(DOCS_ROOT, "bin", "rbs"), *dirs.flat_map { |d| ["-I", d] }, "validate") }
+    own = out.gsub(/\e\[[0-9;]*m/, "").lines.select { |l| l.include?("ERROR") && !l.include?("vendor/") }.uniq
+    abort "docs: #{own.size} rbs error(s) in this repo's sig\n#{own.join}" unless own.empty?
+    puts "docs: rbs validate ok (errors inside vendor/ picoruby sig are ignored)"
+  end
+end
+
+desc "Regenerate every API document (sig/generated, mrbgems READMEs, docs/api)"
+task docs: "docs:generate"
+
+desc "Run all PicoRuby-native suites (alias of picotest:run), gated on docs and rigor"
+task :test => ["docs:check", "rigor:check", "picotest:run"]
 
 namespace :test do
   desc "Run CRuby-only host tests (test-host/*_test.rb)"

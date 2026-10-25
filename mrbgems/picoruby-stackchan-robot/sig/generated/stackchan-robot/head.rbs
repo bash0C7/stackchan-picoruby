@@ -1,0 +1,44 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/head.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # The yaw and pitch servo pair. Takes raw servo positions and reads them back.
+    class Head
+      YAW_RANGE_RAW: ::Integer
+
+      PITCH_RANGE_RAW: ::Integer
+
+      SERVO_YAW_ZERO: ::Integer
+
+      SERVO_PITCH_ZERO: ::Integer
+
+      @yaw: untyped
+
+      @pitch: untyped
+
+      # Stores the yaw and pitch servos.
+      # : (untyped yaw_servo, untyped pitch_servo) -> void
+      def initialize: (untyped yaw_servo, untyped pitch_servo) -> void
+
+      # Writes the given raw positions (nil skips that axis) with time_ms and velocity.
+      # : (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> untyped
+      def apply: (?yaw_raw: Integer?, ?pitch_raw: Integer?, ?time_ms: Integer, ?velocity: Integer) -> untyped
+
+      # Switches torque on both servos.
+      # : (bool on) -> untyped
+      def enable_torque: (bool on) -> untyped
+
+      # Reads the current raw position of each servo.
+      # : () -> Hash[Symbol, untyped]
+      def read_actual: () -> Hash[Symbol, untyped]
+
+      # Returns each servo's last read error and status byte as [error, status].
+      # : () -> Hash[Symbol, Array[untyped]]
+      def read_health: () -> Hash[Symbol, Array[untyped]]
+
+      # Wiggles the yaw servo by 10 raw units each way and back to zero.
+      # : () -> untyped
+      def selftest: () -> untyped
+    end
+  end
+end

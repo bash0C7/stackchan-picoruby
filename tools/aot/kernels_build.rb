@@ -16,6 +16,8 @@ LIB   = "stackchan_aot"
 KDIR  = File.join(ROOT, "aot", "kernels")
 AOT   = File.join(ROOT, "build", "aot")
 
+# Prints msg to stderr and exits with status 2.
+#: (String msg) -> bot
 def die(msg)
   warn "kernels_build: #{msg}"
   exit 2

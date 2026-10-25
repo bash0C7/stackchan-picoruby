@@ -1,0 +1,46 @@
+# Generated from mrbgems/picoruby-si12t/mrblib/si12t.rb with RBS::Inline
+
+# Driver for the Si12T capacitive touch sensor with three head zones on I2C.
+# Reports a touch once per press as the strongest zone index.
+class Si12T
+  interface _Bus
+    def write: (Integer i2c_adrs_7, *Integer | String | Array[Integer] outputs) -> Integer
+
+    def read: (Integer i2c_adrs_7, Integer len, *Integer | String | Array[Integer] outputs) -> String
+  end
+
+  @i2c: _Bus
+
+  @prev_touched: bool
+
+  ADDR: ::Integer
+
+  REG_CTRL1: ::Integer
+
+  REG_CTRL2: ::Integer
+
+  REG_OUTPUT1: ::Integer
+
+  ENABLE_REGS: untyped
+
+  SENS_REGS: untyped
+
+  ZONE_COUNT: ::Integer
+
+  # Creates a driver over the I2C bus and initializes the sensor.
+  # : (_Bus i2c) -> void
+  def initialize: (_Bus i2c) -> void
+
+  # Writes the enable, control and sensitivity registers.
+  # : () -> void
+  def init_sensor: () -> void
+
+  # Reads the output register and returns the 2-bit strength of each of the three zones.
+  # : () -> Array[Integer]
+  def read_zones: () -> Array[Integer]
+
+  # Returns the index of the strongest zone when a touch starts, otherwise nil.
+  # A held touch does not report again until it is released.
+  # : () -> Integer?
+  def poll: () -> Integer?
+end

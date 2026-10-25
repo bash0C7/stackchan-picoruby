@@ -1,0 +1,66 @@
+# Generated from lib/qemu_gate.rb with RBS::Inline
+
+# Pins the Espressif QEMU build and decides from a boot log whether a firmware image boots.
+module QemuGate
+  QEMU_VERSION: ::String
+
+  QEMU_RELEASE_TAG: ::String
+
+  PINS: untyped
+
+  FAIL_PATTERNS: untyped
+
+  ERROR_CLASS_PATTERN: ::Regexp
+
+  MARKER: ::String
+
+  SHELL_PROMPT: ::String
+
+  # Result of a boot-log judgement: pass flag, message, and whether the verdict is final.
+  class Verdict < Struct[bool | String]
+    attr_accessor pass(): bool
+
+    attr_accessor message(): String
+
+    attr_accessor decided(): bool
+
+    def self.new: (?bool pass, ?String message, ?bool decided) -> instance
+                | (?pass: bool, ?message: String, ?decided: bool) -> instance
+  end
+
+  FLASH_CONSOLE_DEFINE: ::String
+
+  # Returns the PINS key for the host OS and CPU.
+  # Raises RuntimeError for an unsupported host.
+  # : (host_os: String, host_cpu: String) -> String
+  def self?.platform: (host_os: String, host_cpu: String) -> String
+
+  # Returns the 1024-byte eFuse image that lets the ESP32-S3 boot under QEMU.
+  # : () -> String
+  def self?.efuse_image: () -> String
+
+  # Returns the qemu-system-xtensa command line that boots flash with serial output written to log.
+  # : (qemu: String, flash: String, efuse: String, log: String) -> Array[String]
+  def self?.argv: (qemu: String, flash: String, efuse: String, log: String) -> Array[String]
+
+  # Replaces the usb_console entry of a semicolon-separated sdkconfig list with fragment_path.
+  # : (String cores3_list, String fragment_path) -> String
+  def self?.sdkconfig_defaults: (String cores3_list, String fragment_path) -> String
+
+  # Returns the top-level `require 'name'` lines of the Ruby file at path.
+  # Raises RuntimeError when the file does not parse.
+  # : (String path) -> Array[String]
+  def self?.top_level_requires: (String path) -> Array[String]
+
+  # Returns the Ruby source the QEMU probe runs: requires, gem sources, a stubbed Robot#run, the application and a frame parser round trip.
+  # : (application: String, gem_sources: Array[String]) -> String
+  def self?.probe_source: (application: String, gem_sources: Array[String]) -> String
+
+  # Judges a serial log: fails on panic or error lines, passes when the marker is followed by the shell prompt.
+  # : (String? log) -> Verdict
+  def self?.verdict: (String? log) -> Verdict
+
+  # Returns true when the sdkconfig header selects the USB Serial/JTAG console.
+  # : (String? sdkconfig_h) -> bool
+  def self?.flash_console_ok?: (String? sdkconfig_h) -> bool
+end
