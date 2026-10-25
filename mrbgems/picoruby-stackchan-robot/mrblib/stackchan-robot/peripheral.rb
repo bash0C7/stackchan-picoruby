@@ -1,5 +1,6 @@
 module StackChan
   class Robot
+    # The BLE peripheral. Builds the advertising data and GATT table, wires the robot and runs the link loop.
     class Peripheral < BLE
       AD_TYPE_FLAGS = 0x01
       AD_TYPE_COMPLETE_LOCAL_NAME = 0x09
@@ -19,8 +20,14 @@ module StackChan
 
       SERVICE_CHANGED_CHAR_UUID = 0x2A05
 
-      attr_reader :robot_handle
+      # @rbs @adv_data: String
+      # @rbs @dispatcher: Dispatcher
+      # @rbs @link: LinkLoop
 
+      attr_reader :robot_handle #: Handle
+
+      # Wires the robot to the devices, builds the GATT database and the link loop, and starts the BLE peripheral.
+      #: (Robot robot, display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?) -> void
       def initialize(robot, display:, led:, head: nil, touch: nil, speaker: nil)
         @adv_data = build_adv_data
         db = build_gatt_database
@@ -49,27 +56,39 @@ module StackChan
         super(:peripheral, db.profile_data)
       end
 
+      # Pops the next BLE event, waiting up to timeout_ms. Returns nil on timeout.
+      #: (timeout_ms: Integer) -> (String | Symbol)?
       def pop_event(timeout_ms:)
         @event_queue.pop(timeout_ms: timeout_ms)
       end
 
+      # Tells the BLE layer an event pop has finished.
+      #: () -> nil
       def event_popped
         _event_popped
       end
 
+      # Returns the value last written by the central to the characteristic handle.
+      #: (Integer handle) -> String?
       def take_write(handle)
         pop_write_value(handle)
       end
 
+      # Disconnects the connected central.
+      #: () -> 0
       def disconnect_central
         disconnect
       end
 
+      # Stores frame as the characteristic value and notifies the central.
+      #: (Integer handle, String frame) -> 0
       def send_notification(handle, frame)
         push_read_value(handle, frame)
         notify(handle)
       end
 
+      # Powers the HCI on and loops over LinkLoop#tick forever; powers it off on exit.
+      #: () -> void
       def run
         @event_queue.clear
         _event_queue_cleared
@@ -81,6 +100,8 @@ module StackChan
         hci_power_control(HCI_POWER_OFF)
       end
 
+      # Builds the advertising data: flags and the local name StackChan-PicoRuby.
+      #: () -> String
       def build_adv_data
         BLE::AdvertisingData.build do |a|
           a.add(AD_TYPE_FLAGS, AD_FLAGS)
@@ -88,6 +109,8 @@ module StackChan
         end
       end
 
+      # Builds the GATT table: GAP device name, the dRuby RX/TX pair with its CCCD, and Service Changed.
+      #: () -> BLE::GattDatabase
       def build_gatt_database
         BLE::GattDatabase.new do |db|
           db.add_service(BLE::GATT_PRIMARY_SERVICE_UUID, BLE::GAP_SERVICE_UUID) do |s|
@@ -107,10 +130,14 @@ module StackChan
         end
       end
 
+      # Looks up an attribute handle of the dRuby service in the GATT database.
+      #: (BLE::GattDatabase db, String char_uuid, (Symbol | Integer) key) -> Integer
       def drb_handle(db, char_uuid, key)
         db.handle_table[DRB_SERVICE_UUID][char_uuid][key]
       end
 
+      # Handles a BLE event packet: advertises when the HCI is working or after a disconnect, starts the idle timer on MTU exchange.
+      #: (String event_packet) -> void
       def packet_callback(event_packet)
         case event_packet.getbyte(0)
         when BTSTACK_EVENT_STATE

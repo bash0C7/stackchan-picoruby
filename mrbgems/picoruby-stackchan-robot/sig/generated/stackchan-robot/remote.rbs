@@ -1,0 +1,122 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/remote.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # The dRuby front exposed to the central. Frame commands go through the Dispatcher; app remote handlers are defined as methods.
+    class Remote
+      BUILT_INS: ::Array[::Symbol]
+
+      TOUCH_QUEUE_CAP: ::Integer
+
+      SILENCE_TAIL: untyped
+
+      # An Array that collects written reply lines; stands in for the dispatcher's stdout.
+      # @rbs inherits Array[String]
+      class Lines < Array[String]
+        # Appends s.
+        # : (String s) -> self
+        def write: (String s) -> self
+      end
+
+      @audio_done: bool
+
+      @audio_pending: bool
+
+      @audio_buf: String
+
+      @touch_queue: Array[Integer]
+
+      @head: Head?
+
+      @speaker: AW88298?
+
+      @dispatcher: Dispatcher?
+
+      type wire_frame = Hash[String | Symbol, String | Integer]
+
+      attr_reader exposed: Array[Symbol]
+
+      # Stores the collaborators and defines one method per app remote handler.
+      # : (Dispatcher? dispatcher, ?remote_handlers: Hash[Symbol, remote_handler], ?speaker: AW88298?, ?head: Head?) -> void
+      def initialize: (Dispatcher? dispatcher, ?remote_handlers: Hash[Symbol, remote_handler], ?speaker: AW88298?, ?head: Head?) -> void
+
+      # Converts the frame Hash to string pairs, dispatches it and returns the reply lines (first line ".\n" or "?\n", then optional detail).
+      # : (wire_frame frame) -> Lines
+      def command: (wire_frame frame) -> Lines
+
+      alias servo command
+
+      alias led command
+
+      # Dispatches a face frame with index id.
+      # : (String | Integer id) -> Lines
+      def face: (String | Integer id) -> Lines
+
+      # Dispatches a subtitle frame.
+      # : (String s) -> Lines
+      def text: (String s) -> Lines
+
+      # Dispatches torque on when on is true or "on", otherwise off.
+      # : (bool | String on) -> Lines
+      def torque: (bool | String on) -> Lines
+
+      # Dispatches a position read.
+      # : () -> Lines
+      def read_pos: () -> Lines
+
+      # Returns a <stack_free:N> line with the stack high-water mark, or unknown when the VM cannot report it.
+      # : () -> Lines
+      def stack_free: () -> Lines
+
+      # Dispatches the servo selftest.
+      # : () -> Lines
+      def selftest: () -> Lines
+
+      # Queues a touch zone, dropping the oldest beyond 16.
+      # : (Integer zone) -> nil
+      def push_touch: (Integer zone) -> nil
+
+      # Returns the queued touch zones and empties the queue.
+      # : () -> Array[Integer]
+      def touches: () -> Array[Integer]
+
+      # Starts a new audio upload of n bytes, discarding any previous buffer. Returns true.
+      # : (Integer n) -> bool
+      def audio_begin: (Integer n) -> bool
+
+      # Appends bytes to the audio buffer and returns the buffered size.
+      # : (String bytes) -> Integer
+      def audio_chunk: (String bytes) -> Integer
+
+      # Marks the buffered audio for playback by perform_audio_play. Returns true.
+      # : () -> bool
+      def audio_play: () -> bool
+
+      # Returns true once the reserved audio has been played.
+      # : () -> bool
+      def audio_done: () -> bool
+
+      # Returns a line with each servo's last read error and status, or "?\n" when there is no head.
+      # : () -> Lines
+      def servo_health: () -> Lines
+
+      # Plays the buffered audio on the speaker if playback was reserved, then marks it done. Returns nil when nothing was reserved.
+      # : () -> (true | nil)
+      def perform_audio_play: () -> (true | nil)
+
+      private
+
+      # Defines a singleton method name that calls handler with the robot handle and the arguments; skips names already defined.
+      # : (Symbol name, remote_handler handler) -> Symbol?
+      def define_handler: (Symbol name, remote_handler handler) -> Symbol?
+
+      # Returns err as a string, or "none" for nil.
+      # : (Symbol? err) -> String
+      def err_label: (Symbol? err) -> String
+
+      # Returns status as a string, or "unknown" for nil.
+      # : (Integer? status) -> String
+      def status_label: (Integer? status) -> String
+    end
+  end
+end

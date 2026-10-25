@@ -1,10 +1,25 @@
 module StackChan
   class Controller
+    # Command-line front end: sends each verb to the running daemon over dRuby and prints the result.
     class CLI
       BUILTIN_VERBS = %w[connect status stop raw calibrate remote touch tui]
       TOUCH_POLL_MS = 200
       TUI_HELP = "commands: <verb> [args] (one action per line) / h / q"
+      # @rbs @daemon: _Daemon
+      # @rbs @clock: ^() -> Integer
 
+      # @rbs!
+      #   interface _Daemon
+      #     def status: () -> Daemon::daemon_status
+      #     def act: (String | Symbol name, ?Controller::action_arg arg) -> Controller::result
+      #     def actions: () -> Array[[Symbol, String?]]
+      #     def remote: (String | Symbol msg, ?Array[untyped] args) -> Controller::result
+      #     def poll_touch: () -> Daemon::touch_event?
+      #   end
+
+      # Attaches to the daemon at host:port, dispatches argv and returns the exit status.
+      # Prints a start hint and returns 1 (0 for status) when no daemon is running.
+      #: (Array[String] argv, ?host: String, ?port: Integer) -> Integer
       def self.run(argv, host: "127.0.0.1", port: 8787)
         verb, *args = argv
         DRb.start_service
@@ -22,6 +37,8 @@ module StackChan
         "stackchan: backends are not running. Start them with:\n" \
         "  bundle exec rake pc:up"
 
+      # Returns the daemon proxy at host:port after a status call, or nil (reporting through warn_fn) when it cannot be reached.
+      #: (String host, Integer port, ?drb_factory: (^(String) -> _Daemon)?, ?warn_fn: (^(StandardError) -> void)?) -> _Daemon?
       def self.attach(host, port, drb_factory: nil, warn_fn: nil)
         factory = drb_factory || lambda { |uri| DRb::DRbObject.new_with_uri(uri) }
         d = factory.call("druby://#{host}:#{port}")
@@ -32,16 +49,22 @@ module StackChan
         nil
       end
 
+      # Writes s and a newline to stdout and flushes.
+      #: (String s) -> void
       def self.out(s)
         $stdout.write(s + "\n")
         $stdout.flush
       end
 
+      # Builds a CLI over the daemon proxy.
+      #: (_Daemon daemon, ?clock: ^() -> Integer) -> void
       def initialize(daemon, clock: -> { Machine.board_millis })
         @daemon = daemon
         @clock  = clock
       end
 
+      # Runs one verb with its arguments and returns the exit status.
+      #: (String verb, Array[String] args) -> Integer
       def dispatch(verb, args)
         case verb
         when "calibrate" then verb_calibrate(args)
@@ -52,6 +75,8 @@ module StackChan
         end
       end
 
+      # Prints the usage and the verb list and returns 1.
+      #: () -> Integer
       def usage
         names = BUILTIN_VERBS.dup
         @daemon.actions.each do |pair|
@@ -65,10 +90,14 @@ module StackChan
 
       private
 
+      # Instance shortcut for CLI.out.
+      #: (String s) -> void
       def out(s)
         self.class.out(s)
       end
 
+      # Prints an act result and returns the exit status: 0 ok, 8 busy, 1 otherwise (the usage for an unknown action).
+      #: (Controller::result result) -> Integer
       def report(result)
         case result[:status]
         when :ok
@@ -85,6 +114,8 @@ module StackChan
         end
       end
 
+      # Prints an Array one line per element, a Hash as key=value pairs, and any other non-nil value with to_s.
+      #: (untyped value) -> void
       def print_out(value)
         if value.is_a?(Array)
           value.each { |line| out line.to_s.chomp }
@@ -95,6 +126,8 @@ module StackChan
         end
       end
 
+      # Runs the remote verb: calls a method of the robot's front with KEY=VALUE pairs as one Hash or with plain arguments. Returns 1 when the first reply line is ?.
+      #: (Array[String] args) -> Integer
       def verb_remote(args)
         msg = args.shift
         unless msg
@@ -117,6 +150,8 @@ module StackChan
         first == "?" || first == "?\n" ? 1 : 0
       end
 
+      # Runs touch listen: prints touch zones until --count events, --timeout seconds or a released link. Returns 0 when the count is reached, 1 otherwise.
+      #: (Array[String] args) -> Integer
       def verb_touch(args)
         sub = args.shift
         unless sub == "listen"
@@ -149,6 +184,8 @@ module StackChan
         end
       end
 
+      # Runs the interactive prompt, one action per line, until q. Returns 0.
+      #: () -> Integer
       def verb_tui
         out TUI_HELP
         while (line = read_line("\nstackchan> "))
@@ -164,12 +201,16 @@ module StackChan
         0
       end
 
+      # Prints the prompt and returns the next stdin line, or nil at end of input.
+      #: (String prompt) -> String?
       def read_line(prompt)
         $stdout.write(prompt)
         $stdout.flush
         gets
       end
 
+      # Runs the calibrate verb (--align-only, --engage-torque, --no-torque-toggle, --samples, --format). Returns 0, 1, 6 (calibration needed), 7 (verify failed or interrupted).
+      #: (Array[String] args) -> Integer
       def verb_calibrate(args)
         align_only = delete_flag(args, "--align-only")
         engage     = delete_flag(args, "--engage-torque")
@@ -192,6 +233,8 @@ module StackChan
         7
       end
 
+      # Runs the alignment-only calibration: torque off, wait for the operator, torque on. Returns the exit status.
+      #: (bool skip_torque) -> Integer
       def calibrate_align(skip_torque)
         unless skip_torque
           out "[1/3] <torque:off>..."
@@ -210,6 +253,8 @@ module StackChan
         0
       end
 
+      # Runs the full calibration: samples every pose, prints the anchors and returns 0 (pass or warn) or 7 (fail).
+      #: (Integer samples, Symbol fmt, bool engage, bool skip_torque) -> Integer
       def calibrate_full(samples, fmt, engage, skip_torque)
         unless skip_torque
           out "[1/6] <torque:off>..."
@@ -244,6 +289,8 @@ module StackChan
         end
       end
 
+      # Runs one calibrate step on the daemon and returns [output, nil] on success or [nil, exit status] on failure.
+      #: (Array[String] words) -> [(String | Calibration::pose)?, Integer?]
       def calibrate_step(words)
         result = @daemon.act(:calibrate, words)
         return [result[:out], nil] if result[:status] == :ok
@@ -257,12 +304,16 @@ module StackChan
         [nil, 1]
       end
 
+      # Prints msg and waits for the operator to press Enter.
+      #: (String msg) -> void
       def prompt_enter(msg)
         $stdout.write(msg + " ")
         $stdout.flush
         gets
       end
 
+      # Removes flag from args and returns whether it was present.
+      #: (Array[String] args, String flag) -> bool
       def delete_flag(args, flag)
         idx = args.index(flag)
         return false unless idx
@@ -270,6 +321,8 @@ module StackChan
         true
       end
 
+      # Parses --key value pairs from args into a Hash keyed by the name without dashes.
+      #: (Array[String] args) -> Hash[String, String?]
       def parse_kw(args)
         out = {}
         i = 0

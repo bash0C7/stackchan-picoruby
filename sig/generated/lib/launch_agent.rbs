@@ -1,0 +1,36 @@
+# Generated from lib/launch_agent.rb with RBS::Inline
+
+# Builds launchd job definitions and writes them as plists for the PC daemon and sidecar.
+module LaunchAgent
+  type job = { "Label" => String, "ProgramArguments" => Array[String], "RunAtLoad" => bool, "KeepAlive" => { "SuccessfulExit" => bool }, "StandardOutPath" => String, "StandardErrorPath" => String, ?"EnvironmentVariables" => Hash[String, String] }
+
+  LABEL_PREFIX: ::String
+
+  # Returns the launchd label of the daemon job, namespaced when ns is given.
+  # : (?String? ns) -> String
+  def self.daemon_label: (?String? ns) -> String
+
+  # Returns the launchd label of the sidecar job, namespaced when ns is given.
+  # : (?String? ns) -> String
+  def self.sidecar_label: (?String? ns) -> String
+
+  # launchd is an acceptable responsible process for TCC; a shell fork/exec is not.
+  # Returns the job hash that runs the PicoRuby daemon from the signed app bundle.
+  # : (root: String, vm_app: String, port: Integer, sidecar_port: Integer, prefix: String, ble_fake: bool, logdir: String, ?ns: String?) -> job
+  def self.daemon_job: (root: String, vm_app: String, port: Integer, sidecar_port: Integer, prefix: String, ble_fake: bool, logdir: String, ?ns: String?) -> job
+
+  # launchd runs no login shell: absolute ruby + RUBYOPT instead of bundle exec.
+  # Returns the job hash that runs the CRuby sidecar with an absolute ruby.
+  # : (root: String, ruby: String, port: Integer, stub: bool, logdir: String, ?ns: String?) -> job
+  def self.sidecar_job: (root: String, ruby: String, port: Integer, stub: bool, logdir: String, ?ns: String?) -> job
+
+  # Returns the common job hash: label, arguments, run at load, restart on abnormal exit, log paths.
+  # : (String label, Array[String] args, String logdir, String log_basename) -> job
+  def self.job: (String label, Array[String] args, String logdir, String log_basename) -> job
+
+  # plutil does the XML escaping.
+  # Writes the job as an XML plist named after its label under dir and returns the path.
+  # Raises RuntimeError when plutil fails.
+  # : (job job, dir: String) -> String
+  def self.write: (job job, dir: String) -> String
+end

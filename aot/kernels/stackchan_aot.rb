@@ -1,5 +1,7 @@
 private
 
+# Decodes one mu-law byte to a signed 16-bit sample.
+#: (Integer) -> Integer
 def ulaw_sample(b)
   u = (~b) & 0xFF
   t = ((u & 0x0F) << 3) + 0x84
@@ -9,6 +11,7 @@ end
 
 public
 
+# Decodes mu-law bytes to little-endian 16-bit PCM, two output bytes per input byte.
 #: (String) -> String
 def ulaw_decode(src)
   n = src.bytesize
@@ -23,6 +26,7 @@ def ulaw_decode(src)
   out
 end
 
+# Renders a 16-row bitmap of width w into big-endian RGB565 pixels, fg for set bits and bg for clear bits.
 #: (Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer) -> String
 def glyph16(w, fg, bg, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15)
   rows = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15]

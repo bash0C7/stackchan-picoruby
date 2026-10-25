@@ -1,0 +1,57 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/args.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # Parsed words of one action call: positionals, --key value options and declared --flags.
+    class Args
+      @words: Array[String]
+
+      @flags: Array[String]
+
+      @positionals: Array[String]
+
+      @opts: Hash[String, String?]
+
+      @set: Array[String]
+
+      attr_reader words: Array[String]
+
+      attr_reader text: String
+
+      # Splits words (a String on spaces, an Array, or nil) into positionals, options and the declared flags; text is the original String or the joined positionals.
+      # : (String | Array[String] | nil words, ?flags: Array[String]) -> void
+      def initialize: (String | Array[String] | nil words, ?flags: Array[String]) -> void
+
+      # Returns the i-th positional word, or nil.
+      # : (Integer i) -> String?
+      def []: (Integer i) -> String?
+
+      # Returns the number of positional words.
+      # : () -> Integer
+      def size: () -> Integer
+
+      # Returns the raw String value of --key, or nil.
+      # : (String key) -> String?
+      def opt: (String key) -> String?
+
+      # Returns the value of --key as an Integer, or nil.
+      # : (String key) -> Integer?
+      def int: (String key) -> Integer?
+
+      # Returns the value of --key as a Float, or nil.
+      # : (String key) -> Float?
+      def float: (String key) -> Float?
+
+      # Returns whether the declared flag --key was given.
+      # Raises ArgumentError when key is not a declared flag.
+      # : (String key) -> bool
+      def flag?: (String key) -> bool
+
+      private
+
+      # Fills the positionals, options and set flags from the words.
+      # : () -> void
+      def parse: () -> void
+    end
+  end
+end

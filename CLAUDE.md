@@ -13,7 +13,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - spec と plan は repo の `docs/superpowers/{specs,plans}/` に置いて commit する。実行し終えた plan と、コードが先へ進んだ spec は vault の `02_dev_docs/stackchan-picoruby/{plans,specs}/` に移して repo から外す。review・調査レポート・計測の証拠は Obsidian vault の `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ObsidianVault/02_dev_docs/stackchan-picoruby/review/` に置く。PR #427 関連は隣の `picoruby-ble-esp32-port/`。記事・WIP メモは esa (team `ksbrb`、カテゴリ `ｽﾀｯｸﾁｬﾝ`)。
 - `HANDOFF.md` には次の session への引き継ぎだけを書く。恒久的に使う知識 (実測した挙動、手順、制約) はこの file に、未着手の作業は issue に置く。
 - 日付・経緯・「以前は」を doc やコメントに残さない。現在の挙動を現在形で書く。経緯は git log に任せる。
-- コメントを書かない。コードは How、テストは What (テスト名)、コミットログは Why を担う。残すのは toolchain が読むもの (magic comment、suppify の `#:` 型注釈、rigor/steep 指示) と `# REQUIRED FOR PY32 COLD-BOOT` だけ。
+- 説明コメントを書かない。コードは How、テストは What (テスト名)、コミットログは Why を担う。残すのは toolchain が読むもの (magic comment、rigor/steep 指示) と `# REQUIRED FOR PY32 COLD-BOOT`、そして API doc の元になる rbs-inline 注釈だけ: 全ての class / module / def の直前に説明 1〜3 行と `#: (型) -> 戻り値`、attr に末尾 `#: 型`、ivar に `# @rbs @name: 型`。`tools/` `lib/` `pc/` `acceptance/` `aot/kernels/` `mrbgems/*/mrblib/` の Ruby を変えたら `/stackchan-docs-sync` (`rake docs:check` → `rake docs`) で注釈と生成物を揃える。
 
 ## 検証と報告の規律
 
@@ -121,6 +121,9 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 bundle exec rake test                 # rigor:check の後に picotest: device / pc / aot / drb-ble / stackchan-protocol / stackchan-led / si12t / aw88298 (host picoruby VM)
 SUITE=pc FILTER=central bundle exec rake test
 bundle exec rake test:host            # CRuby-only tools (test-host/)
+bundle exec rake docs:check            # 説明・型注釈の欠落と生成物の古さ (rake test が先に走らせる)
+bundle exec rake docs                  # rbs-inline で sig/generated を作り、mrbgems/*/README.md の API 節と docs/api/ を生成
+bundle exec rake docs:validate         # 生成した gem の sig を rbs で検証
 bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby-test.rb)。picoruby を更新した後に
 ```
 
@@ -130,6 +133,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - face geometry golden は `spec/golden/face_<name>.dump`。更新は `rake face:register_golden FACE=<name>`。
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
 - host VM は `vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host-picotest` に建つ。R2P2-ESP32 自身の host ツールは同じ picoruby の `build/host` なので衝突しない。全 suite が `uninitialized constant Picotest` になったら、順序ではなく build 名の衝突を疑う。
+- `rake test` は先に `docs:check` を走らせる。型と説明の正本は source の注釈で、`mrbgems/*/sig/generated` と `sig/generated` は生成物 (commit する)。rbs-inline は `vendor/docs-tool` に入れ、Gemfile には入れない (rbs 4 が prism >= 1.6 を要り、Gemfile の prism ~> 0.30 と解決できない)。`# @rbs!` と `# @rbs @ivar:` の塊の後ろは空行を 1 行置く (置かないと直後の宣言の説明として読まれ、型が生成されない)。
 - `rake test` が先に走らせる `rigor:check` は host 側の型解析で、`rigor.baseline.json` に無い diagnostic が 1 つでもあれば落ちる。`rake vendor:setup` 済みが前提で、初回に自分の gemset を `vendor/rigor-tool` に入れる。reference は `docs/rigor.md`。
 - CI は `deps.yml` が push ごと、`firmware.yml` が週次と手動。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
 

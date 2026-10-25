@@ -1,0 +1,113 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/session.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # Operator-facing actions of one controller: face, LED, servo, torque, text, audio, voice and remote calls over the central.
+    class Session
+      AUDIO_CHUNK: ::Integer
+
+      AUDIO_POLL_MS: ::Integer
+
+      AUDIO_TAIL_MS: ::Integer
+
+      AUDIO_MARGIN_MS: ::Integer
+
+      @fallback_audio: String?
+
+      @state: state
+
+      @log: ^(String) -> void
+
+      @voice: _Voice?
+
+      @engine: _Engine
+
+      @central: Controller::_Central
+
+      type state = { last_face: String?, last_say: String?, last_heard: String?, last_action: String? }
+
+      type state_update = { ?last_face: String, ?last_say: String, ?last_heard: String }
+
+      interface _Voice
+        def synthesize: (String text, ?Float? gain, ?Integer? rate) -> String?
+
+        def respond: (String text, state state) -> String?
+      end
+
+      interface _Engine
+        def unlocked: [T] () { () -> T } -> T
+
+        def reply_handlers: () -> Array[^(Session, String) -> void]
+      end
+
+      attr_reader state: state
+
+      attr_accessor fallback_audio: String?
+
+      # Builds a session over the central and the engine; voice supplies synthesize and respond for say and chat.
+      # : (central: Controller::_Central, engine: _Engine, ?voice: _Voice?, log: ^(String) -> void) -> void
+      def initialize: (central: Controller::_Central, engine: _Engine, log: ^(String) -> void, ?voice: _Voice?) -> void
+
+      # Sends the face frame and records the action. Returns nil.
+      # : (String | Symbol name) -> nil
+      def face: (String | Symbol name) -> nil
+
+      # Sends the LED frame for a side and color and records the action. Returns nil.
+      # : (Stackchan::BLE::FrameCodec::side side, Symbol color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
+      def led: (Stackchan::BLE::FrameCodec::side side, Symbol color, ?mode: Stackchan::BLE::FrameCodec::led_mode mode) -> nil
+
+      # Sends one head frame and returns the detail frame of the reply (the pose at receive time), or nil.
+      # : (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time_ms: Integer?, ?velocity: Integer?) -> String?
+      def servo: (?yaw_left: Integer?, ?yaw_right: Integer?, ?pitch_up: Integer?, ?time_ms: Integer?, ?velocity: Integer?) -> String?
+
+      # Sends the torque on/off frame and records the action. Returns nil.
+      # : (bool on) -> nil
+      def torque: (bool on) -> nil
+
+      # Sends the selftest frame and returns the detail frame of the reply, or nil.
+      # : () -> String?
+      def selftest: () -> String?
+
+      # Reads the raw yaw and pitch positions. Returns { yaw_raw:, pitch_raw: }; raises DeviceError when the position is unknown.
+      # : () -> Hash[Symbol, Integer]
+      def read_pos: () -> Hash[Symbol, Integer]
+
+      # Sends a subtitle text frame; face is a face name Symbol, a face index String, or nil. Returns nil.
+      # : (String s, ?face: (Symbol | String)?) -> nil
+      def text: (String s, ?face: (Symbol | String)?) -> nil
+
+      # Streams mu-law audio to the robot in 2048-byte chunks, starts playback and polls until it is done.
+      # Raises TimeoutError when playback does not finish within the limit. Returns nil.
+      # : (String ulaw) -> nil
+      def speak_audio: (String ulaw) -> nil
+
+      # Synthesizes text with the voice, sends the subtitle and plays the audio. Returns an OK line with the byte count, or an NG line when synthesis failed.
+      # Raises ArgumentError when there is no voice.
+      # : (String text, ?gain: Float?, ?rate: Integer?) -> String
+      def say: (String text, ?gain: Float?, ?rate: Integer?) -> String
+
+      # Asks the voice for a reply to text, runs the reply handlers and speaks the reply (or the fallback audio when there is none). Returns the reply or nil.
+      # : (String text, ?speak: bool) -> String?
+      def chat: (String text, ?speak: bool) -> String?
+
+      # Calls a method on the robot's dRuby front and returns its reply.
+      # The arguments are forwarded to whichever front method msg names and the reply is that method's return value (reply lines, touch zones, a bool, an Integer or an app handler's value), so both stay untyped.
+      # : (String | Symbol msg, *untyped args) -> untyped
+      def remote: (String | Symbol msg, *untyped args) -> untyped
+
+      # Synthesizes phrase and keeps it as the fallback audio. Returns nil when there is no voice.
+      # : (String phrase) -> String?
+      def prime: (String phrase) -> String?
+
+      private
+
+      # Returns the voice, raising ArgumentError when none was given.
+      # : () -> _Voice
+      def voice: () -> _Voice
+
+      # Stores the action name as last_action and merges extras into the state.
+      # : (Symbol action, ?state_update extras) -> void
+      def record: (Symbol action, ?state_update extras) -> void
+    end
+  end
+end

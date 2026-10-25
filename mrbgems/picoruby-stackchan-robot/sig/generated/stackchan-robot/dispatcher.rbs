@@ -1,0 +1,100 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/dispatcher.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # Executes one parsed frame against the display, LEDs and head and writes the ACK or error reply.
+    class Dispatcher
+      ERROR_FRAME: ::String
+
+      ACK_FRAME: ::String
+
+      MODE_TABLE: untyped
+
+      SIDE_TABLE: untyped
+
+      SUBTITLE_BAND_Y: ::Integer
+
+      SUBTITLE_BAND_HEIGHT: untyped
+
+      SUBTITLE_FONT: ::String
+
+      SUBTITLE_TEXT_Y: ::Integer
+
+      SUBTITLE_MARGIN_X: ::Integer
+
+      SUBTITLE_MAX_CHARS: ::Integer
+
+      SUBTITLE_FG: ::Integer
+
+      SUBTITLE_BG: ::Integer
+
+      attr_reader current_face: Face
+
+      attr_reader robot_handle: Handle
+
+      # Requires :neutral and :closed in faces (raises ArgumentError otherwise) and creates the robot handle.
+      # : (display: _Display, led: StackchanLed, ?stdout: _Writer, ?head: Head?, ?speaker: AW88298?, faces: Hash[Symbol, Face], face_index: Hash[String, Symbol], ?frame_handlers: Hash[String, frame_handler]) -> void
+      def initialize: (display: _Display, led: StackchanLed, faces: Hash[Symbol, Face], face_index: Hash[String, Symbol], ?stdout: _Writer, ?head: Head?, ?speaker: AW88298?, ?frame_handlers: Hash[String, frame_handler]) -> void
+
+      # Runs the frame (torque, selftest, read, or face/led/text/head/custom keys) and writes the reply to stdout.
+      # Writes the error reply instead when a step fails or raises.
+      # : (frame frame) -> void
+      def handle: (frame frame) -> void
+
+      # Runs handle with sink as stdout for this call and restores the previous stdout.
+      # : (frame frame, _Writer sink) -> void
+      def handle_to: (frame frame, _Writer sink) -> void
+
+      # Makes the named face current and redraws it. Returns false for an unknown name.
+      # : (Symbol name) -> bool
+      def show_face: (Symbol name) -> bool
+
+      # Draws text, cut to the subtitle width, in the subtitle band. Returns false when text is nil.
+      # : (String? text) -> bool
+      def draw_subtitle: (String? text) -> bool
+
+      # Converts 0..100 positions to raw servo targets and applies them. Returns false when a value is out of range or none is given.
+      # Returns true without moving when there is no head.
+      # : (Integer? yaw_left, Integer? yaw_right, Integer? pitch_up, Integer time_ms, Integer velocity) -> bool
+      def move_head: (Integer? yaw_left, Integer? yaw_right, Integer? pitch_up, Integer time_ms, Integer velocity) -> bool
+
+      private
+
+      # Shows the face mapped from the F value. Returns false when unmapped.
+      # : (frame frame) -> bool
+      def handle_face: (frame frame) -> bool
+
+      # Calls the registered handler of every frame key and returns false if any handler returned falsy.
+      # : (frame frame) -> bool
+      def run_frame_handlers: (frame frame) -> bool
+
+      # Draws the text value as subtitle.
+      # : (frame frame) -> bool
+      def handle_text: (frame frame) -> bool
+
+      # Switches servo torque on (neutral face) or off (closed face) and writes ACK; any other value writes the error reply.
+      # : (frame frame) -> void
+      def handle_torque: (frame frame) -> void
+
+      # Runs the head self test and writes ACK plus the servo detail. Writes the error reply for another value or without a head.
+      # : (frame frame) -> void
+      def handle_selftest: (frame frame) -> void
+
+      # Writes ACK and the raw yaw and pitch positions. Writes the error reply for another value or without a head.
+      # : (frame frame) -> void
+      def handle_read_pos: (frame frame) -> void
+
+      # Applies mode M, side S and color R/G/B to the LEDs. Returns false for an unknown mode or side.
+      # : (frame frame) -> bool
+      def handle_led: (frame frame) -> bool
+
+      # Moves the head from the YL, YR, PU, T and V values.
+      # : (frame frame) -> bool
+      def handle_head: (frame frame) -> bool
+
+      # Writes the actual yaw and pitch as 0..100 values, or unknown when unreadable or without a head.
+      # : () -> void
+      def emit_servo_detail: () -> void
+    end
+  end
+end

@@ -1,0 +1,51 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/radio.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # BLE central radio that scans for a StackChan advertiser, connects, and forwards notifications and disconnects.
+    class Radio < BLE
+      attr_reader target: BLE::AdvertisingReport?
+
+      attr_reader conn_handle: Integer
+
+      attr_accessor on_notification: (^(Integer, String) -> void)?
+
+      attr_accessor on_disconnect: (^() -> void)?
+
+      # Builds a central radio that connects to the first advertiser whose name includes name_prefix.
+      # : (name_prefix: String) -> void
+      def initialize: (name_prefix: String) -> void
+
+      @name_prefix: String
+
+      @target: BLE::AdvertisingReport?
+
+      @on_notification: (^(Integer, String) -> void)?
+
+      @on_disconnect: (^() -> void)?
+
+      # Pops one event from the queue without blocking, dispatches a packet to packet_callback and returns the event, or nil when empty.
+      # The event is a packet String or the :heartbeat Symbol the BLE port pushes.
+      # : () -> (String | Symbol)?
+      def pop_and_dispatch: () -> (String | Symbol)?
+
+      # Remembers and connects to the first report whose name includes the prefix; ignores later reports.
+      # : (BLE::AdvertisingReport report) -> void
+      def advertising_report_callback: (BLE::AdvertisingReport report) -> void
+
+      # Handles a packet: invalidates the connection handle and calls on_disconnect on disconnect, then calls on_notification for GATT notifications.
+      # : (String event_packet) -> void
+      def packet_callback: (String event_packet) -> void
+
+      # Clears the target, connection and services, then scans for timeout_ms until the central is idle.
+      # : (Integer timeout_ms) -> void
+      def connect_and_discover: (Integer timeout_ms) -> void
+
+      private
+
+      # Returns true when the packet is an HCI disconnection-complete event, plain or inside an LE meta event.
+      # : (String event_packet) -> bool
+      def disconnect_packet?: (String event_packet) -> bool
+    end
+  end
+end

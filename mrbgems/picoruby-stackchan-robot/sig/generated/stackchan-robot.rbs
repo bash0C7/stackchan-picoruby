@@ -1,0 +1,111 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot.rb with RBS::Inline
+
+# Entry point of the robot DSL: StackChan.robot builds a validated StackChan::Robot.
+module StackChan
+  # Evaluates the block against a Robot::Builder, validates the result and returns the Robot.
+  # Raises ArgumentError without a block or when validation fails.
+  # : () { (Robot::Builder) -> void } -> Robot
+  def self.robot: () { (Robot::Builder) -> void } -> Robot
+
+  # Robot definition collected by the DSL, and the runner that boots the hardware and serves BLE.
+  class Robot
+    interface _Display
+      def draw_rect: (Integer x, Integer y, Integer w, Integer h, Integer color, ?fill: bool) -> void
+
+      def draw_ellipse: (Integer cx, Integer cy, Integer rx, Integer ry, Integer color, ?fill: bool) -> void
+
+      def draw_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer color) -> void
+
+      def draw_text: (Integer x, Integer y, String text, font: String, fg: Integer, bg: Integer) -> void
+    end
+
+    interface _Writer
+      def write: (String data) -> void
+    end
+
+    type frame = Hash[String, String]
+
+    type boot_handler = ^(Handle) -> void
+
+    type touch_handler = ^(Handle) -> void
+
+    type periodic_handler = ^(Handle) -> void
+
+    type frame_handler = ^(Handle, String) -> boolish
+
+    type remote_handler = ^(Handle, *untyped) -> untyped
+
+    type devices = { display: _Display, led: StackchanLed, head: Head?, touch: Si12T?, speaker: AW88298? }
+
+    interface _Peripheral
+      def robot_handle: () -> Handle
+
+      def run: () -> void
+    end
+
+    interface _BootClass
+      def run: () -> devices
+    end
+
+    interface _PeripheralClass
+      def new: (Robot robot, display: _Display, led: StackchanLed, head: Head?, touch: Si12T?, speaker: AW88298?) -> _Peripheral
+    end
+
+    # Wired runtime objects of one robot: dispatcher, ticker, dRuby front and the handle given to handlers.
+    class Wiring
+      attr_reader dispatcher: Dispatcher
+
+      attr_reader ticker: Ticker
+
+      attr_reader remote: Remote
+
+      attr_reader handle: Handle
+
+      # Stores the three objects and takes the handle from the dispatcher.
+      # : (Dispatcher dispatcher, Ticker ticker, Remote remote) -> void
+      def initialize: (Dispatcher dispatcher, Ticker ticker, Remote remote) -> void
+    end
+
+    attr_reader faces: Hash[Symbol, Face]
+
+    attr_reader face_index: Hash[String, Symbol]
+
+    attr_reader boot_handlers: Array[boot_handler]
+
+    attr_reader touch_handlers: Hash[Integer, touch_handler]
+
+    attr_reader frame_handlers: Hash[String, frame_handler]
+
+    attr_reader remote_handlers: Hash[Symbol, remote_handler]
+
+    attr_reader periodic: Array[[ Integer, periodic_handler ]]
+
+    attr_accessor release_after: Integer?
+
+    # Creates an empty definition with no faces, handlers or release time.
+    # : () -> void
+    def initialize: () -> void
+
+    # Checks that :neutral and :closed faces exist and every face_index entry names a defined face.
+    # Raises ArgumentError otherwise.
+    # : () -> void
+    def validate: () -> void
+
+    # Builds the Dispatcher, Remote and Ticker for the given devices and returns them as a Wiring.
+    # : (display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?, ?stdout: _Writer) -> Wiring
+    def wire: (display: _Display, led: StackchanLed, ?head: Head?, ?touch: Si12T?, ?speaker: AW88298?, ?stdout: _Writer) -> Wiring
+
+    # Boots the hardware and serves the BLE peripheral. Does not return.
+    # : () -> void
+    def run: () -> void
+
+    # Waits, runs boot.run, waits again, creates the peripheral, runs the on_boot handlers and runs the peripheral.
+    # Does not return.
+    # : (_BootClass boot, _PeripheralClass peripheral_class) -> void
+    def serve: (_BootClass boot, _PeripheralClass peripheral_class) -> void
+
+    # Calls every on_boot handler in order with the handle.
+    # : (Handle handle) -> void
+    def run_on_boot: (Handle handle) -> void
+  end
+end

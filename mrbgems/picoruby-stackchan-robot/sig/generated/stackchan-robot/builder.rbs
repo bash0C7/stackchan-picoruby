@@ -1,0 +1,57 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/builder.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # Receiver of the StackChan.robot block; each method records one definition on the Robot.
+    class Builder
+      TOUCH_ZONES: ::Hash[::Symbol, ::Integer]
+
+      ENGINE_FRAME_KEYS: ::Array[::String]
+
+      # Binds the builder to the Robot it fills.
+      # : (Robot robot) -> void
+      def initialize: (Robot robot) -> void
+
+      # Defines face name from Face.new keywords and returns it.
+      # : (Symbol name, ?eyes: Face::eyes, ?mouth: Face::mouth, ?brows: Face::brows?) -> Face
+      def face: (Symbol name, ?eyes: Face::eyes, ?mouth: Face::mouth, ?brows: Face::brows?) -> Face
+
+      # Merges map (frame F value to face name) into the robot's face index.
+      # : (Hash[String, Symbol] map) -> void
+      def face_index: (Hash[String, Symbol] map) -> void
+
+      # Registers a handler called with the handle once before advertising. Raises ArgumentError without a block.
+      # : () { (Handle) -> void } -> void
+      def on_boot: () { (Handle) -> void } -> void
+
+      # Registers the handler for a head touch zone (:back, :right or :left). Raises ArgumentError for another zone or no block.
+      # : (Symbol zone) { (Handle) -> void } -> void
+      def on_touch: (Symbol zone) { (Handle) -> void } -> void
+
+      # Registers a handler for a frame key; its truthy result means ACK.
+      # Raises ArgumentError for a non-String key, an engine frame key or no block.
+      # : (String key) { (Handle, String) -> boolish } -> void
+      def on_frame: (String key) { (Handle, String) -> boolish } -> void
+
+      # Exposes a dRuby front method name backed by the handler.
+      # Raises ArgumentError for a non-Symbol name, a name the front already defines or no block.
+      # : (Symbol name) { (Handle, *untyped) -> untyped } -> void
+      def remote: (Symbol name) { (Handle, *untyped) -> untyped } -> void
+
+      # Registers a handler run every ms milliseconds. Raises ArgumentError unless ms is a positive Integer or no block.
+      # : (Integer ms) { (Handle) -> void } -> void
+      def every: (Integer ms) { (Handle) -> void } -> void
+
+      # Sets how long the link may stay silent before the central is released.
+      # Raises ArgumentError unless ms is a positive Integer.
+      # : (Integer ms) -> void
+      def release_after: (Integer ms) -> void
+
+      private
+
+      # Raises ArgumentError naming the DSL method when handler is nil.
+      # : (Symbol name, Proc? handler) -> void
+      def require_block: (Symbol name, Proc? handler) -> void
+    end
+  end
+end

@@ -1,0 +1,29 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/errors.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # Base class of every error the controller raises.
+    class Error < StandardError
+    end
+
+    # Raised when a device reply does not arrive within the ACK window.
+    class TimeoutError < Error
+    end
+
+    # Raised when the robot answers with an error or an unexpected reply.
+    class DeviceError < Error
+    end
+
+    # Raised when the BLE link cannot be established or is gone.
+    class ConnectionError < Error
+    end
+
+    # Raised when the robot is held by another controller or unreachable.
+    class Busy < ConnectionError
+    end
+
+    # Raised when the link was replaced or released while the token was handed back.
+    class LinkChanged < Error
+    end
+  end
+end

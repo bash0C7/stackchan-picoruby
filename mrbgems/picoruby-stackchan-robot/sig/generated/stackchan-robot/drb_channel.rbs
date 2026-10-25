@@ -1,0 +1,27 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/drb_channel.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # Connects the dRuby GATT pair of a BLE port to a DRbBle::Responder, notifying only after the CCCD enables it.
+    class DrbChannel
+      interface _Port
+        def take_write: (Integer handle) -> String?
+
+        def send_notification: (Integer handle, String frame) -> void
+      end
+
+      # Stores the three attribute handles and the responder; notifications start disabled.
+      # : (rx_handle: Integer, tx_handle: Integer, cccd_handle: Integer, responder: DRbBle::Responder) -> void
+      def initialize: (rx_handle: Integer, tx_handle: Integer, cccd_handle: Integer, responder: DRbBle::Responder) -> void
+
+      # Applies a pending CCCD write, feeds received data to the responder and notifies the reply chunks.
+      # Returns true when the CCCD or the receive handle had data.
+      # : (_Port port) -> bool
+      def service: (_Port port) -> bool
+
+      # Disables notifications and resets the responder.
+      # : () -> void
+      def disconnected: () -> void
+    end
+  end
+end

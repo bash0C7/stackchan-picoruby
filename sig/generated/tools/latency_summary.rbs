@@ -1,0 +1,47 @@
+# Generated from tools/latency_summary.rb with RBS::Inline
+
+# !/usr/bin/env ruby
+#  Summarize a tools/latency_baseline.zsh log (TSV: label, seconds, rc=N, output
+#  head) per verb: sample count, median / p90 / max of the successful samples,
+#  and the number of failed samples (rc != 0, i.e. ACK timeout + recovery).
+#
+#    ruby tools/latency_summary.rb [/tmp/stackchan-picoruby-debug/baseline.log]
+#  Summarizes latency_baseline.zsh logs per verb.
+module LatencySummary
+  type summary_row = { verb: String, n: Integer, median: Float?, p90: Float?, max: Float?, failures: Integer }
+
+  # One sample: its label, the verb derived from the label, seconds taken and the exit code.
+  class Row < Struct[String | Float | Integer]
+    attr_accessor label(): String
+
+    attr_accessor verb(): String
+
+    attr_accessor seconds(): Float
+
+    attr_accessor rc(): Integer
+
+    def self.new: (?String label, ?String verb, ?Float seconds, ?Integer rc) -> instance
+                | (?label: String, ?verb: String, ?seconds: Float, ?rc: Integer) -> instance
+  end
+
+  # Parses TSV log text into rows, skipping lines without an rc= field.
+  # : (String text) -> Array[Row]
+  def self?.parse: (String text) -> Array[Row]
+
+  # Nearest-rank percentile on an ascending Array; nil when empty.
+  # Nearest-rank percentile p (0..1) of an ascending array; nil when empty.
+  # : (Array[Float] sorted, Float p) -> Float?
+  def self?.percentile: (Array[Float] sorted, Float p) -> Float?
+
+  # Median of an ascending array; nil when empty.
+  # : (Array[Float] sorted) -> Float?
+  def self?.median: (Array[Float] sorted) -> Float?
+
+  # Returns per verb the sample count, median, p90, max of the successful samples and the failure count.
+  # : (Array[Row] rows) -> Array[summary_row]
+  def self?.summarize: (Array[Row] rows) -> Array[summary_row]
+
+  # Renders the summary as a Markdown table.
+  # : (Array[summary_row] summary) -> String
+  def self?.to_markdown: (Array[summary_row] summary) -> String
+end

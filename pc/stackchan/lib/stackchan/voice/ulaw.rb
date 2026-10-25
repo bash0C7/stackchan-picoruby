@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
+# Namespace of the Mac-side StackChan host library.
 module Stackchan
+  # Speech synthesis and audio encoding for the robot speaker.
   module Voice
+    # G.711 mu-law encoder for PCM16 samples.
     module Ulaw
       BIAS = 0x84
       CLIP = 32635
@@ -18,6 +21,8 @@ module Stackchan
         end
       end.freeze
 
+      # Returns the mu-law byte of one signed 16-bit sample.
+      #: (Integer sample) -> Integer
       def self.encode_sample(sample)
         sample = -32768 if sample < -32768
         sample = 32767 if sample > 32767
@@ -30,6 +35,8 @@ module Stackchan
         (~(sign | (exponent << 4) | mantissa)) & 0xFF
       end
 
+      # Returns one mu-law byte per little-endian PCM16 sample of pcm_le16, scaled by gain.
+      #: (String pcm_le16, ?gain: Float) -> String
       def self.encode_pcm(pcm_le16, gain: 1.0)
         out = +""
         n = pcm_le16.bytesize / 2

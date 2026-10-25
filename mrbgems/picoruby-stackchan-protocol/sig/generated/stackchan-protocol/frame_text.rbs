@@ -1,0 +1,21 @@
+# Generated from mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_text.rb with RBS::Inline
+
+# Top-level namespace for StackChan protocol modules.
+module Stackchan
+  # Namespace for AI-generated text frames.
+  module AI
+    # Builds the "<text:...>" frame that shows a caption on the robot.
+    # Text is sanitized so it cannot break frame syntax.
+    module FrameText
+      MAX_CHARS: ::Integer
+
+      # Replaces ",", "<" and ">" with full-width characters and collapses a CR/LF run into one space.
+      # : (String text) -> String
+      def self.sanitize: (String text) -> String
+
+      # Returns the text frame for the sanitized text cut to MAX_CHARS, with a face index when given.
+      # : (face_index: Integer?, text: String) -> String
+      def self.build: (face_index: Integer?, text: String) -> String
+    end
+  end
+end

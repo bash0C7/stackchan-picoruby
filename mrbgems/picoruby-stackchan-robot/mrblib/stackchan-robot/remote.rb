@@ -1,5 +1,6 @@
 module StackChan
   class Robot
+    # The dRuby front exposed to the central. Frame commands go through the Dispatcher; app remote handlers are defined as methods.
     class Remote
       BUILT_INS = [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
                    :selftest, :touches, :audio_begin, :audio_chunk, :audio_play, :audio_done,
@@ -8,14 +9,30 @@ module StackChan
       TOUCH_QUEUE_CAP = 16
       SILENCE_TAIL = ("\x00" * 3200)
 
+      # An Array that collects written reply lines; stands in for the dispatcher's stdout.
+      # @rbs inherits Array[String]
       class Lines < Array
+        # Appends s.
+        #: (String s) -> self
         def write(s)
           push(s)
         end
       end
 
-      attr_reader :exposed
+      # @rbs!
+      #   type wire_frame = Hash[String | Symbol, String | Integer]
+      # @rbs @dispatcher: Dispatcher?
+      # @rbs @speaker: AW88298?
+      # @rbs @head: Head?
+      # @rbs @touch_queue: Array[Integer]
+      # @rbs @audio_buf: String
+      # @rbs @audio_pending: bool
+      # @rbs @audio_done: bool
 
+      attr_reader :exposed #: Array[Symbol]
+
+      # Stores the collaborators and defines one method per app remote handler.
+      #: (Dispatcher? dispatcher, ?remote_handlers: Hash[Symbol, remote_handler], ?speaker: AW88298?, ?head: Head?) -> void
       def initialize(dispatcher, remote_handlers: {}, speaker: nil, head: nil)
         @dispatcher   = dispatcher
         @exposed      = BUILT_INS + remote_handlers.keys
@@ -33,6 +50,8 @@ module StackChan
         end
       end
 
+      # Converts the frame Hash to string pairs, dispatches it and returns the reply lines (first line ".\n" or "?\n", then optional detail).
+      #: (wire_frame frame) -> Lines
       def command(frame)
         pairs = {}
         keys = frame.keys
@@ -48,22 +67,32 @@ module StackChan
       alias servo command
       alias led command
 
+      # Dispatches a face frame with index id.
+      #: (String | Integer id) -> Lines
       def face(id)
         command({ "F" => id })
       end
 
+      # Dispatches a subtitle frame.
+      #: (String s) -> Lines
       def text(s)
         command({ "text" => s })
       end
 
+      # Dispatches torque on when on is true or "on", otherwise off.
+      #: (bool | String on) -> Lines
       def torque(on)
         command({ "torque" => (on == true || on.to_s == "on") ? "on" : "off" })
       end
 
+      # Dispatches a position read.
+      #: () -> Lines
       def read_pos
         command({ "read" => "pos" })
       end
 
+      # Returns a <stack_free:N> line with the stack high-water mark, or unknown when the VM cannot report it.
+      #: () -> Lines
       def stack_free
         free = Machine.respond_to?(:stack_high_water_mark) ? Machine.stack_high_water_mark : "unknown"
         lines = Lines.new
@@ -71,21 +100,29 @@ module StackChan
         lines
       end
 
+      # Dispatches the servo selftest.
+      #: () -> Lines
       def selftest
         command({ "selftest" => "run" })
       end
 
+      # Queues a touch zone, dropping the oldest beyond 16.
+      #: (Integer zone) -> nil
       def push_touch(zone)
         @touch_queue.push(zone)
         @touch_queue.shift while @touch_queue.size > TOUCH_QUEUE_CAP
       end
 
+      # Returns the queued touch zones and empties the queue.
+      #: () -> Array[Integer]
       def touches
         zones = @touch_queue
         @touch_queue = []
         zones
       end
 
+      # Starts a new audio upload of n bytes, discarding any previous buffer. Returns true.
+      #: (Integer n) -> bool
       def audio_begin(n)
         @audio_buf = String.new
         @audio_pending = false
@@ -93,20 +130,28 @@ module StackChan
         true
       end
 
+      # Appends bytes to the audio buffer and returns the buffered size.
+      #: (String bytes) -> Integer
       def audio_chunk(bytes)
         @audio_buf << bytes
         @audio_buf.bytesize
       end
 
+      # Marks the buffered audio for playback by perform_audio_play. Returns true.
+      #: () -> bool
       def audio_play
         @audio_pending = true
         true
       end
 
+      # Returns true once the reserved audio has been played.
+      #: () -> bool
       def audio_done
         @audio_done
       end
 
+      # Returns a line with each servo's last read error and status, or "?\n" when there is no head.
+      #: () -> Lines
       def servo_health
         lines = Lines.new
         if @head.nil?
@@ -121,6 +166,8 @@ module StackChan
         lines
       end
 
+      # Plays the buffered audio on the speaker if playback was reserved, then marks it done. Returns nil when nothing was reserved.
+      #: () -> (true | nil)
       def perform_audio_play
         return unless @audio_pending
         @audio_pending = false
@@ -133,15 +180,21 @@ module StackChan
 
       private
 
+      # Defines a singleton method name that calls handler with the robot handle and the arguments; skips names already defined.
+      #: (Symbol name, remote_handler handler) -> Symbol?
       def define_handler(name, handler)
         return if respond_to?(name, true)
         define_singleton_method(name) { |*args| handler.call(@dispatcher.robot_handle, *args) }
       end
 
+      # Returns err as a string, or "none" for nil.
+      #: (Symbol? err) -> String
       def err_label(err)
         err.nil? ? "none" : err.to_s
       end
 
+      # Returns status as a string, or "unknown" for nil.
+      #: (Integer? status) -> String
       def status_label(status)
         status.nil? ? "unknown" : status.to_s
       end

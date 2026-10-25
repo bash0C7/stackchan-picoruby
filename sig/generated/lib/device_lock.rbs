@@ -1,0 +1,61 @@
+# Generated from lib/device_lock.rb with RBS::Inline
+
+# Cross-process lock for a USB device, shared with R2P2-dev-harness; a directory per target holds the owner pid.
+module DeviceLock
+  # Raised when the lock stays held by a live process past the wait limit.
+  class Timeout < StandardError
+  end
+
+  DEFAULT_WAIT: ::Integer
+
+  NOTICE_EVERY: ::Integer
+
+  interface _Env
+    def []: (String) -> String?
+
+    def []=: (String, String) -> String
+
+    def delete: (String) -> String?
+  end
+
+  # Returns the lock directory: R2P2_DEVICE_LOCK_DIR or ~/.cache/r2p2-device-locks.
+  # : () -> String
+  def self?.dir: () -> String
+
+  # Returns the environment variable name that records the holder pid of target.
+  # : (String target) -> String
+  def self?.env_key: (String target) -> String
+
+  # Acquires the lock and releases it at process exit. Returns false when this process already holds it.
+  # : (String target, ?root: String, ?pid: Integer, ?env: _Env, **untyped opts) -> bool
+  def self?.hold: (String target, ?root: String, ?pid: Integer, ?env: _Env, **untyped opts) -> bool
+
+  # Acquires the lock, yields, and releases the lock afterwards if this call acquired it. Returns the block value.
+  # : [T] (String target, ?root: String, ?pid: Integer, ?env: _Env, **untyped opts) { () -> T } -> T
+  def self?.synchronize: [T] (String target, ?root: String, ?pid: Integer, ?env: _Env, **untyped opts) { () -> T } -> T
+
+  # Takes the lock, waiting up to wait seconds and taking over locks whose owner is dead.
+  # Returns true when acquired, false when this process already holds it. Raises Timeout when the wait elapses.
+  # : (String target, ?wait: Numeric, ?root: String, ?pid: Integer, ?env: _Env, ?alive_fn: ^(Integer) -> bool, ?sleep_fn: ^(Float) -> void, ?now_fn: ^() -> Time, ?out: IO) -> bool
+  def self?.acquire: (String target, ?wait: Numeric, ?root: String, ?pid: Integer, ?env: _Env, ?alive_fn: ^(Integer) -> bool, ?sleep_fn: ^(Float) -> void, ?now_fn: ^() -> Time, ?out: IO) -> bool
+
+  # Removes the lock when pid owns it and clears the holder environment variable.
+  # : (String target, ?root: String, ?pid: Integer, ?env: _Env) -> void
+  def self?.release: (String target, ?root: String, ?pid: Integer, ?env: _Env) -> void
+
+  # Returns the owner pid and command recorded in the lock, or nil when the lock has no owner file.
+  # : (String lock) -> [Integer, String?]?
+  def self?.read_owner: (String lock) -> [ Integer, String? ]?
+
+  # Removes a lock whose owner is dead by renaming it aside first.
+  # : (String lock, Integer pid) -> void
+  def self?.take_over_stale: (String lock, Integer pid) -> void
+
+  # Returns true when a process with this pid exists.
+  # : (Integer pid) -> bool
+  def self?.alive?: (Integer pid) -> bool
+
+  # Returns the error text for a lock still held after wait seconds.
+  # : (String target, String lock, Integer? owner_pid, String? owner_cmd, Numeric wait) -> String
+  def self?.timeout_message: (String target, String lock, Integer? owner_pid, String? owner_cmd, Numeric wait) -> String
+end

@@ -1,0 +1,130 @@
+# Generated from tools/api_docs.rb with RBS::Inline
+
+# Generates RBS from the inline annotations with rbs-inline and renders it as Markdown API reference.
+module ApiDocs
+  ROOT: untyped
+
+  BEGIN_MARK: ::String
+
+  END_MARK: ::String
+
+  RBS_INLINE: untyped
+
+  AREAS: untyped
+
+  # One documentation unit: a gem or an area, with its sources, generated RBS dir and output file.
+  class Target < Struct[String | String?]
+    attr_accessor name(): String
+
+    attr_accessor base(): String
+
+    attr_accessor glob(): String
+
+    attr_accessor sig_dir(): String
+
+    attr_accessor readme(): String?
+
+    attr_accessor doc(): String?
+
+    def self.new: (?name: String, ?base: String, ?glob: String, ?sig_dir: String, ?readme: String?, ?doc: String?) -> instance
+                | ({ ?name: String, ?base: String, ?glob: String, ?sig_dir: String, ?readme: String?, ?doc: String? }) -> instance
+  end
+
+  # Returns a target per mrbgem and per area in AREAS.
+  # : () -> Array[Target]
+  def self.targets: () -> Array[Target]
+
+  # Returns the Ruby files of target, relative to the repository root.
+  # : (Target target) -> Array[String]
+  def self.sources: (Target target) -> Array[String]
+
+  # Runs rbs-inline over the sources of target and writes RBS under out_root. Aborts when rbs-inline fails.
+  # : (Target target, String out_root) -> void
+  def self.generate_sig: (Target target, String out_root) -> void
+
+  # Parses an RBS file and returns its declarations.
+  # : (String path) -> Array[RBS::AST::Declarations::Base]
+  def self.parse: (String path) -> Array[RBS::AST::Declarations::Base]
+
+  # Returns the generated RBS files of target under out_root.
+  # : (Target target, String out_root) -> Array[String]
+  def self.sig_files: (Target target, String out_root) -> Array[String]
+
+  # One documented member of a scope: kind, name, signatures, comment, visibility and source file.
+  class Member < Struct[Symbol | String | Array[String] | String?]
+    attr_accessor kind(): Symbol
+
+    attr_accessor name(): String
+
+    attr_accessor signatures(): Array[String]
+
+    attr_accessor comment(): String?
+
+    attr_accessor visibility(): Symbol
+
+    attr_accessor source(): String
+
+    def self.new: (?Symbol kind, ?String name, ?Array[String] signatures, ?String? comment, ?Symbol visibility, ?String source) -> instance
+                | (?kind: Symbol, ?name: String, ?signatures: Array[String], ?comment: String?, ?visibility: Symbol, ?source: String) -> instance
+  end
+
+  # One class or module with its superclass, comment, members and source files.
+  class Scope < Struct[String | String? | Array[Member] | Array[String]]
+    attr_accessor name(): String
+
+    attr_accessor super_class(): String?
+
+    attr_accessor comment(): String?
+
+    attr_accessor members(): Array[Member]
+
+    attr_accessor sources(): Array[String]
+
+    def self.new: (?String name, ?String? super_class, ?String? comment, ?Array[Member] members, ?Array[String] sources) -> instance
+                | (?name: String, ?super_class: String?, ?comment: String?, ?members: Array[Member], ?sources: Array[String]) -> instance
+  end
+
+  # Returns the class and module scopes declared in the generated RBS of target.
+  # : (Target target, String out_root) -> Array[Scope]
+  def self.scopes: (Target target, String out_root) -> Array[Scope]
+
+  # Walks RBS declarations, adding classes, modules, methods, attributes and constants to scopes.
+  # : (Array[RBS::AST::Declarations::Base] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
+  def self.collect: (Array[RBS::AST::Declarations::Base] decls, String prefix, Hash[String, Scope] scopes, String source) -> void
+
+  # Returns the prose of an RBS comment without signature and @rbs lines.
+  # : (String? comment) -> String
+  def self.description: (String? comment) -> String
+
+  # Returns true when the comment carries a `#:` signature line.
+  # : (String? comment) -> bool
+  def self.annotated?: (String? comment) -> bool
+
+  # Returns one message per class or method without a description, without a signature, or attribute without a type.
+  # : (Array[Scope] scopes) -> Array[String]
+  def self.problems: (Array[Scope] scopes) -> Array[String]
+
+  # Renders scopes as Markdown: constants, attributes and public methods with their signatures.
+  # : (Array[Scope] scopes, ?heading: String, ?level: Integer) -> String
+  def self.render: (Array[Scope] scopes, ?heading: String, ?level: Integer) -> String
+
+  # Replaces the generated block of readme with block, or appends it.
+  # : (String readme, String block) -> String
+  def self.splice: (String readme, String block) -> String
+
+  # Returns the first prose line of the target's README, or an empty string.
+  # : (Target target) -> String
+  def self.summary: (Target target) -> String
+
+  # Returns the Markdown files to write, keyed by path relative to the repository root.
+  # : (String out_root) -> Hash[String, String]
+  def self.documents: (String out_root) -> Hash[String, String]
+
+  # Regenerates the RBS and writes every Markdown document.
+  # : () -> void
+  def self.generate: () -> void
+
+  # Aborts listing the problems and out-of-date generated files; prints "docs: ok" otherwise. ONLY limits the list to matching entries.
+  # : () -> void
+  def self.check: () -> void
+end

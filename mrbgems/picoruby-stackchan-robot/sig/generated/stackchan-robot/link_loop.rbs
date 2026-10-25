@@ -1,0 +1,62 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/link_loop.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # The 20 ms link loop: pops one BLE event, services the dRuby channel, releases an idle central and ticks the Ticker.
+    class LinkLoop
+      TICK_MS: ::Integer
+
+      CCCD_NOTIFY: ::String
+
+      @active_at: Integer?
+
+      @release_after_us: Integer?
+
+      @remote: Remote
+
+      @drb: DrbChannel
+
+      @clock: ^() -> Integer
+
+      @on_packet: ^(String) -> void
+
+      @ticker: Ticker
+
+      @port: _Port
+
+      interface _Port
+        def pop_event: (timeout_ms: Integer) -> (String | Symbol)?
+
+        def event_popped: () -> void
+
+        def take_write: (Integer handle) -> String?
+
+        def send_notification: (Integer handle, String frame) -> void
+
+        def disconnect_central: () -> void
+      end
+
+      # Stores the collaborators. release_after (ms) enables idle release; clock returns microseconds.
+      # : (port: _Port, ticker: Ticker, on_packet: ^(String) -> void, clock: ^() -> Integer, drb: DrbChannel, remote: Remote, ?release_after: Integer?) -> void
+      def initialize: (port: _Port, ticker: Ticker, on_packet: ^(String) -> void, clock: ^() -> Integer, drb: DrbChannel, remote: Remote, ?release_after: Integer?) -> void
+
+      # Runs one loop iteration. dRuby traffic and audio playback refresh the activity time of a connected central.
+      # : () -> void
+      def tick: () -> void
+
+      # Starts the idle timer for a newly arrived central.
+      # : () -> Integer
+      def central_arrived: () -> Integer
+
+      # Stops the idle timer and resets the dRuby channel.
+      # : () -> void
+      def disconnected: () -> void
+
+      private
+
+      # Disconnects the central once it has been idle for release_after.
+      # : () -> void
+      def release_if_idle: () -> void
+    end
+  end
+end

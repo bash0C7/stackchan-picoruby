@@ -1,0 +1,9 @@
+# Generated from tools/phrase_announcer.rb with RBS::Inline
+
+STACKCHAN: untyped
+
+SAY_GAIN: ::String
+
+INTERVAL_S: ::Integer
+
+PHRASES: untyped

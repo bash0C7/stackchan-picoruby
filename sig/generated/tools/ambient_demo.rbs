@@ -1,0 +1,17 @@
+# Generated from tools/ambient_demo.rb with RBS::Inline
+
+STACKCHAN: untyped
+
+COLORS: untyped
+
+MODES: untyped
+
+SIDES: untyped
+
+FACES: untyped
+
+LED_INTERVAL_RANGE: untyped
+
+FACE_INTERVAL_RANGE: untyped
+
+MOVE_INTERVAL_RANGE: untyped

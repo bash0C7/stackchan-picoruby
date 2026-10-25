@@ -1,0 +1,9 @@
+# Generated from tools/aot/kernels_build.rb with RBS::Inline
+
+ROOT: untyped
+
+LIB: ::String
+
+KDIR: untyped
+
+AOT: untyped

@@ -1,0 +1,139 @@
+# Generated from mrbgems/picoruby-stackchan-led/mrblib/stackchan-led.rb with RBS::Inline
+
+# Driver for the 12-pixel WS2812 ring, split into a left and a right half, behind the PY32 I/O expander.
+# Keeps a pixel buffer and animates each side in solid, blink, breathing or off mode.
+class StackchanLed
+  @right_animator: Animator?
+
+  @left_animator: Animator?
+
+  @flash_right_until: Integer?
+
+  @flash_left_until: Integer?
+
+  @buffer: Array[Array[Integer]]
+
+  @py32: _Expander
+
+  type side = :both | :left | :right
+
+  type mode = :solid | :blink | :breathing | :off
+
+  interface _Expander
+    def set_direction: (Integer pin, bool output) -> void
+
+    def set_pull_mode: (Integer pin, bool up) -> void
+
+    def set_drive_mode: (Integer pin, bool open_drain) -> void
+
+    def set_led_count: (Integer count) -> void
+
+    def write_led_ram: (Array[Array[Integer]] pixels) -> void
+
+    def refresh_leds: () -> void
+  end
+
+  PIXEL_COUNT: ::Integer
+
+  LED_DATA_PIN: ::Integer
+
+  LEFT_RANGE: untyped
+
+  RIGHT_RANGE: untyped
+
+  # Drives the color of one pixel range on the ring for a single mode.
+  # Solid and off apply at once; blink and breathing advance on tick.
+  class Animator
+    @last_applied: Integer?
+
+    @phase_start_ms: Integer?
+
+    @mode: StackchanLed::mode
+
+    @b: Integer
+
+    @g: Integer
+
+    @r: Integer
+
+    @pixel_range: Range[Integer]
+
+    @led: StackchanLed
+
+    BLINK_HALF_PERIOD_MS: ::Integer
+
+    BREATHING_LUT: untyped
+
+    BREATHING_STEP_MS: ::Integer
+
+    # Creates an animator that paints pixel_range of led, starting off.
+    # : (StackchanLed led, pixel_range: Range[Integer]) -> void
+    def initialize: (StackchanLed led, pixel_range: Range[Integer]) -> void
+
+    # Sets the color and mode and restarts the animation phase.
+    # Solid and off are painted immediately.
+    # : (Integer r, Integer g, Integer b, StackchanLed::mode mode) -> void
+    def set: (Integer r, Integer g, Integer b, StackchanLed::mode mode) -> void
+
+    # Advances blink and breathing to now_ms and repaints when the color changed.
+    # Does nothing in solid and off modes.
+    # : (Integer now_ms) -> void
+    def tick: (Integer now_ms) -> void
+
+    private
+
+    # Returns true when the mode is blink or breathing.
+    # : () -> bool
+    def dynamic?: () -> bool
+
+    # Paints the color for solid and off modes.
+    # : () -> void
+    def apply_immediately: () -> void
+
+    # Fills the pixel range with the color and shows it.
+    # : (Integer r, Integer g, Integer b) -> void
+    def apply_color: (Integer r, Integer g, Integer b) -> void
+
+    # Paints the color unless it equals the last painted color.
+    # : (Integer r, Integer g, Integer b) -> void
+    def apply_color_if_changed: (Integer r, Integer g, Integer b) -> void
+  end
+
+  # Configures the PY32 pin for the LED data line, sets the pixel count and clears the ring.
+  # : (_Expander py32) -> void
+  def initialize: (_Expander py32) -> void
+
+  # Sets pixels start_idx through end_idx inclusive to the color in the buffer without showing them.
+  # Returns self.
+  # : (Integer start_idx, Integer end_idx, Integer r, Integer g, Integer b) -> self
+  def fill_range: (Integer start_idx, Integer end_idx, Integer r, Integer g, Integer b) -> self
+
+  # Writes the buffer to the expander and refreshes the LEDs.
+  # Returns self.
+  # : () -> self
+  def show: () -> self
+
+  # Sets the color and mode on the left, right or both sides and cancels a pending flash on those sides.
+  # Raises ArgumentError for an unknown side. Returns self.
+  # : (side side, Integer r, Integer g, Integer b, mode mode) -> self
+  def animate_side: (side side, Integer r, Integer g, Integer b, mode mode) -> self
+
+  # Lights a side solid and blanks it after duration_ms unless animate_side sets that side first.
+  # Returns self.
+  # : (side side, Integer r, Integer g, Integer b, ?Integer duration_ms) -> self
+  def flash_side: (side side, Integer r, Integer g, Integer b, ?Integer duration_ms) -> self
+
+  # Advances both animators to now_ms and blanks a side whose flash has ended.
+  # : (Integer now_ms) -> void
+  def tick: (Integer now_ms) -> void
+
+  private
+
+  # Returns the animator for the left pixel range, creating it on first use.
+  # : () -> Animator
+  def left_animator: () -> Animator
+
+  # Returns the animator for the right pixel range, creating it on first use.
+  # : () -> Animator
+  def right_animator: () -> Animator
+end

@@ -1,0 +1,48 @@
+# Generated from mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/gatt.rb with RBS::Inline
+
+module StackChan
+  class Controller
+    # GATT UUID helpers for the dRuby pair and the CCCD descriptor; every method is also a module function.
+    module Gatt
+      # Returns the 16-byte 128-bit UUID in the Nordic UART base with the given two suffix bytes.
+      # : (Integer suffix_hi, Integer suffix_lo) -> String
+      def self?.base_uuid: (Integer suffix_hi, Integer suffix_lo) -> String
+
+      # Returns the 128-bit UUID of the dRuby write characteristic (6e400004).
+      # : () -> String
+      def drb_rx_uuid: () -> String
+
+      # Returns the 128-bit UUID of the dRuby notify characteristic (6e400005).
+      # : () -> String
+      def drb_tx_uuid: () -> String
+
+      # Returns the 128-bit UUID of the Client Characteristic Configuration descriptor (0x2902).
+      # : () -> String
+      def cccd_uuid: () -> String
+
+      # Returns the first characteristic whose uuid128 matches across all services, or nil.
+      # : (Array[BLE::service_t] services, String uuid128) -> BLE::characteristic_t?
+      def find_characteristic: (Array[BLE::service_t] services, String uuid128) -> BLE::characteristic_t?
+
+      # Returns the handle of the CCCD descriptor of the characteristic, or nil when there is none.
+      # : (BLE::characteristic_t? characteristic) -> Integer?
+      def cccd_handle: (BLE::characteristic_t? characteristic) -> Integer?
+
+      HEX: ::String
+
+      GAP_BASE_SUFFIX: untyped
+
+      # Returns count bytes of uuid128 starting at index from as lowercase hex.
+      # : (String uuid128, Integer from, Integer count) -> String
+      def hex_bytes: (String uuid128, Integer from, Integer count) -> String
+
+      # Returns the short hex form of a 128-bit UUID (4 digits on the Bluetooth base, 8 digits otherwise), or "?" for a non-UUID.
+      # : (String uuid128) -> String
+      def short_uuid: (String uuid128) -> String
+
+      # Returns a one-line summary of the discovered services and the short UUIDs of their characteristics.
+      # : (Array[BLE::service_t] services) -> String
+      def describe_services: (Array[BLE::service_t] services) -> String
+    end
+  end
+end

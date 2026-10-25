@@ -1,5 +1,6 @@
 require 'prism'
 
+# Pins the Espressif QEMU build and decides from a boot log whether a firmware image boots.
 module QemuGate
   QEMU_VERSION = 'esp_develop_9.2.2_20250817'
   QEMU_RELEASE_TAG = 'esp-develop-9.2.2-20250817'
@@ -32,11 +33,19 @@ module QemuGate
   MARKER = 'QEMU_PROBE_OK'
   SHELL_PROMPT = '$> '
 
-  Verdict = Struct.new(:pass, :message, :decided)
+  # Result of a boot-log judgement: pass flag, message, and whether the verdict is final.
+  Verdict = Struct.new(
+    :pass, #: bool
+    :message, #: String
+    :decided #: bool
+  )
   FLASH_CONSOLE_DEFINE = "#define CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 1"
 
   module_function
 
+  # Returns the PINS key for the host OS and CPU.
+  # Raises RuntimeError for an unsupported host.
+  #: (host_os: String, host_cpu: String) -> String
   def platform(host_os:, host_cpu:)
     os = case host_os
          when /linux/ then 'linux'
@@ -54,6 +63,8 @@ module QemuGate
     key
   end
 
+  # Returns the 1024-byte eFuse image that lets the ESP32-S3 boot under QEMU.
+  #: () -> String
   def efuse_image
     bytes = Array.new(1024, 0)
     bytes[37] = 0x0c
@@ -61,6 +72,8 @@ module QemuGate
     bytes.pack('C*')
   end
 
+  # Returns the qemu-system-xtensa command line that boots flash with serial output written to log.
+  #: (qemu: String, flash: String, efuse: String, log: String) -> Array[String]
   def argv(qemu:, flash:, efuse:, log:)
     [
       qemu,
@@ -79,10 +92,15 @@ module QemuGate
     ]
   end
 
+  # Replaces the usb_console entry of a semicolon-separated sdkconfig list with fragment_path.
+  #: (String cores3_list, String fragment_path) -> String
   def sdkconfig_defaults(cores3_list, fragment_path)
     cores3_list.split(';').map { |entry| entry == 'sdkconfigs/usb_console' ? fragment_path : entry }.join(';')
   end
 
+  # Returns the top-level `require 'name'` lines of the Ruby file at path.
+  # Raises RuntimeError when the file does not parse.
+  #: (String path) -> Array[String]
   def top_level_requires(path)
     result = Prism.parse(File.read(path))
     raise "parse error: #{result.errors}" unless result.success?
@@ -98,6 +116,8 @@ module QemuGate
     end
   end
 
+  # Returns the Ruby source the QEMU probe runs: requires, gem sources, a stubbed Robot#run, the application and a frame parser round trip.
+  #: (application: String, gem_sources: Array[String]) -> String
   def probe_source(application:, gem_sources:)
     sections = []
     sections << top_level_requires(application).join("\n")
@@ -111,6 +131,8 @@ module QemuGate
     sections.join("\n\n")
   end
 
+  # Judges a serial log: fails on panic or error lines, passes when the marker is followed by the shell prompt.
+  #: (String? log) -> Verdict
   def verdict(log)
     text = log.to_s
     marker_at = text.index(MARKER)
@@ -131,6 +153,8 @@ module QemuGate
     Verdict.new(false, "marker #{MARKER} found but no shell prompt after it", false)
   end
 
+  # Returns true when the sdkconfig header selects the USB Serial/JTAG console.
+  #: (String? sdkconfig_h) -> bool
   def flash_console_ok?(sdkconfig_h)
     sdkconfig_h.to_s.include?(FLASH_CONSOLE_DEFINE)
   end

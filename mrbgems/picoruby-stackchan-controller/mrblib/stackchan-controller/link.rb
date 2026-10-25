@@ -1,11 +1,32 @@
 module StackChan
   class Controller
+    # Connection state machine of the BLE link: released, held, quiet or busy, with keepalive and hold expiry.
     class Link
       BUSY_MESSAGE = "robot is held by another controller or unreachable"
+      # @rbs @central: Controller::_Central
+      # @rbs @clock: ^() -> Integer
+      # @rbs @hold: Integer?
+      # @rbs @keepalive_ms: Integer
+      # @rbs @log: ^(String) -> void
+      # @rbs @state: link_state
+      # @rbs @touches: Array[Integer]
+      # @rbs @connects: Integer
+      # @rbs @releases: Integer
+      # @rbs @last_connect_ms: Integer?
+      # @rbs @last_action_at: Integer?
+      # @rbs @last_sent_at: Integer?
+      # @rbs @on_lost: (^() -> void)?
 
-      attr_reader :state, :touches
-      attr_accessor :on_lost
+      # @rbs!
+      #   type link_state = :released | :held | :quiet | :busy
+      #   type link_status = { link: String, connects: Integer, releases: Integer, last_connect_ms: Integer?, hold_ms: Integer? }
 
+      attr_reader :state #: link_state
+      attr_reader :touches #: Array[Integer]
+      attr_accessor :on_lost #: (^() -> void)?
+
+      # Builds a released link over the central; hold is the idle time in ms before the link goes quiet (nil never expires).
+      #: (central: Controller::_Central, ?clock: ^() -> Integer, ?hold: Integer?, ?keepalive_ms: Integer, log: ^(String) -> void) -> void
       def initialize(central:, clock: -> { Machine.board_millis }, hold: nil, keepalive_ms: 1_000, log:)
         @central         = central
         @clock           = clock
@@ -22,10 +43,15 @@ module StackChan
         @on_lost         = nil
       end
 
+      # Returns how many times the link has connected.
+      #: () -> Integer
       def generation
         @connects
       end
 
+      # Connects when released or busy, yields, and returns the block result; marks the link held afterwards.
+      # Raises Busy when the connect fails. Releases the link and re-raises on ConnectionError, and on TimeoutError when the central lost the link.
+      #: [T] () { () -> T } -> T
       def act
         if @state == :held || @state == :quiet
           @central.drain
@@ -46,6 +72,8 @@ module StackChan
         result
       end
 
+      # Drains the central, releases a lost link, expires the hold into quiet and sends a keepalive when due; collects touched zones.
+      #: (?expire: bool) -> void
       def tick(expire: true)
         return if @state == :released || @state == :busy
         @central.drain
@@ -78,6 +106,8 @@ module StackChan
         end
       end
 
+      # Resets the central link, sets the state to released, clears touches and calls on_lost.
+      #: () -> void
       def lost!
         @central.reset_link
         @state = :released
@@ -87,16 +117,22 @@ module StackChan
         cb.call if cb
       end
 
+      # Extends the hold by recording now as the last action while held.
+      #: () -> void
       def listening!
         @last_action_at = @clock.call if @state == :held
       end
 
+      # Returns link, connects, releases, last_connect_ms and hold_ms as a Hash.
+      #: () -> link_status
       def status
         { link: @state.to_s, connects: @connects, releases: @releases, last_connect_ms: @last_connect_ms, hold_ms: @hold }
       end
 
       private
 
+      # Connects the central and counts the connection; sets busy and raises Busy when the connect fails.
+      #: () -> void
       def connect!
         t0 = @clock.call
         begin
@@ -111,6 +147,8 @@ module StackChan
         used!
       end
 
+      # Marks the link held and resets the action and keepalive timestamps.
+      #: () -> void
       def used!
         @state          = :held
         @last_action_at = @clock.call

@@ -1,0 +1,5 @@
+# Generated from mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol.rb with RBS::Inline
+
+# Namespace of the StackChan frame parser; FrameParser is defined under it.
+module StackchanProtocol
+end

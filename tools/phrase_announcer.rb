@@ -15,11 +15,15 @@ PHRASES = [
   "ここはアイブリーのオフィスだよ。すごいね",
 ].freeze
 
+# Prints msg with a timestamp and flushes stdout.
+#: (String msg) -> void
 def log(msg)
   puts "[#{Time.now.strftime('%H:%M:%S')}] #{msg}"
   $stdout.flush
 end
 
+# Speaks text through the stackchan CLI and logs whether it succeeded.
+#: (String text) -> void
 def speak(text)
   ok = system(STACKCHAN, "say", text, "--gain", SAY_GAIN)
   log "say #{ok ? 'OK' : 'FAILED'}: #{text}"

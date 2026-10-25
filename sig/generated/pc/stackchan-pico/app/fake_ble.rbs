@@ -1,0 +1,64 @@
+# Generated from pc/stackchan-pico/app/fake_ble.rb with RBS::Inline
+
+# In-process BLE client that logs frames to stderr instead of talking to a robot.
+class FakeBleClient
+  @connected: bool
+
+  @on_unsolicited: (^(String frame) -> void)?
+
+  @last_detail_frame: String?
+
+  attr_accessor on_unsolicited: (^(String frame) -> void)?
+
+  attr_reader last_detail_frame: String?
+
+  # Builds a disconnected client.
+  # : () -> void
+  def initialize: () -> void
+
+  # Marks the client connected and returns self.
+  # : () -> self
+  def connect: () -> self
+
+  # Marks the client disconnected and returns self.
+  # : () -> self
+  def disconnect: () -> self
+
+  # Returns whether connect has been called since the last disconnect.
+  # : () -> bool
+  def connected?: () -> bool
+
+  # Returns false; the fake link is never lost.
+  # : () -> bool
+  def lost?: () -> bool
+
+  # Does nothing and returns self.
+  # : () -> self
+  def drain: () -> self
+
+  # Marks the client disconnected.
+  # : () -> bool
+  def reset_link: () -> bool
+
+  # Logs the call and returns an empty touch list. Raises ConnectionError when not connected.
+  # : () -> Array[Integer]
+  def keepalive: () -> Array[Integer]
+
+  # Yields a SendBuilder and logs each frame it builds. Raises ConnectionError when not connected.
+  # : () { (StackChan::Controller::SendBuilder) -> void } -> self
+  def send: () { (StackChan::Controller::SendBuilder) -> void } -> self
+
+  # Logs one frame. Raises ConnectionError when not connected.
+  # : (String frame) -> self
+  def raw_send: (String frame) -> self
+
+  # Logs a remote call and returns a fake reply line. Raises ConnectionError when not connected.
+  # : (Symbol msg, Array[untyped] args) -> Array[String]
+  def call_front: (Symbol msg, Array[untyped] args) -> Array[String]
+
+  private
+
+  # Logs frame and records the detail line a robot would reply with, or nil.
+  # : (String frame) -> String?
+  def write_frame: (String frame) -> String?
+end

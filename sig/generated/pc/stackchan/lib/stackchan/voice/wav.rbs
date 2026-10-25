@@ -1,0 +1,46 @@
+# Generated from pc/stackchan/lib/stackchan/voice/wav.rb with RBS::Inline
+
+# Namespace of the Mac-side StackChan host library.
+module Stackchan
+  # Speech synthesis and audio encoding for the robot speaker.
+  module Voice
+    # Minimal RIFF WAVE reader for the PCM that afconvert writes.
+    module Wav
+      SAMPLE_RATE: ::Integer
+
+      # The fmt chunk fields of a WAVE file.
+      class Format < Struct[Integer]
+        attr_accessor audio_format(): Integer
+
+        attr_accessor channels(): Integer
+
+        attr_accessor sample_rate(): Integer
+
+        attr_accessor bits_per_sample(): Integer
+
+        def self.new: (?Integer audio_format, ?Integer channels, ?Integer sample_rate, ?Integer bits_per_sample) -> instance
+                    | (?audio_format: Integer, ?channels: Integer, ?sample_rate: Integer, ?bits_per_sample: Integer) -> instance
+      end
+
+      # Raised when WAVE bytes are malformed or not 8 kHz mono PCM16.
+      class FormatError < StandardError
+      end
+
+      # Returns the fmt chunk and the data chunk bytes of a WAVE file. Raises FormatError on a malformed file.
+      # : (String bytes) -> [Format, String]
+      def self.parse: (String bytes) -> [ Format, String ]
+
+      # Returns fmt when it is 8 kHz mono PCM16. Raises FormatError otherwise.
+      # : (Format fmt) -> Format
+      def self.expect_mono_s16!: (Format fmt) -> Format
+
+      # Returns the little-endian unsigned 16-bit value at byte offset off.
+      # : (String s, Integer off) -> Integer
+      def self.u16le: (String s, Integer off) -> Integer
+
+      # Returns the little-endian unsigned 32-bit value at byte offset off.
+      # : (String s, Integer off) -> Integer
+      def self.u32le: (String s, Integer off) -> Integer
+    end
+  end
+end

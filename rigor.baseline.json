@@ -1,6 +1,6 @@
 {
   "success": false,
-  "error_count": 25,
+  "error_count": 34,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -12,8 +12,17 @@
       "message": "7 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, ruby-termios, serialport, and 2 more. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
     },
     {
+      "path": ".rigor.yml",
+      "line": 1,
+      "column": 1,
+      "severity": "info",
+      "rule": "rbs.coverage.inline-annotations-unsynthesized",
+      "source_family": "builtin",
+      "message": "Inline rbs-inline annotations (`# @rbs …`, `#: <type>`) are present in your project (e.g. acceptance/ops.rb), but the `rbs-inline` library is not installed, so Rigor cannot read them and the annotated code stays `Dynamic[top]` — this run is quieter than your annotations intend, not cleaner. Install the `rbs-inline` gem (its dependency closure, `prism` + `rbs`, already ships with Rigor) and Rigor honours the annotations automatically (ADR-93); it is not bundled, keeping the core zero-dep (ADR-0)."
+    },
+    {
       "path": "acceptance/runner.rb",
-      "line": 290,
+      "line": 379,
       "column": 54,
       "severity": "error",
       "rule": "call.undefined-method",
@@ -26,7 +35,7 @@
     },
     {
       "path": "lib/deploy/picomodem.rb",
-      "line": 249,
+      "line": 279,
       "column": 36,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -38,7 +47,7 @@
     },
     {
       "path": "lib/deploy/picomodem.rb",
-      "line": 254,
+      "line": 284,
       "column": 13,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -50,7 +59,7 @@
     },
     {
       "path": "lib/deploy/picomodem.rb",
-      "line": 254,
+      "line": 284,
       "column": 30,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -74,7 +83,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/args.rb",
-      "line": 58,
+      "line": 83,
       "column": 21,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -86,7 +95,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/args.rb",
-      "line": 59,
+      "line": 84,
       "column": 27,
       "severity": "error",
       "rule": "call.possible-nil-receiver",
@@ -97,8 +106,188 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 97,
+      "column": 14,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `[]' is undefined on NilClass",
+      "method_name": "[]",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 97,
+      "column": 20,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `length' is undefined on NilClass",
+      "method_name": "length",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 98,
+      "column": 37,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `length' is undefined on NilClass",
+      "method_name": "length",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 98,
+      "column": 53,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `[]' is undefined on NilClass",
+      "method_name": "[]",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 98,
+      "column": 68,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `[]' is undefined on NilClass",
+      "method_name": "[]",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 98,
+      "column": 14,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `[]' is undefined on NilClass",
+      "method_name": "[]",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 98,
+      "column": 20,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `length' is undefined on NilClass",
+      "method_name": "length",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/calibration.rb",
+      "line": 101,
+      "column": 11,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `split' is undefined on NilClass",
+      "method_name": "split",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 155,
+      "column": 11,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `verb_touch': declared Integer, inferred nil",
+      "method_name": "verb_touch",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 258,
+      "column": 11,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `calibrate_full': declared Integer, inferred 0 | 7 | nil",
+      "method_name": "calibrate_full",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 326,
+      "column": 11,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `parse_kw': declared Hash[String, String?], inferred Hash[String?, String]",
+      "method_name": "parse_kw",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb",
+      "line": 296,
+      "column": 34,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `>=' is undefined on NilClass",
+      "method_name": ">=",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/gatt.rb",
+      "line": 55,
+      "column": 24,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `>>' is undefined on NilClass",
+      "method_name": ">>",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_parser.rb",
+      "line": 18,
+      "column": 9,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `feed': declared Array[Hash[String, String]], inferred Array[Hash[String, String]?]",
+      "method_name": "feed",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_parser.rb",
+      "line": 49,
+      "column": 12,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `split' is undefined on NilClass",
+      "method_name": "split",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
       "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot.rb",
-      "line": 38,
+      "line": 87,
       "column": 83,
       "severity": "warning",
       "rule": "flow.always-truthy-condition",
@@ -109,7 +298,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot.rb",
-      "line": 39,
+      "line": 88,
       "column": 82,
       "severity": "warning",
       "rule": "flow.always-truthy-condition",
@@ -152,31 +341,6 @@
       "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
       "evidence_tier": "medium",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "test/pc/radio_test.rb",
-      "line": 32,
-      "column": 30,
-      "severity": "error",
-      "rule": "call.possible-nil-receiver",
-      "source_family": "builtin",
-      "message": "possible nil receiver: `getbyte' is undefined on NilClass",
-      "method_name": "getbyte",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
-    },
-    {
-      "path": "test/pc/send_builder_test.rb",
-      "line": 26,
-      "column": 78,
-      "severity": "error",
-      "rule": "call.argument-type-mismatch",
-      "source_family": "builtin",
-      "message": "argument type mismatch at parameter `color' of `led' on StackChan::Controller::SendBuilder: expected :blue | :cyan | :green | :magenta | :off | :red | :white | :yellow, got :rgb",
-      "receiver_type": "StackChan::Controller::SendBuilder",
-      "method_name": "led",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-argument-type-mismatch"
     },
     {
       "path": "test/pc/socket_read_retry_test.rb",

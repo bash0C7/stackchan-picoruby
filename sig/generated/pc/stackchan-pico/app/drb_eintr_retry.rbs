@@ -1,0 +1,32 @@
+# Generated from pc/stackchan-pico/app/drb_eintr_retry.rb with RBS::Inline
+
+# Retries a socket read that fails with a transient read failure.
+module SocketReadRetry
+  MESSAGE: ::String
+
+  MAX_RETRIES: ::Integer
+
+  BACKOFF_MS: ::Integer
+
+  # Yields the block, retrying up to MAX_RETRIES times when it raises the transient read failure. Re-raises any other error.
+  # : [T] (?sleep_fn: (^(Integer) -> void)?, ?warn_fn: (^(Integer) -> void)?) { () -> T } -> T
+  def self.call: [T] (?sleep_fn: (^(Integer) -> void)?, ?warn_fn: (^(Integer) -> void)?) { () -> T } -> T
+
+  # Writes the retry count to stderr.
+  # : (Integer retries) -> void
+  def self.warn_default: (Integer retries) -> void
+end
+
+# TCPSocket whose readpartial retries a transient read failure.
+class TCPSocket
+  # Reads up to maxlen bytes, retrying a transient read failure.
+  # : (Integer maxlen) -> String
+  def readpartial: (Integer maxlen) -> String
+end
+
+# DRb with a create_socket that retries an interrupted connect.
+module DRb
+  # Opens the DRb socket for uri, retrying up to 5 times when the call is interrupted.
+  # : (String uri) -> DRbBle::_Stream
+  def self.create_socket: (String uri) -> DRbBle::_Stream
+end

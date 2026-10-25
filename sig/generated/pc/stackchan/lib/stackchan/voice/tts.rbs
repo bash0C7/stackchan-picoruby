@@ -1,0 +1,42 @@
+# Generated from pc/stackchan/lib/stackchan/voice/tts.rb with RBS::Inline
+
+# Namespace of the Mac-side StackChan host library.
+module Stackchan
+  # Speech synthesis and audio encoding for the robot speaker.
+  module Voice
+    # Synthesizes speech with the macOS say command and encodes it to mu-law 8 kHz.
+    class Tts
+      @gain: Float
+
+      @rate: Integer?
+
+      # Raised when say or afconvert fails.
+      class SynthError < StandardError
+      end
+
+      DEFAULT_GAIN: ::Float
+
+      # Builds a synthesizer with a PCM gain factor and an optional say rate in words per minute.
+      # : (?gain: Float, ?rate: Integer?) -> void
+      def initialize: (?gain: Float, ?rate: Integer?) -> void
+
+      # Returns mu-law bytes of text spoken at 8 kHz. Raises SynthError when say or afconvert fails.
+      # : (String text) -> String
+      def synthesize: (String text) -> String
+
+      private
+
+      # Returns 8 kHz mono PCM16 bytes of text via say and afconvert.
+      # : (String text) -> String
+      def synthesize_pcm: (String text) -> String
+
+      # Writes the spoken text to an AIFF file. Raises SynthError when say fails.
+      # : (String text, String out_path) -> void
+      def run_say: (String text, String out_path) -> void
+
+      # Converts an AIFF file to 8 kHz mono PCM16 WAVE. Raises SynthError when afconvert fails.
+      # : (String in_path, String out_path) -> void
+      def run_afconvert: (String in_path, String out_path) -> void
+    end
+  end
+end

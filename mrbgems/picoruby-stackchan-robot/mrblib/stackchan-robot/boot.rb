@@ -1,5 +1,6 @@
 module StackChan
   class Robot
+    # Cold-boot sequence for the CoreS3: PMIC, IO expander, LCD, PY32, LEDs, touch, servos and speaker.
     class Boot
       I2C_SDA_PIN  = 12
       I2C_SCL_PIN  = 11
@@ -14,6 +15,9 @@ module StackChan
       DUMMY_BL_PIN  = 2
       SPEAKER_SAMPLE_RATE = 8000
 
+      # Initializes every device in order and returns them keyed :display, :led, :head, :touch, :speaker.
+      # :touch, :head and :speaker are nil when their init raised; :display and :led failures propagate.
+      #: () -> devices
       def self.run
         puts ""
         puts "[application] boot"

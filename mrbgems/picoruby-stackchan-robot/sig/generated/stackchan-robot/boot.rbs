@@ -1,0 +1,37 @@
+# Generated from mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot/boot.rb with RBS::Inline
+
+module StackChan
+  class Robot
+    # Cold-boot sequence for the CoreS3: PMIC, IO expander, LCD, PY32, LEDs, touch, servos and speaker.
+    class Boot
+      I2C_SDA_PIN: ::Integer
+
+      I2C_SCL_PIN: ::Integer
+
+      AXP2101_ADDR: ::Integer
+
+      AW9523_ADDR: ::Integer
+
+      PY32_ADDR: ::Integer
+
+      SCK_PIN: ::Integer
+
+      MOSI_PIN: ::Integer
+
+      CS_PIN: ::Integer
+
+      DC_PIN: ::Integer
+
+      DUMMY_RST_PIN: ::Integer
+
+      DUMMY_BL_PIN: ::Integer
+
+      SPEAKER_SAMPLE_RATE: ::Integer
+
+      # Initializes every device in order and returns them keyed :display, :led, :head, :touch, :speaker.
+      # :touch, :head and :speaker are nil when their init raised; :display and :led failures propagate.
+      # : () -> devices
+      def self.run: () -> devices
+    end
+  end
+end

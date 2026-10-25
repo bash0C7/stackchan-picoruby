@@ -1,0 +1,65 @@
+# Generated from acceptance/ops.rb with RBS::Inline
+
+# Host-side acceptance run of the robot.
+module Acceptance
+  # Everything an acceptance run does to the machine: git, rake, the stackchan CLI and the operator prompt.
+  class Ops
+    @log_dir: String
+
+    @device_env: ^() -> Hash[String, String?]
+
+    @n: Integer
+
+    DEVICE_TASKS: untyped
+
+    # Creates log_dir; device_env supplies the environment of device-touching rake tasks.
+    # : (String log_dir, ?device_env: ^() -> Hash[String, String?]) -> void
+    def initialize: (String log_dir, ?device_env: ^() -> Hash[String, String?]) -> void
+
+    # Returns whether path exists, including a dangling symlink.
+    # : (String path) -> bool
+    def exist?: (String path) -> bool
+
+    # Returns the bytes of path, or nil when it does not exist.
+    # : (String path) -> String?
+    def read: (String path) -> String?
+
+    # Runs git in dir and returns [success, combined output, 0].
+    # : (String dir, *String args) -> [bool, String, Integer]
+    def git: (String dir, *String args) -> [ bool, String, Integer ]
+
+    # Streams to the terminal and to one log per call; the caller gets the output
+    # and the command's own exit status (no pipe in between).
+    # Runs a rake task in dir, holding the esp32 device lock for device tasks. Returns [success, output, 0].
+    # : (String dir, *String tasks, ?env: Hash[String, String?], ?bundle: bool, ?limit: Numeric?) -> [bool, String, Integer]
+    def rake: (String dir, *String tasks, ?env: Hash[String, String?], ?bundle: bool, ?limit: Numeric?) -> [ bool, String, Integer ]
+
+    # Runs rake in dir with the output teed to a numbered log; stops the process group after limit seconds. Returns [success, output, 0].
+    # : (String dir, *String tasks, ?env: Hash[String, String?], ?bundle: bool, ?limit: Numeric?) -> [bool, String, Integer]
+    def run_rake: (String dir, *String tasks, ?env: Hash[String, String?], ?bundle: bool, ?limit: Numeric?) -> [ bool, String, Integer ]
+
+    # Runs the stackchan CLI of the checkout at root. Returns [success, output, seconds, exit status].
+    # : (String root, *String args, ?env: Hash[String, String], ?stdin: String?) -> [bool, String, Float, Integer]
+    def cli: (String root, *String args, ?env: Hash[String, String], ?stdin: String?) -> [ bool, String, Float, Integer ]
+
+    # Returns the monotonic clock in seconds.
+    # : () -> Float
+    def now: () -> Float
+
+    # Sleeps for seconds.
+    # : (Numeric seconds) -> Integer
+    def sleep: (Numeric seconds) -> Integer
+
+    # Prints an instruction for the operator.
+    # : (String text) -> void
+    def notice: (String text) -> void
+
+    # Returns whether stdin is a terminal.
+    # : () -> bool
+    def tty?: () -> bool
+
+    # Asks the operator a y/n question; returns "y" or "n", or nil without a terminal.
+    # : (String question) -> String?
+    def prompt: (String question) -> String?
+  end
+end
