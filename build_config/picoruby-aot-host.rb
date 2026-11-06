@@ -1,6 +1,6 @@
 # Host VM for bench/aot_ab.rb: the picotest defines
 # without PICORB_DEBUG, picoruby-multicore's pthread port, and the gems
-# tools/aot/kernels_build.rb generated for the host (the AOT kernels and their
+# tools/aot/kernels_build.rb generated for the host (the AOT kernels, with the
 # multicore_kernels table). Built by tools/aot_host_vm.sh.
 AOT_BUILD = File.expand_path('../build/aot', __dir__)
 
@@ -28,5 +28,4 @@ MRuby::Build.new("host-aot") do |conf|
 
   conf.gem gemdir: "#{AOT_BUILD}/picoruby-multicore-host"
   conf.gem gemdir: "#{AOT_BUILD}/host/gems/picoruby-stackchan_aot"
-  conf.gem gemdir: "#{AOT_BUILD}/host/picoruby-kernel_registry"
 end

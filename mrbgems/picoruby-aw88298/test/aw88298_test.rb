@@ -43,7 +43,7 @@ class AW88298Test < Picotest::Test
     spk = AW88298.new(i2c: FakeI2C.new, i2s: I2S.new(sample_rate: 8000))
     Multicore.log.clear
     spk.play_ulaw(c)
-    assert_equal hex(ulaw_decode(c)), hex(spk.i2s.written)
+    assert_equal hex(StackchanAot.ulaw_decode(c)), hex(spk.i2s.written)
     assert_equal [AW88298::CHUNK, AW88298::CHUNK, 10], Multicore.log.map { |e| e[2] }
   end
 

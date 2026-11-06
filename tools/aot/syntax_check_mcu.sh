@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
-# Compile every TU of a prepared gem (tools/aot/prepare_mcu.sh) with the
-# ESP32-S3 gcc and -fsyntax-only: a missing shim shows up in seconds instead of
-# in a firmware build. XTENSA_GCC overrides the compiler.
-#
-#   tools/aot/syntax_check_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot
 set -uo pipefail
 
 gem=$(cd "${1:?usage: tools/aot/syntax_check_mcu.sh <gem dir>}" && pwd)
-name=$(basename "$gem"); name=${name#picoruby-}
 cc=${XTENSA_GCC:-$(ls "$HOME"/.espressif/tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc | tail -1)}
-archflags="-mlongcalls"
-flags=$(cat "$gem/mcu-flags.txt")
+[ -d "$gem/src/newlib" ] || { echo "not a --newlib suppify gem: $gem" >&2; exit 2; }
+read -r -a gemflags <<< "$(ruby -e '
+  rake = File.read(ARGV[0])
+  defs = rake[/spec\.cc\.defines\.concat\((\[.*?\])\)/, 1]
+  flags = rake[/spec\.cc\.flags\.concat\((\[.*?\])\)/, 1]
+  puts((eval(defs).map { "-D#{_1}" } + eval(flags)).join(" "))
+' "$gem/mrbgem.rake")"
+flags=(-mlongcalls -fsyntax-only -Os -I"$gem/src/newlib" -D_DEFAULT_SOURCE -include "$gem/src/newlib/sp_newlib_config.h"
+       -I"$gem/src" -I"$gem/include" "${gemflags[@]}")
 rc=0
-for f in "$gem"/src/*.c; do
-  b=$(basename "$f" .c)
-  # mrbgem.rake が除外する TU は見ない
-  grep -qx "$b" "$gem/mcu-excluded.txt" && continue
-  # binding.c は mruby.h が要る (libmruby の rake が include path を持つ) ので syntax check の対象外
-  [ "$b" = binding ] && continue
-  out=$($cc $archflags -fsyntax-only -Os -I"$gem/src" -I"$gem/include" -include "$gem/src/${name}_prelude.h" $flags "$f" 2>&1)
+for f in "$gem"/src/*.c "$gem"/src/newlib/sp_newlib.c "$gem"/src/instances/*_glue.c; do
+  [ "$(basename "$f")" = binding.c ] && continue
+  out=$($cc "${flags[@]}" "$f" 2>&1)
   if [ $? -ne 0 ]; then
-    echo "== $b"; echo "$out" | grep -E "error|fatal" | head -40; rc=1
+    echo "== $(basename "$f")"; echo "$out" | grep -E "error|fatal" | head -40; rc=1
   fi
 done
 echo "syntax_check exit=$rc"

@@ -59,8 +59,8 @@ while i < src.bytesize
   src.setbyte(i, (i * 37) % 256)
   i += 1
 end
-raise "ulaw_decode differs" unless ulaw_decode(src) == ulaw_decode_rb(src)
-report("ulaw_decode 4096 B", time_us(20) { ulaw_decode_rb(src) }, time_us(200) { ulaw_decode(src) })
+raise "ulaw_decode differs" unless StackchanAot.ulaw_decode(src) == ulaw_decode_rb(src)
+report("ulaw_decode 4096 B", time_us(20) { ulaw_decode_rb(src) }, time_us(200) { StackchanAot.ulaw_decode(src) })
 
 sink = Sink.new
 AW88298.new(i2c: nil, i2s: sink).play_ulaw(src * 4)
@@ -71,5 +71,5 @@ report("play_ulaw 16384 B (core 1)", time_us(5) { ulaw_decode_rb(src * 4) }, tim
 rows = []
 16.times { |y| rows << ((y * 40503 + 12345) & 0xFFFF) }
 flat = glyph_rb(16, rows, 0xFFFF, 0).flatten.pack("C*")
-raise "glyph16 differs" unless glyph16(16, 0xFFFF, 0, *rows) == flat
-report("glyph 16x16", time_us(400) { glyph_rb(16, rows, 0xFFFF, 0) }, time_us(400) { glyph16(16, 0xFFFF, 0, *rows) })
+raise "glyph16 differs" unless StackchanAot.glyph16(16, 0xFFFF, 0, *rows) == flat
+report("glyph 16x16", time_us(400) { glyph_rb(16, rows, 0xFFFF, 0) }, time_us(400) { StackchanAot.glyph16(16, 0xFFFF, 0, *rows) })

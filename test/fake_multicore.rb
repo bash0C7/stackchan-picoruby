@@ -21,6 +21,6 @@ module Multicore
 
   def self.spawn(name, *args)
     @log << [:spawn, name, args[0].bytesize]
-    Job.new(send(name, *args))
+    Job.new(StackchanAot.send(name, *args))
   end
 end

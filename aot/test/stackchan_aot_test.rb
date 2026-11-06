@@ -34,18 +34,18 @@ class StackchanAotTest < Picotest::Test
   end
 
   def test_ulaw_decode_matches_g711_for_every_code
-    assert_equal ULAW_ALL_PCM_HEX, hex(ulaw_decode(all_codes))
+    assert_equal ULAW_ALL_PCM_HEX, hex(StackchanAot.ulaw_decode(all_codes))
   end
 
   def test_ulaw_decode_known_vectors
-    assert_equal "0000", hex(ulaw_decode("\xFF"))
-    assert_equal "8482", hex(ulaw_decode("\x00"))   # -32124
-    assert_equal "7c7d", hex(ulaw_decode("\x80"))   # +32124
+    assert_equal "0000", hex(StackchanAot.ulaw_decode("\xFF"))
+    assert_equal "8482", hex(StackchanAot.ulaw_decode("\x00"))   # -32124
+    assert_equal "7c7d", hex(StackchanAot.ulaw_decode("\x80"))   # +32124
   end
 
   def test_glyph16_is_msb_first_fg_where_set_big_endian
     rows = [0b1000000000000001] + [0] * 15
-    cell = glyph16(16, 0xF800, 0x001F, *rows)
+    cell = StackchanAot.glyph16(16, 0xF800, 0x001F, *rows)
     assert_equal 512, cell.bytesize
     assert_equal "f800" + "001f" * 14 + "f800", hex(cell.byteslice(0, 32))
     assert_equal "001f" * 16, hex(cell.byteslice(32, 32))

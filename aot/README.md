@@ -2,46 +2,39 @@
 
 `kernels/*.rb` is plain Ruby, tested as such by `aot/test` on the host VM (the
 device and aw88298 suites also run it in place of the compiled kernels). A build
-compiles it ahead of time with [spinel](https://github.com/matz/spinel) and wraps it into
-one PicoRuby mrbgem with [suppify](https://github.com/bash0C7/suppify). Types are
-inline RBS (`#:`) on each public top-level `def`; helpers are `private`.
+compiles it ahead of time with [spinel](https://github.com/bash0C7/spinel) and wraps it into
+one PicoRuby mrbgem with [suppify](https://github.com/bash0C7/suppify). The kernels are
+`def self.` methods of `module StackchanAot`, typed with inline RBS (`#:`). The entries are
+listed in `tools/aot/kernels_build.rb` (`ENTRIES`); other methods stay inside the kernel.
 
 | Kernel | Called as | Used by |
 |---|---|---|
-| `ulaw_decode(String) -> String` | `Multicore.spawn(:ulaw_decode, chunk)` on core 1 | `AW88298#play_ulaw` |
-| `glyph16(w, fg, bg, r0..r15) -> String` | Kernel method, core 0 | `ILI9342#blit_glyph` (16-row glyphs) |
+| `StackchanAot.ulaw_decode(String) -> String` | `Multicore.spawn(:ulaw_decode, chunk)` on core 1 | `AW88298#play_ulaw` |
+| `StackchanAot.glyph16(w, fg, bg, r0..r15) -> String` | `Kernel#glyph16` (robot gem), core 0 | `ILI9342#blit_glyph` (16-row glyphs) |
 
 `ulaw_decode` runs on core 1 so the decode of one chunk overlaps the blocking
 I2S write of the previous one. A kernel reply must fit picoruby-multicore's
-4096-byte buffer, so `play_ulaw` sends 2046 mu-law bytes per call. Direct calls
-keep 0x00 bytes in String arguments: the binding publishes each argument's
-length with `<lib>_set_arg_len`.
+4096-byte buffer, so `play_ulaw` sends 2046 mu-law bytes per call. Strings cross
+the C contract with their length, so 0x00 bytes survive.
 
-**One runtime, one core at a time.** Every kernel shares one spinel runtime
-(one suppify library, so the firmware carries one set of runtime tables). It is not
-thread-safe, so no kernel runs on core 0 while core 1 is inside one. That holds
-because `play_ulaw` is the only multicore caller and does nothing but I2S writes
-while core 1 decodes; drawing never runs during playback.
+**One instance per caller.** suppify generates the gem with `--table multicore_kernels`:
+the VM calls its own instance (`StackchanAot.*`), and picoruby-multicore's worker on
+core 1 looks kernels up in worker 1's table, which is a second copy of the kernels
+and the spinel runtime. The two run at the same time.
 
 ## Build
 
 ```
-tools/aot/setup.sh                    # suppify @ suppify.pin, spinel @ suppify's spinel.pin, picoruby-multicore @ multicore.pin
-tools/aot/kernels_build.rb esp32      # build/aot/esp32/{gems/picoruby-stackchan_aot,picoruby-kernel_registry}
+tools/aot/setup.sh                    # suppify @ suppify.pin, spinel @ suppify's spinel.pin (bash0C7/spinel), picoruby-multicore @ multicore.pin
+tools/aot/kernels_build.rb esp32      # build/aot/esp32/gems/picoruby-stackchan_aot (--newlib)
 tools/aot/syntax_check_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot   # seconds; XTENSA_GCC= to pick the compiler
 tools/aot_host_vm.sh                  # host VM with the kernels + multicore's pthread port -> build/host-aot
 ```
 
-`kernels_build.rb esp32` runs `tools/aot/prepare_mcu.sh` on the generated gem:
-the spinel runtime assumes a 64-bit POSIX host, so for xtensa/newlib it
-
-- shrinks the runtime's static tables with `-D` (unpatched they are about 850 KB of `.bss`),
-- replaces the mmap slab allocator with malloc (`mcu-shim/sp_slab_malloc.c`),
-- drops `sp_net` / `sp_process` / `sp_process_status` and compiles the rest against the declaration-only headers in `mcu-shim/`,
-- lowers the first GC triggers below the size of the dynamic heap.
-
-`SP_GC_STACK_MAX` (256) is the one table that fails silently when it overflows:
-it drops GC roots. Re-check it when a kernel grows.
+`kernels_build.rb esp32` passes `--newlib`: the gem carries spinel's `lib/newlib`, whose
+`sp_newlib_config.h` sizes the runtime's tables and first GC triggers for a small heap and
+whose `sp_newlib.c` holds weak stubs for the system calls the board lacks (spinel's
+`docs/newlib.md`). The firmware build compiles `ports/esp32/multicore.c` from the gem list.
 
 ## Benchmarks (host)
 

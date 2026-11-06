@@ -448,7 +448,7 @@ class AcceptanceTest < Test::Unit::TestCase
   end
 
   def test_firmware_inputs_covers_exactly_what_the_aot_build_reads
-    assert_equal %w[build_config/esp32-stackchan.rb aot/kernels aot/mcu-shim aot/multicore.pin aot/suppify.pin
+    assert_equal %w[build_config/esp32-stackchan.rb aot/kernels aot/multicore.pin aot/suppify.pin
                    tools/aot mrbgems/picoruby-stackchan-protocol], Acceptance::Runner::FIRMWARE_INPUTS
     assert_not_include Acceptance::Runner::FIRMWARE_INPUTS, "aot"
     assert_not_include Acceptance::Runner::FIRMWARE_INPUTS, "aot/README.md"

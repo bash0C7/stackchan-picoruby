@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DEST="$ROOT/build/aot"
 SUPPIFY_REPO=${SUPPIFY_REPO:-https://github.com/bash0C7/suppify.git}
-SPINEL_REPO=${SPINEL_REPO:-https://github.com/matz/spinel.git}
+SPINEL_REPO=${SPINEL_REPO:-https://github.com/bash0C7/spinel.git}
 MULTICORE_REPO=${MULTICORE_REPO:-https://github.com/bash0C7/picoruby-multicore.git}
 mkdir -p "$DEST"
 
@@ -32,9 +32,6 @@ if [ "$(git -C "$DEST/spinel" rev-parse HEAD 2>/dev/null || true)" != "$SPINEL_P
 fi
 MULTICORE_PIN=$(tr -d '[:space:]' < "$ROOT/aot/multicore.pin")
 fetch_at "$MULTICORE_REPO" "$MULTICORE_PIN" "$DEST/picoruby-multicore"
-# The host build of picoruby-multicore links its own fake kernel table; the
-# generated picoruby-kernel_registry provides the real one, so the host VM gets
-# a copy without the fakes.
 rm -rf "$DEST/picoruby-multicore-host"
 cp -R "$DEST/picoruby-multicore" "$DEST/picoruby-multicore-host"
 rm -rf "$DEST/picoruby-multicore-host/.git"
