@@ -84,8 +84,10 @@ reaches() { # dir sha
 
 reachable_from_github() { # dir sha
   reaches "$1" "$2" && return 0
+  unshallow=""
+  [ "$(git -C "$1" rev-parse --is-shallow-repository 2>/dev/null)" = "true" ] && unshallow="--unshallow"
   for r in $(github_remotes "$1"); do
-    git -C "$1" fetch --quiet "$r" 2>/dev/null || true
+    git -C "$1" fetch --quiet $unshallow "$r" 2>/dev/null || true
   done
   reaches "$1" "$2"
 }
