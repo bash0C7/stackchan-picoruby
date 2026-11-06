@@ -10,7 +10,7 @@ class RakefileQemuVmTest < Test::Unit::TestCase
 
   def test_real_build_target_is_derived_from_the_same_r2p2_vm_task_constant
     rakefile = File.read(File.join(ROOT, 'Rakefile'))
-    assert_match(/r2p2_build_cmd\("#\{R2P2_VM_TASK\}:build"\)/, rakefile)
+    assert_match(/r2p2_build_cmd\("native:#\{R2P2_VM_TASK\}:build"\)/, rakefile)
   end
 
   def test_picorb_vm_matches_what_r2p2_esp32_s_own_rakefile_maps_for_that_task
@@ -44,7 +44,7 @@ class RakefileQemuVmTest < Test::Unit::TestCase
         owner = name
       end
       owner = "def #{node.name}" if node.is_a?(Prism::DefNode)
-      if (node.is_a?(Prism::StringNode) || node.is_a?(Prism::InterpolatedStringNode)) && node.slice.match?(/\A.flash.\z|rake flash/)
+      if (node.is_a?(Prism::StringNode) || node.is_a?(Prism::InterpolatedStringNode)) && node.slice.match?(/\A.flash.\z|idf\.py -p \S+ flash/)
         flash_commands << owner
       end
       node.compact_child_nodes.each { |c| walk.(c, owner) }
@@ -64,7 +64,7 @@ class RakefileQemuVmTest < Test::Unit::TestCase
     rakefile = File.read(File.join(ROOT, 'Rakefile'))
     body = rakefile[/  def build_then_flash!\(port\)\n(.*?)\n  end\n/m, 1]
     assert body
-    assert_operator body.index('flash_console_ok?'), :<, body.index('rake flash')
+    assert_operator body.index('flash_console_ok?'), :<, body.index('idf.py -p')
   end
 
   def test_qemu_build_keeps_its_sdkconfig_in_build_qemu_not_the_project

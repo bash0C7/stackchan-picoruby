@@ -8,16 +8,16 @@
 # after the build; a mismatch stops the run. Change a line here to try
 # something else.
 firmware:
-  R2P2-ESP32: 97166052a334fcc959bcdf6fe7da4c35792f80a6           # claude/external-build-config
-  picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba             # claude/ble-peripheral-disconnect
+  R2P2-ESP32: 93505440c8e0fb84fe3314d3591e55042caad406           # claude/latest-deps
+  picoruby: 57242b8c243379c0200e219e4ae0a03c92c7ab63             # claude/latest-deps-firmware
   repos:                                                         # build/repos/esp32-picoruby/<name>
-    picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296    # main
+    picoruby-ili9342: 24931a4a2a78c4745f288e3991148bf4c0b9c3d7    # claude/latest-deps
     picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # main
     picoruby-scservo: 36281109f3051b510634c6ae3f3d521d197e9064   # main
   aot:                                                           # build/aot/<name>
-    suppify: a5449a394c6d6ef31afebdbabd56be563208a83e            # main
-    spinel: 4a28d45f01fef4605eedca6d7008771d51306e07
-    picoruby-multicore: 83bd0d6203ebd707e46e0b7779f1c844ecca0187
+    suppify: a45943f5a2298e93fa76cf47c1a34b57441631f8            # claude/latest-deps
+    spinel: e97a3ac116576959b607ee792af82c61bb0f4bb8                 # claude/latest-deps (bash0C7/spinel)
+    picoruby-multicore: 8b25e91b8a837cb7e6829da0838d6e169c621682     # claude/latest-deps
   app: apps/robot/app.rb
   boot_markers:
     - "[application] boot"
@@ -30,5 +30,5 @@ firmware:
 # firmware, and hands the robot Mac → iPhone → Mac. That run is optional; the
 # verdict does not need it.
 darwin:
-  R2P2-darwin: 08986d975576b3c836d54d0801ec32ebc0ee5a90             # main
-  picoruby: 31de548847e0a45e5f6619b0eb3edfa154fa18c2                # port-darwin, vendor/R2P2-darwin/vendor/picoruby
+  R2P2-darwin: 382a7e8a55c114fe330acbc105778b30c3dd8189             # claude/latest-deps
+  picoruby: 993121be4a5729101f4a620a11f1905767f1fa4a                # claude/latest-deps-darwin, vendor/R2P2-darwin/vendor/picoruby

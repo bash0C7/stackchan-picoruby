@@ -13,11 +13,11 @@ require_relative "lib/device_lock"
 # Build trees fetched by `rake vendor:setup` (gitignored). ENV-overridable so a
 # fork or branch swap needs no edit here.
 R2P2_ESP32_REPO = ENV["R2P2_ESP32_REPO"] || "https://github.com/bash0C7/R2P2-ESP32.git"
-R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/external-build-config"
+R2P2_ESP32_REF  = ENV["R2P2_ESP32_REF"]  || "claude/latest-deps"
 R2P2_ROOT       = File.expand_path("vendor/R2P2-ESP32", __dir__)
 
 R2P2_DARWIN_REPO = ENV["R2P2_DARWIN_REPO"] || "https://github.com/bash0C7/R2P2-darwin.git"
-R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "main"
+R2P2_DARWIN_REF  = ENV["R2P2_DARWIN_REF"]  || "claude/latest-deps"
 R2P2_DARWIN_ROOT = File.expand_path("vendor/R2P2-darwin", __dir__)
 
 namespace :vendor do
@@ -327,10 +327,9 @@ def deploy_application_and_wait(label)
 end
 
 ESP32_BUILD_CONFIG = File.expand_path("build_config/esp32-stackchan.rb", __dir__)
-AOT_MULTICORE_DIR  = File.expand_path("build/aot/picoruby-multicore", __dir__)
 
 def r2p2_build_env
-  %Q{R2P2_BUILD_CONFIG="#{ESP32_BUILD_CONFIG}" R2P2_EXTRA_SRCS="#{File.join(AOT_MULTICORE_DIR, "ports", "esp32", "multicore.c")}"}
+  %Q{R2P2_BUILD_CONFIG="#{ESP32_BUILD_CONFIG}" PICORB_VM="#{PICORB_VM}"}
 end
 
 namespace :aot do
@@ -339,7 +338,7 @@ namespace :aot do
     sh File.expand_path("tools/aot/setup.sh", __dir__)
   end
 
-  desc "Generate the AOT kernel gem + multicore_kernels registry for the firmware (build/aot/esp32)"
+  desc "Generate the AOT kernel gem (VM instance + the multicore_kernels worker) for the firmware (build/aot/esp32)"
   task :esp32 do
     Rake::Task["aot:setup"].invoke
     sh "ruby", File.expand_path("tools/aot/kernels_build.rb", __dir__), "esp32"
@@ -482,7 +481,7 @@ end
 namespace :r2p2 do
   desc 'deep clean + mruby rebuild + idf.py set-target esp32s3 (with CoreS3 sdkconfig)'
   task :setup => 'aot:esp32' do
-    in_r2p2 "rm -f sdkconfig && #{r2p2_build_cmd('setup_esp32s3')}"
+    in_r2p2 "rm -f sdkconfig && #{r2p2_build_cmd('native:setup_esp32s3')}"
   end
 
   # rake re-archives libmruby.a from the object list, so a stale .o whose
@@ -498,12 +497,12 @@ namespace :r2p2 do
   end
 
   def build_then_flash!(port)
-    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build")
+    in_r2p2 r2p2_build_cmd("native:#{R2P2_VM_TASK}:build")
     header = "#{R2P2_ROOT}/build/config/sdkconfig.h"
     unless File.exist?(header) && QemuGate.flash_console_ok?(File.read(header))
       abort "[r2p2] #{header} lacks `#{QemuGate::FLASH_CONSOLE_DEFINE}` — refusing to flash a build without the USB console"
     end
-    in_r2p2 "ESPPORT=#{port} rake flash"
+    in_r2p2 "idf.py -p #{port} flash"
   end
 
   desc 'rm picoruby build dir so the next build recompiles every gem object'
@@ -514,7 +513,7 @@ namespace :r2p2 do
   desc "build with CoreS3 sdkconfig (Quad PSRAM + 16MB flash)"
   task :build => [:clean_picoruby_build, 'aot:esp32'] do
     ensure_sdkconfig_fresh
-    in_r2p2 r2p2_build_cmd("#{R2P2_VM_TASK}:build")
+    in_r2p2 r2p2_build_cmd("native:#{R2P2_VM_TASK}:build")
   end
 
   desc "flash to CoreS3 via USB CDC (override with ESPPORT=...)"
@@ -569,7 +568,7 @@ namespace :r2p2 do
   desc 'idf.py monitor (human use only — needs a TTY)'
   task :monitor do
     ensure_no_concurrent_monitor
-    in_r2p2 "ESPPORT=#{espport} rake monitor"
+    in_r2p2 "idf.py -p #{espport} monitor"
   end
 
   # USB-Serial/JTAG drops the CDC connection for ~0.5-2 s around every reset,

@@ -69,8 +69,8 @@ PY32 I/O expander, servo) are separate `bash0C7/picoruby-*` repos that config
 fetches straight from GitHub (`conf.gem github:`) — no local clone or
 vendoring needed for those. The BLE frame protocol gem
 (`mrbgems/picoruby-stackchan-protocol`), the AOT kernels and
-picoruby-multicore go in as gem dirs; multicore's ESP32 port is compiled by
-the IDF component through `R2P2_EXTRA_SRCS`.
+picoruby-multicore go in as gem dirs; R2P2-ESP32 compiles every listed gem's
+`ports/esp32` sources, multicore's ESP32 port among them.
 
 The robot's behaviour is one DSL file; the engine gem does everything else:
 
@@ -572,10 +572,10 @@ Adds on top of upstream:
   avoids a `LoadProhibited` panic in `coex_schm_lock` on BLE-only builds with
   IDF v5.4 and ESP32-S3.
 - `R2P2_BUILD_CONFIG` names an external picoruby build config in place of
-  `build_config/xtensa-esp-picoruby.rb`, `R2P2_GEM_DIRS` adds gem dirs to the
-  default config, and `R2P2_EXTRA_SRCS` adds C sources to the IDF component.
-  The default config carries `picoruby-ble` and `picoruby-i2s`, whose ESP32
-  ports the component compiles.
+  `build_config/xtensa-esp-picoruby.rb`. The component links `bt` and
+  `esp_driver_i2s` for the ESP32 ports of `picoruby-ble` and `picoruby-i2s`.
+- A 16 MB flash with a 4 MB factory partition (storage at `0x410000`);
+  `rake flash_storage` writes `storage.bin` where the partition table puts it.
 - Points its `components/picoruby-esp32/picoruby` submodule at the picoruby
   fork's firmware line below.
 
@@ -583,10 +583,10 @@ Adds on top of upstream:
 
 BLE support (`mrbgems/picoruby-ble/`), on two lines:
 
-- The firmware line (the R2P2-ESP32 submodule pin) — the ESP32 (NimBLE) peripheral port,
-  which lets a peripheral drop its central, and `picoruby-i2s`. It is not the
-  lineage that upstream PR
-  [#427](https://github.com/picoruby/picoruby/pull/427) carries.
+- The firmware line (the R2P2-ESP32 submodule pin) — upstream master with the ESP32
+  (NimBLE) port of upstream PR [#427](https://github.com/picoruby/picoruby/pull/427)
+  merged, a peripheral that can drop its central, optional gems loaded through
+  `Kernel#extern`, and `picoruby-i2s`.
 - The Apple line (what R2P2-darwin fetches) — the macOS (CoreBluetooth) central/peripheral port used by
   `pc/stackchan-pico`'s BLE central and `vendor/R2P2-darwin`. The central
   role can receive a GAP disconnect but has no call to initiate one —

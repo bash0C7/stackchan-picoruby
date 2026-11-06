@@ -16,14 +16,15 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   conf.cc.defines << 'MRB_TIMESLICE_TICK_COUNT=1'
   conf.cc.defines << 'MRBC_CONVERT_CRLF=1'
   conf.cc.defines << 'MRB_UTF8_STRING'
-  conf.cc.defines << 'MRB_INT64'
-  conf.cc.defines << 'MRB_NO_BOXING'
+  conf.cc.defines << 'MRB_INT32'
+  conf.cc.defines << 'MRB_WORD_BOXING'
   conf.cc.defines << 'MRB_32BIT'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'
   conf.cc.defines << 'NDEBUG'
-  conf.cc.defines << 'ESP32_PLATFORM'
   conf.cc.defines << "PICORB_PLATFORM_ESP32"
+  conf.cc.defines << 'PM_ARENA_INITIAL_SIZE=2048'
+  conf.cc.defines << 'PM_CONSTANT_POOL_MIN_CAPACITY=128'
   conf.cc.defines << "USE_WIFI" if ENV['USE_WIFI']
 
   if ENV['PICORB_DEBUG']
@@ -32,6 +33,7 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   end
 
   conf.picoruby
+  conf.gem gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-bigint"
   conf.gembox 'minimum'
   conf.gembox 'core'
   conf.gem gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-kernel-ext"
@@ -54,12 +56,11 @@ MRuby::CrossBuild.new('esp32-picoruby') do |conf|
   conf.gem core: 'picoruby-uart'
   conf.gem core: 'picoruby-ble'
   conf.gem core: 'picoruby-drb'
-  conf.gem github: 'bash0C7/picoruby-ili9342',            branch: 'main'
+  conf.gem github: 'bash0C7/picoruby-ili9342',            branch: 'claude/latest-deps'
   conf.gem github: 'bash0C7/picoruby-py32-io-expander',   branch: 'main'
   conf.gem github: 'bash0C7/picoruby-scservo',            branch: 'main'
   conf.gem gemdir: File.expand_path('../build/aot/picoruby-multicore', __dir__)
   conf.gem gemdir: File.expand_path('../build/aot/esp32/gems/picoruby-stackchan_aot', __dir__)
-  conf.gem gemdir: File.expand_path('../build/aot/esp32/picoruby-kernel_registry', __dir__)
   conf.gem gemdir: File.expand_path('../mrbgems/picoruby-stackchan-protocol', __dir__)
   conf.gem core: 'picoruby-i2s'
   conf.gem core: 'picoruby-mbedtls'
