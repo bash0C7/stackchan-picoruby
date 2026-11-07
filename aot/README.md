@@ -20,7 +20,9 @@ the C contract with their length, so 0x00 bytes survive.
 **One instance per caller.** suppify generates the gem with `--table multicore_kernels`:
 the VM calls its own instance (`StackchanAot.*`), and picoruby-multicore's worker on
 core 1 looks kernels up in worker 1's table, which is a second copy of the kernels
-and the spinel runtime. The two run at the same time.
+and the spinel runtime. The two run at the same time. Each instance takes one call at a
+time, and the two share only libc: stdout among it, which the runtime writes without a lock
+on this board, so a kernel does not print.
 
 ## Build
 
