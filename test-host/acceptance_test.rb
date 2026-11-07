@@ -6,7 +6,27 @@ require_relative '../acceptance/ops'
 
 class AcceptanceTest < Test::Unit::TestCase
   ROOT = "/repo"
-  LOCK = YAML.safe_load(File.read(File.expand_path("../acceptance/lock.yml", __dir__)))
+  LOCK = YAML.safe_load(<<~YAML)
+    firmware:
+      R2P2-ESP32: 97166052a334fcc959bcdf6fe7da4c35792f80a6
+      picoruby: 9c4636a48c4b712f6f0e55bb8dfe90aac1bdddba
+      repos:
+        picoruby-ili9342: 6adc482994ce420c491c442bd0a3c2c8834a6296
+        picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9
+        picoruby-scservo: 36281109f3051b510634c6ae3f3d521d197e9064
+      aot:
+        suppify: a5449a394c6d6ef31afebdbabd56be563208a83e
+        spinel: 4a28d45f01fef4605eedca6d7008771d51306e07
+        picoruby-multicore: 83bd0d6203ebd707e46e0b7779f1c844ecca0187
+      app: apps/robot/app.rb
+      boot_markers:
+        - "[application] boot"
+        - "[boot] step:led-init-ok"
+        - "[application] BLE peripheral starting"
+    darwin:
+      R2P2-darwin: 08986d975576b3c836d54d0801ec32ebc0ee5a90
+      picoruby: 31de548847e0a45e5f6619b0eb3edfa154fa18c2
+  YAML
   FW = LOCK["firmware"]
   ROOT_SHA = "a" * 40
   BUNDLED = %w[mrbgems/picoruby-stackchan-robot mrbgems/picoruby-drb-ble].freeze
@@ -1139,7 +1159,7 @@ class AcceptanceTest < Test::Unit::TestCase
     md = t.markdown
     assert_match(/\*\*verdict: pass\*\*/, md)
     assert_match(/- stackchan-picoruby `aaaaaaa`/, md)
-    assert_match(/- firmware: R2P2-ESP32 `#{FW['R2P2-ESP32'][0, 7]}`, picoruby `#{FW['picoruby'][0, 7]}`, picoruby-ili9342 `#{FW['repos']['picoruby-ili9342'][0, 7]}`/, md)
+    assert_match(/- firmware: R2P2-ESP32 `#{FW['R2P2-ESP32'][0, 7]}`, picoruby `#{FW['picoruby'][0, 7]}`, picoruby-ili9342 `6adc482`/, md)
     assert_match(/- darwin: R2P2-darwin `#{LOCK['darwin']['R2P2-darwin'][0, 7]}`/, md)
     assert_match(/## deploy\n\n\| step \| ok \| detail \|\n\|---\|---\|---\|\n\| pin trees \| ok \|/, md)
     assert_match(/\| r2p2:build_flash \| ok \| ok \|/, md)
