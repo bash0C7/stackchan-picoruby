@@ -11,11 +11,13 @@ read -r -a gemflags <<< "$(ruby -e '
   puts((defs.map { "-D#{_1}" } + flags).join(" "))
 ' "$gem/mrbgem.rake")"
 flags=(-mlongcalls -fsyntax-only -Os -I"$gem/src/newlib" -include "$gem/src/newlib/sp_newlib_config.h"
-       -I"$gem/src" -I"$gem/include" "${gemflags[@]}")
+       -I"$gem/include" "${gemflags[@]}")
 rc=0
 for f in "$gem"/src/*.c "$gem"/src/newlib/sp_newlib.c "$gem"/src/instances/*_glue.c; do
   [ "$(basename "$f")" = binding.c ] && continue
-  out=$($cc "${flags[@]}" "$f" 2>&1)
+  extra=()
+  case "$f" in "$gem"/src/instances/*) extra=(-I"$gem/src") ;; esac
+  out=$($cc "${flags[@]}" "${extra[@]}" "$f" 2>&1)
   if [ $? -ne 0 ]; then
     echo "== $(basename "$f")"; echo "$out" | grep -E "error|fatal" | head -40; rc=1
   fi
