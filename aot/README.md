@@ -31,7 +31,9 @@ tools/aot/syntax_check_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot   # se
 tools/aot_host_vm.sh                  # host VM with the kernels + multicore's pthread port -> build/host-aot
 ```
 
-`kernels_build.rb esp32` passes `--newlib`: the gem carries spinel's `lib/newlib`, whose
+`kernels_build.rb esp32` passes `--cc` with the ESP32-S3 compiler (`XTENSA_GCC=`, else the
+newest `xtensa-esp32s3-elf-gcc` under `IDF_TOOLS_PATH` or `~/.espressif`), so spinel takes the
+Integer width from the board, and `--newlib`: the gem carries spinel's `lib/newlib`, whose
 `sp_newlib_config.h` sizes the runtime's tables and first GC triggers for a small heap and
 whose `sp_newlib.c` holds weak stubs for the system calls the board lacks (spinel's
 `docs/newlib.md`). The firmware build compiles `ports/esp32/multicore.c` from the gem list.

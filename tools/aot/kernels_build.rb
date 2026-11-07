@@ -14,6 +14,13 @@ def die(msg)
   exit 2
 end
 
+def xtensa_gcc
+  return ENV["XTENSA_GCC"] if ENV["XTENSA_GCC"]
+  tools = ENV["IDF_TOOLS_PATH"] || File.expand_path("~/.espressif")
+  Dir[File.join(tools, "tools", "xtensa-esp-elf", "*", "xtensa-esp-elf", "bin", "xtensa-esp32s3-elf-gcc")].max ||
+    die("no xtensa-esp32s3-elf-gcc under #{tools}; set XTENSA_GCC")
+end
+
 board = ARGV[0]
 die "usage: tools/aot/kernels_build.rb <esp32|host>" unless %w[esp32 host].include?(board)
 suppify = File.join(AOT, "suppify", "suppify.rb")
@@ -33,7 +40,7 @@ merged_rb = File.join(out, "#{LIB}.rb")
 File.write(merged_rb, merged)
 
 options = ["-o", LIB, "-d", gems_dir, "--table", TABLE]
-options << "--newlib" if board == "esp32"
+options += ["--newlib", "--cc", xtensa_gcc] if board == "esp32"
 inputs = [merged, *ENTRIES, *options, File.read(File.join(ROOT, "aot", "suppify.pin")),
           File.read(File.join(AOT, "suppify", "spinel.pin"))]
 want = Digest::SHA256.hexdigest(inputs.join("\0"))
