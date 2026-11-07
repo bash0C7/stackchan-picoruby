@@ -18,54 +18,40 @@ the build follows.
 
 This branch moves every dependency onto its newest upstream. Nothing here is
 merged. Each repository carries the work on its own branch, and the refs the
-`main` build follows are untouched, so `main`'s `acceptance/lock.yml` is still
-the robot's firmware and the way back.
+`main` build follows are untouched, so `main`'s `acceptance/lock.yml` is the
+way back.
 
 | Tree | Repository | Branch on this line |
 |---|---|---|
 | stackchan-picoruby | bash0C7/stackchan-picoruby | this branch |
 | R2P2-ESP32 | bash0C7/R2P2-ESP32 | `claude/latest-deps` (picoruby/R2P2-ESP32 master + the external build config, BLE / I2S links, CoreS3 board) |
-| picoruby (firmware) | bash0C7/picoruby | `claude/latest-deps-firmware` (picoruby/picoruby master + picoruby/picoruby#427 merged + disconnect, `Kernel#extern`, picoruby-i2s) |
-| picoruby (Apple) | bash0C7/picoruby | `claude/latest-deps-darwin` (port-darwin with picoruby/picoruby master merged in) |
-| R2P2-darwin | bash0C7/R2P2-darwin | `claude/latest-deps` |
+| picoruby | bash0C7/picoruby | `claude/port-darwin-linear`, for the firmware and the Apple builds alike: picoruby/picoruby master, then picoruby/picoruby#427, port-darwin's darwin commits, and the firmware commits (disconnect, `Kernel#extern`, picoruby-i2s, boxing-safe helpers, one BLE pump per VM) in a straight line |
+| R2P2-darwin | bash0C7/R2P2-darwin | `claude/latest-deps` (`PICORUBY_REF` is the picoruby branch above) |
 | picoruby-ili9342 | bash0C7/picoruby-ili9342 | `claude/latest-deps` |
 | picoruby-py32-io-expander | bash0C7/picoruby-py32-io-expander | `main` (unchanged) |
 | picoruby-scservo | bash0C7/picoruby-scservo | `main` (unchanged) |
 | picoruby-multicore | bash0C7/picoruby-multicore | `claude/latest-deps` |
-| suppify | bash0C7/suppify | `claude/latest-deps` (main + spinel pin) |
-| spinel | bash0C7/spinel | `claude/latest-deps` (matz/spinel master + lib/newlib) |
+| suppify | bash0C7/suppify | `newlib-runtime-pr-pin` |
+| spinel | bash0C7/spinel | `newlib-runtime-pr` (the branch meant for a matz/spinel PR) |
 
-The firmware is `MRB_INT32` + `MRB_WORD_BOXING` + mruby-bigint, as upstream
-builds 32-bit targets. The AOT kernels are `module StackchanAot`, generated
-with suppify `--newlib --table multicore_kernels`, so the VM and core 1 each
-have their own kernel instance.
+The robot carries the firmware pinned in `acceptance/lock.yml`, flashed once by
+`acceptance:deploy`, and the latest report in `acceptance/results/` is
+`verdict: pass` with the owner at the robot. The Mac daemon, the iPhone app and
+the Apple Watch app run this line's picoruby: the iPhone app ran its batch
+against the robot under `rake acceptance:darwin`, and the owner drove the robot
+from the watch app (face, LED, head sweep). In that `acceptance:darwin` run the
+second hand-off back to the Mac found no advertiser within the Mac's scan; the
+robot answered the Mac and the iPhone minutes later, and what kept it from
+advertising then was not determined. The report keeps the check's verdict.
 
-Run in the Linux cloud session and passed: `rake test` (rigor + every picotest
-suite), the same picotest suites on a 32-bit `MRB_INT32` word-boxing host VM,
-`rake test:host`, `pc/stackchan` and `pc/sidecar`, the firmware build from
-`rake r2p2:setup` / `rake r2p2:build`, `tools/aot/syntax_check_mcu.sh`, and the
-suites of suppify, spinel (`make newlib-test`), picoruby-multicore,
-picoruby-ili9342, picoruby-py32-io-expander and picoruby-scservo.
-`rake r2p2:qemu_check` passes; a probe app run under the same QEMU gate called
-both kernels on the VM and `ulaw_decode` on core 1 at once and read the
-expected bytes back. QEMU does not cover the cold boot, I2C, LCD, servos,
-speaker or the BLE radio.
+## Next
 
-## Next — on the Mac
-
-Not run here, because they need the robot, the Mac or Xcode:
-
-1. Firmware on the robot: `rake acceptance:deploy`, then `rake acceptance:check`
-   in a TTY terminal with the owner at the robot. This writes the new
-   `acceptance/results/` report; merge nothing before its verdict is `pass`.
-2. Apple side: `rake vendor:r2p2_darwin:setup` (or re-fetch `vendor/R2P2-darwin`
-   at `claude/latest-deps`), `rake pc:vm_build`, `rake pc:app_bundle`,
-   `rake pc:up`, then `stackchan status`; `rake acceptance:darwin` when a
-   signing certificate is at hand. Simulator: `/stackchan-apple-simulator`.
-
-The flash path calls `idf.py -p <port> flash` and `idf.py -p <port> monitor`
-directly; R2P2-ESP32's own `rake flash` now needs the esp_flash gem and is not
-used.
+1. Merging this line into `main` is the owner's call, as is replacing
+   bash0C7/picoruby `port-darwin` with `claude/port-darwin-linear` (a force
+   push; `baseline/stackchan-20261107-darwin` keeps the current one).
+2. spinel `newlib-runtime-pr` and suppify `newlib-runtime-pr-pin` are the
+   branches the lock pins. Once they land upstream (matz/spinel, suppify
+   `main`), move `aot/suppify.pin` and `acceptance/lock.yml` to those commits.
 
 ## Going back
 
@@ -81,5 +67,5 @@ used.
 
 The robot panics now and then while it idles, and reboots (#31). This line
 carries the picoruby/picoruby#427 port, whose heartbeat stays off the VM heap;
-whether the idle panic is gone is for the acceptance run above to show. Other
-work that has not been started is in the issue tracker (`gh issue list`).
+one acceptance run does not show whether the idle panic is gone. Other work
+that has not been started is in the issue tracker (`gh issue list`).
