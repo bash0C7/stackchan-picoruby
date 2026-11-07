@@ -49,7 +49,7 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
 
 Build the deployment VM once. `vendor/R2P2-darwin` is
 fetched via `rake vendor:r2p2_darwin:setup` from the repo root (see the
-top-level README); it vendors picoruby itself (`claude/latest-deps-darwin` branch — BLE +
+top-level README); it vendors picoruby itself (`claude/port-darwin-linear` branch — BLE +
 mbedtls + io-console + machine darwin ports) internally. From the repo root:
 
 ```sh

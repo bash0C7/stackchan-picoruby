@@ -8,8 +8,8 @@
 # after the build; a mismatch stops the run. Change a line here to try
 # something else.
 firmware:
-  R2P2-ESP32: 93505440c8e0fb84fe3314d3591e55042caad406           # claude/latest-deps
-  picoruby: 57242b8c243379c0200e219e4ae0a03c92c7ab63             # claude/latest-deps-firmware
+  R2P2-ESP32: 1ff6f933da6e4b6fc12f0c522cce02255358b6f2           # claude/latest-deps
+  picoruby: 6a12ed5a5cf3a21cdc1307d327ad3f9caaa8dabb             # claude/port-darwin-linear
   repos:                                                         # build/repos/esp32-picoruby/<name>
     picoruby-ili9342: 24931a4a2a78c4745f288e3991148bf4c0b9c3d7    # claude/latest-deps
     picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # main
@@ -30,5 +30,5 @@ firmware:
 # firmware, and hands the robot Mac → iPhone → Mac. That run is optional; the
 # verdict does not need it.
 darwin:
-  R2P2-darwin: 382a7e8a55c114fe330acbc105778b30c3dd8189             # claude/latest-deps
-  picoruby: 993121be4a5729101f4a620a11f1905767f1fa4a                # claude/latest-deps-darwin, vendor/R2P2-darwin/vendor/picoruby
+  R2P2-darwin: 3eb9d4d6bde2a6687c26170f54acffa1e349b955             # claude/latest-deps
+  picoruby: 6a12ed5a5cf3a21cdc1307d327ad3f9caaa8dabb                # claude/port-darwin-linear, vendor/R2P2-darwin/vendor/picoruby
