@@ -6,11 +6,14 @@ cc=${XTENSA_GCC:-$(ls "${IDF_TOOLS_PATH:-$HOME/.espressif}"/tools/xtensa-esp-elf
 [ -d "$gem/src/newlib" ] || { echo "not a --newlib suppify gem: $gem" >&2; exit 2; }
 read -r -a gemflags <<< "$(ruby -e '
   rake = File.read(ARGV[0])
+  dir = File.dirname(ARGV[0])
+  newlib = "#{dir}/src/newlib"
+  incs = rake.scan(/spec\.cc\.include_paths\.(?:concat|unshift)\((.*?)\)$/).flat_map { Array(eval("[#{_1[0]}]").flatten) }
   defs = rake.scan(/spec\.cc\.defines\.concat\((.*?)\)$/).flat_map { eval(_1[0]) }
   flags = rake.scan(/spec\.cc\.flags\.concat\((.*?)\)$/).flat_map { eval(_1[0]) }
-  puts((defs.map { "-D#{_1}" } + flags).join(" "))
+  puts((incs.map { "-I#{_1}" } + defs.map { "-D#{_1}" } + flags).join(" "))
 ' "$gem/mrbgem.rake")"
-flags=(-mlongcalls -fsyntax-only -Os -I"$gem/src/newlib" -include "$gem/src/newlib/sp_newlib_config.h"
+flags=(-mlongcalls -fsyntax-only -Os -include "$gem/src/newlib/sp_newlib_config.h"
        -I"$gem/include" "${gemflags[@]}")
 rc=0
 for f in "$gem"/src/*.c "$gem"/src/newlib/sp_newlib.c "$gem"/src/instances/*_glue.c; do
