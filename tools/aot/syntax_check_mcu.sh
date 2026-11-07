@@ -8,7 +8,7 @@ read -r -a gemflags <<< "$(ruby -e '
   rake = File.read(ARGV[0])
   dir = File.dirname(ARGV[0])
   newlib = "#{dir}/src/newlib"
-  incs = rake.scan(/spec\.cc\.include_paths\.(?:concat|unshift)\((.*?)\)$/).flat_map { Array(eval("[#{_1[0]}]").flatten) }
+  incs = rake.scan(/spec\.cc\.include_paths(?:\.(?:concat|unshift)\((.*?)\)| << (.*))$/).flat_map { eval("[#{_1.compact[0]}]").flatten }
   defs = rake.scan(/spec\.cc\.defines\.concat\((.*?)\)$/).flat_map { eval(_1[0]) }
   flags = rake.scan(/spec\.cc\.flags\.concat\((.*?)\)$/).flat_map { eval(_1[0]) }
   puts((incs.map { "-I#{_1}" } + defs.map { "-D#{_1}" } + flags).join(" "))
