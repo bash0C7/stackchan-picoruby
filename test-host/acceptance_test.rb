@@ -1139,7 +1139,7 @@ class AcceptanceTest < Test::Unit::TestCase
     md = t.markdown
     assert_match(/\*\*verdict: pass\*\*/, md)
     assert_match(/- stackchan-picoruby `aaaaaaa`/, md)
-    assert_match(/- firmware: R2P2-ESP32 `#{FW['R2P2-ESP32'][0, 7]}`, picoruby `#{FW['picoruby'][0, 7]}`, picoruby-ili9342 `6adc482`/, md)
+    assert_match(/- firmware: R2P2-ESP32 `#{FW['R2P2-ESP32'][0, 7]}`, picoruby `#{FW['picoruby'][0, 7]}`, picoruby-ili9342 `#{FW['repos']['picoruby-ili9342'][0, 7]}`/, md)
     assert_match(/- darwin: R2P2-darwin `#{LOCK['darwin']['R2P2-darwin'][0, 7]}`/, md)
     assert_match(/## deploy\n\n\| step \| ok \| detail \|\n\|---\|---\|---\|\n\| pin trees \| ok \|/, md)
     assert_match(/\| r2p2:build_flash \| ok \| ok \|/, md)

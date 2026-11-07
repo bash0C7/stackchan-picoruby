@@ -264,8 +264,10 @@ def bundle_app_source(src)
   out
 end
 
+HOST_MRBC = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/mrbc"
+
 def compile_mrb(src, out)
-  picorbc = "#{R2P2_ROOT}/components/picoruby-esp32/picoruby/bin/mrbc"
+  picorbc = HOST_MRBC
   abort "mrbc not found at #{picorbc} — run `rake r2p2:setup` first" unless File.executable?(picorbc)
   mkdir_p File.dirname(out)
   rm_f out
@@ -526,6 +528,7 @@ namespace :r2p2 do
 
   desc "boot this tree under QEMU and require the probe marker (spec steps 1-5); FAILs abort"
   task :qemu_check => ['qemu:setup', 'aot:esp32'] do
+    in_r2p2 "rake native:setup" unless File.executable?(HOST_MRBC)
     clean_picoruby_build!
     rm_rf QEMU_BUILD_DIR if Dir.exist?(QEMU_BUILD_DIR)
     project_sdkconfig = "#{R2P2_ROOT}/sdkconfig"
