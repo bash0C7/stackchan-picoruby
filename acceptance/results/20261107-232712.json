@@ -1,0 +1,250 @@
+{
+  "stamp": "20261107-232712",
+  "lock": {
+    "firmware": {
+      "R2P2-ESP32": "1ff6f933da6e4b6fc12f0c522cce02255358b6f2",
+      "picoruby": "6a12ed5a5cf3a21cdc1307d327ad3f9caaa8dabb",
+      "repos": {
+        "picoruby-ili9342": "24931a4a2a78c4745f288e3991148bf4c0b9c3d7",
+        "picoruby-py32-io-expander": "8f8b3d3d9aab03ca4dac2b78004b36a0459366c9",
+        "picoruby-scservo": "36281109f3051b510634c6ae3f3d521d197e9064"
+      },
+      "aot": {
+        "suppify": "1959066a57f3cf0a166dc0cce73a90b848d9fb8d",
+        "spinel": "c2912336766054cf638863a630abf1004cc88b2c",
+        "picoruby-multicore": "8b25e91b8a837cb7e6829da0838d6e169c621682"
+      },
+      "app": "apps/robot/app.rb",
+      "boot_markers": [
+        "[application] boot",
+        "[boot] step:led-init-ok",
+        "[application] BLE peripheral starting"
+      ]
+    },
+    "darwin": {
+      "R2P2-darwin": "3eb9d4d6bde2a6687c26170f54acffa1e349b955",
+      "picoruby": "6a12ed5a5cf3a21cdc1307d327ad3f9caaa8dabb"
+    }
+  },
+  "root": "1716a7602477ae1ac6258d73d7839b381b91a41a",
+  "deploy": {
+    "lock_digest": "6a4e359a024e7670434f3a81043cf3f67ea780a7bacfb345c32fdb0c359d83cc",
+    "steps": [
+      {
+        "name": "pin trees",
+        "ok": true,
+        "detail": "stackchan-picoruby 1716a76, R2P2-ESP32 1ff6f93, 3 cached gems, R2P2-darwin 3eb9d4d, picoruby 6a12ed5"
+      },
+      {
+        "name": "pins hold before setup",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "r2p2:setup",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pins hold after setup",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "r2p2:build_flash",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "pins hold after build",
+        "ok": true,
+        "detail": "all pins hold"
+      },
+      {
+        "name": "app upload",
+        "ok": true,
+        "detail": "ok"
+      },
+      {
+        "name": "flash identity",
+        "ok": true,
+        "detail": "App version 0.3.1-74-g1ff6f93, storage 0x410000"
+      },
+      {
+        "name": "boot",
+        "ok": true,
+        "detail": "3 markers, no fault"
+      }
+    ],
+    "app_root": "1716a7602477ae1ac6258d73d7839b381b91a41a"
+  },
+  "check": {
+    "root": "1716a7602477ae1ac6258d73d7839b381b91a41a",
+    "steps": [
+      {
+        "name": "flash identity",
+        "ok": true,
+        "detail": "App version 0.3.1-74-g1ff6f93, storage 0x410000"
+      },
+      {
+        "name": "boot",
+        "ok": true,
+        "detail": "3 markers, no fault"
+      },
+      {
+        "name": "pc:up",
+        "ok": true,
+        "detail": "up after 2 tries, 30.2 s"
+      },
+      {
+        "name": "torque on",
+        "ok": true,
+        "detail": "OK torque=on\n"
+      },
+      {
+        "name": "face neutral",
+        "ok": true,
+        "detail": "OK face=neutral\n"
+      },
+      {
+        "name": "led",
+        "ok": true,
+        "detail": "OK led=both/green/solid\n"
+      },
+      {
+        "name": "servo detail",
+        "ok": true,
+        "detail": "<YL_actual:4,PU_actual:1>"
+      },
+      {
+        "name": "servo health",
+        "ok": true,
+        "detail": "<yaw_err:none,yaw_status:0,pitch_err:none,pitch_status:0>"
+      },
+      {
+        "name": "say",
+        "ok": true,
+        "detail": "7872 bytes"
+      },
+      {
+        "name": "timings",
+        "ok": true,
+        "detail": "5 series"
+      },
+      {
+        "name": "quiet wait",
+        "ok": true,
+        "detail": "30 s"
+      },
+      {
+        "name": "selftest detail",
+        "ok": true,
+        "detail": "<YL_actual:3,PU_actual:9>"
+      },
+      {
+        "name": "touch listen",
+        "ok": null,
+        "detail": "incomplete: not touched within 30 s"
+      },
+      {
+        "name": "calibrate",
+        "ok": true,
+        "detail": "yaw_zero 481, pitch_zero 662, verify delta 0/0"
+      },
+      {
+        "name": "release and reconnect",
+        "ok": true,
+        "detail": "release seen: yes, reconnect + face 3.60 s"
+      },
+      {
+        "name": "stack high-water",
+        "ok": true,
+        "detail": "3880 B free"
+      },
+      {
+        "name": "questions",
+        "ok": true,
+        "detail": "4 questions"
+      },
+      {
+        "name": "torque off",
+        "ok": true,
+        "detail": "OK torque=off\n"
+      },
+      {
+        "name": "chat",
+        "ok": true,
+        "detail": "reply=こんにちは、頭を撫でられて嬉しいです。"
+      }
+    ],
+    "timings": {
+      "connect ms": [
+        2288
+      ],
+      "servo": [
+        0.2118379999883473,
+        0.17594400001689792,
+        0.19565799995325506,
+        0.16785700002219528,
+        0.1365539999678731,
+        0.2165909999748692,
+        0.17542200000025332,
+        0.2153229999821633
+      ],
+      "face": [
+        0.1560890000546351,
+        0.17601200006902218,
+        0.16783300007227808,
+        0.15650799998547882,
+        0.17534099996555597,
+        0.17656799999531358,
+        0.1957389999879524,
+        0.1757959999376908
+      ],
+      "led": [
+        0.17568300000857562,
+        0.17581599997356534,
+        0.18121599999722093,
+        0.2828770000487566,
+        0.19797899993136525,
+        0.34351100004278123,
+        0.20230100001208484,
+        0.21260400000028312
+      ],
+      "text": [
+        0.26822700002230704,
+        0.24295700003858656,
+        0.20364099997095764,
+        0.23615300003439188,
+        0.21580500004347414,
+        0.23635299992747605,
+        0.20338099997024983,
+        0.25590200000442564
+      ],
+      "release and reconnect": [
+        3.603341000038199
+      ]
+    },
+    "human": {
+      "servo": {
+        "question": "サーボが指示どおりに動いた",
+        "answer": "y"
+      },
+      "subtitle": {
+        "question": "字幕が欠けずに描画された",
+        "answer": "y"
+      },
+      "audio": {
+        "question": "say の音声が最後まで途切れずに鳴った",
+        "answer": "y"
+      },
+      "distortion": {
+        "question": "say の音声が割れずに鳴った",
+        "answer": "y"
+      }
+    }
+  },
+  "darwin": null,
+  "resets": 7,
+  "verdict": "pass"
+}
