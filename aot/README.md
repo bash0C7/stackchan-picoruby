@@ -26,17 +26,18 @@ and the spinel runtime. The two run at the same time.
 
 ```
 tools/aot/setup.sh                    # suppify @ suppify.pin, spinel @ suppify's spinel.pin (bash0C7/spinel), picoruby-multicore @ multicore.pin
-tools/aot/kernels_build.rb esp32      # build/aot/esp32/gems/picoruby-stackchan_aot (--newlib)
+tools/aot/kernels_build.rb esp32      # build/aot/esp32/gems/picoruby-stackchan_aot (--cc xtensa-esp32s3-elf-gcc)
 tools/aot/syntax_check_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot   # seconds; XTENSA_GCC= to pick the compiler
 tools/aot_host_vm.sh                  # host VM with the kernels + multicore's pthread port -> build/host-aot
 ```
 
 `kernels_build.rb esp32` passes `--cc` with the ESP32-S3 compiler (`XTENSA_GCC=`, else the
-newest `xtensa-esp32s3-elf-gcc` under `IDF_TOOLS_PATH` or `~/.espressif`), so spinel takes the
-Integer width from the board, and `--newlib`: the gem carries spinel's `lib/newlib`, whose
-`sp_newlib_config.h` sizes the runtime's tables and first GC triggers for a small heap and
-whose `sp_newlib.c` holds weak stubs for the system calls the board lacks (spinel's
-`docs/newlib.md`). The firmware build compiles `ports/esp32/multicore.c` from the gem list.
+newest `xtensa-esp32s3-elf-gcc` under `IDF_TOOLS_PATH` or `~/.espressif`). spinel takes the
+Integer width from it and reports the board's build (`--print-build`), which suppify puts in the
+gem: the defines (`SP_NO_SIGNALS`, `SP_NO_TERMIOS`, …), spinel's `lib/newlib` headers as
+`src/newlib` first on the include path, and `-include sp_newlib_config.h`, which sizes the
+runtime's tables and first GC triggers for a small heap (spinel's `docs/newlib.md`). The firmware
+build compiles `ports/esp32/multicore.c` from the gem list.
 
 ## Benchmarks (host)
 

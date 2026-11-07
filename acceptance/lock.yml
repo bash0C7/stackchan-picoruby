@@ -15,8 +15,8 @@ firmware:
     picoruby-py32-io-expander: 8f8b3d3d9aab03ca4dac2b78004b36a0459366c9   # main
     picoruby-scservo: 36281109f3051b510634c6ae3f3d521d197e9064   # main
   aot:                                                           # build/aot/<name>
-    suppify: 6b4398edbb7288278e80c1358800dd5a746ff665            # newlib-runtime-pr-pin
-    spinel: b4396bfa05b6808cbe04f2a7fe47a4ada74012d7                 # newlib-runtime-pr (bash0C7/spinel)
+    suppify: 1959066a57f3cf0a166dc0cce73a90b848d9fb8d            # newlib-runtime-pr-pin
+    spinel: c2912336766054cf638863a630abf1004cc88b2c                 # newlib-runtime-pr (bash0C7/spinel)
     picoruby-multicore: 8b25e91b8a837cb7e6829da0838d6e169c621682     # claude/latest-deps
   app: apps/robot/app.rb
   boot_markers:

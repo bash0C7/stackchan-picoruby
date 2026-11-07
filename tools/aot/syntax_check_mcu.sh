@@ -3,7 +3,7 @@ set -uo pipefail
 
 gem=$(cd "${1:?usage: tools/aot/syntax_check_mcu.sh <gem dir>}" && pwd)
 cc=${XTENSA_GCC:-$(ls "${IDF_TOOLS_PATH:-$HOME/.espressif}"/tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc | tail -1)}
-[ -d "$gem/src/newlib" ] || { echo "not a --newlib suppify gem: $gem" >&2; exit 2; }
+[ -d "$gem/src/newlib" ] || { echo "not a suppify gem generated with --cc for a newlib board: $gem" >&2; exit 2; }
 read -r -a gemflags <<< "$(ruby -e '
   rake = File.read(ARGV[0])
   dir = File.dirname(ARGV[0])
@@ -16,7 +16,7 @@ read -r -a gemflags <<< "$(ruby -e '
 flags=(-mlongcalls -fsyntax-only -Os -include "$gem/src/newlib/sp_newlib_config.h"
        -I"$gem/include" "${gemflags[@]}")
 rc=0
-for f in "$gem"/src/*.c "$gem"/src/newlib/sp_newlib.c "$gem"/src/instances/*_glue.c; do
+for f in "$gem"/src/*.c "$gem"/src/instances/*_glue.c; do
   [ "$(basename "$f")" = binding.c ] && continue
   extra=()
   case "$f" in "$gem"/src/instances/*) extra=(-I"$gem/src") ;; esac

@@ -40,7 +40,7 @@ merged_rb = File.join(out, "#{LIB}.rb")
 File.write(merged_rb, merged)
 
 options = ["-o", LIB, "-d", gems_dir, "--table", TABLE]
-options += ["--newlib", "--cc", xtensa_gcc] if board == "esp32"
+options += ["--cc", xtensa_gcc] if board == "esp32"
 inputs = [merged, *ENTRIES, *options, File.read(File.join(ROOT, "aot", "suppify.pin")),
           File.read(File.join(AOT, "suppify", "spinel.pin"))]
 want = Digest::SHA256.hexdigest(inputs.join("\0"))
