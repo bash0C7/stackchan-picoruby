@@ -16,16 +16,14 @@ the build follows.
 
 ## Now
 
-This branch moves every dependency onto its newest upstream. Nothing here is
-merged. Each repository carries the work on its own branch, and the refs the
-`main` build follows are untouched, so `main`'s `acceptance/lock.yml` is the
-way back.
+`main` carries every dependency on its newest upstream. The dependencies'
+work stays on their own branches, not yet merged into those repositories'
+`main`:
 
-| Tree | Repository | Branch on this line |
+| Tree | Repository | Branch `main` builds from |
 |---|---|---|
-| stackchan-picoruby | bash0C7/stackchan-picoruby | this branch |
 | R2P2-ESP32 | bash0C7/R2P2-ESP32 | `claude/latest-deps` (picoruby/R2P2-ESP32 master + the external build config, BLE / I2S links, CoreS3 board) |
-| picoruby | bash0C7/picoruby | `claude/port-darwin-linear`, for the firmware and the Apple builds alike: picoruby/picoruby master, then picoruby/picoruby#427, port-darwin's darwin commits, and the firmware commits (disconnect, `Kernel#extern`, picoruby-i2s, boxing-safe helpers, one BLE pump per VM) in a straight line |
+| picoruby | bash0C7/picoruby | `claude/port-darwin-linear`, for the firmware and the Apple builds alike: picoruby/picoruby master, then picoruby/picoruby#427, port-darwin's darwin commits, and the firmware commits (disconnect, `Kernel#extern`, picoruby-i2s, boxing-safe helpers, one BLE pump per VM) in a straight line. `port-darwin` has it merged and holds the same tree |
 | R2P2-darwin | bash0C7/R2P2-darwin | `claude/latest-deps` (`PICORUBY_REF` is the picoruby branch above) |
 | picoruby-ili9342 | bash0C7/picoruby-ili9342 | `claude/latest-deps` |
 | picoruby-py32-io-expander | bash0C7/picoruby-py32-io-expander | `main` (unchanged) |
@@ -46,18 +44,15 @@ advertising then was not determined. The report keeps the check's verdict.
 
 ## Next
 
-1. Merging this line into `main` is the owner's call, as is replacing
-   bash0C7/picoruby `port-darwin` with `claude/port-darwin-linear` (a force
-   push; `baseline/stackchan-20261107-darwin` keeps the current one).
-2. spinel `newlib-runtime-pr` and suppify `newlib-runtime-pr-pin` are the
+1. spinel `newlib-runtime-pr` and suppify `newlib-runtime-pr-pin` are the
    branches the lock pins. Once they land upstream (matz/spinel, suppify
    `main`), move `aot/suppify.pin` and `acceptance/lock.yml` to those commits.
 
 ## Going back
 
-1. Check out `main` (or the branch `baseline/stackchan-20261107`, the same
-   commit). Every dependency also has a `baseline/stackchan-20261107` branch at
-   the commit `main` pins (picoruby has `-firmware` and `-darwin`).
+1. Check out the branch `baseline/stackchan-20261107`. Every dependency also
+   has a `baseline/stackchan-20261107` branch at the commit that baseline pins
+   (picoruby has `-firmware` and `-darwin`).
 2. On the Mac, `rake acceptance:deploy`: it checks every tree out at the
    `acceptance/lock.yml` shas and flashes that firmware.
 3. Apple side: `rake pc:vm_build` and `rake acceptance:darwin` with the same
