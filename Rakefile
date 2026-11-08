@@ -134,7 +134,7 @@ namespace :test do
   desc "Run CRuby-only host tests (test-host/*_test.rb)"
   task :host do
     Dir[File.expand_path("test-host/*_test.rb", __dir__)].sort.each do |file|
-      sh "bundle exec ruby -Ilib -Itest-host -Itools #{file}"
+      sh "bundle exec ruby -Ilib -Itest-host #{file}"
     end
   end
 end

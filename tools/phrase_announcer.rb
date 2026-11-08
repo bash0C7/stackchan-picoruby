@@ -1,34 +1,22 @@
-#!/usr/bin/env ruby
-# Speaks a random fixed phrase every 30s. Deterministic, no network, no AI.
-#
-#   tools/phrase_announcer.rb
-
-STACKCHAN  = File.expand_path("../pc/stackchan-pico/bin/stackchan", __dir__)
-SAY_GAIN   = "0.175" # midpoint between default 0.05 (too quiet) and 0.3 (clipped)
-INTERVAL_S = 30
-
 PHRASES = [
   "こんにちは、ぼくスタックチャン、かわいいよ",
   "ルビーカイギフォローアップにようこそ",
   "本屋さんやスポンサーブースもたのしんでね",
   "頭もなでてみてね",
   "ここはアイブリーのオフィスだよ。すごいね",
-].freeze
+]
+SAY_GAIN   = "0.175"
+INTERVAL_S = 30
 
-def log(msg)
-  puts "[#{Time.now.strftime('%H:%M:%S')}] #{msg}"
-  $stdout.flush
-end
-
-def speak(text)
-  ok = system(STACKCHAN, "say", text, "--gain", SAY_GAIN)
-  log "say #{ok ? 'OK' : 'FAILED'}: #{text}"
-end
-
-trap("INT")  { exit 0 }
-trap("TERM") { exit 0 }
-
-loop do
-  speak(PHRASES.sample)
-  sleep INTERVAL_S
+if ARGV[0]
+  cli = "#{ARGV[0]}/pc/stackchan-pico/bin/stackchan"
+  while true
+    text = PHRASES[rand(PHRASES.size)]
+    io = IO.popen("'#{cli}' say '#{text}' --gain #{SAY_GAIN} 2>&1; echo exit:$?")
+    out = io.read
+    io.close
+    t = Time.now
+    puts "[#{format('%02d:%02d:%02d', t.hour, t.min, t.sec)}] say #{out.end_with?("exit:0\n") ? 'OK' : 'FAILED'}: #{text}"
+    sleep INTERVAL_S
+  end
 end

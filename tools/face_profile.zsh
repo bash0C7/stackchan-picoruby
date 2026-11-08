@@ -28,4 +28,4 @@ for r in $(seq 1 5); do
   printf '%s\t%.3f\trc=%d\t%s\n' "led" $((t1 - t0)) $rc "${out//$'\n'/ | }" >> $LOG
 done
 echo
-ruby tools/latency_summary.rb $LOG
+${STACKCHAN_PICORUBY:-vendor/R2P2-darwin/build/host/bin/picoruby} tools/latency_summary.rb $LOG

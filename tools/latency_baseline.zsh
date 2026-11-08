@@ -38,4 +38,4 @@ run "torque-off" $S torque off
 run "say-1" $S say "テスト" --gain 0.1
 echo "=== done ===" | tee -a $LOG
 echo
-ruby tools/latency_summary.rb $LOG
+${STACKCHAN_PICORUBY:-vendor/R2P2-darwin/build/host/bin/picoruby} tools/latency_summary.rb $LOG

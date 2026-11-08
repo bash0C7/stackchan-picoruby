@@ -9,7 +9,7 @@
       "severity": "info",
       "rule": "rbs.coverage.missing-gem",
       "source_family": "builtin",
-      "message": "7 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, ruby-termios, serialport, and 2 more. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
+      "message": "5 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, serialport, test-unit. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
     },
     {
       "path": "acceptance/runner.rb",
