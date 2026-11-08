@@ -52,9 +52,9 @@ module StackchanSidecar
   class Say
     class Error < StandardError; end
 
-    def initialize(dir)
-      @text_path = "#{dir}/sidecar-say.txt"
-      @wav_path  = "#{dir}/sidecar-say.wav"
+    def initialize(dir, tag)
+      @text_path = "#{dir}/sidecar-say-#{tag}.txt"
+      @wav_path  = "#{dir}/sidecar-say-#{tag}.wav"
     end
 
     def pcm(text, rate)
@@ -87,8 +87,10 @@ module StackchanSidecar
       while pos + 8 <= total
         id = bytes.byteslice(pos, 4)
         size = u32le(bytes, pos + 4)
+        raise FormatError, "#{id} chunk runs past the end" if pos + 8 + size > total
         body = bytes.byteslice(pos + 8, size)
         if id == "fmt "
+          raise FormatError, "fmt chunk is #{size} bytes" if size < 16
           fmt = { audio_format: u16le(body, 0), channels: u16le(body, 2),
                   sample_rate: u32le(body, 4), bits: u16le(body, 14) }
         elsif id == "data"

@@ -11,7 +11,7 @@ service = if stub
           else
             StackchanSidecar::Service.new(
               session: FoundationModel::Session.new(instructions: StackchanSidecar::PERSONA),
-              say: StackchanSidecar::Say.new(logdir)
+              say: StackchanSidecar::Say.new(logdir, port)
             )
           end
 DRb.start_service("druby://127.0.0.1:#{port}", service)

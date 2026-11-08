@@ -32,6 +32,13 @@ class SidecarVoiceTest < Picotest::Test
     end
   end
 
+  def test_a_truncated_wav_is_a_format_error
+    bytes = wav([1, 2, 3, 4].pack("s<*"))
+    [bytes.byteslice(0, bytes.bytesize - 3), bytes.byteslice(0, 30)].each do |cut|
+      assert_raise(StackchanSidecar::Wav::FormatError) { StackchanSidecar::Wav.parse(cut) }
+    end
+  end
+
   def test_parse_rejects_what_is_not_riff
     assert_raise(StackchanSidecar::Wav::FormatError) { StackchanSidecar::Wav.parse("not a wav file at all") }
   end
