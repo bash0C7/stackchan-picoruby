@@ -2,10 +2,10 @@ require "test/unit"
 require "tmpdir"
 require "fileutils"
 require "open3"
+require "stringio"
+require "revert_guard"
 
-class TestMustFailOnRevertTest < Test::Unit::TestCase
-  SCRIPT = File.expand_path("../tools/test_must_fail_on_revert.rb", __dir__)
-
+class RevertGuardTest < Test::Unit::TestCase
   CALC = <<~RUBY
     module Calc
       def self.add(a, b) = a + b
@@ -49,8 +49,10 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
     File.write(full, content)
   end
 
-  def run_guard(dir, *args)
-    Open3.capture3({ "TEST_MUST_FAIL_ON_REVERT_ROOT" => dir }, "ruby", SCRIPT, *args, chdir: dir)
+  def run_guard(dir, base)
+    err = StringIO.new
+    code = RevertGuard.new(root: dir, base: base, err: err).run
+    [err.string, code]
   end
 
   def test_a_new_test_that_fails_on_the_base_passes_the_guard
@@ -65,8 +67,8 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
         "end\nend\n", "end\n\n  def #{"test_sub"}\n    assert_equal 2, Calc.sub(3, 1)\n  end\nend\n"))
       commit(dir, "add sub")
 
-      out, err, status = run_guard(dir, base)
-      assert_equal 0, status.exitstatus, out + err
+      err, code = run_guard(dir, base)
+      assert_equal 0, code, err
     end
   end
 
@@ -82,8 +84,8 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
         "end\nend\n", "end\n\n  def #{"test_add_again"}\n    assert_equal 2, Calc.add(1, 1)\n  end\nend\n"))
       commit(dir, "add redundant test")
 
-      out, err, status = run_guard(dir, base)
-      assert_equal 1, status.exitstatus, out + err
+      err, code = run_guard(dir, base)
+      assert_equal 1, code, err
       assert_match(/pass with the code reverted/, err)
     end
   end
@@ -107,8 +109,8 @@ class TestMustFailOnRevertTest < Test::Unit::TestCase
       RUBY
       commit(dir, "add foo")
 
-      out, err, status = run_guard(dir, base)
-      assert_equal 0, status.exitstatus, out + err
+      err, code = run_guard(dir, base)
+      assert_equal 0, code, err
     end
   end
 end

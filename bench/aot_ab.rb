@@ -1,4 +1,4 @@
-# Interpreted Ruby vs the AOT kernels, on the VM tools/aot_host_vm.sh builds:
+# Interpreted Ruby vs the AOT kernels, on the VM `rake aot:host` builds:
 #
 #   cat mrbgems/picoruby-aw88298/mrblib/aw88298.rb bench/aot_ab.rb > build/aot_ab.rb
 #   build/host-aot/bin/picoruby build/aot_ab.rb

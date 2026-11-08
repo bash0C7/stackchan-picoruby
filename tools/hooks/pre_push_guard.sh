@@ -39,5 +39,5 @@ if ! report=$("$(dirname "$0")/../check_deps_pushed.sh" --pins-only 2>&1); then
   printf '%s\n' "$report" | grep -v ' ok$' >&2
   exit 2
 fi
-ruby "$(dirname "$0")/../test_must_fail_on_revert.rb" >/dev/null || exit 2
+(cd "$(dirname "$0")/../.." && bundle exec rake guard:revert) >/dev/null || exit 2
 exit 0

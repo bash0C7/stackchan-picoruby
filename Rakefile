@@ -334,6 +334,15 @@ def r2p2_build_env
   %Q{R2P2_BUILD_CONFIG="#{ESP32_BUILD_CONFIG}" PICORB_VM="#{PICORB_VM}"}
 end
 
+namespace :guard do
+  desc "Fail when a changed test still passes with the code reverted to the merge base (BASE= another base)"
+  task :revert do
+    require_relative "lib/revert_guard"
+    code = RevertGuard.new(root: __dir__, base: ENV["BASE"]).run
+    exit code unless code.zero?
+  end
+end
+
 namespace :aot do
   desc "Fetch suppify / spinel / picoruby-multicore at their pins and build spinel (tools/aot/setup.sh)"
   task :setup do
@@ -343,7 +352,27 @@ namespace :aot do
   desc "Generate the AOT kernel gem (VM instance + the multicore_kernels worker) for the firmware (build/aot/esp32)"
   task :esp32 do
     Rake::Task["aot:setup"].invoke
-    sh "ruby", File.expand_path("tools/aot/kernels_build.rb", __dir__), "esp32"
+    require_relative "lib/aot_kernels"
+    puts "[aot:esp32] #{AotKernels.build(__dir__, 'esp32')}"
+  end
+
+  desc "Build a host picoruby VM with the AOT kernels and picoruby-multicore's pthread port (build/host-aot), for bench/"
+  task :host do
+    Rake::Task["aot:setup"].invoke
+    require_relative "lib/aot_kernels"
+    puts "[aot:host] #{AotKernels.build(__dir__, 'host')}"
+    rm_rf File.expand_path("build/host-aot", __dir__)
+    sh({ "MRUBY_CONFIG"    => File.expand_path("build_config/picoruby-aot-host.rb", __dir__),
+         "MRUBY_BUILD_DIR" => File.expand_path("build", __dir__) },
+       "rake", "-C", PICORUBY_ROOT, "-j8")
+  end
+
+  desc "Compile the esp32 AOT gem's C with -fsyntax-only for the ESP32-S3 (GEM= another gem dir, XTENSA_GCC= the compiler)"
+  task :syntax_check do
+    require_relative "lib/aot_kernels"
+    gem = ENV["GEM"] || File.expand_path("build/aot/esp32/gems/picoruby-#{AotKernels::LIB}", __dir__)
+    abort "[aot:syntax_check] errors in #{gem}" unless AotKernels.syntax_check(gem)
+    puts "[aot:syntax_check] #{gem} ok"
   end
 end
 

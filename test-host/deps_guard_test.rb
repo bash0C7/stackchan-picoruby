@@ -404,11 +404,18 @@ class DepsGuardTest < Test::Unit::TestCase
     stub = File.join(dir, "tools", "check_deps_pushed.sh")
     File.write(stub, "#!/bin/sh\ntouch #{ran}\necho 'the pin is unpublished'\nexit #{verdict}\n")
     File.chmod(0o755, stub)
-    File.write(File.join(dir, "tools", "test_must_fail_on_revert.rb"),
-               revert_check.zero? ? "exit 0\n" : "warn 'a test passes with the code reverted'\nexit #{revert_check}\n")
+    File.write(File.join(dir, "Rakefile"), <<~RUBY)
+      namespace(:guard) do
+        task(:revert) do
+          warn "a test passes with the code reverted" unless #{revert_check}.zero?
+          exit #{revert_check}
+        end
+      end
+    RUBY
 
     payload = { tool_name: "Bash", tool_input: { command: command, description: "d" } }
-    _, err, status = Open3.capture3(File.join(dir, "tools", "hooks", "pre_push_guard.sh"),
+    _, err, status = Open3.capture3({ "BUNDLE_GEMFILE" => File.join(ROOT, "Gemfile") },
+                                    File.join(dir, "tools", "hooks", "pre_push_guard.sh"),
                                     stdin_data: JSON.generate(payload))
     { ran: File.exist?(ran), stderr: utf8(err), code: status.exitstatus }
   end
