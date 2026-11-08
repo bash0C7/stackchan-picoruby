@@ -810,6 +810,8 @@ namespace :r2p2 do
   end
 end
 
+PC_APP = ENV["STACKCHAN_PICORUBY_APP"] || File.expand_path("~/Applications/StackchanPico.app")
+
 namespace :pc do
   desc "build vendor/R2P2-darwin's picoruby VM with build_config/darwin-stackchan-pc.rb (input to pc:app_bundle)"
   task :vm_build do
@@ -824,11 +826,11 @@ namespace :pc do
   # CoreBluetooth is granted through TCC to a signed bundle identity, and the
   # ad-hoc signature binds to the binary's exact bytes: re-run after every
   # pc:vm_build.
-  desc "(re)build ~/Applications/StackchanPico.app around the built VM so CoreBluetooth passes macOS TCC"
+  desc "(re)build the app bundle (STACKCHAN_PICORUBY_APP, default ~/Applications/StackchanPico.app) around the built VM so CoreBluetooth passes macOS TCC"
   task :app_bundle do
     vm = File.join(R2P2_DARWIN_ROOT, "build", "host", "bin", "picoruby")
     abort "#{vm} not found — run `bundle exec rake pc:vm_build` first" unless File.exist?(vm)
-    app = File.expand_path("~/Applications/StackchanPico.app")
+    app = PC_APP
     macos_dir = File.join(app, "Contents", "MacOS")
     mkdir_p macos_dir
     cp vm, File.join(macos_dir, "picoruby")
@@ -841,7 +843,7 @@ namespace :pc do
     require_relative "lib/pc_lifecycle"
     PcLifecycle.new(
       { root:         __dir__,
-        vm_app:       ENV["STACKCHAN_PICORUBY_APP"] || File.expand_path("~/Applications/StackchanPico.app"),
+        vm_app:       PC_APP,
         port:         (ENV["STACKCHAN_PORT"] || ENV["PORT"] || "8787").to_i,
         sidecar_port: (ENV["STACKCHAN_SIDECAR_PORT"] || ENV["SIDECAR_PORT"] || "8788").to_i,
         prefix:       ENV["PREFIX"] || "StackChan",

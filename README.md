@@ -59,7 +59,7 @@ vendor/R2P2-ESP32/    bash0C7/R2P2-ESP32. Device firmware build tree; its own
 vendor/R2P2-darwin/   bash0C7/R2P2-darwin. Apple platform: builds the Mac
                       PicoRuby VM and the iOS / watchOS apps from this repo's
                       apps/ and build_config/ (vendors its own picoruby). See
-                      pc/stackchan-pico/README.md.
+                      "macOS side" below.
 ```
 
 The firmware's gem list is `build_config/esp32-stackchan.rb`; the `r2p2:*`
@@ -105,10 +105,8 @@ build_config/        picoruby build configs: the firmware
                      the iOS / watchOS VMs.
 
 pc/stackchan-pico/         Launchd and process glue for the macOS side: the
-                           `stackchan` wrapper and the boot files. The daemon
-                           loads the controller gem and apps/mac/app.rb; the
-                           CLI loads only the controller's cli.rb and
-                           calibration.rb and talks to the daemon. See
+                           `stackchan` wrapper, the boot files, the fake BLE
+                           radio and the app bundle's plist. See
                            pc/stackchan-pico/README.md.
 pc/sidecar/                The AI/voice sidecar: a second process on the Mac
                            VM that the daemon calls over picoruby-drb for a
@@ -189,17 +187,43 @@ the `/stackchan-device-iterate` skill, which uploads only `app.mrb`.
 
 ### macOS side
 
-The PicoRuby VM that owns the BLE link has to be built and then wrapped in an app
-bundle, because CoreBluetooth is only granted through macOS TCC and that grant
-binds to a bundle identity:
+The Mac VM (`build_config/darwin-stackchan-pc.rb`) carries no StackChan code;
+the daemon, the CLI and the sidecar load it from this checkout. It is built,
+then wrapped in an app bundle, because macOS grants CoreBluetooth through TCC
+to a bundle identity:
 
 ```bash
-bundle exec rake pc:vm_build           # build the PicoRuby VM under vendor/R2P2-darwin
-bundle exec rake pc:app_bundle         # -> ~/Applications/StackchanPico.app
+bundle exec rake pc:vm_build           # vendor/R2P2-darwin/build/host/bin/picoruby
+bundle exec rake pc:app_bundle         # -> ~/Applications/StackchanPico.app (STACKCHAN_PICORUBY_APP= elsewhere)
 bundle exec rake pc:up                 # start the backends under launchd
 pc/stackchan-pico/bin/stackchan status
 pc/stackchan-pico/bin/stackchan face joy
 ```
+
+Re-run `pc:app_bundle` after every `pc:vm_build`: it copies the new VM into the
+bundle and signs it ad hoc with the designated requirement
+`identifier "com.bash0c7.stackchanpico"`, which is what the TCC grant follows.
+`pc:up` runs the daemon as a LaunchAgent whose program is the binary inside
+that bundle, so it uses the bundle's grant; the same binary started from a
+shell runs under the terminal app's grant instead.
+
+`pc:up` (re)creates two launchd jobs and succeeds once the daemon answers
+`status` with `connects` of at least 1; a `link=busy` answer fails it unless
+`ALLOW_BUSY=1`. Its env, baked into the plists it writes:
+
+| Env | Meaning |
+|---|---|
+| `STUB=1` | the sidecar answers `stub返答:<prompt>` and silence, without Foundation Models or `say` |
+| `BLE_FAKE=1` | the daemon uses `pc/stackchan-pico/app/fake_ble.rb` instead of the radio |
+| `ALLOW_BUSY=1` | accept a daemon whose robot is held by another controller or unreachable |
+| `PREFIX=` | advertised name prefix to look for (default `StackChan`) |
+| `STACKCHAN_PORT=` | daemon port (default 8787); `bin/stackchan` reads the same variable |
+| `STACKCHAN_SIDECAR_PORT=` | sidecar port (default 8788) |
+| `STACKCHAN_LOGDIR=` | `daemon.log`, `sidecar.log` and the sidecar's work files (default `/tmp/stackchan-pico`) |
+| `STACKCHAN_PICORUBY_APP=` | the app bundle (default `~/Applications/StackchanPico.app`) |
+| `NS=` | launchd label namespace, for a second pair of jobs |
+
+`bundle exec rake pc:down` boots both jobs out and removes their plists.
 
 The iPhone and Apple Watch apps are `apps/ios` and `apps/watchos`: one
 `App = StackChan.controller do |c| … end` each, one button per action. They
@@ -224,14 +248,6 @@ that way against the robot, and hands the robot Mac → iPhone → Mac. It is
 optional: the verdict does not need it. The Apple Watch app is driven by hand
 or in the Simulator: a watch nobody has woken does not run an app in the
 foreground, and the Mac cannot wake it.
-
-Re-run `pc:app_bundle` after every `pc:vm_build`: it copies the new VM into the
-bundle and signs it ad hoc with the designated requirement
-`identifier "com.bash0c7.stackchanpico"`, which is what the TCC grant follows.
-
-`pc:up` succeeds once the daemon answers `status` with `connects` of at least 1.
-A `link=busy` answer fails it unless `ALLOW_BUSY=1`. It is idempotent and
-recreates the launchd jobs each time.
 
 ### Tests
 
@@ -260,17 +276,29 @@ checkout before first use, and again after any Ruby ABI change.
 
 ## Quickstart (macOS side)
 
-A single CLI `stackchan` drives the robot. Its verbs are the actions declared
-in `apps/mac/app.rb` plus the built-ins `connect`, `status`, `stop`, `raw`,
-`calibrate`, `remote`, `touch` and `tui`; `stackchan` with no verb lists them,
-which needs the daemon running. See
-[pc/stackchan-pico/README.md](pc/stackchan-pico/README.md) for the full
-architecture, env vars, link lifecycle and exit codes. `bundle exec rake pc:up` starts both
-backends — the AI/voice sidecar and the daemon, which owns the BLE
-connection, both on the Mac VM — under launchd, recreating them every time it runs;
-`rake pc:down` stops the backends and removes their launchd plists. The CLI
-only attaches to the already-running daemon, connecting to a physical
-StackChan by default:
+```
+stackchan <verb>  (pc/stackchan-pico/bin/stackchan)
+   │ picoruby-drb TCP :8787
+   ▼
+daemon  ── BLE central, dRuby over BLE ──▶ StackChan
+   │ picoruby-drb TCP :8788
+   ▼
+sidecar ── Apple Foundation Models (chat reply)
+        └─ say → 8 kHz WAV → mu-law (speech)
+```
+
+The daemon and the sidecar are two launchd jobs on the Mac VM. The daemon
+serves the action table of `apps/mac/app.rb` through the controller gem
+(`mrbgems/picoruby-stackchan-controller`) and owns the BLE link. The sidecar
+(`pc/sidecar`) returns data only: `respond(prompt, ctx)` asks one
+`FoundationModel::Session` (picoruby-foundation-model, the persona as its
+instructions) and returns the reply or nil after 60 s; `synthesize(text, gain,
+rate)` runs `say` (also cut at 60 s) and returns mu-law or nil.
+
+`stackchan` only attaches to the running daemon. Its verbs are the actions
+declared in `apps/mac/app.rb` plus the built-ins `connect`, `status`, `stop`,
+`raw`, `calibrate`, `remote`, `touch` and `tui`; `stackchan` with no verb
+lists them, which needs the daemon running:
 
 ```bash
 bundle exec rake pc:up                                   # (re)start the backends under launchd
@@ -289,12 +317,39 @@ pc/stackchan-pico/bin/stackchan calibrate --align-only   # torque off → operat
 pc/stackchan-pico/bin/stackchan stop                     # the daemon exits
 ```
 
-The daemon holds the BLE link only while it is in use: the first action
-connects, a keepalive runs every second while actions keep coming, and `c.hold` ms
-(10 s in `apps/mac/app.rb`) after the last one the keepalive stops and the
-robot releases the link. The next action reconnects. When the robot is held
-by another central (another Mac, the iOS app) or cannot be reached, the verb
-prints `busy: …` and exits 8.
+`status` prints one line of `key=value` pairs: `link` (`released`, `held`,
+`quiet` or `busy`), `connects`, `releases`, `last_connect_ms`, `hold_ms`,
+`ble_connected`, `last_face`, `last_action`, `host`, `port`.
+
+Exit codes: 0 done, 1 error or unknown verb, 6 calibration needed, 7 verify
+fail or calibration aborted, 8 busy (`busy: robot is held by another
+controller or unreachable`). With the backends down every verb prints how to
+start them and exits 1, except `status`, which exits 0. A verb has no time
+limit, so against a wedged daemon it hangs.
+
+`stop` asks the daemon to exit and prints "daemon stopped". launchd leaves it
+down (`KeepAlive` restarts only an abnormal exit) but the plist stays, so it
+returns at the next login; `pc:down` is the way to stop the backends.
+
+The link is held only while it is in use:
+
+- `released`: no link. The next action connects first (scan, connect,
+  discover, subscribe) and the link becomes `held`.
+- `held`: every 1 s the daemon calls the robot's `touches` as a keepalive, and
+  the zones it returns are the head-touch notifications. `touch listen`
+  polling counts as use.
+- `quiet`: `c.hold` ms (10 s in `apps/mac/app.rb`) after the last action the
+  keepalive stops. The robot releases the link 15 s after the last frame it
+  received; an action before that uses the link as it is. The darwin central
+  cannot close a GAP connection, so this release is how a link ends.
+- A disconnect sets the link back to `released`, and an action that handed
+  the link back while it waited (chat on the sidecar) stops with
+  `LinkChanged` rather than continuing on a new link.
+- `busy`: the connect found nothing — another central (a second Mac process,
+  the iOS app) holds the robot, which does not advertise meanwhile, or it is
+  out of reach. The verb exits 8; the next action tries again.
+- An ACK timeout on a link that is still up fails that verb and keeps the
+  link.
 
 ### Touch reactions
 

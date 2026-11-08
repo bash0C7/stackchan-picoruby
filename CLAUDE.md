@@ -39,6 +39,7 @@ StackChan (M5Stack CoreS3 の StackChan AI デスクトップロボット) を P
 - 例外は 1 回の raise + rescue で C stack を約 1.8 KB 積む (QEMU で `Machine.stack_high_water_mark` が 2024 B → 184 B)。起動後の空きは約 2 KB しかないので、tick と BLE の経路で raise を流れの制御に使わない (`DRbBle::Responder#feed` は長さ付きメッセージを切り出して、揃ってから読む)。
 - `String#[]=` のコストは差し込み先の全長に比例する。大きな buffer に行ごとに差し込まない。host では見えない。
 - `send` / `__send__` は、相手が定義していない method (`method_missing` で受けるもの。`DRb::DRbObject` が典型) を C の関数呼び出しで実行する。その内側の `sleep_ms` は task を切り替えない待ちになり、`Task.pass` は `can't pass across C function boundary` を raise する。Mac の BLE 通知は scheduler の入口でしか event queue に移らないので、robot は命令を実行しているのに reply が見えず 3 s で timeout する。DRb の front を名前で呼ぶ時は `DRb.send_message` を使う (`Central#call_front`)。名前で呼ばれる側 (iOS / watchOS の bridge が `App.__send__` で呼ぶ controller、`DRbBle::Responder` が `send` で呼ぶ robot の `Remote`) は、その名前を実 method として定義する (`Controller#define_action`、`Remote#define_handler`)。robot ではこの C の関数呼び出しが VM をもう 1 段積む。host では `Task.pass` する radio (`test/pc/passing_radio.rb`) と `Task.pass` する handler (`test/device/drb_channel_test.rb`) で検出する。
+- Mac VM (と controller の code): Mutex / Thread は無い (timeslice の Task と `Task::Queue`)。drb は kwargs (Hash 引数) も remote の block も運ばない (poll する)。`system` は background にも redirect にもできない (backend は launchd が起こす)。regexp に `|` の選択が無い。`gsub` / `sub` は multibyte を誤る (`each_char` を使う)。引数無しの `module_function` は効かない。
 - `Task.new` の block は `self` がトップレベルの `main` で走る (block を作った場所の `self` ではない)。block が使う receiver や instance 変数は先に local に取ってから block に渡す (`Daemon#start_tick` / `#stop`)。
 
 ## 構成
