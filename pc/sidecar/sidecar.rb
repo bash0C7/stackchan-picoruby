@@ -1,14 +1,19 @@
+root   = ARGV[0] || "."
+port   = (ARGV[1] || "8788").to_i
+logdir = ARGV[2] || "/tmp"
+stub   = ENV["STACKCHAN_SIDECAR_STUB"] == "1"
 require "drb"
-require_relative "service"
+load "#{root}/pc/stackchan-pico/app/drb_eintr_retry.rb"
+load "#{root}/pc/sidecar/service.rb"
 
-PORT    = (ARGV[0] || "8788").to_i
-STUB    = ENV["STACKCHAN_SIDECAR_STUB"] == "1"
-DELAY_S = ENV["STACKCHAN_SIDECAR_STUB_DELAY_S"] && ENV["STACKCHAN_SIDECAR_STUB_DELAY_S"].to_f
-
-$LOAD_PATH.unshift File.expand_path("../stackchan/lib", __dir__)
-
-service = StackchanSidecar::Service.new(stub: STUB, delay_s: DELAY_S)
-DRb.start_service("druby://127.0.0.1:#{PORT}", service)
-$stdout.sync = true
-puts "[sidecar] #{STUB ? 'STUB' : 'REAL'} listening on druby://127.0.0.1:#{PORT}"
+service = if stub
+            StackchanSidecar::StubService.new
+          else
+            StackchanSidecar::Service.new(
+              session: FoundationModel::Session.new(instructions: StackchanSidecar::PERSONA),
+              say: StackchanSidecar::Say.new(logdir)
+            )
+          end
+DRb.start_service("druby://127.0.0.1:#{port}", service)
+puts "[sidecar] #{stub ? 'STUB' : 'REAL'} listening on druby://127.0.0.1:#{port}"
 DRb.thread.join

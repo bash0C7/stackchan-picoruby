@@ -33,7 +33,7 @@ class PcLifecycle
                    "The daemon has to run from the signed bundle or macOS denies it CoreBluetooth."
     end
 
-    sidecar = LaunchAgent.sidecar_job(root: @c[:root], ruby: @c[:ruby], port: @c[:sidecar_port],
+    sidecar = LaunchAgent.sidecar_job(root: @c[:root], vm_app: @c[:vm_app], port: @c[:sidecar_port],
                                       stub: @c[:stub], logdir: @c[:logdir], ns: @c[:ns])
     daemon  = LaunchAgent.daemon_job(root: @c[:root], vm_app: @c[:vm_app], port: @c[:port],
                                      sidecar_port: @c[:sidecar_port],

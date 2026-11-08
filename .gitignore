@@ -10,8 +10,6 @@ pc/*/tmp/
 /vendor/
 
 /.bundle/
-/pc/stackchan/.bundle/
-/pc/stackchan/vendor/
 
 /.worktrees/
 /.claude/worktrees/

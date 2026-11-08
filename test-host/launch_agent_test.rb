@@ -16,7 +16,7 @@ class LaunchAgentTest < Test::Unit::TestCase
   end
 
   def sidecar(**over)
-    LaunchAgent.sidecar_job(root: ROOT, ruby: "/usr/bin/ruby", port: 8788,
+    LaunchAgent.sidecar_job(root: ROOT, vm_app: VM_APP, port: 8788,
                             stub: false, logdir: LOGDIR, **over)
   end
 
@@ -49,12 +49,13 @@ class LaunchAgentTest < Test::Unit::TestCase
     end
   end
 
-  def test_sidecar_job_carries_the_bundler_environment
-    env = sidecar["EnvironmentVariables"]
-    assert_equal "#{ROOT}/pc/stackchan/Gemfile", env["BUNDLE_GEMFILE"]
-    assert_equal "-rbundler/setup", env["RUBYOPT"]
-    assert_equal ["/usr/bin/ruby", "#{ROOT}/pc/sidecar/sidecar.rb", "8788"],
-                 sidecar["ProgramArguments"]
+  def test_sidecar_job_runs_the_bundle_binary_with_the_sidecar_script
+    job = sidecar
+    assert_equal "com.bash0c7.stackchan-sidecar", job["Label"]
+    assert_equal ["#{VM_APP}/Contents/MacOS/picoruby",
+                  "#{ROOT}/pc/sidecar/sidecar.rb",
+                  ROOT, "8788", LOGDIR], job["ProgramArguments"]
+    assert_equal "#{LOGDIR}/sidecar.log", job["StandardOutPath"]
   end
 
   # An ambient STACKCHAN_SIDECAR_STUB must not

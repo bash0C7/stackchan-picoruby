@@ -32,3 +32,5 @@ firmware:
 darwin:
   R2P2-darwin: 3eb9d4d6bde2a6687c26170f54acffa1e349b955             # claude/latest-deps
   picoruby: 6a12ed5a5cf3a21cdc1307d327ad3f9caaa8dabb                # claude/port-darwin-linear, vendor/R2P2-darwin/vendor/picoruby
+  repos:                                                            # vendor/R2P2-darwin/build/repos/host/<name>
+    picoruby-foundation-model: 6f09a8e776c8aa3f00e19c1a790bd9b07befed71   # claude/session

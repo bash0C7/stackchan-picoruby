@@ -1,6 +1,6 @@
 {
   "success": false,
-  "error_count": 25,
+  "error_count": 23,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -13,7 +13,7 @@
     },
     {
       "path": "acceptance/runner.rb",
-      "line": 290,
+      "line": 293,
       "column": 54,
       "severity": "error",
       "rule": "call.undefined-method",
@@ -119,18 +119,6 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
     },
     {
-      "path": "pc/sidecar/test/test_service.rb",
-      "line": 24,
-      "column": 30,
-      "severity": "error",
-      "rule": "call.possible-nil-receiver",
-      "source_family": "builtin",
-      "message": "possible nil receiver: `bytesize' is undefined on NilClass",
-      "method_name": "bytesize",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
-    },
-    {
       "path": "test/device/drb_channel_test.rb",
       "line": 170,
       "column": 61,
@@ -152,18 +140,6 @@
       "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
       "evidence_tier": "medium",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
-    },
-    {
-      "path": "test/pc/radio_test.rb",
-      "line": 32,
-      "column": 30,
-      "severity": "error",
-      "rule": "call.possible-nil-receiver",
-      "source_family": "builtin",
-      "message": "possible nil receiver: `getbyte' is undefined on NilClass",
-      "method_name": "getbyte",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
       "path": "test/pc/send_builder_test.rb",

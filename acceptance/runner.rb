@@ -66,6 +66,7 @@ module Acceptance
     def boot_log = File.join(@root, "build", "acceptance", "boot.log")
     def darwin_dir = File.join(@root, "vendor", "R2P2-darwin")
     def darwin_picoruby = File.join(darwin_dir, "vendor", "picoruby")
+    def darwin_repos_dir = File.join(darwin_dir, "build", "repos", "host")
 
     def deploy_plan
       [["pin trees", -> { pin_trees }],
@@ -208,6 +209,7 @@ module Acceptance
       checkout(darwin_dir, lock.fetch("R2P2-darwin"))
       checkout(darwin_picoruby, lock.fetch("picoruby"))
       git!(darwin_picoruby, "submodule", "update", "--init", "--recursive")
+      lock.fetch("repos", {}).each { |name, want| pin_cache(name, want, darwin_repos_dir) }
       "R2P2-darwin #{lock['R2P2-darwin'][0, 7]}, picoruby #{lock['picoruby'][0, 7]}"
     end
 
@@ -215,6 +217,7 @@ module Acceptance
       lock = @lock.fetch("darwin")
       head_is!(darwin_dir, lock.fetch("R2P2-darwin"))
       head_is!(darwin_picoruby, lock.fetch("picoruby"))
+      lock.fetch("repos", {}).each { |name, want| head_is!(File.join(darwin_repos_dir, name), want) }
     end
 
     BUILT_APPS = %w[ios watchos].freeze
@@ -330,8 +333,8 @@ module Acceptance
     # mruby's gem loader clones a missing gem at its branch tip and never pulls
     # an existing one, so each cache is put at its sha before anything builds.
     # A moved checkout keeps its old commit on a keep-<sha> branch.
-    def pin_cache(name, want)
-      dir = File.join(repos_dir, name)
+    def pin_cache(name, want, under = repos_dir)
+      dir = File.join(under, name)
       if @ops.exist?(dir)
         have = head(dir)
         return if have == want

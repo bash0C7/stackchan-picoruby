@@ -21,14 +21,12 @@ module LaunchAgent
     job(daemon_label(ns), args, logdir, "daemon")
   end
 
-  # launchd runs no login shell: absolute ruby + RUBYOPT instead of bundle exec.
-  def self.sidecar_job(root:, ruby:, port:, stub:, logdir:, ns: nil)
-    env = {
-      "BUNDLE_GEMFILE" => File.join(root, "pc", "stackchan", "Gemfile"),
-      "RUBYOPT"        => "-rbundler/setup",
-    }
+  def self.sidecar_job(root:, vm_app:, port:, stub:, logdir:, ns: nil)
+    env = {}
     env["STACKCHAN_SIDECAR_STUB"] = "1" if stub
-    args = [ruby, File.join(root, "pc", "sidecar", "sidecar.rb"), port.to_s]
+    args = [File.join(vm_app, "Contents", "MacOS", "picoruby"),
+            File.join(root, "pc", "sidecar", "sidecar.rb"),
+            root, port.to_s, logdir]
     job(sidecar_label(ns), args, logdir, "sidecar").merge("EnvironmentVariables" => env)
   end
 

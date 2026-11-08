@@ -277,17 +277,14 @@ else
   bad "$BUILD_CONFIG is missing, so the firmware's gem refs were not checked"
 fi
 
-# The Mac-side sidecar pins a gem by branch the same way a build_config does.
-SIDECAR_GEMFILE="$ROOT/pc/stackchan/Gemfile"
-if [ -f "$SIDECAR_GEMFILE" ]; then
-  grep '^ *gem ' "$SIDECAR_GEMFILE" | grep 'git:' > "$WORK/gemfilelines" || true
-  while read -r line; do
-    url=$(value_of git "$line")
-    ref=$(value_of branch "$line")
-    [ -n "$url" ] || continue
-    resolves "$url" "${ref:-HEAD}" "sidecar $url ${ref:-default branch}"
-  done < "$WORK/gemfilelines"
-fi
+MAC_CONFIG="$ROOT/build_config/darwin-stackchan-pc.rb"
+grep 'conf\.gem' "$MAC_CONFIG" | grep 'github:' > "$WORK/macgemlines" || true
+while read -r line; do
+  slug=$(value_of github "$line")
+  ref=$(value_of branch "$line")
+  [ -n "$slug" ] || continue
+  resolves "$slug" "${ref:-HEAD}" "Mac VM $slug ${ref:-default branch}"
+done < "$WORK/macgemlines"
 
 # The Mac-side VM's picoruby is a plain clone, not a submodule, so no sha is
 # recorded anywhere and only the ref it is cloned from can be checked. Read the

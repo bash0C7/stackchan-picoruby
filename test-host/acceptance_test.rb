@@ -26,6 +26,8 @@ class AcceptanceTest < Test::Unit::TestCase
     darwin:
       R2P2-darwin: 08986d975576b3c836d54d0801ec32ebc0ee5a90
       picoruby: 31de548847e0a45e5f6619b0eb3edfa154fa18c2
+      repos:
+        picoruby-foundation-model: 6f09a8e2c0b1d3a4f5e6d7c8b9a0f1e2d3c4b5a6
   YAML
   FW = LOCK["firmware"]
   ROOT_SHA = "a" * 40
@@ -192,6 +194,7 @@ class AcceptanceTest < Test::Unit::TestCase
   def cache(name) = File.join(picoruby, "build", "repos", "esp32-picoruby", name)
   def darwin = File.join(ROOT, "vendor", "R2P2-darwin")
   def darwin_picoruby = File.join(darwin, "vendor", "picoruby")
+  def darwin_cache(name) = File.join(darwin, "build", "repos", "host", name)
 
   def boot(extra = "")
     "segment 1: paddr=001135c0 vaddr=3fc9e600 size\nI (1387) app_init: App version:      0.2.21-30-g#{FW['R2P2-ESP32'][0, 7]}\n" \
@@ -531,6 +534,7 @@ class AcceptanceTest < Test::Unit::TestCase
     FW["repos"].each { |name, sha| assert_include pins, [cache(name), sha] }
     assert_include pins, [darwin, LOCK["darwin"]["R2P2-darwin"]]
     assert_include pins, [darwin_picoruby, LOCK["darwin"]["picoruby"]]
+    LOCK["darwin"]["repos"].each { |name, sha| assert_include pins, [darwin_cache(name), sha] }
     assert_equal "r2p2:setup", rakes.first[2]
   end
 
@@ -1026,6 +1030,14 @@ class AcceptanceTest < Test::Unit::TestCase
                    .map { |t| [ROOT, t] }, builds
     assert_equal LOCK["darwin"]["R2P2-darwin"], @ops.heads[darwin]
     assert_equal LOCK["darwin"]["picoruby"], @ops.heads[darwin_picoruby]
+    assert_equal LOCK["darwin"]["repos"]["picoruby-foundation-model"],
+                 @ops.heads[darwin_cache("picoruby-foundation-model")]
+  end
+
+  def test_a_darwin_cache_that_moves_during_the_build_fails_the_pin_check
+    @ops.on_rake["ios:device:lib"] = ->(_d, _e) { @ops.heads[darwin_cache("picoruby-foundation-model")] = "e" * 40 }
+    r = run_darwin_only
+    assert_equal "pin R2P2-darwin holds", darwin_failed(r)["name"]
   end
 
   def test_only_the_iphone_runs_a_batch_after_both_builds

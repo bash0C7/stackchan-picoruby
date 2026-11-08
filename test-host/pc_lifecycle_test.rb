@@ -33,7 +33,7 @@ class PcLifecycleTest < Test::Unit::TestCase
   end
 
   def config(**over)
-    { root: "/repo", vm_app: VM_APP, ruby: "/usr/bin/ruby", port: 8787,
+    { root: "/repo", vm_app: VM_APP, port: 8787,
       sidecar_port: 8788, prefix: "StackChan", ble_fake: true, stub: true,
       logdir: LOGDIR, ns: "it" }.merge(over)
   end

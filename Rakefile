@@ -813,7 +813,6 @@ namespace :pc do
     PcLifecycle.new(
       { root:         __dir__,
         vm_app:       ENV["STACKCHAN_PICORUBY_APP"] || File.expand_path("~/Applications/StackchanPico.app"),
-        ruby:         RbConfig.ruby,
         port:         (ENV["STACKCHAN_PORT"] || ENV["PORT"] || "8787").to_i,
         sidecar_port: (ENV["STACKCHAN_SIDECAR_PORT"] || ENV["SIDECAR_PORT"] || "8788").to_i,
         prefix:       ENV["PREFIX"] || "StackChan",

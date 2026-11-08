@@ -95,6 +95,12 @@ ROBOT_MRBLIB = Dir[File.join(REPO_ROOT, "mrbgems", "picoruby-stackchan-robot", "
     cruby: lambda {},
     load_files: lambda { AOT_KERNELS },
   }
+  SUITES["sidecar"] = {
+    dir: File.join(REPO_ROOT, "test", "sidecar"),
+    cruby: lambda {},
+    load_files: lambda { [File.join(REPO_ROOT, "test", "sidecar", "fake_foundation_model.rb"),
+                          File.join(REPO_ROOT, "pc", "sidecar", "service.rb")] },
+  }
   SUITES["drb-ble"] = {
     dir: File.join(REPO_ROOT, "mrbgems", "picoruby-drb-ble", "test"),
     cruby: lambda {},
