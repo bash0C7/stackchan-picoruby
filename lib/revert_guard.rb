@@ -19,7 +19,7 @@ class RevertGuard
 
   def run
     base = base_ref
-    changed = git("diff", "--name-only", "--diff-filter=AM", base, "HEAD").lines.map(&:strip)
+    changed = git("diff", "--name-only", "--no-renames", "--diff-filter=AM", base, "HEAD").lines.map(&:strip)
     touched = changed.select { |p| test_side?(p) && p.match?(TEST_FILE) }
                      .to_h { |p| [p, touched_methods(base, p)] }
                      .reject { |_, names| names.empty? }

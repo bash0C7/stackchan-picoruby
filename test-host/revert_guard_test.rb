@@ -90,6 +90,25 @@ class RevertGuardTest < Test::Unit::TestCase
     end
   end
 
+  def test_a_renamed_test_file_is_checked_like_a_new_one
+    Dir.mktmpdir do |dir|
+      git(dir, "init", "-q")
+      write(dir, "lib/calc.rb", CALC)
+      write(dir, "test-host/calc_test.rb", CALC_TEST)
+      base = commit(dir, "base")
+
+      write(dir, "lib/calc.rb", CALC_WITH_SUB)
+      FileUtils.rm(File.join(dir, "test-host/calc_test.rb"))
+      write(dir, "test-host/arith_test.rb", CALC_TEST.sub(
+        "end\nend\n", "end\n\n  def #{"test_add_again"}\n    assert_equal 2, Calc.add(1, 1)\n  end\nend\n"))
+      commit(dir, "rename and add a redundant test")
+
+      err, code = run_guard(dir, base)
+      assert_equal 1, code, err
+      assert_match(/arith_test\.rb: test_add_again/, err)
+    end
+  end
+
   def test_a_picotest_file_that_crashes_while_loading_on_the_base_counts_as_unloadable
     out = "[31mAmbientDemoTest:\n  success: 0, failure: 0, exception: 0, crash: 1, skip: 0\n" \
           "[0m[31mCrash in loading: /tmp/base/test/tools/ambient_demo_test.rb: RuntimeError: Crash in running AmbientDemoTest tests.\n"
