@@ -29,7 +29,7 @@ work stays on their own branches, not yet merged into those repositories'
 | picoruby-py32-io-expander | bash0C7/picoruby-py32-io-expander | `main` (unchanged) |
 | picoruby-scservo | bash0C7/picoruby-scservo | `main` (unchanged) |
 | picoruby-multicore | bash0C7/picoruby-multicore | `claude/latest-deps` |
-| picoruby-foundation-model | bash0C7/picoruby-foundation-model | `claude/session` (adds `FoundationModel::Session` and the timeout; the Mac VM only) |
+| picoruby-foundation-model | bash0C7/picoruby-foundation-model | `main` (the Mac VM only) |
 | suppify | bash0C7/suppify | `newlib-runtime-pr-pin` |
 | spinel | bash0C7/spinel | the commit suppify's `spinel.pin` names; `newlib-runtime-pr` has since been rebuilt on a newer matz/spinel master, so that commit is no longer on the branch |
 
@@ -53,18 +53,7 @@ VM, the Mac VM and `~/Applications/StackchanPico.app` (the daemon runs from
 
 ## Next
 
-The branch `claude/picoruby-only` leaves CRuby only where rake runs: the
-sidecar and the `tools/*.rb` scripts run on the Mac VM, and the revert guard
-and the AOT build run inside rake. It and picoruby-foundation-model's
-`claude/session` are on GitHub. The Mac VM in `~/Applications/StackchanPico.app`
-carries the gem (`acceptance/lock.yml` `darwin.repos` sha), and launchd runs
-the sidecar on it. The robot side is unchanged, so the branch needs no
-acceptance report. With the robot on, `chat` and `say` spoke through the
-PicoRuby sidecar (the owner listened), and `tools/latency_baseline.zsh` and
-`tools/face_profile.zsh` measured and summarized on the Mac VM. Nothing is left
-on the branch. The plan and the evidence are in the vault
-(`plans/2026-11-08-cruby-only-for-rake.md`,
-`review/2026-11-08-cruby-only-for-rake/`).
+Nothing is in progress.
 
 ## Going back
 

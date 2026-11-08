@@ -27,5 +27,5 @@ MRuby::Build.new do |conf|
   conf.gem core: "picoruby-ble"
   conf.gem core: "picoruby-picotest"
   conf.gem core: "hal-task-darwin"
-  conf.gem github: "bash0C7/picoruby-foundation-model", branch: "claude/session"
+  conf.gem github: "bash0C7/picoruby-foundation-model", branch: "main"
 end
