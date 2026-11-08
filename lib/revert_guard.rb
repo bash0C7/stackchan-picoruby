@@ -7,6 +7,10 @@ class RevertGuard
   TEST_FILE = /_test\.rb\z/
   PROJECT_ROOT = File.expand_path("..", __dir__)
 
+  def self.unloadable?(path, out)
+    path.start_with?("test-host/") ? out.match?(/cannot load such file/) : out.include?("Crash in loading:")
+  end
+
   def initialize(root:, base: nil, err: $stderr)
     @root = root
     @base = base
@@ -42,7 +46,7 @@ class RevertGuard
           out, = Open3.capture2e(env, "bundle", "exec", *command_for(path), chdir: wt)
           seen = results(path, out)
           unrun = names.reject { |n| seen.key?(n) }
-          next if seen.empty? && path.start_with?("test-host/") && out.match?(/cannot load such file/)
+          next if seen.empty? && RevertGuard.unloadable?(path, out)
           unless unrun.empty?
             say "#{path} did not run #{unrun.join(', ')} against #{base[0, 7]}:\n#{out.lines.last(15).join}"
             return 1

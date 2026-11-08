@@ -90,6 +90,14 @@ class RevertGuardTest < Test::Unit::TestCase
     end
   end
 
+  def test_a_picotest_file_that_crashes_while_loading_on_the_base_counts_as_unloadable
+    out = "[31mAmbientDemoTest:\n  success: 0, failure: 0, exception: 0, crash: 1, skip: 0\n" \
+          "[0m[31mCrash in loading: /tmp/base/test/tools/ambient_demo_test.rb: RuntimeError: Crash in running AmbientDemoTest tests.\n"
+    assert_true RevertGuard.unloadable?("test/tools/ambient_demo_test.rb", out)
+    assert_false RevertGuard.unloadable?("test/tools/ambient_demo_test.rb", "  AmbientDemoTest#test_x F\n")
+    assert_false RevertGuard.unloadable?("test-host/foo_test.rb", out)
+  end
+
   def test_a_test_host_file_that_cannot_load_on_the_base_is_skipped
     Dir.mktmpdir do |dir|
       git(dir, "init", "-q")
