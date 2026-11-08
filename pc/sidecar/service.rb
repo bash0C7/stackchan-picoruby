@@ -52,14 +52,16 @@ module StackchanSidecar
   class Say
     class Error < StandardError; end
 
-    def initialize(dir, tag)
+    def initialize(dir, tag, timeout_s: TIMEOUT_MS / 1000)
       @text_path = "#{dir}/sidecar-say-#{tag}.txt"
       @wav_path  = "#{dir}/sidecar-say-#{tag}.wav"
+      @timeout_s = timeout_s
     end
 
     def pcm(text, rate)
       File.open(@text_path, "w") { |f| f.write(text) }
-      cmd = "say -f '#{@text_path}' -o '#{@wav_path}' --file-format=WAVE --data-format=LEI16@#{Wav::SAMPLE_RATE}"
+      cmd = "perl -e 'alarm shift; exec @ARGV' #{@timeout_s} " \
+            "say -f '#{@text_path}' -o '#{@wav_path}' --file-format=WAVE --data-format=LEI16@#{Wav::SAMPLE_RATE}"
       cmd += " -r #{rate.to_i}" if rate
       io = IO.popen("#{cmd} 2>&1; echo exit:$?")
       out = io.read
