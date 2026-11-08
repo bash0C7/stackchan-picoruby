@@ -5,7 +5,7 @@ device and aw88298 suites also run it in place of the compiled kernels). A build
 compiles it ahead of time with [spinel](https://github.com/bash0C7/spinel) and wraps it into
 one PicoRuby mrbgem with [suppify](https://github.com/bash0C7/suppify). The kernels are
 `def self.` methods of `module StackchanAot`, typed with inline RBS (`#:`). The entries are
-listed in `tools/aot/kernels_build.rb` (`ENTRIES`); other methods stay inside the kernel.
+listed in `lib/aot_kernels.rb` (`ENTRIES`); other methods stay inside the kernel.
 
 | Kernel | Called as | Used by |
 |---|---|---|
@@ -27,13 +27,14 @@ on this board, so a kernel does not print.
 ## Build
 
 ```
-tools/aot/setup.sh                    # suppify @ suppify.pin, spinel @ suppify's spinel.pin (bash0C7/spinel), picoruby-multicore @ multicore.pin
-tools/aot/kernels_build.rb esp32      # build/aot/esp32/gems/picoruby-stackchan_aot (--cc xtensa-esp32s3-elf-gcc)
-tools/aot/syntax_check_mcu.sh build/aot/esp32/gems/picoruby-stackchan_aot   # seconds; XTENSA_GCC= to pick the compiler
-tools/aot_host_vm.sh                  # host VM with the kernels + multicore's pthread port -> build/host-aot
+bundle exec rake aot:setup            # suppify @ suppify.pin, spinel @ suppify's spinel.pin (bash0C7/spinel), picoruby-multicore @ multicore.pin
+bundle exec rake aot:esp32            # build/aot/esp32/gems/picoruby-stackchan_aot (--cc xtensa-esp32s3-elf-gcc)
+bundle exec rake aot:syntax_check     # seconds; GEM= another gem dir, XTENSA_GCC= to pick the compiler
+bundle exec rake aot:host             # host VM with the kernels + multicore's pthread port -> build/host-aot
 ```
 
-`kernels_build.rb esp32` passes `--cc` with the ESP32-S3 compiler (`XTENSA_GCC=`, else the
+The rake process runs suppify itself (`build/aot/suppify/lib`); spinel's binary is the only
+program the build starts. `aot:esp32` passes `--cc` with the ESP32-S3 compiler (`XTENSA_GCC=`, else the
 newest `xtensa-esp32s3-elf-gcc` under `IDF_TOOLS_PATH` or `~/.espressif`). spinel takes the
 Integer width from it and reports the board's build (`--print-build`), which suppify puts in the
 gem: the defines (`SP_NO_SIGNALS`, `SP_NO_TERMIOS`, …), spinel's `lib/newlib` headers as

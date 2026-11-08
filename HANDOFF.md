@@ -29,6 +29,7 @@ work stays on their own branches, not yet merged into those repositories'
 | picoruby-py32-io-expander | bash0C7/picoruby-py32-io-expander | `main` (unchanged) |
 | picoruby-scservo | bash0C7/picoruby-scservo | `main` (unchanged) |
 | picoruby-multicore | bash0C7/picoruby-multicore | `claude/latest-deps` |
+| picoruby-foundation-model | bash0C7/picoruby-foundation-model | `claude/session` (adds `FoundationModel::Session` and the timeout; the Mac VM only) |
 | suppify | bash0C7/suppify | `newlib-runtime-pr-pin` |
 | spinel | bash0C7/spinel | the commit suppify's `spinel.pin` names; `newlib-runtime-pr` has since been rebuilt on a newer matz/spinel master, so that commit is no longer on the branch |
 
@@ -52,15 +53,22 @@ VM, the Mac VM and `~/Applications/StackchanPico.app` (the daemon runs from
 
 ## Next
 
-Move the sidecar (`pc/sidecar`: the dRuby service the Mac daemon asks for a
-chat reply and for speech) off CRuby onto PicoRuby. It is CRuby because of two
-gems: rb-foundation-model-mac (Apple Foundation Models for the reply) and
-`pc/stackchan`'s `Stackchan::Voice::Tts` (speech to μ-law). The aim is that
-CRuby is left only where rake needs it. Two repositories already run their
-host-side work on PicoRuby and are the references: bash0C7/bash0C7-homepage
-(`ops/` on a PicoRuby host VM: external commands, HTTP, files) and
-bash0C7/thermal-printer (a Mac CLI and app on PicoRuby). Both are checked out
-under `~/dev/src/github.com/bash0C7/`.
+The branch `claude/picoruby-only` leaves CRuby only where rake runs: the
+sidecar and the `tools/*.rb` scripts run on the Mac VM, and the revert guard
+and the AOT build run inside rake. Neither it nor picoruby-foundation-model's
+`claude/session` is pushed. The Mac VM in `~/Applications/StackchanPico.app`
+carries the gem, and its `build/repos/host` clone was made from the local
+checkout, because the branch is not on GitHub yet.
+
+Left before the branch can merge:
+
+1. Push picoruby-foundation-model `claude/session`, then this branch (the
+   push guard reports the Mac VM gem's branch as missing until then).
+2. With the robot on: `bin/stackchan chat こんにちは` and `bin/stackchan say …`
+   through the PicoRuby sidecar (the owner listens), then one
+   `acceptance:check` run to `verdict: pass`. The firmware does not change,
+   so nothing is flashed.
+3. Move `docs/superpowers/plans/2026-11-08-cruby-only-for-rake.md` to the vault.
 
 ## Going back
 

@@ -7,8 +7,8 @@ everything that file does not arrange is the controller engine in
 `mrbgems/picoruby-stackchan-controller`. This directory holds only
 `bin/stackchan`, `app/boot_daemon.rb`, `app/boot_cli.rb`,
 `app/drb_eintr_retry.rb`, `app/fake_ble.rb` and the app bundle's plist.
-`pc/stackchan` holds only the CRuby AI/voice sidecar support code: Apple
-Foundation Model and macOS TTS stay in a CRuby sidecar bridged over dRuby.
+The chat reply and the speech come from the sidecar (`pc/sidecar`), a second
+process on the same Mac VM that the daemon calls over dRuby.
 
 ## Architecture
 
@@ -18,9 +18,9 @@ stackchan <verb>           ← bin/stackchan (shell wrapper: exec only)
    ▼
 CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
                                           │  ├─ BLE central  → StackChan (dRuby over BLE)
-                                          │  └─ picoruby-drb TCP ▶ sidecar (CRuby)
-                                          │                          ├─ Apple Foundation Model (chat)
-                                          │                          └─ say + afconvert → mu-law (say)
+                                          │  └─ picoruby-drb TCP ▶ sidecar (PicoRuby)
+                                          │                          ├─ Apple Foundation Models (chat)
+                                          │                          └─ say → 8 kHz WAV → mu-law (say)
 ```
 
 - **CLI / daemon**: PicoRuby (`StackChan::Controller::CLI`, `StackChan::Controller::Daemon`
@@ -42,8 +42,12 @@ CLI (PicoRuby)  ──picoruby-drb TCP──▶  daemon (PicoRuby)
   reconnect); everything else drains with `pop_and_dispatch`. `app/fake_ble.rb`
   (`bundle exec rake pc:up BLE_FAKE=1`) swaps in for verb-logic testing without
   hardware.
-- **sidecar**: `../sidecar/sidecar.rb` (CRuby). Returns data only (reply text /
-  mu-law bytes); never touches BLE.
+- **sidecar**: `../sidecar/sidecar.rb` on the app bundle's VM. One
+  `FoundationModel::Session` (picoruby-foundation-model) with the persona as
+  its instructions answers `respond(prompt, ctx)` within 60 s or returns nil;
+  `synthesize(text, gain, rate)` runs `say` into an 8 kHz mono WAV in
+  `STACKCHAN_LOGDIR` and returns its mu-law. It returns data only and never
+  touches BLE.
 
 ## Run (dev / host)
 
@@ -71,11 +75,10 @@ bundle exec rake pc:app_bundle
 ```
 
 Then bring the backends up under launchd — `STUB=1` picks the stub sidecar
-(no Apple Foundation Model / say / afconvert calls), omit it for the real
-sidecar:
+(no Apple Foundation Models / say calls), omit it for the real sidecar:
 
 ```sh
-bundle exec rake pc:up STUB=1       # omit STUB=1 for the real FM + say/afconvert sidecar
+bundle exec rake pc:up STUB=1       # omit STUB=1 for the real FM + say sidecar
 ```
 
 Then drive them through the wrapper, which only attaches (connects to a
@@ -172,7 +175,7 @@ The controller holds the link only while it is in use.
   top-level README's Dependencies / picoruby fork entry).
 
 `BLE_FAKE=1` (`rake pc:up`, host, no radio) covers every verb except
-`remote`, including real FM chat and real say/afconvert, for testing verb
+`remote`, including real FM chat and real say, for testing verb
 logic without hardware.
 
 ## macOS TCC / CoreBluetooth
@@ -195,5 +198,6 @@ authorization follows.
 No Mutex/Thread (timesliced Tasks, `Task::Queue`); drb carries no kwargs (Hash args) and
 no remote block (poll, not yield-back); `system` can't background/redirect
 (launchd spawns the backends, not this wrapper); regexp has no `|` alternation; `gsub`/`sub`
-mishandle multibyte (each_char); `module_function` bare form is a no-op; strings
-from PicoRuby arrive ASCII-8BIT in CRuby (re-tag UTF-8 at the sidecar boundary).
+mishandle multibyte (each_char); `module_function` bare form is a no-op;
+`Signal.trap("INT")` is accepted but its block never runs, so a script that has
+to clean up on Ctrl-C gets a zsh `trap` around it (`tools/ambient_demo.zsh`).

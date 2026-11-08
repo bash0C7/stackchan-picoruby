@@ -110,15 +110,16 @@ pc/stackchan-pico/         Launchd and process glue for the macOS side: the
                            CLI loads only the controller's cli.rb and
                            calibration.rb and talks to the daemon. See
                            pc/stackchan-pico/README.md.
-pc/stackchan/              CRuby support library for the AI/voice sidecar
-                           only (Apple Foundation Model + say/afconvert
-                           cannot run under PicoRuby).
-pc/sidecar/                The CRuby sidecar process, bridged to the
-                           PicoRuby daemon over picoruby-drb.
+pc/sidecar/                The AI/voice sidecar: a second process on the Mac
+                           VM that the daemon calls over picoruby-drb for a
+                           chat reply (Apple Foundation Models through
+                           picoruby-foundation-model) and for speech (`say`
+                           to mu-law).
 
 test/                      Host tests (picotest on a host PicoRuby VM, reusing
                            vendor/R2P2-ESP32's own picoruby submodule).
-test-host/                 CRuby tests for the Rakefile's host-side tools.
+test-host/                 CRuby tests for the code rake runs: the Rakefile,
+                           lib/ and acceptance/.
 acceptance/                The pre-merge device check: lock.yml pins the one
                            firmware, runner.rb and ops.rb drive it, results/
                            holds the reports.
@@ -236,9 +237,9 @@ recreates the launchd jobs each time.
 
 ```bash
 bundle exec rake picotest:build        # host picoruby VM from build_config/picoruby-test.rb
-bundle exec rake test                  # rigor:check, then picotest: device / pc suites and each gem's own
+bundle exec rake test                  # rigor:check, then picotest: device / pc / sidecar / tools suites and each gem's own
 SUITE=pc FILTER=central bundle exec rake test   # one suite, test files whose name contains FILTER
-bundle exec rake test:host             # CRuby-only tools
+bundle exec rake test:host             # the code rake runs (test-host/)
 ```
 
 `rake test` reads the source of `picoruby-scservo`, which is fetched from GitHub at
@@ -265,8 +266,8 @@ in `apps/mac/app.rb` plus the built-ins `connect`, `status`, `stop`, `raw`,
 which needs the daemon running. See
 [pc/stackchan-pico/README.md](pc/stackchan-pico/README.md) for the full
 architecture, env vars, link lifecycle and exit codes. `bundle exec rake pc:up` starts both
-backends — the CRuby AI/voice sidecar and the PicoRuby daemon, which owns
-the BLE connection — under launchd, recreating them every time it runs;
+backends — the AI/voice sidecar and the daemon, which owns the BLE
+connection, both on the Mac VM — under launchd, recreating them every time it runs;
 `rake pc:down` stops the backends and removes their launchd plists. The CLI
 only attaches to the already-running daemon, connecting to a physical
 StackChan by default:
@@ -330,19 +331,19 @@ pc/stackchan-pico/bin/stackchan calibrate --samples 5 --format ruby   # full 5-p
 
 ### Ambient demo (event/booth idle loop)
 
-Two standalone Ruby scripts drive an unattended idle demo against the running
+Two scripts on the Mac VM drive an unattended idle demo against the running
 `stackchan` daemon — deterministic, no AI, no browser:
 
 ```bash
-tools/ambient_demo.rb       # random LED colors + occasional face/head moves
-tools/phrase_announcer.rb   # speaks a random fixed phrase every 30s
+tools/ambient_demo.zsh                                                    # random LED colors + occasional face/head moves
+vendor/R2P2-darwin/build/host/bin/picoruby tools/phrase_announcer.rb "$PWD"   # speaks a random fixed phrase every 30s
 ```
 
-`ambient_demo.rb` waits for BLE, engages torque, then loops forever:
+`ambient_demo.zsh` runs `tools/ambient_demo.rb`, which waits for BLE, engages torque, then loops forever:
 LED color/side/mode changes every 4-9s, face flips between smile/joy every
 12-25s, and the head moves to a random yaw/pitch every 30-70s (infrequent on
-purpose so the servos don't wear/overheat). Ctrl-C or `kill` stops it
-gracefully — LEDs off, face neutral, servo centered, torque off.
+purpose so the servos don't wear/overheat). Ctrl-C or `kill` on the zsh
+stops it gracefully — LEDs off, face neutral, servo centered, torque off.
 
 `phrase_announcer.rb` picks a fixed phrase at random and speaks it
 every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
@@ -351,8 +352,8 @@ every 30s via `stackchan say --gain 0.175` (tuned by ear: the library default
 Run both in the background and stop them together when done:
 
 ```bash
-ruby tools/ambient_demo.rb >> /tmp/stackchan-picoruby-debug/ambient_demo.log 2>&1 &
-ruby tools/phrase_announcer.rb >> /tmp/stackchan-picoruby-debug/phrase_announcer.log 2>&1 &
+tools/ambient_demo.zsh >> /tmp/stackchan-picoruby-debug/ambient_demo.log 2>&1 &
+vendor/R2P2-darwin/build/host/bin/picoruby tools/phrase_announcer.rb "$PWD" >> /tmp/stackchan-picoruby-debug/phrase_announcer.log 2>&1 &
 # later:
 kill %1 %2
 ```
@@ -503,6 +504,7 @@ and build_configs each time.
 | [bash0C7/picoruby-ili9342](https://github.com/bash0C7/picoruby-ili9342) | LCD driver, drawing primitives in C | `build_config/esp32-stackchan.rb` |
 | [bash0C7/picoruby-py32-io-expander](https://github.com/bash0C7/picoruby-py32-io-expander) | PY32 I/O expander driver | same build_config |
 | [bash0C7/picoruby-scservo](https://github.com/bash0C7/picoruby-scservo) | Servo driver | same build_config |
+| [bash0C7/picoruby-foundation-model](https://github.com/bash0C7/picoruby-foundation-model) | Apple Foundation Models for the sidecar's chat replies | `build_config/darwin-stackchan-pc.rb`, sha in `acceptance/lock.yml` |
 | [bash0C7/suppify](https://github.com/bash0C7/suppify) | Turns the AOT kernels into one mrbgem | `aot/suppify.pin` (`rake aot:setup`) |
 | [matz/spinel](https://github.com/matz/spinel) | Ruby-to-C compiler behind the AOT kernels | suppify's `spinel.pin` |
 | [bash0C7/picoruby-multicore](https://github.com/bash0C7/picoruby-multicore) | Runs a kernel on core 1 | `aot/multicore.pin` |
@@ -544,7 +546,9 @@ reproduces on its own.
 It runs in two places. Before a push, `tools/hooks/pre_push_guard.sh` — wired in
 `.claude/settings.json` — runs it in `--pins-only` mode and refuses the push if a
 pin would not survive. Publishing a pin is itself a push, so that one command
-gets through by saying so: `STACKCHAN_DEPS_GUARD=off git -C … push …`. And
+gets through by saying so: `STACKCHAN_DEPS_GUARD=off git -C … push …`. The hook
+then runs `rake guard:revert`, which refuses the push when a test method the
+branch adds or changes still passes with the code reverted to the merge base. And
 `.github/workflows/deps.yml` clones the firmware tree from nothing on every push to
 main, on every pull request, weekly and on demand, running the whole script,
 which catches a ref that rots while nobody is looking.
