@@ -55,20 +55,18 @@ VM, the Mac VM and `~/Applications/StackchanPico.app` (the daemon runs from
 
 The branch `claude/picoruby-only` leaves CRuby only where rake runs: the
 sidecar and the `tools/*.rb` scripts run on the Mac VM, and the revert guard
-and the AOT build run inside rake. Neither it nor picoruby-foundation-model's
-`claude/session` is pushed. The Mac VM in `~/Applications/StackchanPico.app`
-carries the gem, and its `build/repos/host` clone was made from the local
-checkout, because the branch is not on GitHub yet.
+and the AOT build run inside rake. It and picoruby-foundation-model's
+`claude/session` are on GitHub. The Mac VM in `~/Applications/StackchanPico.app`
+carries the gem (`acceptance/lock.yml` `darwin.repos` sha), and launchd runs
+the real sidecar on it now (`pc:up ALLOW_BUSY=1`; the robot was off).
 
 Left before the branch can merge:
 
-1. Push picoruby-foundation-model `claude/session`, then this branch (the
-   push guard reports the Mac VM gem's branch as missing until then).
-2. With the robot on: `bin/stackchan chat こんにちは` and `bin/stackchan say …`
+1. With the robot on: `bin/stackchan chat こんにちは` and `bin/stackchan say …`
    through the PicoRuby sidecar (the owner listens), then one
    `acceptance:check` run to `verdict: pass`. The firmware does not change,
    so nothing is flashed.
-3. Move `docs/superpowers/plans/2026-11-08-cruby-only-for-rake.md` to the vault.
+2. Move `docs/superpowers/plans/2026-11-08-cruby-only-for-rake.md` to the vault.
 
 ## Going back
 
