@@ -122,7 +122,7 @@ class PcLifecycle
   # cannot service it while its own startup blocks on the sidecar -- PicoRuby
   # Tasks are cooperative. When it finally does, it writes to a socket whose peer
   # is gone and takes SIGPIPE, which its VM cannot trap: Signal.list carries no
-  # PIPE and every Signal.trap form raises SystemStackError. Probing without
+  # PIPE and no Signal.trap block ever runs. Probing without
   # connecting is the only place this is fixable from here.
   def wait_for_port(port, timeout_s)
     deadline = Time.now + timeout_s

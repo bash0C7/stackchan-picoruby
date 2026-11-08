@@ -174,9 +174,10 @@ The controller holds the link only while it is in use.
   the darwin central port has no API to close a GAP connection (see the
   top-level README's Dependencies / picoruby fork entry).
 
-`BLE_FAKE=1` (`rake pc:up`, host, no radio) covers every verb except
-`remote`, including real FM chat and real say, for testing verb
-logic without hardware.
+`BLE_FAKE=1` (`rake pc:up`, host, no radio) runs the verbs that send no
+audio, `remote` and `chat --no-speak` (a real Foundation Models reply)
+included. The fake has no audio path, so `say`, `demo` and a speaking `chat`
+stop with an error.
 
 ## macOS TCC / CoreBluetooth
 
