@@ -30,23 +30,37 @@ work stays on their own branches, not yet merged into those repositories'
 | picoruby-scservo | bash0C7/picoruby-scservo | `main` (unchanged) |
 | picoruby-multicore | bash0C7/picoruby-multicore | `claude/latest-deps` |
 | suppify | bash0C7/suppify | `newlib-runtime-pr-pin` |
-| spinel | bash0C7/spinel | `newlib-runtime-pr` (the branch meant for a matz/spinel PR) |
+| spinel | bash0C7/spinel | the commit suppify's `spinel.pin` names; `newlib-runtime-pr` has since been rebuilt on a newer matz/spinel master, so that commit is no longer on the branch |
 
 The robot carries the firmware pinned in `acceptance/lock.yml`, flashed once by
 `acceptance:deploy`, and the latest report in `acceptance/results/` is
 `verdict: pass` with the owner at the robot. The Mac daemon, the iPhone app and
 the Apple Watch app run this line's picoruby: the iPhone app ran its batch
 against the robot under `rake acceptance:darwin`, and the owner drove the robot
-from the watch app (face, LED, head sweep). In that `acceptance:darwin` run the
-second hand-off back to the Mac found no advertiser within the Mac's scan; the
-robot answered the Mac and the iPhone minutes later, and what kept it from
-advertising then was not determined. The report keeps the check's verdict.
+from the watch app (face, LED, head sweep).
+
+The AOT pins stay at the commits the robot passed with. They move at the next
+firmware rebuild, when the owner asks for it. `tools/aot/setup.sh` fetches
+spinel by sha; the suppify session measured that a fetch by that sha works and
+a clone followed by a checkout of it does not.
+
+This Mac holds every tree at those pins and built: `vendor/R2P2-ESP32`
+(`r2p2:setup` done), `vendor/R2P2-darwin` with its picoruby refreshed,
+`build/aot` (suppify and spinel built, kernels generated), the host picotest
+VM, the Mac VM and `~/Applications/StackchanPico.app` (the daemon runs from
+`rake pc:up`). Work that needs none of them changed can start from here.
 
 ## Next
 
-1. spinel `newlib-runtime-pr` and suppify `newlib-runtime-pr-pin` are the
-   branches the lock pins. Once they land upstream (matz/spinel, suppify
-   `main`), move `aot/suppify.pin` and `acceptance/lock.yml` to those commits.
+Move the sidecar (`pc/sidecar`: the dRuby service the Mac daemon asks for a
+chat reply and for speech) off CRuby onto PicoRuby. It is CRuby because of two
+gems: rb-foundation-model-mac (Apple Foundation Models for the reply) and
+`pc/stackchan`'s `Stackchan::Voice::Tts` (speech to μ-law). The aim is that
+CRuby is left only where rake needs it. Two repositories already run their
+host-side work on PicoRuby and are the references: bash0C7/bash0C7-homepage
+(`ops/` on a PicoRuby host VM: external commands, HTTP, files) and
+bash0C7/thermal-printer (a Mac CLI and app on PicoRuby). Both are checked out
+under `~/dev/src/github.com/bash0C7/`.
 
 ## Going back
 
