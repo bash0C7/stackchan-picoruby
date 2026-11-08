@@ -23,6 +23,7 @@ helper does this.
 | `rake rigor:all` | Print every current diagnostic, snapshot or not. |
 | `rake rigor:snapshot` | Rewrite `rigor.baseline.json` from the current diagnostics. |
 | `rake rigor:setup` | Install the tool gemset. Idempotent; the other tasks depend on it. |
+| `rake rigor:mcp` | Run rigor's MCP server over stdio. `.mcp.json` starts it as `rigor`, so a Claude Code session in this repo can call `rigor_type_of`, `rigor_check` and the other tools. The setup it runs first writes to stderr, so stdout carries only the protocol. |
 
 rigor needs Ruby 4.0, so `rake test` is gated only where that Ruby exists. `firmware.yml`
 builds inside `espressif/idf:v5.4.2`, whose apt Ruby is 3.2, and calls `rake picotest:run`

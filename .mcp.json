@@ -7,6 +7,16 @@
         "mcpbridge"
       ],
       "env": {}
+    },
+    "rigor": {
+      "type": "stdio",
+      "command": "bundle",
+      "args": [
+        "exec",
+        "rake",
+        "rigor:mcp"
+      ],
+      "env": {}
     }
   }
 }

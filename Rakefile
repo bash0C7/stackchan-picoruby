@@ -116,6 +116,15 @@ namespace :rigor do
     unbundled { sh RIGOR_ENV, *RIGOR_CMD, "check" }
   end
 
+  desc "Run rigor's MCP server over stdio on RIGOR_VERSION (.mcp.json starts it)"
+  task :mcp do
+    out = $stdout.dup
+    $stdout.reopen($stderr)
+    Rake::Task["rigor:setup"].invoke
+    $stdout.reopen(out)
+    unbundled { exec RIGOR_ENV, *RIGOR_CMD, "mcp" }
+  end
+
   desc "Rewrite rigor.baseline.json from the current diagnostics"
   task snapshot: :setup do
     json = unbundled { IO.popen(RIGOR_ENV, [*RIGOR_CMD, "check", "--format=json"], &:read) }
