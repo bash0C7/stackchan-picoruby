@@ -1,0 +1,88 @@
+module StackChan
+  class Controller
+    class Central
+      interface _Radio
+        def target: () -> untyped
+        def conn_handle: () -> Integer
+        def services: () -> Array[Gatt::service]
+        def on_notification=: ((^(Integer, String?) -> void)? callback) -> untyped
+        def on_disconnect=: ((^() -> void)? callback) -> untyped
+        def connect_and_discover: (Integer timeout_ms) -> untyped
+        def pop_and_dispatch: () -> untyped
+        def write_value_of_characteristic_without_response: (Integer conn_handle, Integer value_handle, String data) -> untyped
+        def write_characteristic_descriptor_using_descriptor_handle: (Integer conn_handle, Integer descriptor_handle, String data) -> untyped
+      end
+
+      interface _Front
+        def command: (Hash[String, String] frame) -> Array[String]
+        def touches: () -> Array[Integer]?
+        def audio_begin: (Integer n) -> untyped
+        def audio_chunk: (String? bytes) -> untyped
+        def audio_play: () -> untyped
+        def audio_done: () -> bool
+      end
+
+      CONNECT_TIMEOUT_MS: Integer
+      POLLING_UNIT_MS: Integer
+      ACK_TIMEOUT_MS: Integer
+      SUBSCRIBE_SETTLE_MS: Integer
+      AUDIO_DONE_TIMEOUT_MIN_MS: Integer
+      AUDIO_DONE_TIMEOUT_MAX_MS: Integer
+      AUDIO_DONE_BASE_MS: Integer
+      SUBSCRIBE_ENABLE: String
+      DRB_URI: String
+
+      @name_prefix: String
+      @radio: _Radio
+      @log_fn: ^(String) -> void
+      @drb_rx_handle: Integer?
+      @drb_tx_handle: Integer?
+      @drb_cccd_handle: Integer?
+      @drb_inbox: Array[String?]
+      @drb_sent_at: Integer?
+      @connected: bool
+      @last_detail_frame: String?
+      @lost: bool
+      @parser: StackchanProtocol::FrameParser
+
+      attr_reader last_detail_frame: String?
+
+      def initialize: (
+        ?name_prefix: String,
+        ?radio: _Radio?,
+        ?log_fn: (^(String) -> void)?
+      ) -> void
+
+      def connected?: () -> bool
+      def lost?: () -> bool
+      def link_lost: () -> bool
+      def reset_link: () -> nil
+      def connect: () -> self
+      def disconnect: () -> self
+      def send: () { (SendBuilder) -> void } -> self
+      def raw_send: (String frame) -> self
+      def keepalive: () -> Array[Integer]?
+      def audio_begin: (Integer n) -> untyped
+      def audio_chunk: (String? bytes) -> untyped
+      def audio_play: () -> untyped
+      def audio_done?: () -> bool
+      def audio_done_timeout_ms: (Integer n) -> Integer
+      def drain: () -> void
+      def remote: () -> _Front
+      def call_front: (Symbol msg, Array[untyped] args) -> untyped
+      def send_chunk: (String bytes) -> Integer
+      def poll: () -> String?
+
+      private
+
+      def raise_if_lost: () -> void
+      def polls_for: (Integer ms) -> Integer
+      def resolve_handles: () -> void
+      def subscribe_tx: () -> void
+      def settle: (Integer ms) -> void
+      def handle_notification: (Integer handle, String? value) -> void
+      def command_frame: (String frame) -> void
+      def remote_call: [T] () { () -> T } -> T
+    end
+  end
+end

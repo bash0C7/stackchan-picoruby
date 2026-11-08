@@ -41,11 +41,15 @@ temp copy. The committed file therefore survives a different checkout.
 A snapshot entry is not an accepted defect. The entries fall into these kinds, and a new one
 has to be placed in one of them (or fixed) before it goes into the file.
 
-False positives of the pinned rigor, in three shapes:
+False positives of the pinned rigor, in these shapes:
 
-- **A Hash ivar filled by another method keeps its `initialize` value.** `@faces = {}` in
-  `initialize`, filled by the DSL's `face`, makes `unless @faces[:neutral]` in `validate` fold
-  to always-falsey (`mrbgems/picoruby-stackchan-robot`).
+- **A method that returns only from inside its body reads as returning nil.** A `while true`
+  that leaves by `return` (`CLI#verb_touch`), or a closing `case` with no `else` over every value
+  the callee can give (`CLI#calibrate_full`).
+- **A checked value is not narrowed where it is read.** A Hash element read again after the
+  `nil?` check that raises on it (`Session#read_pos`), an element pushed under `if decoded`
+  (`FrameParser#feed`), or the first of a pair read after `return code if code` on the second
+  (`CLI#calibrate_full`'s `poses`).
 - **A variable captured by a Proc keeps its value at the Proc's definition** — whether the Proc
   mutates it (`calls += 1`, a fake clock built from `reads.shift`) or it is assigned after the
   Proc is built (`rx = nil; rx = receiver(pump: -> { rx.reset })`). The first shape folds a
@@ -56,9 +60,10 @@ False positives of the pinned rigor, in three shapes:
 Not false positives:
 
 - `call.possible-nil-receiver` on receivers that really are nullable in RBS — `String#unpack1`,
-  `String#byteslice`, `Array#first`, `Enumerable#find`, a `rescue`-assigned local read after the
-  block, a regexp capture read after `assert_not_nil` — which the code relies on being non-nil
-  without saying so.
+  `String#byteslice`, `String#getbyte`, `String#[]`, `Array#first`, `Enumerable#find`, a
+  `rescue`-assigned local read after the block, a regexp capture read after `assert_not_nil` —
+  which the code relies on being non-nil without saying so. A `String#[]` used as a Hash key
+  makes the inferred key `String?` (`CLI#parse_kw`).
 - `test/pc/send_builder_test.rb` passes `:rgb` to `SendBuilder#led` on purpose, to see it
   rejected; the RBS is right that it is outside the colour union.
 - An info that the Gemfile carries gems with no RBS.
@@ -92,10 +97,12 @@ nothing about the rest, writes them to a mirrored
 parameter to whatever one call site happened to pass (`def face: (:smile)`). Useful as a
 cross-check, not as the artifact.
 
-Each gem's `sig/` is self-contained. The collaborators the constructors take — the I2C bus,
-the I2S sink, the PY32 expander — are declared as interfaces scoped inside the class
-(`Si12T::_Bus`) rather than as `I2C`, so the host fakes satisfy them structurally and no gem's
-signatures depend on another gem's being loaded.
+The collaborators a class takes — the I2C bus, the I2S sink, the PY32 expander, the
+controller's central, radio and voice — are declared as interfaces scoped inside the class
+(`Si12T::_Bus`, `Session::_Central`) rather than as `I2C` or a concrete class, so the host
+fakes satisfy them structurally. The controller's signatures read two others: the protocol
+gem's (`Stackchan::BLE::FrameCodec` types, `StackchanProtocol::FrameParser`), and
+picoruby-ble's, because `Controller::Radio` is a subclass of `BLE`.
 
 The LCD, PY32 and servo gems are fetched by the firmware build into `build/repos/`, not
 `vendor/`, so their signatures are not loaded and `ILI9342` still types as Dynamic.

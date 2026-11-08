@@ -1,0 +1,15 @@
+module StackchanProtocol
+  class FrameParser
+    MAX_BUFFER: Integer
+
+    @buffer: String
+
+    def initialize: () -> void
+    def feed: (String chunk) -> Array[Hash[String, String]]
+    def reset: () -> String
+
+    private
+
+    def decode: (String raw) -> Hash[String, String]?
+  end
+end

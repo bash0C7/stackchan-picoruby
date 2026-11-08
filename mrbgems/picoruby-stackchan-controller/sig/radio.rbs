@@ -1,0 +1,25 @@
+module StackChan
+  class Controller
+    class Radio < BLE
+      @name_prefix: String
+      @target: BLE::AdvertisingReport?
+      @on_notification: (^(Integer, String?) -> void)?
+      @on_disconnect: (^() -> void)?
+
+      attr_reader target: BLE::AdvertisingReport?
+      attr_reader conn_handle: Integer
+      attr_accessor on_notification: (^(Integer, String?) -> void)?
+      attr_accessor on_disconnect: (^() -> void)?
+
+      def initialize: (name_prefix: String) -> void
+      def pop_and_dispatch: () -> untyped
+      def advertising_report_callback: (BLE::AdvertisingReport report) -> void
+      def packet_callback: (String event_packet) -> void
+      def connect_and_discover: (Integer timeout_ms) -> void
+
+      private
+
+      def disconnect_packet?: (String event_packet) -> bool
+    end
+  end
+end

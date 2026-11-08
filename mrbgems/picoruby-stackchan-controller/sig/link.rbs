@@ -1,0 +1,62 @@
+module StackChan
+  class Controller
+    class Link
+      interface _Central
+        def drain: () -> void
+        def lost?: () -> bool
+        def reset_link: () -> untyped
+        def connect: () -> untyped
+        def keepalive: () -> Array[Integer]?
+      end
+
+      type link_state = :released | :held | :quiet | :busy
+      type status = {
+        link: String,
+        connects: Integer,
+        releases: Integer,
+        last_connect_ms: Integer?,
+        hold_ms: Integer?
+      }
+
+      BUSY_MESSAGE: String
+
+      @central: _Central
+      @clock: ^() -> Integer
+      @hold: Integer?
+      @keepalive_ms: Integer
+      @log: ^(String) -> void
+      @state: link_state
+      @touches: Array[Integer]
+      @connects: Integer
+      @releases: Integer
+      @last_connect_ms: Integer?
+      @last_action_at: Integer?
+      @last_sent_at: Integer?
+      @on_lost: (^() -> void)?
+
+      attr_reader state: link_state
+      attr_reader touches: Array[Integer]
+      attr_accessor on_lost: (^() -> void)?
+
+      def initialize: (
+        central: _Central,
+        ?clock: ^() -> Integer,
+        ?hold: Integer?,
+        ?keepalive_ms: Integer,
+        log: ^(String) -> void
+      ) -> void
+
+      def generation: () -> Integer
+      def act: [T] () { () -> T } -> T
+      def tick: (?expire: bool) -> void
+      def lost!: () -> void
+      def listening!: () -> Integer?
+      def status: () -> status
+
+      private
+
+      def connect!: () -> void
+      def used!: () -> Integer
+    end
+  end
+end

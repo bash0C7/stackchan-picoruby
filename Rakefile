@@ -51,9 +51,9 @@ PICORUBY_VM   = File.join(PICORUBY_ROOT, "build", "host-picotest", "bin", "picor
 # Rigor is a standalone CLI, not a bundled gem: it wants prism >= 1.0 while this
 # repo is pinned to the prism ~> 0.30 that picoruby vendors, so bundler cannot
 # resolve both. It gets its own gemset under the gitignored vendor/ tree instead.
-RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.4.0"
+RIGOR_VERSION  = ENV["RIGOR_VERSION"] || "0.4.7"
 RIGOR_ROOT     = File.expand_path("vendor/rigor-tool", __dir__)
-RIGOR_BIN      = File.join(RIGOR_ROOT, "bin", "rigor")
+RIGOR_CMD      = [File.join(RIGOR_ROOT, "bin", "rigor"), "_#{RIGOR_VERSION}_"]
 RIGOR_ENV      = { "GEM_HOME" => RIGOR_ROOT, "GEM_PATH" => RIGOR_ROOT }
 RIGOR_SNAPSHOT = File.expand_path("rigor.baseline.json", __dir__)
 
@@ -107,18 +107,18 @@ namespace :rigor do
     Tempfile.create(["rigor-baseline", ".json"]) do |f|
       f.write(JSON.generate(absolute))
       f.flush
-      unbundled { sh RIGOR_ENV, RIGOR_BIN, "diff", f.path }
+      unbundled { sh RIGOR_ENV, *RIGOR_CMD, "diff", f.path }
     end
   end
 
   desc "Print every current diagnostic, snapshot or not"
   task all: :setup do
-    unbundled { sh RIGOR_ENV, RIGOR_BIN, "check" }
+    unbundled { sh RIGOR_ENV, *RIGOR_CMD, "check" }
   end
 
   desc "Rewrite rigor.baseline.json from the current diagnostics"
   task snapshot: :setup do
-    json = unbundled { IO.popen(RIGOR_ENV, [RIGOR_BIN, "check", "--format=json"], &:read) }
+    json = unbundled { IO.popen(RIGOR_ENV, [*RIGOR_CMD, "check", "--format=json"], &:read) }
     abort "rigor check produced no JSON" if json.nil? || json.strip.empty?
     report = JSON.parse(json)
     report["diagnostics"].each { |d| d["path"] = rigor_relativize(d["path"]) }

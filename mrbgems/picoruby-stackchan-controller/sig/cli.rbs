@@ -1,0 +1,53 @@
+module StackChan
+  class Controller
+    class CLI
+      interface _Daemon
+        def status: () -> untyped
+        def act: (Symbol | String name, untyped arg) -> Daemon::act_result
+        def actions: () -> Controller::listing
+        def remote: (String msg, Array[untyped] args) -> Daemon::act_result
+        def poll_touch: () -> untyped
+      end
+
+      BUILTIN_VERBS: Array[String]
+      TOUCH_POLL_MS: Integer
+      TUI_HELP: String
+      NOT_RUNNING_MESSAGE: String
+
+      @daemon: _Daemon
+      @clock: ^() -> Integer
+
+      def self.run: (Array[String] argv, ?host: String, ?port: Integer) -> Integer
+
+      def self.attach: (
+        String host,
+        Integer port,
+        ?drb_factory: (^(String) -> _Daemon)?,
+        ?warn_fn: (^(StandardError) -> void)?
+      ) -> _Daemon?
+
+      def self.out: (String s) -> void
+
+      def initialize: (_Daemon daemon, ?clock: ^() -> Integer) -> void
+      def dispatch: (String verb, Array[String] args) -> Integer
+      def usage: () -> Integer
+
+      private
+
+      def out: (String s) -> void
+      def report: (Daemon::act_result result) -> Integer
+      def print_out: (untyped value) -> void
+      def verb_remote: (Array[String] args) -> Integer
+      def verb_touch: (Array[String] args) -> Integer
+      def verb_tui: () -> Integer
+      def read_line: (String prompt) -> String?
+      def verb_calibrate: (Array[String] args) -> Integer
+      def calibrate_align: (bool skip_torque) -> Integer
+      def calibrate_full: (Integer samples, Symbol fmt, bool engage, bool skip_torque) -> Integer
+      def calibrate_step: (Array[String] words) -> [untyped, Integer?]
+      def prompt_enter: (String msg) -> untyped
+      def delete_flag: (Array[String] args, String flag) -> bool
+      def parse_kw: (Array[String] args) -> Hash[String, String?]
+    end
+  end
+end

@@ -1,0 +1,24 @@
+module StackChan
+  class Controller
+    class Builder
+      @controller: Controller
+
+      def initialize: (Controller controller) -> void
+
+      def action: (
+        Symbol name,
+        ?label: String?,
+        ?flags: Array[String]
+      ) { (Session, Args) -> untyped } -> Symbol
+
+      def on_touch: () { (Session, Symbol?) -> void } -> Array[^(Session, Symbol?) -> void]
+      def on_reply: () { (Session, String) -> void } -> Array[^(Session, String) -> void]
+      def every: (Integer ms) { (Session) -> void } -> Array[[Integer, ^(Session) -> void]]
+      def hold: (Integer ms) -> Integer
+
+      private
+
+      def require_block: (Symbol name, untyped handler) -> nil
+    end
+  end
+end

@@ -1,0 +1,27 @@
+module StackChan
+  class Controller
+    class Args
+      @words: Array[untyped]
+      @flags: Array[String]
+      @positionals: Array[untyped]
+      @opts: Hash[String, untyped]
+      @set: Array[String]
+      @text: String
+
+      attr_reader words: Array[untyped]
+      attr_reader text: String
+
+      def initialize: (String | Array[untyped] | nil words, ?flags: Array[String]) -> void
+      def []: (Integer i) -> untyped
+      def size: () -> Integer
+      def opt: (String key) -> untyped
+      def int: (String key) -> Integer?
+      def float: (String key) -> Float?
+      def flag?: (String key) -> bool
+
+      private
+
+      def parse: () -> void
+    end
+  end
+end

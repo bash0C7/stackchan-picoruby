@@ -1,0 +1,65 @@
+module StackChan
+  def self.controller: () { (Controller::Builder) -> void } -> Controller
+
+  class Controller
+    type declared = { label: String?, flags: Array[String], blk: ^(Session, Args) -> untyped }
+    type listing = Array[[Symbol, String?]]
+
+    BUILTINS: Array[Symbol]
+    BUTTONS: Array[Symbol]
+
+    @declared: Hash[Symbol, declared]
+    @touch_handlers: Array[^(Session, Symbol?) -> void]
+    @reply_handlers: Array[^(Session, String) -> void]
+    @periodic: Array[[Integer, ^(Session) -> void]]
+    @hold_ms: Integer?
+    @daemon: Daemon?
+    @out: ^(String) -> void
+
+    attr_reader declared: Hash[Symbol, declared]
+    attr_reader touch_handlers: Array[^(Session, Symbol?) -> void]
+    attr_reader reply_handlers: Array[^(Session, String) -> void]
+    attr_reader periodic: Array[[Integer, ^(Session) -> void]]
+    attr_accessor hold_ms: Integer?
+
+    def self.listing: (Hash[Symbol, declared] declared) -> listing
+
+    def initialize: () -> void
+
+    def wire: (
+      central: Daemon::_Central & Link::_Central,
+      ?voice: Session::_Voice?,
+      ?clock: ^() -> Integer,
+      ?log: (^(String) -> void)?,
+      ?port: Integer,
+      ?host: String,
+      ?out: ^(String) -> void
+    ) -> Daemon
+
+    def serve: (
+      port: Integer,
+      ?host: String,
+      ?name_prefix: String,
+      ?sidecar_uri: String
+    ) -> untyped
+
+    def act: (Symbol | String name, ?untyped arg) -> Daemon::act_result
+    def actions: (?untyped arg) -> listing
+    def tick: (?untyped _arg) -> void
+    def define_action: (Symbol name) -> Symbol
+
+    def connect: (?untyped arg) -> Daemon::act_result
+    def status: (?untyped arg) -> Daemon::act_result
+    def stop: (?untyped arg) -> Daemon::act_result
+    def raw: (?untyped arg) -> Daemon::act_result
+    def calibrate: (?untyped arg) -> Daemon::act_result
+    def speak_audio: (?untyped arg) -> Daemon::act_result
+
+    private
+
+    def singleton_class_of: () -> Class
+    def run_action: (Symbol name, untyped arg) -> Daemon::act_result
+    def wired: () -> Daemon
+    def print_out: (untyped value) -> void
+  end
+end

@@ -1,6 +1,7 @@
 {
+  "schema_version": 1,
   "success": false,
-  "error_count": 23,
+  "error_count": 26,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -10,19 +11,6 @@
       "rule": "rbs.coverage.missing-gem",
       "source_family": "builtin",
       "message": "5 gem(s) in Gemfile.lock have no RBS available: drb, power_assert, rake, serialport, test-unit. Consider `rbs collection install` to fetch community RBS from `ruby/gem_rbs_collection`, ship `sig/` in the gem itself, or opt the gem into `dependencies.source_inference:` in `.rigor.yml`."
-    },
-    {
-      "path": "acceptance/runner.rb",
-      "line": 293,
-      "column": 54,
-      "severity": "error",
-      "rule": "call.undefined-method",
-      "source_family": "builtin",
-      "message": "undefined method `[]' for nil",
-      "receiver_type": "nil",
-      "method_name": "[]",
-      "evidence_tier": "high",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "lib/deploy/picomodem.rb",
@@ -97,26 +85,113 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
-      "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot.rb",
-      "line": 38,
-      "column": 83,
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 120,
+      "column": 11,
       "severity": "warning",
-      "rule": "flow.always-truthy-condition",
+      "rule": "def.return-type-mismatch",
       "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "message": "return-type mismatch on `verb_touch': declared Integer, inferred nil",
+      "method_name": "verb_touch",
       "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
     },
     {
-      "path": "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot.rb",
-      "line": 39,
-      "column": 82,
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 213,
+      "column": 11,
       "severity": "warning",
-      "rule": "flow.always-truthy-condition",
+      "rule": "def.return-type-mismatch",
       "source_family": "builtin",
-      "message": "condition is always falsey (the surrounding flow proves it folds to a constant)",
+      "message": "return-type mismatch on `calibrate_full': declared Integer, inferred 0 | 7 | nil",
+      "method_name": "calibrate_full",
       "evidence_tier": "medium",
-      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-flow-always-truthy-condition"
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 231,
+      "column": 47,
+      "severity": "error",
+      "rule": "call.argument-type-mismatch",
+      "source_family": "builtin",
+      "message": "argument type mismatch at parameter `poses' of `compute_anchors' on StackChan::Controller::Calibration: expected Hash[Symbol, { yaw_raw: Integer, pitch_raw: Integer }], got Hash[Symbol, Dynamic[top]?]",
+      "receiver_type": "StackChan::Controller::Calibration",
+      "method_name": "compute_anchors",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-argument-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
+      "line": 273,
+      "column": 11,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `parse_kw': declared Hash[String, String?], inferred Hash[String?, String]",
+      "method_name": "parse_kw",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb",
+      "line": 232,
+      "column": 34,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `>=' is undefined on NilClass",
+      "method_name": ">=",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/gatt.rb",
+      "line": 40,
+      "column": 24,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `>>' is undefined on NilClass",
+      "method_name": ">>",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/session.rb",
+      "line": 53,
+      "column": 11,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `read_pos': declared { yaw_raw: Integer, pitch_raw: Integer }, inferred { yaw_raw: Integer?, pitch_raw: Integer? }",
+      "method_name": "read_pos",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_parser.rb",
+      "line": 9,
+      "column": 9,
+      "severity": "warning",
+      "rule": "def.return-type-mismatch",
+      "source_family": "builtin",
+      "message": "return-type mismatch on `feed': declared Array[Hash[String, String]], inferred Array[Hash[String, String]?]",
+      "method_name": "feed",
+      "evidence_tier": "medium",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-def-return-type-mismatch"
+    },
+    {
+      "path": "mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol/frame_parser.rb",
+      "line": 36,
+      "column": 12,
+      "severity": "error",
+      "rule": "call.possible-nil-receiver",
+      "source_family": "builtin",
+      "message": "possible nil receiver: `split' is undefined on NilClass",
+      "method_name": "split",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
       "path": "test/device/drb_channel_test.rb",

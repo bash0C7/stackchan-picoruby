@@ -1,0 +1,29 @@
+module StackChan
+  class Controller
+    module Calibration
+      type position = { yaw_raw: Integer, pitch_raw: Integer }
+      type raw_position = { yaw_raw: Integer?, pitch_raw: Integer? }
+      type verify = { yaw_delta: Integer, pitch_delta: Integer }
+      type anchors = {
+        servo_yaw_zero: Integer,
+        servo_pitch_zero: Integer,
+        yaw_range_raw: Integer,
+        pitch_range_raw: Integer,
+        forward_verify: verify
+      }
+      type outcome = :pass | :warn | :fail
+
+      PASS_TOLERANCE: Integer
+      FAIL_TOLERANCE: Integer
+      FORMATS: Array[Symbol]
+      UNKNOWN_POSITION: String
+      POSE_PROMPTS: Array[[Symbol, String]]
+
+      def self?.median: (Array[Integer] values) -> Integer
+      def self?.compute_anchors: (Hash[Symbol, position] poses) -> anchors
+      def self?.classify_verify: (verify forward_verify) -> outcome
+      def self?.format: (anchors anchors, Symbol | String fmt) -> String
+      def self?.parse_raw_detail: (untyped frame) -> raw_position
+    end
+  end
+end

@@ -1,0 +1,22 @@
+module StackChan
+  class Controller
+    module Gatt
+      type descriptor = { handle: Integer, uuid128: String }
+      type characteristic = { value_handle: Integer, uuid128: String, descriptors: Array[descriptor] }
+      type service = { characteristics: Array[characteristic] }
+
+      HEX: String
+      GAP_BASE_SUFFIX: String
+
+      def self?.base_uuid: (Integer suffix_hi, Integer suffix_lo) -> String
+      def self?.drb_rx_uuid: () -> String
+      def self?.drb_tx_uuid: () -> String
+      def self?.cccd_uuid: () -> String
+      def self?.find_characteristic: (Array[service] services, String uuid128) -> characteristic?
+      def self?.cccd_handle: (characteristic? characteristic) -> Integer?
+      def self?.hex_bytes: (String uuid128, Integer from, Integer count) -> String
+      def self?.short_uuid: (untyped uuid128) -> String
+      def self?.describe_services: (Array[service] services) -> String
+    end
+  end
+end

@@ -1,0 +1,80 @@
+module StackChan
+  class Controller
+    class Session
+      interface _Central
+        def send: () { (SendBuilder) -> void } -> untyped
+        def raw_send: (String frame) -> untyped
+        def last_detail_frame: () -> String?
+        def audio_begin: (Integer n) -> untyped
+        def audio_chunk: (String? bytes) -> untyped
+        def audio_play: () -> untyped
+        def audio_done?: () -> bool
+        def audio_done_timeout_ms: (Integer n) -> Integer
+        def call_front: (Symbol msg, Array[untyped] args) -> untyped
+      end
+
+      interface _Engine
+        def unlocked: [T] () { () -> T } -> T
+        def reply_handlers: () -> Array[^(Session, String) -> void]
+      end
+
+      interface _Voice
+        def synthesize: (String text, ?untyped gain, ?untyped rate) -> String?
+        def respond: (String text, Hash[Symbol, String?] heard) -> String?
+      end
+
+      AUDIO_CHUNK: Integer
+      AUDIO_POLL_MS: Integer
+      AUDIO_TAIL_MS: Integer
+      AUDIO_MARGIN_MS: Integer
+
+      @central: _Central
+      @engine: _Engine
+      @voice: _Voice?
+      @log: ^(String) -> void
+      @state: Hash[Symbol, String?]
+      @fallback_audio: String?
+
+      attr_reader state: Hash[Symbol, String?]
+      attr_accessor fallback_audio: String?
+
+      def initialize: (
+        central: _Central,
+        engine: _Engine,
+        ?voice: _Voice?,
+        log: ^(String) -> void
+      ) -> void
+
+      def face: (Stackchan::BLE::FrameCodec::face_name | String name) -> nil
+
+      def led: (
+        Stackchan::BLE::FrameCodec::side side,
+        SendBuilder::color_name color,
+        ?mode: Stackchan::BLE::FrameCodec::led_mode
+      ) -> nil
+
+      def servo: (
+        ?yaw_left: Integer?,
+        ?yaw_right: Integer?,
+        ?pitch_up: Integer?,
+        ?time_ms: Integer?,
+        ?velocity: Integer?
+      ) -> String?
+
+      def torque: (bool on) -> nil
+      def selftest: () -> String?
+      def read_pos: () -> Calibration::position
+      def text: (String s, ?face: Symbol | Integer | nil) -> nil
+      def speak_audio: (String ulaw) -> nil
+      def say: (String text, ?gain: untyped, ?rate: untyped) -> String
+      def chat: (String text, ?speak: bool) -> String?
+      def remote: (Symbol | String msg, *untyped args) -> untyped
+      def prime: (String phrase) -> String?
+
+      private
+
+      def voice: () -> _Voice
+      def record: (Symbol action, ?Hash[Symbol, String?] extras) -> void
+    end
+  end
+end

@@ -1,0 +1,99 @@
+module StackChan
+  class Controller
+    class Daemon
+      interface _Central
+        include Session::_Central
+        def connected?: () -> bool
+        def lost?: () -> bool
+        def disconnect: () -> untyped
+      end
+
+      interface _Token
+        def push: (untyped item) -> untyped
+        def pop: () -> untyped
+      end
+
+      interface _Job
+        def join: () -> untyped
+        def terminate: () -> untyped
+      end
+
+      type act_result = {
+        status: :ok | :busy | :error | :unknown,
+        out: untyped,
+        message: String?
+      }
+      type touch_event = { zone: Integer, name: Symbol? }
+      type every_entry = { ms: Integer, blk: ^(Session) -> void, last_at: Integer? }
+
+      TICK_MS: Integer
+      TOUCH_ZONE_NAMES: Hash[Integer, Symbol]
+      FALLBACK_CHAT_PHRASE: String
+      SHUTDOWN_WAIT_MS: Integer
+      LISTEN_CAP: Integer
+      CONNECTED_LINE: String
+
+      @link: Link
+      @ble: _Central
+      @port: Integer
+      @host: String
+      @clock: ^() -> Integer
+      @log_fn: ^(String) -> void
+      @session: Session
+      @token: _Token
+      @touch_handlers: Array[^(Session, Symbol?) -> void]
+      @reply_handlers: Array[^(Session, String) -> void]
+      @every: Array[every_entry]
+      @listen: Array[touch_event]
+      @acting: Integer
+      @actions: Hash[Symbol, Controller::declared]
+      @server_task: _Job?
+      @tick_task: _Job?
+      @shutdown_task: untyped
+
+      attr_reader session: Session
+      attr_reader reply_handlers: Array[^(Session, String) -> void]
+
+      def initialize: (
+        link: Link,
+        central: _Central,
+        ?voice: Session::_Voice?,
+        ?port: Integer,
+        ?host: String,
+        ?sidecar_uri: String?,
+        ?clock: ^() -> Integer,
+        ?log: (^(String) -> void)?,
+        ?actions: Hash[Symbol, Controller::declared]
+      ) -> void
+
+      def on_touch: () { (Session, Symbol?) -> void } -> self
+      def on_reply: () { (Session, String) -> void } -> self
+      def every: (Integer ms) { (Session) -> void } -> self
+      def unlocked: [T] () { () -> T } -> T
+      def start: () -> self
+      def join: () -> untyped
+      def stop: () -> true
+      def status: () -> Hash[Symbol, untyped]
+      def actions: () -> Controller::listing
+      def act: (Symbol | String name, ?untyped arg) -> act_result
+      def tick: () -> void
+      def remote: (Symbol | String msg, ?Array[untyped] args) -> act_result
+      def poll_touch: () -> (touch_event | { released: true } | nil)
+
+      private
+
+      def perform: (Symbol key, untyped arg) -> untyped
+      def calibrate: (Args args) -> untyped
+      def sample_pose: (Integer n) -> Calibration::position
+      def audio_bytes: (untyped arg) -> String
+      def hex?: (String s) -> bool
+      def with_link: [T] () { () -> T } -> T
+      def dispatch_touches: () -> void
+      def run_every: () -> void
+      def handler: (String what) { () -> void } -> void
+      def guarded: (String what) { () -> void } -> void
+      def start_tick: () -> _Job
+      def log: (String msg) -> void
+    end
+  end
+end
