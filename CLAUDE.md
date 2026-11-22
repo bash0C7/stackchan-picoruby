@@ -136,6 +136,19 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - `rake test` が先に走らせる `rigor:check` は host 側の型解析で、`rigor.baseline.json` に無い diagnostic が 1 つでもあれば落ちる。`rake vendor:setup` 済みが前提で、初回に自分の gemset を `vendor/rigor-tool` に入れる。reference は `docs/rigor.md`。
 - CI は `deps.yml` が push ごと、`firmware.yml` が週次と手動。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
 
+## 定理 (`theorems/`)
+
+robot と controller の正しいあり方を Lean の定理として持ち、`rake theorem` がいまのコードの上で判定する。AI の返事の内容は判定の対象にしない。
+
+- 3 層。期待 (`Link.lean` / `LinkLoop.lean` の 1 手の関数と、任意の長さの列についての `HandOff.lean` の証明)、一致 (`Conformance.lean`。実物の Ruby を状態 × 入力の分類で全数走らせた表が 1 手の関数と同じ)、目標 (`Goals.lean`。`apps/*/app.rb` の宣言の値で期待が成り立つ)。
+- 事実は `theorems/extract/facts.rb` が host picotest VM で本物の class を呼んで抜き、`theorems/Theorems/Facts/` に置く (commit しない)。時計は注入し、乱数と sleep は使わない。`bin/lean build` を直に呼ぶと前に抜いた事実で判定する。
+- class に instance 変数を足すと `*_keeps_no_state_the_model_lacks` が落ちる。モデルにも足すか、振る舞いに効かないことを確かめて一覧に足す。
+- 判定は `decide +kernel` と普通の証明で行い、`native_decide` と `sorry` を使わない。外の仕組みへの前提は仮定の structure (`HandOff.Quietness` / `HandOff.Holding`) の field に名前を付けて置き、見ている acceptance の step を `Goals.assumptions` に並べる。前提が満たせることは `quietness_happens` / `holding_happens` が示す。
+- 定理が落ちたら、コードが期待を破ったのか、定理が期待を言い当てていないのかを、その定理が守るものから判断する。通すために定理を弱めない。
+- 定理を足したら、それを破る変異を `lib/theorem_mutants.rb` に足す。`rake theorem:mutants` が変異を 1 つずつ入れ、どれも狙った定理で落ちることを確かめる。走る間は作業 tree のコードが書き換わるので、他の test や編集を並走させない。
+- Lean は `bin/lean` が `vendor/elan/` に入れる (版は `theorems/lean-toolchain`)。`vendor/elan/bin/` の elan を `ELAN_HOME` 無しで呼ぶと `~/.elan` を作るので、必ず `bin/lean` を通す。
+- host VM は `MRB_INT64`、firmware は `MRB_INT32` + `MRB_WORD_BOXING` で、この差は判定の外にある。
+
 ## ビルド・deploy
 
 - firmware・gem・app・BLE link を変える branch (この repo と、R2P2-ESP32 / picoruby-ili9342 / suppify / R2P2-darwin の対応 branch) は、`acceptance/lock.yml` に sha を書いて `/stackchan-device-acceptance` を通し、`acceptance/results/` の report が `verdict: pass` になるまで merge しない。

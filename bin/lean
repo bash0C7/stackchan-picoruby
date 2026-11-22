@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+ELAN_VERSION="v4.2.4"
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+export ELAN_HOME="$ROOT/vendor/elan"
+
+if [ ! -x "$ELAN_HOME/bin/elan" ]; then
+  mkdir -p "$ELAN_HOME"
+  curl -sSfL "https://raw.githubusercontent.com/leanprover/elan/$ELAN_VERSION/elan-init.sh" -o "$ELAN_HOME/elan-init.sh"
+  sh "$ELAN_HOME/elan-init.sh" -y --no-modify-path --default-toolchain none
+fi
+
+cd "$ROOT/theorems"
+exec "$ELAN_HOME/bin/lake" "$@"
