@@ -1,0 +1,55 @@
+name: theorem-mutants
+
+on:
+  schedule:
+    - cron: "41 20 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: theorem-mutants-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changed:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow theorem-mutants.yml --branch main \
+                   --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+          if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null &&
+             git diff --quiet "$last" HEAD -- theorems apps mrbgems/picoruby-stackchan-robot \
+               mrbgems/picoruby-stackchan-controller acceptance/runner.rb acceptance/lock.yml lib/theorem_mutants.rb Rakefile; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  mutants:
+    needs: changed
+    if: >-
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'schedule' && needs.changed.outputs.run == 'true'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/theorem-env
+
+      - run: bundle exec rake theorem:mutants

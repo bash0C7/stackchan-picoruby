@@ -134,7 +134,7 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
 - host VM は `vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host-picotest` に建つ。R2P2-ESP32 自身の host ツールは同じ picoruby の `build/host` なので衝突しない。全 suite が `uninitialized constant Picotest` になったら、順序ではなく build 名の衝突を疑う。
 - `rake test` が先に走らせる `rigor:check` は host 側の型解析で、`rigor.baseline.json` に無い diagnostic が 1 つでもあれば落ちる。`rake vendor:setup` 済みが前提で、初回に自分の gemset を `vendor/rigor-tool` に入れる。reference は `docs/rigor.md`。
-- CI は `deps.yml` が push ごと、`firmware.yml` が週次と手動。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
+- CI は `deps.yml` が push ごと、`theorems.yml` が判定される側の変わった PR と main への push、`theorem-mutants.yml` が週次 (前の成功から変わった時だけ) と手動、`firmware.yml` が週次と手動。`theorems.yml` の schedule は判定せず cache を読むだけで、7 日読まれないと消える cache を残す。cache に置くのは Lean と host VM の binary と gem で、事実と判定の結果は置かない。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
 
 ## 定理 (`theorems/`)
 

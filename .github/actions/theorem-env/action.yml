@@ -1,0 +1,56 @@
+name: Lean and the host VM
+description: Restore Lean and the host picotest VM from the cache, or build them and, on main, save them.
+runs:
+  using: composite
+  steps:
+    - uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: "4.0"
+        bundler-cache: true
+
+    - id: pin
+      shell: bash
+      run: |
+        sha=$(ruby -ryaml -e 'puts YAML.load_file("acceptance/lock.yml").dig("firmware", "picoruby")')
+        test -n "$sha"
+        echo "picoruby=$sha" >> "$GITHUB_OUTPUT"
+        echo "PICORUBY_ROOT=$GITHUB_WORKSPACE/vendor/picoruby-host" >> "$GITHUB_ENV"
+
+    - id: vm
+      uses: actions/cache/restore@v6
+      with:
+        path: vendor/picoruby-host/build/host-picotest/bin/picoruby
+        key: theorem-vm-ubuntu-24.04-${{ runner.arch }}-${{ steps.pin.outputs.picoruby }}-${{ hashFiles('build_config/picoruby-test.rb') }}
+
+    - if: steps.vm.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PICORUBY_SHA: ${{ steps.pin.outputs.picoruby }}
+      run: |
+        git init -q "$PICORUBY_ROOT"
+        git -C "$PICORUBY_ROOT" fetch -q --depth 1 https://github.com/bash0C7/picoruby.git "$PICORUBY_SHA"
+        git -C "$PICORUBY_ROOT" checkout -q FETCH_HEAD
+        git -C "$PICORUBY_ROOT" submodule update -q --init --recursive --jobs 8
+        bundle exec rake picotest:build
+
+    - if: steps.vm.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v6
+      with:
+        path: vendor/picoruby-host/build/host-picotest/bin/picoruby
+        key: ${{ steps.vm.outputs.cache-primary-key }}
+
+    - id: lean
+      uses: actions/cache/restore@v6
+      with:
+        path: vendor/elan
+        key: theorem-lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bin/lean', 'theorems/lean-toolchain') }}
+
+    - if: steps.lean.outputs.cache-hit != 'true'
+      shell: bash
+      run: bin/lean --version
+
+    - if: steps.lean.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v6
+      with:
+        path: vendor/elan
+        key: ${{ steps.lean.outputs.cache-primary-key }}
