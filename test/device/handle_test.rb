@@ -34,7 +34,7 @@ class HandleTest < Picotest::Test
   def test_an_unknown_face_is_false_and_draws_nothing
     assert_equal false, @r.face(:wink)
     assert_equal [], @display.calls
-    assert_equal 0, @disp.current_face.mouth
+    assert_equal :closed, @disp.current_face.eyes
   end
 
   def test_led_without_flash_animates_the_side_in_the_mode
@@ -113,6 +113,7 @@ class HandleTest < Picotest::Test
     ticker = StackChan::Robot::Ticker.new(display: @display, led: @led, touch: nil, dispatcher: @disp,
                                           remote: nil)
     ticker.tick(1000)
+    @r.face(:neutral)
     @r.blink(200)
     @display.calls.clear
     ticker.tick(1199)

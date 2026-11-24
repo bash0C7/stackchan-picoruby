@@ -239,6 +239,7 @@ class TickerTest < Picotest::Test
   def test_blink_reopens_on_the_real_face_with_its_eyes
     t = ticker(periodic: [[5000, ->(r) { r.blink(150) }]])
     t.tick(0)
+    @dispatcher.show_face(:neutral)
     @display.calls.clear
     t.tick(5000)
     assert_equal [:draw_rect, :draw_rect, :draw_line, :draw_line], @display.calls.map(&:first)

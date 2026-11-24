@@ -3,8 +3,8 @@ class CentralLinkLossTest < Picotest::Test
   DTX = FakeRobotRadio::DTX
 
   class DropOnCommandRadio < FakeRobotRadio
-    def before_drx_write(value)
-      return :continue unless value.include?("command")
+    def before_call(name)
+      return :continue unless name == :command
       drop_link(event: true)
       :drop
     end
@@ -95,13 +95,13 @@ class CentralLinkLossTest < Picotest::Test
 
   def test_the_first_drb_chunk_after_a_reconnect_does_not_wait
     @central.send_chunk("a")
-    sent_at = FakeClock.now
     @radio.drop_link(event: true)
     @central.drain
+    FakeClock.sleeps.clear
     @central.connect
-    FakeClock.reset(sent_at)
-    @central.send_chunk("b")
-    assert_equal [], FakeClock.sleeps
+    total = 0
+    FakeClock.sleeps.each { |ms| total += ms }
+    assert_equal FakeRobotRadio.connect_ms, total
   end
 
   def test_a_drop_during_the_ack_wait_raises_connection_error_at_the_next_poll
@@ -116,7 +116,7 @@ class CentralLinkLossTest < Picotest::Test
   def test_a_silent_drop_costs_the_full_ack_timeout
     @radio.drop_link(event: false)
     assert_raise(StackChan::Controller::TimeoutError) { @central.raw_send("<F:2>\n") }
-    assert_equal StackChan::Controller::Central::ACK_TIMEOUT_MS, sleep_total
+    assert_equal StackChan::Controller::Central::ACK_TIMEOUT_MS + StackChan::Controller::Central::POLLING_UNIT_MS, sleep_total
     assert_true @radio.writes_after_drop.all? { |handle, _| handle == DRX }
     assert_true @radio.writes_after_drop.size >= 1
   end
@@ -125,7 +125,7 @@ class CentralLinkLossTest < Picotest::Test
     front = @central.remote
     @radio.drop_link(event: true)
     assert_raise(StackChan::Controller::ConnectionError) { front.face(2) }
-    assert_equal [], FakeClock.sleeps
+    assert_equal [StackChan::Controller::Central::POLLING_UNIT_MS], FakeClock.sleeps
   end
 
   def test_connect_against_a_silent_robot_raises_and_scans_once

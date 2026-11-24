@@ -2,6 +2,10 @@ class CentralDrbTest < Picotest::Test
   DRX = 0x21; DTX = 0x24; DCCCD = 0x26
 
   class Front
+    def hello(text)
+      [true, text]
+    end
+
     def face(id)
       [".\n", "face #{id}"]
     end
@@ -16,7 +20,7 @@ class CentralDrbTest < Picotest::Test
 
     def initialize(services:)
       super(services: services)
-      @responder = DRbBle::Responder.new(Front.new, allow: [:face, :echo])
+      @responder = DRbBle::Responder.new(Front.new, allow: [:hello, :face, :echo])
       @reply_delay = 0
     end
 
@@ -65,9 +69,10 @@ class CentralDrbTest < Picotest::Test
     radio = DrbRadio.new(services: services)
     central = build(radio)
     FakeClock.sleeps.clear
+    before = radio.writes.size
     s = "x" * 400
     assert_equal [s], central.remote.echo(s)
-    drb_writes = radio.writes.select { |w| w[0] == DRX }
+    drb_writes = radio.writes[before, radio.writes.size - before].select { |w| w[0] == DRX }
     assert_true drb_writes.length >= 3
     paced = FakeClock.sleeps.select { |ms| ms == StackChan::Controller::Central::POLLING_UNIT_MS }
     assert_true paced.length >= drb_writes.length - 1

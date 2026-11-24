@@ -170,4 +170,41 @@ class DRbBleTest < Picotest::Test
     @responder.feed("x" * DRbBle::Responder::MAX_REQUEST)
     assert_equal [true, "face:ok"], decode_reply(@responder.feed(request_bytes(:face, ["ok"])))
   end
+
+  class GatedFront < Front
+    def hello(text)
+      [text == "ours", "ours"]
+    end
+  end
+
+  def gated
+    DRbBle::Responder.new(GatedFront.new, allow: [:hello, :face], gate: :hello)
+  end
+
+  def test_a_gated_responder_refuses_calls_before_the_greeting
+    ok, msg = decode_reply(gated.feed(request_bytes(:face, ["joy"])))
+    assert_false ok
+    assert_equal "NoMethodError: face needs hello first", msg
+  end
+
+  def test_a_greeting_with_another_contract_keeps_the_gate_closed
+    responder = gated
+    assert_equal [true, [false, "ours"]], decode_reply(responder.feed(request_bytes(:hello, ["theirs"])))
+    assert_false decode_reply(responder.feed(request_bytes(:face, ["joy"])))[0]
+  end
+
+  def test_a_matching_greeting_opens_the_gate_until_reset
+    responder = gated
+    assert_equal [true, [true, "ours"]], decode_reply(responder.feed(request_bytes(:hello, ["ours"])))
+    assert_equal [true, "face:joy"], decode_reply(responder.feed(request_bytes(:face, ["joy"])))
+    responder.reset
+    assert_false decode_reply(responder.feed(request_bytes(:face, ["joy"])))[0]
+  end
+
+  def test_garbage_does_not_close_an_open_gate
+    responder = gated
+    responder.feed(request_bytes(:hello, ["ours"]))
+    responder.feed("\x00\x00\x00\x01Z")
+    assert_equal [true, "face:joy"], decode_reply(responder.feed(request_bytes(:face, ["joy"])))
+  end
 end

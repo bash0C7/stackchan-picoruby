@@ -77,6 +77,9 @@ module StackChan
         when :busy
           out "busy: #{result[:message]}"
           8
+        when :mismatch
+          out "mismatch: #{result[:message]}"
+          9
         when :unknown
           usage
         else

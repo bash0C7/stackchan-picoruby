@@ -81,6 +81,7 @@ module StackChan
       case result[:status]
       when :ok      then print_out(result[:out])
       when :busy    then @out.call("busy: #{result[:message]}")
+      when :mismatch then @out.call("mismatch: #{result[:message]}")
       else               @out.call("error: #{result[:message]}")
       end
       result

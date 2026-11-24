@@ -86,7 +86,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 120,
+      "line": 123,
       "column": 11,
       "severity": "warning",
       "rule": "def.return-type-mismatch",
@@ -98,7 +98,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 213,
+      "line": 216,
       "column": 11,
       "severity": "warning",
       "rule": "def.return-type-mismatch",
@@ -110,7 +110,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 231,
+      "line": 234,
       "column": 47,
       "severity": "error",
       "rule": "call.argument-type-mismatch",
@@ -123,7 +123,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 273,
+      "line": 276,
       "column": 11,
       "severity": "warning",
       "rule": "def.return-type-mismatch",
@@ -135,7 +135,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb",
-      "line": 232,
+      "line": 236,
       "column": 34,
       "severity": "error",
       "rule": "call.possible-nil-receiver",

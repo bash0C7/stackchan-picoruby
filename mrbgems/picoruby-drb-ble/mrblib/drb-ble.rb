@@ -43,16 +43,16 @@ module DRbBle
   class Responder
     MAX_REQUEST = 4096
 
-    def initialize(front, allow:)
+    def initialize(front, allow:, gate: nil)
       @front = front
       @allow = allow
+      @gate = gate
       reset
     end
 
     def reset
-      @buf = ""
-      @fields = []
-      @taken = 0
+      @open = @gate.nil?
+      drop
     end
 
     def feed(bytes)
@@ -62,11 +62,11 @@ module DRbBle
         begin
           @fields << Marshal.load(data)
         rescue
-          reset
+          drop
           break
         end
         unless well_formed?
-          reset
+          drop
           break
         end
         next unless @fields.size >= 4 && @fields.size == @fields[2] + 4
@@ -74,11 +74,17 @@ module DRbBle
         @fields = []
         @taken = 0
       end
-      reset if @taken + @buf.bytesize > MAX_REQUEST
+      drop if @taken + @buf.bytesize > MAX_REQUEST
       out
     end
 
     private
+
+    def drop
+      @buf = ""
+      @fields = []
+      @taken = 0
+    end
 
     def take_message
       return nil if @buf.bytesize < 4
@@ -99,9 +105,13 @@ module DRbBle
     def reply(ref, msg, args)
       w = Writer.new
       m = DRb::DRbMessage.new(w)
-      if ref.nil? && @allow.include?(msg)
+      if ref.nil? && @allow.include?(msg) && !@open && msg != @gate
+        m.send_reply(false, "NoMethodError: #{msg} needs #{@gate} first")
+      elsif ref.nil? && @allow.include?(msg)
         begin
-          m.send_reply(true, @front.send(msg, *args))
+          result = @front.send(msg, *args)
+          @open = true if msg == @gate && result.is_a?(Array) && result[0] == true
+          m.send_reply(true, result)
         rescue => e
           m.send_reply(false, "#{e.class}: #{e.message}")
         end

@@ -26,7 +26,15 @@ module StackChan
       SUBTITLE_FG          = 0xFFFF
       SUBTITLE_BG          = 0x0000
 
-      attr_reader :current_face, :robot_handle
+      FRAME_KEYS  = ["F", "L", "R", "G", "B", "S", "M", "text", "YL", "YR", "PU", "T", "V"]
+      SYSTEM_KEYS = ["torque", "selftest", "read"]
+      LED_KEYS    = ["L", "R", "G", "B", "S", "M"]
+      HEAD_KEYS   = ["YL", "YR", "PU"]
+      MAGNITUDE_MAX = 100
+      COLOR_MAX     = 255
+      WORD_MAX      = 0xFFFF
+
+      attr_reader :current_face, :robot_handle, :face_index
 
       def initialize(display:, led:, stdout: $stdout, head: nil, speaker: nil,
                      faces:, face_index:, frame_handlers: {})
@@ -39,24 +47,24 @@ module StackChan
         @faces          = faces
         @face_index     = face_index
         @frame_handlers = frame_handlers
-        @current_face   = faces[:neutral]
+        @current_face   = faces[:closed]
         @robot_handle = Handle.new(dispatcher: self, display: display, led: led, head: head, speaker: speaker)
       end
 
       def handle(frame)
-        return handle_torque(frame)   if frame.key?("torque")
-        return handle_selftest(frame) if frame.key?("selftest")
-        return handle_read_pos(frame)  if frame.key?("read")
-
-        ok = true
-        ok = handle_face(frame) && ok if frame.key?("F")
-        ok = handle_led(frame)  && ok if frame.key?("L")
-        ok = handle_text(frame) && ok if frame.key?("text")
-        servo = frame.key?("YL") || frame.key?("YR") || frame.key?("PU")
-        ok = handle_head(frame) && ok if servo
-        ok = run_frame_handlers(frame) && ok
-        @stdout.write(ok ? ACK_FRAME : ERROR_FRAME)
-        emit_servo_detail if ok && servo
+        system = system_key(frame)
+        return handle_system(system, frame) if system
+        unless valid?(frame) && run_frame_handlers(frame)
+          @stdout.write(ERROR_FRAME)
+          return
+        end
+        show_face(face_for(frame["F"])) if frame.key?("F")
+        handle_led(frame) if frame.key?("L")
+        draw_subtitle(frame["text"]) if frame.key?("text")
+        servo = head?(frame)
+        handle_head(frame) if servo
+        @stdout.write(ACK_FRAME)
+        emit_servo_detail if servo
       rescue => e
         puts "[application] dispatch error: #{e.class}: #{e.message}"
         @stdout.write(ERROR_FRAME)
@@ -113,10 +121,95 @@ module StackChan
 
       private
 
-      def handle_face(frame)
-        name = @face_index[frame["F"]]
-        return false unless name
-        show_face(name)
+      def system_key(frame)
+        i = 0
+        while i < SYSTEM_KEYS.size
+          return SYSTEM_KEYS[i] if frame.key?(SYSTEM_KEYS[i])
+          i += 1
+        end
+        nil
+      end
+
+      def handle_system(key, frame)
+        unless frame.size == 1
+          @stdout.write(ERROR_FRAME)
+          return
+        end
+        return handle_torque(frame) if key == "torque"
+        return handle_selftest(frame) if key == "selftest"
+        handle_read_pos(frame)
+      end
+
+      def valid?(frame)
+        keys = frame.keys
+        return false if keys.empty?
+        handled = false
+        i = 0
+        while i < keys.size
+          if @frame_handlers[keys[i]]
+            handled = true
+          elsif !FRAME_KEYS.include?(keys[i])
+            return false
+          end
+          i += 1
+        end
+        return false if frame.key?("F") && face_for(frame["F"]).nil?
+        return false if led?(frame) && !valid_led?(frame)
+        if head?(frame)
+          return false unless numbers?(frame, HEAD_KEYS, MAGNITUDE_MAX)
+          return false unless numbers?(frame, ["T", "V"], WORD_MAX)
+        elsif frame.key?("T") || frame.key?("V")
+          return false
+        end
+        handled || frame.key?("F") || frame.key?("L") || frame.key?("text") || head?(frame)
+      end
+
+      def face_for(index)
+        name = @face_index[index]
+        name && @faces[name] ? name : nil
+      end
+
+      def led?(frame)
+        any_key?(frame, LED_KEYS)
+      end
+
+      def head?(frame)
+        any_key?(frame, HEAD_KEYS)
+      end
+
+      def any_key?(frame, keys)
+        i = 0
+        while i < keys.size
+          return true if frame.key?(keys[i])
+          i += 1
+        end
+        false
+      end
+
+      def valid_led?(frame)
+        return false unless frame["L"] == "1"
+        return false unless MODE_TABLE[frame["M"]] && SIDE_TABLE[frame["S"]]
+        numbers?(frame, ["R", "G", "B"], COLOR_MAX)
+      end
+
+      def numbers?(frame, keys, max)
+        i = 0
+        while i < keys.size
+          return false if frame.key?(keys[i]) && !number?(frame[keys[i]], max)
+          i += 1
+        end
+        true
+      end
+
+      def number?(text, max)
+        return false unless text.is_a?(String) && text.size > 0 && text.size <= 5
+        i = 0
+        while i < text.size
+          byte = text.getbyte(i)
+          return false unless byte && byte >= 48 && byte <= 57
+          i += 1
+        end
+        text.to_i <= max
       end
 
       def run_frame_handlers(frame)
@@ -129,10 +222,6 @@ module StackChan
           i += 1
         end
         ok
-      end
-
-      def handle_text(frame)
-        draw_subtitle(frame["text"])
       end
 
       def handle_torque(frame)
@@ -184,14 +273,11 @@ module StackChan
 
       def handle_led(frame)
         mode = MODE_TABLE[frame["M"]]
-        return false unless mode
         side = SIDE_TABLE[frame["S"]]
-        return false unless side
         r = (frame["R"] || "0").to_i
         g = (frame["G"] || "0").to_i
         b = (frame["B"] || "0").to_i
         @led.animate_side(side, r, g, b, mode)
-        true
       end
 
       def handle_head(frame)

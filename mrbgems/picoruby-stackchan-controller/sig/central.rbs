@@ -20,6 +20,7 @@ module StackChan
         def audio_chunk: (String? bytes) -> untyped
         def audio_play: () -> untyped
         def audio_done: () -> bool
+        def hello: (String text) -> [bool, String?]
       end
 
       CONNECT_TIMEOUT_MS: Integer
@@ -31,6 +32,12 @@ module StackChan
       AUDIO_DONE_BASE_MS: Integer
       SUBSCRIBE_ENABLE: String
       DRB_URI: String
+      FRONT: Array[Symbol]
+      FRAME_KEYS: Array[String]
+      ROBOT_SIDE: Hash[Symbol, Symbol]
+
+      def self.contract: () -> String
+      def self.differences: (String ours, String? theirs) -> String
 
       @name_prefix: String
       @radio: _Radio

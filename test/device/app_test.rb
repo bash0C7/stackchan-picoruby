@@ -121,8 +121,23 @@ class AppTest < Picotest::Test
     assert_equal [2], @wiring.remote.touches
   end
 
-  def test_blink_closes_at_5000_ms_and_reopens_150_ms_later
+  def test_the_cold_boot_blink_keeps_the_closed_eyes_closed
+    closed = FaceGoldenHash::FACE_CASES[:closed]
+    @wiring.ticker.tick(0)
+    @wiring.ticker.tick(4999)
+    assert_equal [], @display.calls
+    @wiring.ticker.tick(5000)
+    assert_equal dump_of { |d| closed.redraw_eyes_closed(d) }, FaceGoldenHash.canonical_dump(@display.calls)
+    @display.calls.clear
+    @wiring.ticker.tick(5150)
+    assert_equal dump_of { |d| closed.redraw_eyes_open(d) }, FaceGoldenHash.canonical_dump(@display.calls)
+    assert_equal [], @display.calls.select { |c| c.first == :draw_ellipse }
+  end
+
+  def test_blink_closes_at_5000_ms_and_reopens_150_ms_later_once_torque_is_on
     neutral = FaceGoldenHash::FACE_CASES[:neutral]
+    @wiring.dispatcher.handle({ "torque" => "on" })
+    @display.calls.clear
     @wiring.ticker.tick(0)
     @wiring.ticker.tick(4999)
     assert_equal [], @display.calls

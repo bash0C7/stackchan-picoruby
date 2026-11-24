@@ -148,9 +148,27 @@ class DispatcherFaceTest < Picotest::Test
     assert_equal ["?\n"], @stdout.writes
   end
 
-  def test_a_key_without_a_handler_is_ignored_as_before
-    disp = build(frame_handlers: { "glow" => ->(_r, _v) { false } })
-    disp.handle({ "other" => "1" })
-    assert_equal [".\n"], @stdout.writes
+  def test_a_key_nobody_owns_answers_question_mark_and_changes_nothing
+    disp = build(frame_handlers: { "glow" => ->(_r, _v) { true } })
+    disp.handle({ "F" => "1", "glow" => "40", "other" => "1" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @display.calls
+  end
+
+  def test_an_empty_frame_answers_question_mark
+    @disp.handle({})
+    assert_equal ["?\n"], @stdout.writes
+  end
+
+  def test_an_out_of_range_color_answers_question_mark_and_lights_nothing
+    @disp.handle({ "L" => "1", "R" => "256", "S" => "B", "M" => "s" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @led.calls
+  end
+
+  def test_led_keys_without_the_marker_answer_question_mark_and_light_nothing
+    @disp.handle({ "R" => "1", "S" => "B", "M" => "s" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @led.calls
   end
 end
