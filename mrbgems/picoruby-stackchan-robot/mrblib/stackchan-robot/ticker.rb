@@ -49,9 +49,9 @@ module StackChan
         return unless @touch
         zone = @touch.poll
         return unless zone
+        @remote.push_touch(zone)
         handler = @touch_handlers[zone]
         handler.call(@robot_handle) if handler
-        @remote.push_touch(zone)
       rescue => e
         puts "[application] touch poll error: #{e.class}: #{e.message}"
       end
