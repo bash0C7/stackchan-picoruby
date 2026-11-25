@@ -12,7 +12,10 @@ inductive Body | ok | connectionError | timeout | timeoutLost | otherError | okL
 inductive Call | connect | keepalive | reset
   deriving DecidableEq, Repr
 
-inductive Result | ok | busy | connectionError | timeoutError | otherError
+inductive Result | ok | busy | mismatch | connectionError | timeoutError | otherError
+  deriving DecidableEq, Repr
+
+inductive Connect | ok | refused | mismatch
   deriving DecidableEq, Repr
 
 structure Link where
@@ -39,7 +42,7 @@ structure TickIn where
 structure ActIn where
   now : Nat
   drainLoses : Bool
-  connects : Bool
+  connect : Connect
   body : Body
   deriving DecidableEq, Repr
 
@@ -98,8 +101,16 @@ def act (i : ActIn) (l : Link) : ActOut :=
   let l₁ := if dropped then lose l else l
   let calls := if dropped then [Call.reset] else []
   if connected l₁.state then runBody i l₁ calls
-  else if i.connects then runBody i (use i.now { l₁ with connects := l₁.connects + 1 }) (calls ++ [.connect])
-  else ⟨{ l₁ with state := .busy }, calls ++ [.connect], 0, .busy⟩
+  else match i.connect with
+    | .ok => runBody i (use i.now { l₁ with connects := l₁.connects + 1 }) (calls ++ [.connect])
+    | .refused => ⟨{ l₁ with state := .busy }, calls ++ [.connect], 0, .busy⟩
+    | .mismatch => ⟨{ l₁ with state := .busy }, calls ++ [.connect], 0, .mismatch⟩
+
+def listen (now : Nat) (l : Link) : Link :=
+  if l.state = .held then { l with lastAction := now } else l
+
+def connectedNow (out : ActOut) : Bool :=
+  out.calls.contains .connect && out.result != .busy && out.result != .mismatch
 
 def ticks (c : Config) : List TickIn → Link → Link × List Nat
   | [], l => (l, [])
@@ -186,26 +197,32 @@ theorem a_held_link_speaks_at_least_every_keepalive (c : Config) (i : TickIn) (l
           cases hr : i.reply <;> simp_all [answer, lose]
 
 theorem act_tries_at_most_one_connect (i : ActIn) (l : Link) : (act i l).calls.count .connect ≤ 1 := by
-  obtain ⟨now, d, ok, body⟩ := i
+  obtain ⟨now, d, c, body⟩ := i
   obtain ⟨st, la, ls, t, r, n⟩ := l
-  cases st <;> cases d <;> cases ok <;> cases body <;> simp [act, runBody, connected, lose, use]
+  cases st <;> cases d <;> cases c <;> cases body <;> simp [act, runBody, connected, lose, use]
 
 theorem an_action_body_runs_at_most_once (i : ActIn) (l : Link) : (act i l).ran ≤ 1 := by
-  obtain ⟨now, d, ok, body⟩ := i
+  obtain ⟨now, d, c, body⟩ := i
   obtain ⟨st, la, ls, t, r, n⟩ := l
-  cases st <;> cases d <;> cases ok <;> cases body <;> simp [act, runBody, connected, lose, use]
+  cases st <;> cases d <;> cases c <;> cases body <;> simp [act, runBody, connected, lose, use]
 
 theorem busy_means_the_body_never_ran (i : ActIn) (l : Link) (h : (act i l).result = .busy) :
     (act i l).ran = 0 ∧ (act i l).link.state = .busy := by
-  obtain ⟨now, d, ok, body⟩ := i
+  obtain ⟨now, d, c, body⟩ := i
   obtain ⟨st, la, ls, t, r, n⟩ := l
-  cases st <;> cases d <;> cases ok <;> cases body <;> simp_all [act, runBody, connected, lose, use]
+  cases st <;> cases d <;> cases c <;> cases body <;> simp_all [act, runBody, connected, lose, use]
+
+theorem a_contract_mismatch_runs_nothing_and_holds_nothing (i : ActIn) (l : Link) (h : (act i l).result = .mismatch) :
+    (act i l).ran = 0 ∧ (act i l).link.state = .busy := by
+  obtain ⟨now, d, c, body⟩ := i
+  obtain ⟨st, la, ls, t, r, n⟩ := l
+  cases st <;> cases d <;> cases c <;> cases body <;> simp_all [act, runBody, connected, lose, use]
 
 theorem a_successful_action_restarts_the_hold (i : ActIn) (l : Link) (h : (act i l).result = .ok)
     (held : (act i l).link.state ≠ .released) :
     (act i l).link.state = .held ∧ (act i l).link.lastAction = i.now := by
-  obtain ⟨now, d, ok, body⟩ := i
+  obtain ⟨now, d, c, body⟩ := i
   obtain ⟨st, la, ls, t, r, n⟩ := l
-  cases st <;> cases d <;> cases ok <;> cases body <;> simp_all [act, runBody, connected, lose, use]
+  cases st <;> cases d <;> cases c <;> cases body <;> simp_all [act, runBody, connected, lose, use]
 
 end Theorems.Link

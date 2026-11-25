@@ -1,6 +1,6 @@
 namespace Theorems.LinkLoop
 
-inductive Packet | none | arrived | disconnected | other | notAString
+inductive Packet | none | arrived | disconnected | working | notWorking | other | notAString
   deriving DecidableEq, Repr
 
 structure TickIn where
@@ -29,6 +29,14 @@ def afterPlay (i : TickIn) : Option Nat → Option Nat
     | some ms => some (i.now + ms)
     | Option.none => some a
   | Option.none => Option.none
+
+def advertises : Packet → Nat
+  | .working | .disconnected => 1
+  | _ => 0
+
+def drbResets : Packet → Nat
+  | .disconnected => 1
+  | _ => 0
 
 def tick (release : Option Nat) (i : TickIn) (active : Option Nat) : Option Nat × Bool :=
   let a := heard i active

@@ -8,6 +8,8 @@ on:
       - "apps/**"
       - "mrbgems/picoruby-stackchan-robot/**"
       - "mrbgems/picoruby-stackchan-controller/**"
+      - "mrbgems/picoruby-stackchan-protocol/**"
+      - "mrbgems/picoruby-drb-ble/**"
       - "acceptance/runner.rb"
       - "acceptance/lock.yml"
       - "build_config/picoruby-test.rb"

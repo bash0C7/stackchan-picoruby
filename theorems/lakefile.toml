@@ -1,5 +1,6 @@
 name = "theorems"
 defaultTargets = ["Theorems"]
+moreLeanArgs = ["--threads=2", "--memory=4096"]
 
 [[lean_lib]]
 name = "Theorems"
