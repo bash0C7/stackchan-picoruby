@@ -11,10 +11,9 @@ class LinkTest < Picotest::Test
       @events = []
     end
 
-    def before_drx_write(value)
-      @events << [:frame, "touches"]  if value.include?("touches")
-      @events << [:frame, "command"] if value.include?("command")
-      @stamps << [FakeClock.now, "touches"] if value.include?("touches")
+    def before_call(name)
+      @events << [:frame, name.to_s] if name == :hello || name == :touches || name == :command
+      @stamps << [FakeClock.now, "touches"] if name == :touches
       :continue
     end
 
@@ -25,8 +24,8 @@ class LinkTest < Picotest::Test
   end
 
   class DropOnTouchesRadio < StampedRobotRadio
-    def before_drx_write(value)
-      if value.include?("touches")
+    def before_call(name)
+      if name == :touches
         @stamps << [FakeClock.now, "touches"]
         drop_link(event: true)
         return :drop
@@ -122,8 +121,8 @@ class LinkTest < Picotest::Test
     @radio.events.clear
     act_frame("<F:3>\n")
     assert_equal 2, @radio.connect_and_discover_calls
-    assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
-    assert_equal [[:descriptor, DCCCD], [:frame, "command"]], @radio.events
+    assert_equal FakeRobotRadio.connect_ms + StackChan::Controller::Central::POLLING_UNIT_MS, sleep_total
+    assert_equal [[:descriptor, DCCCD], [:frame, "hello"], [:frame, "command"]], @radio.events
     assert_equal :held, @link.state
   end
 
@@ -147,8 +146,8 @@ class LinkTest < Picotest::Test
     @radio.events.clear
     act_frame("<F:3>\n")
     assert_equal 2, @radio.connect_and_discover_calls
-    assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, sleep_total
-    assert_equal [[:descriptor, DCCCD], [:frame, "command"]], @radio.events
+    assert_equal FakeRobotRadio.connect_ms + StackChan::Controller::Central::POLLING_UNIT_MS, sleep_total
+    assert_equal [[:descriptor, DCCCD], [:frame, "hello"], [:frame, "command"]], @radio.events
     assert_equal :held, @link.state
   end
 
@@ -289,7 +288,7 @@ class LinkTest < Picotest::Test
     assert_equal "held", status[:link]
     assert_equal 2, status[:connects]
     assert_equal 1, status[:releases]
-    assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, status[:last_connect_ms]
+    assert_equal FakeRobotRadio.connect_ms, status[:last_connect_ms]
     assert_equal 10_000, status[:hold_ms]
   end
 end

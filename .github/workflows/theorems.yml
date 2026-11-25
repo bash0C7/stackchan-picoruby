@@ -1,0 +1,45 @@
+name: theorems
+
+on:
+  push:
+    branches: [main]
+    paths: &judged
+      - "theorems/**"
+      - "apps/**"
+      - "mrbgems/picoruby-stackchan-robot/**"
+      - "mrbgems/picoruby-stackchan-controller/**"
+      - "mrbgems/picoruby-stackchan-protocol/**"
+      - "mrbgems/picoruby-drb-ble/**"
+      - "acceptance/runner.rb"
+      - "acceptance/lock.yml"
+      - "build_config/picoruby-test.rb"
+      - "bin/lean"
+      - "Rakefile"
+      - "Gemfile*"
+      - "lib/**"
+      - ".github/actions/theorem-env/**"
+      - ".github/workflows/theorems.yml"
+  pull_request:
+    paths: *judged
+  schedule:
+    - cron: "23 19 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: theorems-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  judge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/theorem-env
+
+      - if: github.event_name != 'schedule'
+        run: bundle exec rake theorem

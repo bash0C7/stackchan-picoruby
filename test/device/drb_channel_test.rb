@@ -134,7 +134,7 @@ class DrbChannelTest < Picotest::Test
   end
 
   def test_exposed_is_the_built_ins_then_the_remote_handler_names
-    assert_equal [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
+    assert_equal [:hello, :command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
                   :selftest, :touches, :audio_begin, :audio_chunk, :audio_play, :audio_done,
                   :servo_health, :wave], @front.exposed
   end

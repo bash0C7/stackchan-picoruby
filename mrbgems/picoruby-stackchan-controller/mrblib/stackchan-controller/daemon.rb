@@ -63,8 +63,8 @@ module StackChan
       def start
         begin
           with_link {}
-        rescue Busy => e
-          log "busy: #{e.message}"
+        rescue Busy, ContractMismatch => e
+          log "#{e.class}: #{e.message}"
         end
         DRb.start_service("druby://#{@host}:#{@port}", self)
         @server_task    = DRb.thread
@@ -116,6 +116,8 @@ module StackChan
           { status: :ok, out: perform(key, arg), message: nil }
         rescue Busy => e
           { status: :busy, out: nil, message: e.message }
+        rescue ContractMismatch => e
+          { status: :mismatch, out: nil, message: e.message }
         rescue StandardError => e
           log "act #{key} #{e.class}: #{e.message}"
           { status: :error, out: nil, message: e.message }
@@ -141,6 +143,8 @@ module StackChan
         { status: :ok, out: with_link { @session.remote(msg, *args) }, message: nil }
       rescue Busy => e
         { status: :busy, out: nil, message: e.message }
+      rescue ContractMismatch => e
+        { status: :mismatch, out: nil, message: e.message }
       rescue StandardError => e
         log "remote #{msg} #{e.class}: #{e.message}"
         { status: :error, out: nil, message: e.message }

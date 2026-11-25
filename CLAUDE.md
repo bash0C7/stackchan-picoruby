@@ -82,13 +82,14 @@ SPI 転送は 1 回 4092 byte が上限。picoruby-spi の ESP32 port は bus �
 ## BLE プロトコル
 
 - controller と robot の間の命令・応答・頭タッチ・音声は全部 dRuby over BLE を通る。robot の dRuby service の GATT 表は pair (`6e400004` write / `6e400005` notify) だけを持ち、例外の経路は無い。
-- frame の語彙 (dRuby の `command` に渡す Hash の key、CLI の `raw` verb が受ける文字列): yaw: `<YL:0..100>` / `<YR:0..100>` (排他、YL 優先)、pitch: `<PU:0..100>` (上のみ)、timing: `<T:ms>` か `<V:speed>` のどちらか。
+- frame の語彙は閉じている。robot は frame を全部検査してから実行し、語彙の外の key、範囲外や数字でない値、軸の無い `T` / `V`、他の key と並んだ `torque` / `selftest` / `read`、実行するものの無い frame には `?` を返して何も変えない。`.` は frame の全部を実行したことを意味する。値の範囲は向きの量が 0..100、RGB が 0..255、`T` / `V` が servo へ 16 bit で詰める 0..65535。`on_frame` で app が持つ key も語彙に入る。語彙 (dRuby の `command` に渡す Hash の key、CLI の `raw` verb が受ける文字列): yaw: `<YL:0..100>` / `<YR:0..100>` (排他、YL 優先)、pitch: `<PU:0..100>` (上のみ)、timing: `<T:ms>` か `<V:speed>` のどちらか。
 - 稀: `<torque:on|off>`、`<selftest:run>`、`<read:pos>` (`calibrate` が使う)。
 - dRuby over BLE: robot の dRuby service の pair (`6e400004` write / `6e400005` notify。UUID は Nordic UART の base `6e40xxxx` 上にある) に DRb の TCP stream をそのまま 180 B chunk で流す (`mrbgems/picoruby-drb-ble`)。front は `StackChan::Robot::Remote` で、`command` / `servo` / `led` / `face` / `text` / `torque` / `read_pos` / `selftest` は frame の Hash を `Dispatcher#handle_to` に渡し、行の Array を返す (1 行目が `.\n` か `?\n`、あれば 2 行目が detail)。`touches` は前回の呼び出しから溜まった頭タッチの zone の Array (上限 16) を返して空にする。`stack_free`・`servo_health` (servo ごとの直近の read の失敗理由と status byte)・音声の `audio_begin` / `audio_chunk` / `audio_play` / `audio_done`・`bot.remote` の handler は `Dispatcher` を通らない。4096 B を超える request は捨てる (`DRbBle::Responder::MAX_REQUEST`)。controller の reply 待ちは 3 s で、超えたら `TimeoutError`、1 行目が `?\n` か robot 側の例外なら `DeviceError` (`Central#remote_call`)。`Session` と app の action は `Central#send` / `raw_send` が frame の文字列を `FrameParser` で Hash に戻して `command` を呼ぶ。CLI の `remote` verb (`stackchan remote servo YL=50 PU=30 T=500`) は front を直接呼ぶ口で、1 行目が `?` なら exit 1。`picoruby-drb` と `picoruby-multicore` は `build_config/esp32-stackchan.rb` に入っている。
-- cold-boot は torque OFF + `Face::Closed`。操作者が正面に合わせて `<torque:on>`。
+- cold-boot は torque OFF + `Face::Closed` で、瞬きは閉じた目を開けない (`Dispatcher` の今の顔は起動時から `closed`)。操作者が正面に合わせて `<torque:on>`。
+- 接続のたびに controller は `hello` で契約の文 (`Central.contract`: face の番号、LED の side と mode の文字、frame の key、front の名前、touch の zone、字幕の文字数) を robot に渡し、robot は自分の文 (`Remote#contract`) と同じ時だけ `Responder` の門を開ける。門が開く前の呼び出しは `hello` 以外を拒み、切断と CCCD の解除で門は閉じる。違えば controller は命令を 1 つも送らず、link を `busy` にして `mismatch` (CLI は exit 9) を返す。`hello` を持たない robot も `mismatch`。
 - 位置コマンドの detail `<YL_actual:N,PU_actual:N>` (右向きなら `<YR_actual:N,PU_actual:N>`) は **受信時点の姿勢** (移動後ではない)。`unknown` = キャリブレーション要。移動後の値が要るなら `<read:pos>` (raw 値の `<yaw_raw:N,pitch_raw:N>` を返す) を使うか、次の位置コマンドの detail を読む。CLI の `raw` verb は device の detail を捨てて `OK raw` しか返さないので、`stackchan raw '<read:pos>'` では値が取れない。
 - audio (`Session#speak_audio`、Mac の `say`) は `audio_begin` → 2048 B ずつ `audio_chunk` → `audio_play` (予約だけして返り、robot は reply を出し終えた次の `LinkLoop#tick` で再生する) → 再生時間 (`n / 8` ms + 400 ms + 600 ms) 待って `audio_done` を 500 ms ごとに問う。待つ上限は `3300 + N*6/5` ms (30 s〜180 s に clamp、`Central#audio_done_timeout_ms`)。
-- CLI: `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan calibrate --align-only`。送れる face 名は `angry / joy / neutral / sad / smile / surprised` (`FrameCodec::FACE_INDICES`)。`closed` は BLE の index を持たず、`<torque:off>` で出る。exit 6 = calibration needed、7 = verify fail、8 = busy (robot が別の central に握られているか届かない。次の action でだけ再接続を試す)。`stackchan status` は `link=held connects=1 releases=0 last_connect_ms=… hold_ms=10000 ble_connected=true …` の key=value 1 行。`stackchan touch listen --count N --timeout SEC` は `touch zone=N (back|right|left)` を出し、N 回で exit 0、timeout か link 解放で exit 1。
+- CLI: `stackchan servo --yaw-left 50 --pitch-up 30 --time 500`、`stackchan torque on`、`stackchan calibrate --align-only`。送れる face 名は `angry / joy / neutral / sad / smile / surprised` (`FrameCodec::FACE_INDICES`)。`closed` は BLE の index を持たず、`<torque:off>` で出る。exit 6 = calibration needed、7 = verify fail、8 = busy (robot が別の central に握られているか届かない。次の action でだけ再接続を試す)、9 = mismatch (robot と契約が違う)。`stackchan status` は `link=held connects=1 releases=0 last_connect_ms=… hold_ms=10000 ble_connected=true …` の key=value 1 行。`stackchan touch listen --count N --timeout SEC` は `touch zone=N (back|right|left)` を出し、N 回で exit 0、timeout か link 解放で exit 1。
 
 ### BLE 実装 notes
 
@@ -134,7 +135,23 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
 - host VM は `vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host-picotest` に建つ。R2P2-ESP32 自身の host ツールは同じ picoruby の `build/host` なので衝突しない。全 suite が `uninitialized constant Picotest` になったら、順序ではなく build 名の衝突を疑う。
 - `rake test` が先に走らせる `rigor:check` は host 側の型解析で、`rigor.baseline.json` に無い diagnostic が 1 つでもあれば落ちる。`rake vendor:setup` 済みが前提で、初回に自分の gemset を `vendor/rigor-tool` に入れる。reference は `docs/rigor.md`。
-- CI は `deps.yml` が push ごと、`firmware.yml` が週次と手動。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
+- CI は `deps.yml` が push ごと、`theorems.yml` が判定される側の変わった PR と main への push、`theorem-mutants.yml` が週次 (前の成功から変わった時だけ) と手動で shard に分けて、`firmware.yml` が週次と手動。`theorems.yml` の schedule は判定せず cache を読むだけで、7 日読まれないと消える cache を残す。cache に置くのは Lean と host VM の binary と gem で、事実と判定の結果は置かない。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
+
+## 定理 (`theorems/`)
+
+robot と controller の正しいあり方を Lean の定理として持ち、`rake theorem` がいまのコードの上で判定する。AI の返事の内容は判定の対象にしない。
+
+- 4 つの部分。期待 (1 手の関数とその一般定理。`Link` / `LinkLoop` は controller と robot の link、`Frame` は frame の語彙と結果、`Contract` は契約の門、`Face` は顔と瞬き、`Remote` はタッチの列と音声の旗、`Touch` はタッチの読み取りと app に渡す handle。任意の長さの列は `HandOff` と各 file の帰納法の定理)、一致 (`Conformance.lean`。実物の Ruby を状態 × 入力の分類で全数走らせた表が 1 手の関数と同じ)、目標 (`Goals.lean`。`apps/*/app.rb` の宣言と実物の表で期待が成り立つ)、オラクル (`Oracle.lean`。防ぐ不具合の一覧 `failures` と、それぞれを守る定理。判定の外に置くものは `outside`)。
+- 一致の定理が示すのは、`every_*_class_*` が並べる分類の上で実物とモデルが同じことだけ。分類の外の入力について言えるのは、モデルの一般定理と変異で確かめた範囲になる。
+- `Theorems.lean` は全部を読んだ後に 2 つを判定する。どの定理も標準の公理 (`propext` / `Quot.sound` / `Classical.choice`) だけに頼ること (`sorry` は `sorryAx`、`native_decide` は専用の公理として残るので捕まる)。手で書いたどの定理も、`Oracle.failures` のどれかに名前が載るか、載った定理の証明の段として使われること。定理を足したら、守る不具合に名前を足す。
+- 事実は `theorems/extract/facts.rb` が host picotest VM で本物の class を呼んで抜き、`theorems/Theorems/Facts/` に置く (commit しない)。時計は注入し、乱数と sleep は使わない。`bin/lean build` を直に呼ぶと前に抜いた事実で判定する。
+- class に instance 変数を足すと `*_keeps_no_state_the_model_lacks` が落ちる。モデルにも足すか、振る舞いに効かないことを確かめて一覧に足す。
+- 判定は `decide +kernel` と普通の証明で行う。外の仕組みへの前提は仮定の structure (`HandOff.Quietness` / `HandOff.Holding`) の field に名前を付けて置き、見ている acceptance の step を `Goals.assumptions` に並べる。前提が満たせることは `quietness_happens` / `holding_happens` が示す。
+- 定理が落ちたら、コードが期待を破ったのか、定理が期待を言い当てていないのかを、その定理が守るものから判断する。通すために定理を弱めない。
+- `rake theorem:mutants` は判定される側の Ruby (`TheoremMutants::TARGETS`) を prism で読み、比較の境界、`&&` / `||`、真偽、整数の ±1、条件の否定、文の削除の変異を作って 1 つずつ入れる。Swift、acceptance の runner、facts.rb の分類のように作れない変異は、狙う定理と並べて `HAND` に書く。method ごとに、頭に `raise` を入れた探りで事実の抜き出しがその method を呼ぶかを先に確かめ、呼ばない method の変異は回さずに `UNSEEN` とする。回した変異は、定理が落ちれば検出、抜き出しが壊れれば `CRASHED`、事実が 1 byte も変わらなければ Lean を回さずに生き残りとする。
+- 変異の合格は、どの method も事実に呼ばれるか `OUTSIDE` に理由付きで載り、呼ばれる method の生き残りがどれも `EQUIVALENT` に理由付きで載ること。`EQUIVALENT` に入れるのは振る舞いが変わらない変異だけで、振る舞いが変わる生き残りには定理か事実を足す。`LIST=1` で数、`PROBE=1` で探りだけ、`ONLY=<path の一部>` で 1 file、`SHARD=k/n` で n 分の 1 を回す。走る間は作業 tree のコードが書き換わるので、他の test、編集、作業 tree の読み取りを並走させない (読むと変異の入ったコードを読む)。
+- Lean は `bin/lean` が `vendor/elan/` に入れる (版は `theorems/lean-toolchain`)。`vendor/elan/bin/` の elan を `ELAN_HOME` 無しで呼ぶと `~/.elan` を作るので、必ず `bin/lean` を通す。`theorems/lakefile.toml` は lean を `--threads=2 --memory=4096` で起こす。上限の無い lean は 1 つの process で数千の thread を立てることがあり、そうなると Mac の kernel が spinlock の時間切れで止まる。並べて回す時は worktree を増やさず、CI の shard で分ける。
+- host VM は `MRB_INT64`、firmware は `MRB_INT32` + `MRB_WORD_BOXING` で、この差は判定の外にある。
 
 ## ビルド・deploy
 

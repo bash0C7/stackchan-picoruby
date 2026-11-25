@@ -97,4 +97,33 @@ class DispatcherServoTest < Picotest::Test
     assert_equal ".\n", @stdout.writes[0]
     assert_equal "<YL_actual:unknown,PU_actual:unknown>\n", @stdout.writes[1]
   end
+
+  def test_a_rejected_frame_moves_nothing
+    @disp.handle({ "F" => "9", "YL" => "50" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @yaw_servo.writes
+  end
+
+  def test_a_magnitude_that_is_not_a_number_answers_question_mark_and_moves_nothing
+    @disp.handle({ "YL" => "abc" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @yaw_servo.writes
+  end
+
+  def test_timing_beyond_sixteen_bits_answers_question_mark_and_moves_nothing
+    @disp.handle({ "YL" => "10", "T" => "65536" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @yaw_servo.writes
+  end
+
+  def test_timing_without_an_axis_answers_question_mark
+    @disp.handle({ "T" => "500" })
+    assert_equal ["?\n"], @stdout.writes
+  end
+
+  def test_torque_with_another_key_answers_question_mark_and_moves_nothing
+    @disp.handle({ "torque" => "on", "YL" => "50" })
+    assert_equal ["?\n"], @stdout.writes
+    assert_equal [], @yaw_servo.writes
+  end
 end

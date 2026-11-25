@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "success": false,
-  "error_count": 26,
+  "error_count": 27,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -49,6 +49,19 @@
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
     },
     {
+      "path": "lib/theorem_mutants.rb",
+      "line": 343,
+      "column": 11,
+      "severity": "error",
+      "rule": "call.undefined-method",
+      "source_family": "builtin",
+      "message": "undefined method `popen2e' for singleton(Open3)",
+      "receiver_type": "singleton(Open3)",
+      "method_name": "popen2e",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
+    },
+    {
       "path": "mrbgems/picoruby-drb-ble/test/drb_ble_test.rb",
       "line": 132,
       "column": 44,
@@ -86,7 +99,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 120,
+      "line": 123,
       "column": 11,
       "severity": "warning",
       "rule": "def.return-type-mismatch",
@@ -98,7 +111,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 213,
+      "line": 216,
       "column": 11,
       "severity": "warning",
       "rule": "def.return-type-mismatch",
@@ -110,7 +123,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 231,
+      "line": 234,
       "column": 47,
       "severity": "error",
       "rule": "call.argument-type-mismatch",
@@ -123,7 +136,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/cli.rb",
-      "line": 273,
+      "line": 276,
       "column": 11,
       "severity": "warning",
       "rule": "def.return-type-mismatch",
@@ -135,7 +148,7 @@
     },
     {
       "path": "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller/daemon.rb",
-      "line": 232,
+      "line": 236,
       "column": 34,
       "severity": "error",
       "rule": "call.possible-nil-receiver",

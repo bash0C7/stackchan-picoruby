@@ -164,6 +164,21 @@ def write_face_golden(name, face)
   puts "[face:register_golden] wrote #{out}"
 end
 
+desc "Extract facts from the current Ruby on the host VM and judge the theorems with Lean"
+task :theorem => "picotest:ensure_vm" do
+  sh PICORUBY_VM, File.expand_path("theorems/extract/facts.rb", __dir__), __dir__
+  sh File.expand_path("bin/lean", __dir__), "build"
+end
+
+namespace :theorem do
+  desc "Break the code one mutation at a time; every mutation must fail the theorem that guards it"
+  task :mutants => "picotest:ensure_vm" do
+    require_relative "lib/theorem_mutants"
+    mutants = TheoremMutants.new(root: __dir__, vm: PICORUBY_VM, only: ENV["ONLY"], shard: ENV["SHARD"])
+    exit(ENV["LIST"] ? mutants.list : ENV["PROBE"] ? mutants.probe : mutants.run)
+  end
+end
+
 namespace :face do
   desc "Write spec/golden/face_<NAME>.dump. FACE=neutral|smile|joy|surprised|sad|angry|closed"
   task :register_golden do

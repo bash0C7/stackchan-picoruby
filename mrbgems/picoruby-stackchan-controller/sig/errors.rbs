@@ -17,5 +17,8 @@ module StackChan
 
     class LinkChanged < Error
     end
+
+    class ContractMismatch < Error
+    end
   end
 end

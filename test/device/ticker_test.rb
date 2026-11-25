@@ -135,14 +135,14 @@ class TickerTest < Picotest::Test
     assert_equal [0], @remote.touches
   end
 
-  def test_a_raising_touch_handler_is_logged_and_skips_the_notify
+  def test_a_raising_touch_handler_is_logged_and_the_touch_still_reaches_the_controller
     t = ticker(touch_handlers: { 0 => ->(_r) { raise IOError, "led" } })
     @touch.next_zone = 0
     t.tick(1000)
-    assert_equal [], @remote.touches
+    assert_equal [0], @remote.touches
     @touch.next_zone = 0
     t.tick(1050)
-    assert_equal [], @remote.touches
+    assert_equal [0], @remote.touches
   end
 
   def test_led_ticks_every_50ms_with_the_current_time
@@ -239,6 +239,7 @@ class TickerTest < Picotest::Test
   def test_blink_reopens_on_the_real_face_with_its_eyes
     t = ticker(periodic: [[5000, ->(r) { r.blink(150) }]])
     t.tick(0)
+    @dispatcher.show_face(:neutral)
     @display.calls.clear
     t.tick(5000)
     assert_equal [:draw_rect, :draw_rect, :draw_line, :draw_line], @display.calls.map(&:first)

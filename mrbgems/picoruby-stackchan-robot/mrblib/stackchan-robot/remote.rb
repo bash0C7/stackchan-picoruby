@@ -1,7 +1,7 @@
 module StackChan
   class Robot
     class Remote
-      BUILT_INS = [:command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
+      BUILT_INS = [:hello, :command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
                    :selftest, :touches, :audio_begin, :audio_chunk, :audio_play, :audio_done,
                    :servo_health]
 
@@ -14,7 +14,7 @@ module StackChan
         end
       end
 
-      attr_reader :exposed
+      attr_reader :exposed, :contract
 
       def initialize(dispatcher, remote_handlers: {}, speaker: nil, head: nil)
         @dispatcher   = dispatcher
@@ -25,12 +25,17 @@ module StackChan
         @audio_buf    = String.new
         @audio_pending = false
         @audio_done   = false
+        @contract     = contract_of(dispatcher)
         names = remote_handlers.keys
         i = 0
         while i < names.size
           define_handler(names[i], remote_handlers[names[i]])
           i += 1
         end
+      end
+
+      def hello(text)
+        [text == @contract, @contract]
       end
 
       def command(frame)
@@ -132,6 +137,54 @@ module StackChan
       end
 
       private
+
+      def contract_of(dispatcher)
+        return nil unless dispatcher
+        faces = []
+        keys = dispatcher.face_index.keys
+        i = 0
+        while i < keys.size
+          faces << "#{keys[i]}:#{dispatcher.face_index[keys[i]]}"
+          i += 1
+        end
+        zones = []
+        names = Builder::TOUCH_ZONES.keys
+        i = 0
+        while i < names.size
+          zones << "#{names[i]}:#{Builder::TOUCH_ZONES[names[i]]}"
+          i += 1
+        end
+        [
+          "faces=#{faces.sort.join(",")}",
+          "sides=#{pairs(Dispatcher::SIDE_TABLE)}",
+          "modes=#{pairs(Dispatcher::MODE_TABLE)}",
+          "keys=#{(Dispatcher::FRAME_KEYS + Dispatcher::SYSTEM_KEYS).sort.join(",")}",
+          "front=#{names_of(BUILT_INS).sort.join(",")}",
+          "zones=#{zones.sort.join(",")}",
+          "subtitle=#{Dispatcher::SUBTITLE_MAX_CHARS}",
+        ].join(";")
+      end
+
+      def pairs(table)
+        out = []
+        keys = table.keys
+        i = 0
+        while i < keys.size
+          out << "#{keys[i]}:#{table[keys[i]]}"
+          i += 1
+        end
+        out.sort.join(",")
+      end
+
+      def names_of(symbols)
+        out = []
+        i = 0
+        while i < symbols.size
+          out << symbols[i].to_s
+          i += 1
+        end
+        out
+      end
 
       def define_handler(name, handler)
         return if respond_to?(name, true)

@@ -130,7 +130,7 @@ class RobotDslTest < Picotest::Test
       base_faces(bot)
       bot.face :neutral, mouth: 5
     end
-    assert_equal 5, wire(robot).dispatcher.current_face.mouth
+    assert_equal 5, robot.faces[:neutral].mouth
   end
 
   def test_face_index_may_name_a_face_defined_later
@@ -214,7 +214,7 @@ class RobotDslTest < Picotest::Test
   end
 
   def test_on_frame_with_an_engine_key_raises
-    keys = %w[torque selftest read F L text YL YR PU T V M S R G B A]
+    keys = %w[torque selftest read F L text YL YR PU T V M S R G B]
     i = 0
     while i < keys.size
       key = keys[i]

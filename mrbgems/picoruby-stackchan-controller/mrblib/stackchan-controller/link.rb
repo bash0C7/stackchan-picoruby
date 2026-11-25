@@ -105,6 +105,10 @@ module StackChan
           @state = :busy
           @log.call("connect #{e.class}: #{e.message}")
           raise Busy, BUSY_MESSAGE
+        rescue ContractMismatch => e
+          @state = :busy
+          @log.call("connect #{e.class}: #{e.message}")
+          raise e
         end
         @connects += 1
         @last_connect_ms = @clock.call - t0

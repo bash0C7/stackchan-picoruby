@@ -84,6 +84,13 @@ class CliDispatchTest < Picotest::Test
     assert_equal ["busy: robot is held"], cli.lines
   end
 
+  def test_a_contract_mismatch_prints_mismatch_and_exits_9
+    daemon = ScriptedDaemon.new(results: { "face" => { status: :mismatch, out: nil, message: "contract differs" } })
+    cli = ScriptedCLI.new(daemon)
+    assert_equal 9, cli.dispatch("face", ["joy"])
+    assert_equal ["mismatch: contract differs"], cli.lines
+  end
+
   def test_an_error_prints_error_and_exits_1
     daemon = ScriptedDaemon.new(results: { "face" => { status: :error, out: nil, message: "boom" } })
     cli = ScriptedCLI.new(daemon)

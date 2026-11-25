@@ -18,7 +18,7 @@ class CentralTest < Picotest::Test
   def setup
     FakeClock.reset(1000)
     @logs = []
-    @radio = FakeRadio.new(services: gatt_services)
+    @radio = FakeRobotRadio.new
     @central = build_central(@radio)
     @central.connect
     FakeClock.sleeps.clear
@@ -26,13 +26,13 @@ class CentralTest < Picotest::Test
   end
 
   def test_connect_subscribes_the_drb_tx_and_settles_200ms
-    radio = FakeRadio.new(services: gatt_services)
+    radio = FakeRobotRadio.new
     sleeps_before = FakeClock.sleeps.size
     build_central(radio).connect
     assert_equal [[DCCCD, "\x01\x00"]], radio.descriptor_writes
     total = 0
     FakeClock.sleeps[sleeps_before, FakeClock.sleeps.size].each { |ms| total += ms }
-    assert_equal StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS, total
+    assert_equal FakeRobotRadio.connect_ms, total
     assert_equal 1, radio.connect_and_discover_calls
   end
 
@@ -95,7 +95,7 @@ class CentralTest < Picotest::Test
   end
 
   def test_not_connected_raises
-    central = build_central(FakeRadio.new(services: gatt_services))
+    central = build_central(FakeRobotRadio.new)
     assert_raise(StackChan::Controller::ConnectionError) { central.raw_send("<F:2>\n") }
   end
 

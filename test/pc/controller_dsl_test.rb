@@ -12,8 +12,8 @@ class ControllerDslTest < Picotest::Test
   end
 
   class DropOnDrbRadio < FakeRobotRadio
-    def before_drx_write(value)
-      return :continue unless value.include?("echo")
+    def before_call(name)
+      return :continue unless name == :echo
       drop_link(event: true)
       :drop
     end
@@ -370,5 +370,41 @@ class ControllerDslTest < Picotest::Test
     assert_equal ["both", "green", "solid"], [0, 1, 2].map { |i| StackChan::Controller::Args.new("both green solid")[i] }
     assert_equal 0, StackChan::Controller::Args.new(nil).size
     assert_equal 0, StackChan::Controller::Args.new("").size
+  end
+
+  class ForeignContractRadio < FakeRobotRadio
+    def initialize
+      super
+      @remote.instance_variable_set(:@contract, "faces=0:neutral")
+    end
+  end
+
+  class ContractlessRadio < FakeRobotRadio
+    def initialize
+      super
+      @responder = DRbBle::Responder.new(@remote, allow: @remote.exposed.reject { |name| name == :hello })
+    end
+  end
+
+  def test_a_robot_with_another_contract_answers_mismatch_and_gets_no_command
+    @app = wire(app, radio: ForeignContractRadio.new)
+    result = @app.act(:face, ["joy"])
+    assert_equal :mismatch, result[:status]
+    assert_true result[:message].include?("robot faces=0:neutral")
+    assert_equal [], @radio.rx_frames
+    assert_equal "busy", @daemon.status[:link]
+  end
+
+  def test_a_robot_without_a_contract_answers_mismatch_and_gets_no_command
+    @app = wire(app, radio: ContractlessRadio.new)
+    result = @app.act(:face, ["joy"])
+    assert_equal :mismatch, result[:status]
+    assert_true result[:message].include?("the robot offers no contract")
+    assert_equal [], @radio.rx_frames
+  end
+
+  def test_the_controller_and_the_robot_speak_the_same_contract
+    dispatcher = RobotTables.dispatcher(display: FakeDisplay.new, led: FakeLed.new, stdout: nil)
+    assert_equal StackChan::Controller::Central.contract, StackChan::Robot::Remote.new(dispatcher).contract
   end
 end

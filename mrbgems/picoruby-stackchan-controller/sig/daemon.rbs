@@ -19,7 +19,7 @@ module StackChan
       end
 
       type act_result = {
-        status: :ok | :busy | :error | :unknown,
+        status: :ok | :busy | :mismatch | :error | :unknown,
         out: untyped,
         message: String?
       }

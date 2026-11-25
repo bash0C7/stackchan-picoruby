@@ -2,7 +2,6 @@ module StackChan
   class Robot
     class Builder
       TOUCH_ZONES = { back: 0, right: 1, left: 2 }
-      ENGINE_FRAME_KEYS = %w[torque selftest read F L text YL YR PU T V M S R G B A]
 
       def initialize(robot)
         @robot = robot
@@ -36,7 +35,9 @@ module StackChan
       def on_frame(key, &handler)
         require_block(:on_frame, handler)
         raise ArgumentError, "on_frame: key must be a String, got #{key.inspect}" unless key.is_a?(String)
-        raise ArgumentError, "on_frame: #{key.inspect} is an engine frame key" if ENGINE_FRAME_KEYS.include?(key)
+        if Dispatcher::FRAME_KEYS.include?(key) || Dispatcher::SYSTEM_KEYS.include?(key)
+          raise ArgumentError, "on_frame: #{key.inspect} is an engine frame key"
+        end
         @robot.frame_handlers[key] = handler
       end
 

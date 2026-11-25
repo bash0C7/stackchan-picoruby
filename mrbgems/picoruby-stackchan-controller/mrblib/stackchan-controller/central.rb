@@ -10,6 +10,39 @@ module StackChan
       AUDIO_DONE_BASE_MS        = 3_300
       SUBSCRIBE_ENABLE          = "\x01\x00"
       DRB_URI                   = "drbble://stackchan"
+      FRONT                     = [:hello, :command, :servo, :led, :face, :text, :torque, :read_pos, :stack_free,
+                                   :selftest, :touches, :audio_begin, :audio_chunk, :audio_play, :audio_done,
+                                   :servo_health]
+      FRAME_KEYS                = ["F", "L", "R", "G", "B", "S", "M", "text", "YL", "YR", "PU", "T", "V",
+                                   "torque", "selftest", "read"]
+      ROBOT_SIDE                = { left: :right, right: :left, both: :both }
+
+      def self.contract
+        codec = Stackchan::BLE::FrameCodec
+        faces = codec::FACE_INDICES.keys.map { |name| "#{codec::FACE_INDICES[name]}:#{name}" }
+        sides = codec::SIDE_TO_CHAR.keys.map { |side| "#{codec::SIDE_TO_CHAR[side]}:#{ROBOT_SIDE[side]}" }
+        modes = codec::MODE_TO_CHAR.keys.map { |mode| "#{codec::MODE_TO_CHAR[mode]}:#{mode}" }
+        zones = Daemon::TOUCH_ZONE_NAMES.keys.map { |zone| "#{Daemon::TOUCH_ZONE_NAMES[zone]}:#{zone}" }
+        [
+          "faces=#{faces.sort.join(",")}",
+          "sides=#{sides.sort.join(",")}",
+          "modes=#{modes.sort.join(",")}",
+          "keys=#{FRAME_KEYS.sort.join(",")}",
+          "front=#{FRONT.map { |name| name.to_s }.sort.join(",")}",
+          "zones=#{zones.sort.join(",")}",
+          "subtitle=#{Stackchan::AI::FrameText::MAX_CHARS}",
+        ].join(";")
+      end
+
+      def self.differences(ours, theirs)
+        return "the robot offers no contract" unless theirs.is_a?(String)
+        mine = ours.split(";")
+        robot = theirs.split(";")
+        apart = []
+        mine.each { |part| apart << "controller #{part}" unless robot.include?(part) }
+        robot.each { |part| apart << "robot #{part}" unless mine.include?(part) }
+        apart.join("; ")
+      end
 
       attr_reader   :last_detail_frame
 
@@ -67,6 +100,7 @@ module StackChan
         subscribe_tx
         raise_if_lost
         @connected = true
+        agree
         self
       end
 
@@ -157,6 +191,19 @@ module StackChan
       end
 
       private
+
+      def agree
+        ours = Central.contract
+        answer = begin
+          remote_call { remote.hello(ours) }
+        rescue DeviceError => e
+          @connected = false
+          raise ContractMismatch, "the robot offers no contract (#{e.message})"
+        end
+        return if answer.is_a?(Array) && answer[0] == true
+        @connected = false
+        raise ContractMismatch, "contract differs: #{Central.differences(ours, answer.is_a?(Array) ? answer[1] : nil)}"
+      end
 
       def raise_if_lost
         raise ConnectionError, "link lost" if @lost

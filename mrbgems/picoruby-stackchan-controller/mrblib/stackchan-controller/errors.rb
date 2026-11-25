@@ -6,5 +6,6 @@ module StackChan
     class ConnectionError < Error; end
     class Busy < ConnectionError; end
     class LinkChanged < Error; end
+    class ContractMismatch < Error; end
   end
 end

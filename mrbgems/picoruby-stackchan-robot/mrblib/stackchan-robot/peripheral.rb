@@ -35,7 +35,7 @@ module StackChan
           rx_handle:   drb_handle(db, DRB_RX_CHAR_UUID, :value_handle),
           tx_handle:   drb_handle(db, DRB_TX_CHAR_UUID, :value_handle),
           cccd_handle: drb_handle(db, DRB_TX_CHAR_UUID, BLE::CLIENT_CHARACTERISTIC_CONFIGURATION),
-          responder:   DRbBle::Responder.new(remote, allow: remote.exposed)
+          responder:   DRbBle::Responder.new(remote, allow: remote.exposed, gate: :hello)
         )
         @link = StackChan::Robot::LinkLoop.new(
           port: self,

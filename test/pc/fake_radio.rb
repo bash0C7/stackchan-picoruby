@@ -170,10 +170,36 @@ class LoggingRemote < StackChan::Robot::Remote
   end
 end
 
+if Object.const_defined?(:DRbBle)
+  class HookedResponder < DRbBle::Responder
+    def initialize(radio, front)
+      @radio = radio
+      super(front, allow: front.exposed, gate: :hello)
+    end
+
+    private
+
+    def reply(ref, msg, args)
+      return "" if @radio.called(msg) == :drop
+      super
+    end
+  end
+end
+
 class FakeRobotRadio < FakeRadio
   DRX   = 0x21
   DTX   = 0x24
   DCCCD = 0x26
+
+  def self.handshake_ms
+    w = DRbBle::Writer.new
+    DRb::DRbMessage.new(w).send_request(nil, :hello, [StackChan::Controller::Central.contract])
+    (DRbBle.chunks(w.out).size - 1) * StackChan::Controller::Central::POLLING_UNIT_MS
+  end
+
+  def self.connect_ms
+    StackChan::Controller::Central::SUBSCRIBE_SETTLE_MS + handshake_ms
+  end
 
   def self.gatt_services
     gatt = StackChan::Controller::Gatt
@@ -200,12 +226,17 @@ class FakeRobotRadio < FakeRadio
     @dispatcher = RobotTables.dispatcher(display: @display, led: @led, stdout: NullSink.new,
                                           head: @head, speaker: @speaker)
     @remote = LoggingRemote.new(@dispatcher, speaker: @speaker, head: @head, log: @rx_frames)
-    @responder = DRbBle::Responder.new(@remote, allow: @remote.exposed)
+    @responder = HookedResponder.new(self, @remote)
   end
 
   def release_after(ms)
     @release_after_ms = ms
     @last_rx_at = FakeClock.now
+  end
+
+  def drop_link(event: true)
+    super
+    @responder.reset
   end
 
   def touch(zone)
@@ -227,13 +258,22 @@ class FakeRobotRadio < FakeRadio
     :continue
   end
 
+  def called(name)
+    @touches_calls += 1 if name == :touches
+    before_call(name)
+  end
+
+  def before_call(_name)
+    :continue
+  end
+
   def write_value_of_characteristic_without_response(conn_handle, handle, value)
     return false unless super
     @last_rx_at = FakeClock.now
     if handle == DRX
-      @touches_calls += 1 if value.include?("touches")
       return true if before_drx_write(value) == :drop
       reply = @responder.feed(value)
+      return true if link_dropped?
       @remote.perform_audio_play
       DRbBle.chunks(reply, 20).each { |chunk| schedule_notification(DTX, chunk) }
       return true
