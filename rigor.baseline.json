@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "success": false,
-  "error_count": 26,
+  "error_count": 27,
   "diagnostics": [
     {
       "path": ".rigor.yml",
@@ -47,6 +47,19 @@
       "method_name": "byteslice",
       "evidence_tier": "high",
       "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-possible-nil-receiver"
+    },
+    {
+      "path": "lib/theorem_mutants.rb",
+      "line": 343,
+      "column": 11,
+      "severity": "error",
+      "rule": "call.undefined-method",
+      "source_family": "builtin",
+      "message": "undefined method `popen2e' for singleton(Open3)",
+      "receiver_type": "singleton(Open3)",
+      "method_name": "popen2e",
+      "evidence_tier": "high",
+      "documentation_url": "https://rigor.typedduck.fail/manual/04-diagnostics/#rule-call-undefined-method"
     },
     {
       "path": "mrbgems/picoruby-drb-ble/test/drb_ble_test.rb",

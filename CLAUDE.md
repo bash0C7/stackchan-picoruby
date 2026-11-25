@@ -135,19 +135,22 @@ bundle exec rake picotest:build       # host VM 再 build (build_config/picoruby
 - picoruby-scservo は firmware build が fetch する。build 前は `SCSERVO_RB=` で clone を指す。
 - host VM は `vendor/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host-picotest` に建つ。R2P2-ESP32 自身の host ツールは同じ picoruby の `build/host` なので衝突しない。全 suite が `uninitialized constant Picotest` になったら、順序ではなく build 名の衝突を疑う。
 - `rake test` が先に走らせる `rigor:check` は host 側の型解析で、`rigor.baseline.json` に無い diagnostic が 1 つでもあれば落ちる。`rake vendor:setup` 済みが前提で、初回に自分の gemset を `vendor/rigor-tool` に入れる。reference は `docs/rigor.md`。
-- CI は `deps.yml` が push ごと、`theorems.yml` が判定される側の変わった PR と main への push、`theorem-mutants.yml` が週次 (前の成功から変わった時だけ) と手動、`firmware.yml` が週次と手動。`theorems.yml` の schedule は判定せず cache を読むだけで、7 日読まれないと消える cache を残す。cache に置くのは Lean と host VM の binary と gem で、事実と判定の結果は置かない。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
+- CI は `deps.yml` が push ごと、`theorems.yml` が判定される側の変わった PR と main への push、`theorem-mutants.yml` が週次 (前の成功から変わった時だけ) と手動で shard に分けて、`firmware.yml` が週次と手動。`theorems.yml` の schedule は判定せず cache を読むだけで、7 日読まれないと消える cache を残す。cache に置くのは Lean と host VM の binary と gem で、事実と判定の結果は置かない。`firmware.yml` が覆うものを変えたら `gh workflow run firmware.yml` で起動する。
 
 ## 定理 (`theorems/`)
 
 robot と controller の正しいあり方を Lean の定理として持ち、`rake theorem` がいまのコードの上で判定する。AI の返事の内容は判定の対象にしない。
 
-- 3 層。期待 (`Link.lean` / `LinkLoop.lean` の 1 手の関数と、任意の長さの列についての `HandOff.lean` の証明)、一致 (`Conformance.lean`。実物の Ruby を状態 × 入力の分類で全数走らせた表が 1 手の関数と同じ)、目標 (`Goals.lean`。`apps/*/app.rb` の宣言の値で期待が成り立つ)。
+- 4 つの部分。期待 (1 手の関数とその一般定理。`Link` / `LinkLoop` は controller と robot の link、`Frame` は frame の語彙と結果、`Contract` は契約の門、`Face` は顔と瞬き、`Remote` はタッチの列と音声の旗、`Touch` はタッチの読み取りと app に渡す handle。任意の長さの列は `HandOff` と各 file の帰納法の定理)、一致 (`Conformance.lean`。実物の Ruby を状態 × 入力の分類で全数走らせた表が 1 手の関数と同じ)、目標 (`Goals.lean`。`apps/*/app.rb` の宣言と実物の表で期待が成り立つ)、オラクル (`Oracle.lean`。防ぐ不具合の一覧 `failures` と、それぞれを守る定理。判定の外に置くものは `outside`)。
+- 一致の定理が示すのは、`every_*_class_*` が並べる分類の上で実物とモデルが同じことだけ。分類の外の入力について言えるのは、モデルの一般定理と変異で確かめた範囲になる。
+- `Theorems.lean` は全部を読んだ後に 2 つを判定する。どの定理も標準の公理 (`propext` / `Quot.sound` / `Classical.choice`) だけに頼ること (`sorry` は `sorryAx`、`native_decide` は専用の公理として残るので捕まる)。手で書いたどの定理も、`Oracle.failures` のどれかに名前が載るか、載った定理の証明の段として使われること。定理を足したら、守る不具合に名前を足す。
 - 事実は `theorems/extract/facts.rb` が host picotest VM で本物の class を呼んで抜き、`theorems/Theorems/Facts/` に置く (commit しない)。時計は注入し、乱数と sleep は使わない。`bin/lean build` を直に呼ぶと前に抜いた事実で判定する。
 - class に instance 変数を足すと `*_keeps_no_state_the_model_lacks` が落ちる。モデルにも足すか、振る舞いに効かないことを確かめて一覧に足す。
-- 判定は `decide +kernel` と普通の証明で行い、`native_decide` と `sorry` を使わない。外の仕組みへの前提は仮定の structure (`HandOff.Quietness` / `HandOff.Holding`) の field に名前を付けて置き、見ている acceptance の step を `Goals.assumptions` に並べる。前提が満たせることは `quietness_happens` / `holding_happens` が示す。
+- 判定は `decide +kernel` と普通の証明で行う。外の仕組みへの前提は仮定の structure (`HandOff.Quietness` / `HandOff.Holding`) の field に名前を付けて置き、見ている acceptance の step を `Goals.assumptions` に並べる。前提が満たせることは `quietness_happens` / `holding_happens` が示す。
 - 定理が落ちたら、コードが期待を破ったのか、定理が期待を言い当てていないのかを、その定理が守るものから判断する。通すために定理を弱めない。
-- 定理を足したら、それを破る変異を `lib/theorem_mutants.rb` に足す。`rake theorem:mutants` が変異を 1 つずつ入れ、どれも狙った定理で落ちることを確かめる。走る間は作業 tree のコードが書き換わるので、他の test や編集を並走させない。
-- Lean は `bin/lean` が `vendor/elan/` に入れる (版は `theorems/lean-toolchain`)。`vendor/elan/bin/` の elan を `ELAN_HOME` 無しで呼ぶと `~/.elan` を作るので、必ず `bin/lean` を通す。
+- `rake theorem:mutants` は判定される側の Ruby (`TheoremMutants::TARGETS`) を prism で読み、比較の境界、`&&` / `||`、真偽、整数の ±1、条件の否定、文の削除の変異を作って 1 つずつ入れる。Swift、acceptance の runner、facts.rb の分類のように作れない変異は、狙う定理と並べて `HAND` に書く。method ごとに、頭に `raise` を入れた探りで事実の抜き出しがその method を呼ぶかを先に確かめ、呼ばない method の変異は回さずに `UNSEEN` とする。回した変異は、定理が落ちれば検出、抜き出しが壊れれば `CRASHED`、事実が 1 byte も変わらなければ Lean を回さずに生き残りとする。
+- 変異の合格は、どの method も事実に呼ばれるか `OUTSIDE` に理由付きで載り、呼ばれる method の生き残りがどれも `EQUIVALENT` に理由付きで載ること。`EQUIVALENT` に入れるのは振る舞いが変わらない変異だけで、振る舞いが変わる生き残りには定理か事実を足す。`LIST=1` で数、`PROBE=1` で探りだけ、`ONLY=<path の一部>` で 1 file、`SHARD=k/n` で n 分の 1 を回す。走る間は作業 tree のコードが書き換わるので、他の test、編集、作業 tree の読み取りを並走させない (読むと変異の入ったコードを読む)。
+- Lean は `bin/lean` が `vendor/elan/` に入れる (版は `theorems/lean-toolchain`)。`vendor/elan/bin/` の elan を `ELAN_HOME` 無しで呼ぶと `~/.elan` を作るので、必ず `bin/lean` を通す。`theorems/lakefile.toml` は lean を `--threads=2 --memory=4096` で起こす。上限の無い lean は 1 つの process で数千の thread を立てることがあり、そうなると Mac の kernel が spinlock の時間切れで止まる。並べて回す時は worktree を増やさず、CI の shard で分ける。
 - host VM は `MRB_INT64`、firmware は `MRB_INT32` + `MRB_WORD_BOXING` で、この差は判定の外にある。
 
 ## ビルド・deploy

@@ -1,53 +1,26 @@
+require "digest"
 require "open3"
+require "prism"
 
 class TheoremMutants
   CONTROLLER = "mrbgems/picoruby-stackchan-controller/mrblib/stackchan-controller".freeze
   ROBOT      = "mrbgems/picoruby-stackchan-robot/mrblib/stackchan-robot".freeze
-  LINK       = "#{CONTROLLER}/link.rb".freeze
-  LINK_LOOP  = "#{ROBOT}/link_loop.rb".freeze
-  PERIPHERAL = "#{ROBOT}/peripheral.rb".freeze
+  PROTOCOL   = "mrbgems/picoruby-stackchan-protocol/mrblib/stackchan-protocol".freeze
   FACTS      = "theorems/extract/facts.rb".freeze
 
-  TICKS   = "the_link_ticks_as_modeled".freeze
-  ACTS    = "the_link_acts_as_modeled".freeze
-  LOOP    = "the_robot_loop_ticks_as_modeled".freeze
-  BUDGET  = "every_controller_declares_its_hold_in_budget".freeze
-  ASKED   = "every_controller_speaks_only_when_asked".freeze
+  TARGETS = [
+    *%w[link central session send_builder args builder].map { |name| "#{CONTROLLER}/#{name}.rb" },
+    *%w[link_loop peripheral dispatcher remote ticker handle head builder].map { |name| "#{ROBOT}/#{name}.rb" },
+    "mrbgems/picoruby-drb-ble/mrblib/drb-ble.rb",
+    *%w[frame_codec frame_parser frame_text].map { |name| "#{PROTOCOL}/#{name}.rb" },
+    *%w[robot mac ios watchos].map { |name| "apps/#{name}/app.rb" },
+  ].freeze
+
   OUTPACE = "every_controller_outpaces_the_robot".freeze
 
-  MUTANTS = [
-    [LINK, "now - @last_action_at >= @hold", "now - @last_action_at > @hold", TICKS],
-    [LINK, "if expire && @hold &&", "if @hold &&", TICKS],
-    [LINK, "return if @state == :quiet\n", "\n", TICKS],
-    [LINK, "return if now - @last_sent_at < @keepalive_ms", "return if now - @last_sent_at <= @keepalive_ms", TICKS],
-    [LINK, "return if @state == :released || @state == :busy\n        @central.drain",
-     "return if @state == :released\n        connect! if @state == :busy\n        @central.drain", TICKS],
-    [LINK, "        @touches.clear\n", "", TICKS],
-    [LINK, "        @last_sent_at = now\n", "", TICKS],
-    [LINK, "        @state = :released\n        @releases += 1", "        @state = :released\n        @hidden = 1\n        @releases += 1",
-     "the_link_keeps_no_state_the_model_lacks"],
-    [LINK, "connect! if @state == :released || @state == :busy", "connect! if @state == :released", ACTS],
-    [LINK, "          lost! if @central.lost?\n          raise e\n        end\n        lost! if",
-     "          lost! if @central.lost?\n          result = yield\n        end\n        lost! if", ACTS],
-    [LINK, "used! unless @state == :released", "nil", ACTS],
-    [LINK, "raise Busy, BUSY_MESSAGE", "nil", ACTS],
-    [LINK, "keepalive_ms: 1_000", "keepalive_ms: 12_000", OUTPACE],
-    [LINK_LOOP, "return if @clock.call - @active_at < @release_after_us", "return if @clock.call - @active_at <= @release_after_us", LOOP],
-    [LINK_LOOP, "        @active_at = nil\n        @port.disconnect_central", "        @port.disconnect_central", LOOP],
-    [LINK_LOOP, "        @active_at = nil\n        @drb.disconnected", "        @drb.disconnected", LOOP],
-    [LINK_LOOP, "if @remote.perform_audio_play && @active_at", "if @remote.perform_audio_play", LOOP],
-    [LINK_LOOP, "@active_at = @clock.call if @drb.service(@port)", "@drb.service(@port)", LOOP],
-    [LINK_LOOP, "        @ticker.tick(@clock.call / 1000)", "        @hidden = 1\n        @ticker.tick(@clock.call / 1000)",
-     "the_robot_loop_keeps_no_state_the_model_lacks"],
-    [PERIPHERAL, "          @link.central_arrived\n", "          nil\n", LOOP],
-    [PERIPHERAL, "          @link.disconnected\n", "", LOOP],
-    ["apps/ios/app.rb", "  c.hold 10_000\n", "", BUDGET],
-    ["apps/watchos/app.rb", "c.hold 10_000", "c.hold 20_000", BUDGET],
-    ["apps/robot/app.rb", "  bot.release_after 15_000\n", "", BUDGET],
-    ["apps/robot/app.rb", "bot.release_after 15_000", "bot.release_after 30_000", BUDGET],
+  HAND = [
     ["apps/robot/app.rb", "bot.release_after 15_000", "bot.release_after 4_000", OUTPACE],
-    ["apps/mac/app.rb", "  c.hold 10_000\n", "  c.hold 10_000\n  c.every(1_000) { |s| s.face(:joy) }\n", ASKED],
-    ["apps/mac/app.rb", "  c.hold 10_000\n", "  c.hold 10_000\n  c.on_touch { |s, _zone| s.face(:joy) }\n", ASKED],
+    [CONTROLLER + "/link.rb", "keepalive_ms: 1_000", "keepalive_ms: 12_000", OUTPACE],
     ["apps/watchos/Sources/VMExecutor.swift", "repeating: 1.0", "repeating: 12.0", OUTPACE],
     ["#{CONTROLLER}/daemon.rb", "TICK_MS = 250", "TICK_MS = 12_000", OUTPACE],
     ["#{CONTROLLER}/central.rb", "ACK_TIMEOUT_MS            = 3_000", "ACK_TIMEOUT_MS            = 14_000", OUTPACE],
@@ -56,26 +29,284 @@ class TheoremMutants
     [FACTS, "%w[ok connectionError timeout timeoutLost otherError okLost].each", "%w[ok connectionError timeout].each",
      "every_link_action_class_is_observed"],
     [FACTS, "[nil, 2_000_000].each do |played|", "[nil].each do |played|", "every_robot_tick_class_is_observed"],
+    [FACTS, "[0, 1, 15, 16].each do |queued|", "[0, 1].each do |queued|", "every_front_class_is_observed"],
+    [FACTS, "[false, true].each do |waiting|", "[false].each do |waiting|", "every_face_class_is_observed"],
   ].freeze
 
-  def initialize(root:, vm:)
+  RADIO     = "BLE radio plumbing: connect, discovery, notifications, chunks, timeouts".freeze
+  DIAGNOSIS = "diagnostics people read: stack_free, servo_health, the position detail, contract differences".freeze
+  UNUSED    = "extension points no app declares: on_frame, remote handlers, on_boot, controller on_touch and every".freeze
+  PLAYBACK  = "how long playback takes".freeze
+  NO_CALLER = "code without a caller: FrameCodec touch parsing".freeze
+  VOICE     = "what an AI reply or a synthesized voice says".freeze
+  VERB      = "the CLI remote verb".freeze
+
+  OUTSIDE = [
+    *%w[connected? lost? link_lost reset_link connect disconnect keepalive drain remote call_front send_chunk poll
+        raise_if_lost polls_for resolve_handles subscribe_tx settle handle_notification].map do |name|
+      ["#{CONTROLLER}/central.rb", "Central##{name}", RADIO]
+    end,
+    ["#{CONTROLLER}/central.rb", "Central#self.differences", DIAGNOSIS],
+    ["#{CONTROLLER}/central.rb", "Central#audio_done_timeout_ms", PLAYBACK],
+    ["#{CONTROLLER}/session.rb", "Session#remote", VERB],
+    ["#{CONTROLLER}/session.rb", "Session#prime", VOICE],
+    ["#{CONTROLLER}/builder.rb", "Builder#on_touch", UNUSED],
+    ["#{CONTROLLER}/builder.rb", "Builder#every", UNUSED],
+    *%w[initialize pop_event event_popped take_write disconnect_central send_notification build_adv_data
+        build_gatt_database drb_handle].map { |name| ["#{ROBOT}/peripheral.rb", "Peripheral##{name}", RADIO] },
+    ["#{ROBOT}/dispatcher.rb", "Dispatcher#emit_servo_detail", DIAGNOSIS],
+    *%w[stack_free servo_health err_label status_label].map { |name| ["#{ROBOT}/remote.rb", "Remote##{name}", DIAGNOSIS] },
+    ["#{ROBOT}/remote.rb", "Remote#define_handler", UNUSED],
+    ["#{ROBOT}/handle.rb", "Handle#say_ready?", DIAGNOSIS],
+    ["#{ROBOT}/head.rb", "Head#read_health", DIAGNOSIS],
+    *%w[on_boot on_frame remote].map { |name| ["#{ROBOT}/builder.rb", "Builder##{name}", UNUSED] },
+    *["DRbBle#self.chunks", "Socket#initialize", "Socket#write", "Socket#read", "DRbBle#self.register", "DRbBle#self.socket",
+      "DRb#create_socket"].map { |name| ["mrbgems/picoruby-drb-ble/mrblib/drb-ble.rb", name, RADIO] },
+    ["#{PROTOCOL}/frame_codec.rb", "FrameCodec#self.touch_event?", NO_CALLER],
+    ["#{PROTOCOL}/frame_codec.rb", "FrameCodec#self.parse_touch", NO_CALLER],
+  ].freeze
+
+  EQUIVALENT = {}.freeze
+
+  EXTRACT_LIMIT_S = 120
+  BUILD_LIMIT_S   = 900
+
+  class Points < Prism::Visitor
+    SWAP = { :< => "<=", :<= => "<", :> => ">=", :>= => ">", :== => "!=", :!= => "==" }.freeze
+    KEEP = %i[require attr_reader attr_accessor attr_writer private include alias_method module_function].freeze
+    WHOLE = [Prism::DefNode, Prism::ClassNode, Prism::ModuleNode, Prism::SingletonClassNode, Prism::ConstantWriteNode,
+             Prism::ConstantPathWriteNode, Prism::AliasMethodNode].freeze
+
+    attr_reader :out, :probes
+
+    def initialize
+      super()
+      @out = []
+      @probes = {}
+      @owners = []
+      @method = nil
+    end
+
+    def visit_class_node(node)
+      within(node.constant_path.slice) { super }
+    end
+
+    def visit_module_node(node)
+      within(node.constant_path.slice) { super }
+    end
+
+    def visit_def_node(node)
+      outer = @method
+      @method = "#{@owners.last}##{node.receiver ? "self." : ""}#{node.name}"
+      @probes[@method] = node.body.location.start_offset if node.body
+      super
+      @method = outer
+    end
+
+    def visit_call_node(node)
+      add(node.message_loc, SWAP[node.name], "#{node.name} -> #{SWAP[node.name]}") if SWAP[node.name] && node.message_loc
+      super
+    end
+
+    def visit_and_node(node)
+      add(node.operator_loc, node.operator == "and" ? "or" : "||", "&& -> ||")
+      super
+    end
+
+    def visit_or_node(node)
+      add(node.operator_loc, node.operator == "or" ? "and" : "&&", "|| -> &&")
+      super
+    end
+
+    def visit_true_node(node)
+      add(node.location, "false", "true -> false")
+    end
+
+    def visit_false_node(node)
+      add(node.location, "true", "false -> true")
+    end
+
+    def visit_integer_node(node)
+      add(node.location, (node.value + 1).to_s, "#{node.value} -> #{node.value + 1}")
+      add(node.location, (node.value - 1).to_s, "#{node.value} -> #{node.value - 1}") if node.value.positive?
+    end
+
+    def visit_if_node(node)
+      negate(node.predicate)
+      super
+    end
+
+    def visit_unless_node(node)
+      negate(node.predicate)
+      super
+    end
+
+    def visit_statements_node(node)
+      node.body.each do |child|
+        next if WHOLE.any? { |kind| child.is_a?(kind) }
+        next if child.is_a?(Prism::CallNode) && child.receiver.nil? && KEEP.include?(child.name)
+        add(child.location, "nil", "delete #{child.slice.lines.first.strip[0, 50]}")
+      end
+      super
+    end
+
+    private
+
+    def negate(predicate)
+      add(predicate.location, "!(#{predicate.slice})", "negate #{predicate.slice[0, 50]}")
+    end
+
+    def within(owner)
+      @owners.push(owner)
+      yield
+      @owners.pop
+    end
+
+    def add(loc, to, label)
+      @out << [loc.start_offset, loc.end_offset, to, "#{loc.start_line}: #{label}", @method]
+    end
+  end
+
+  def initialize(root:, vm:, only: nil, shard: nil)
     @root = root
     @vm = vm
+    @only = only
+    @shard, @shards = shard ? shard.split("/").map { |n| Integer(n) } : [0, 1]
+  end
+
+  def units
+    all = []
+    TARGETS.select { |file| @only.nil? || file.include?(@only) }.each do |file|
+      source = File.binread(File.join(@root, file))
+      points = Points.new
+      Prism.parse(source).value.accept(points)
+      mutants = Hash.new { |hash, key| hash[key] = [] }
+      points.out.each do |from, to, text, label, method|
+        mutated = splice(source, from, to, text)
+        mutants[method] << [mutated, label] if Prism.parse(mutated).success?
+      end
+      mutants.each do |method, list|
+        at = method && points.probes[method]
+        all << [file, method, at && splice(source, at, at, "raise('probe'); "), list]
+      end
+    end
+    all.select.with_index { |_unit, i| i % @shards == @shard }
+  end
+
+  def hand
+    @only || @shard != 0 ? [] : HAND
+  end
+
+  def list
+    found = units
+    found.group_by(&:first).each do |file, group|
+      puts "#{group.sum { |unit| unit[3].size }.to_s.rjust(5)} mutants in #{group.size.to_s.rjust(3)} units  #{file}"
+    end
+    puts "#{found.sum { |unit| unit[3].size }} generated in #{found.size} units, #{HAND.size} by hand"
+    0
+  end
+
+  def probe
+    out, verdict = build
+    return (puts out; 1) unless verdict == :ok
+    @baseline = facts_digest
+    units.each do |file, method, probe, mutants|
+      state = if outside(file, method) then "OUTSIDE"
+              elsif probe.nil? then "ALWAYS"
+              elsif seen?(file, probe) then "SEEN"
+              else "UNSEEN"
+              end
+      puts "#{state.ljust(8)} #{mutants.size.to_s.rjust(4)} #{file} [#{method}]"
+    end
+    0
   end
 
   def run
-    verdicts = MUTANTS.map { |file, from, to, expected| judge(file, from, to, expected) }
-    out, ok = build
-    puts out unless ok
-    killed = verdicts.count(:killed)
-    puts "#{killed} killed, #{verdicts.count(:survived)} survived, #{verdicts.count(:broken)} broken; " \
-         "unmutated code #{ok ? "passes" : "FAILS"}"
-    killed == MUTANTS.size && ok ? 0 : 1
+    out, verdict = build
+    unless verdict == :ok
+      puts out
+      puts "unmutated code FAILS"
+      return 1
+    end
+    @baseline = facts_digest
+    verdicts = Hash.new(0)
+    failures = stale_outside
+    failures.each { |line| puts line }
+    units.each do |file, method, probe, mutants|
+      if outside(file, method)
+        verdicts[:outside] += mutants.size
+        next
+      end
+      if probe && !seen?(file, probe)
+        verdicts[:unseen] += mutants.size
+        failures << "UNSEEN   #{file} [#{method}]: no fact calls it (#{mutants.size} mutants)"
+        puts failures.last
+        next
+      end
+      mutants.each do |mutated, label|
+        verdict, detail = judge_text(file, mutated)
+        verdict = :equivalent if verdict == :survived && EQUIVALENT.key?([file, method, label.sub(/\A\d+: /, "")])
+        verdicts[verdict] += 1
+        line = "#{verdict.to_s.upcase.ljust(8)} #{file}:#{label} [#{method}]#{detail}"
+        failures << line if verdict == :survived
+        puts line
+      end
+    end
+    killed = hand.map do |file, from, to, expected|
+      verdict = judge_hand(file, from, to, expected)
+      verdicts["hand #{verdict}"] += 1
+      verdict
+    end
+    puts verdicts.map { |name, n| "#{n} #{name}" }.join(", ")
+    failures.empty? && killed.all?(:killed) ? 0 : 1
   end
 
   private
 
-  def judge(file, from, to, expected)
+  def splice(source, from, to, text)
+    source.byteslice(0, from) + text + source.byteslice(to, source.bytesize - to)
+  end
+
+  def stale_outside
+    oracle = File.read(File.join(@root, "theorems/Theorems/Oracle.lean"))
+    OUTSIDE.filter_map do |file, method, reason|
+      next "OUTSIDE  #{file} [#{method}]: #{reason.inspect} is not in Oracle.outside" unless oracle.include?("(#{reason.inspect},")
+      points = Points.new
+      Prism.parse(File.binread(File.join(@root, file))).value.accept(points)
+      "OUTSIDE  #{file} [#{method}]: no such method" unless points.probes.key?(method)
+    end
+  end
+
+  def outside(file, method)
+    OUTSIDE.find { |f, m, _reason| f == file && m == method }
+  end
+
+  def seen?(file, probe)
+    path = File.join(@root, file)
+    original = File.binread(path)
+    File.binwrite(path, probe)
+    _out, status = capture([@vm, File.join(@root, FACTS), @root], EXTRACT_LIMIT_S)
+    status != :ok || facts_digest != @baseline
+  ensure
+    File.binwrite(path, original) if original
+  end
+
+  def judge_text(file, mutated)
+    path = File.join(@root, file)
+    original = File.binread(path)
+    File.binwrite(path, mutated)
+    out, verdict = build
+    return [:crashed, " (#{verdict})"] if verdict == :extract_failed || verdict == :extract_timeout
+    return [:survived, " (facts unchanged)"] if verdict == :same
+    return [:survived, " (facts changed, theorems pass)"] if verdict == :ok
+    names = failed_theorems(out)
+    return [:crashed, " (facts unreadable)"] if names.empty?
+    [:killed, " by #{names.join(", ")}"]
+  ensure
+    File.binwrite(path, original) if original
+  end
+
+  def judge_hand(file, from, to, expected)
     path = File.join(@root, file)
     original = File.read(path)
     unless original.scan(from).size == 1
@@ -83,30 +314,47 @@ class TheoremMutants
       return :broken
     end
     File.write(path, original.sub(from) { to })
-    out, ok = build
-    verdict, detail = classify(out, ok, expected)
-    puts "#{verdict.to_s.upcase.ljust(8)} #{expected} <- #{file}: #{to.strip.lines.first.to_s.strip[0, 60].inspect}#{detail}"
-    verdict
+    out, verdict = build
+    names = %i[ok same].include?(verdict) ? [] : failed_theorems(out)
+    result = if %i[ok same].include?(verdict) then :survived
+             elsif names.include?(expected) then :killed
+             else :broken
+             end
+    puts "#{result.to_s.upcase.ljust(8)} #{expected} <- #{file}: #{to.strip.lines.first.to_s.strip[0, 60].inspect}" \
+         "#{result == :broken ? " failed instead: #{names.join(", ")}" : ""}"
+    result
   ensure
     File.write(path, original) if original
   end
 
-  def classify(out, ok, expected)
-    return [:survived, ""] if ok
-    names = failed_theorems(out)
-    return [:killed, ""] if names.include?(expected)
-    [:broken, " failed instead: #{names.empty? ? out.lines.last(5).join : names.join(", ")}"]
+  def build
+    out, status = capture([@vm, File.join(@root, FACTS), @root], EXTRACT_LIMIT_S)
+    return [out, status == :timeout ? :extract_timeout : :extract_failed] unless status == :ok
+    return [out, :same] if @baseline && facts_digest == @baseline
+    lean, status = capture([File.join(@root, "bin/lean"), "build"], BUILD_LIMIT_S)
+    [lean, status == :ok ? :ok : :failed]
   end
 
-  def build
-    out, status = Open3.capture2e(@vm, File.join(@root, FACTS), @root)
-    return [out, false] unless status.success?
-    lean, status = Open3.capture2e(File.join(@root, "bin/lean"), "build")
-    [lean, status.success?]
+  def facts_digest
+    Digest::SHA256.hexdigest(Dir[File.join(@root, "theorems/Theorems/Facts/*.lean")].sort.map { |f| File.binread(f) }.join)
+  end
+
+  def capture(command, limit)
+    Open3.popen2e(*command) do |stdin, out, wait|
+      stdin.close
+      reader = Thread.new { out.read }
+      unless wait.join(limit)
+        Process.kill("KILL", wait.pid)
+        wait.join
+        return [reader.value, :timeout]
+      end
+      [reader.value, wait.value.success? ? :ok : :failed]
+    end
   end
 
   def failed_theorems(out)
-    out.scan(/^error: (Theorems\/\w+\.lean):(\d+):/).map do |file, line|
+    out.scan(/^error: (Theorems(?:\/\w+)?\.lean):(\d+):/).map do |file, line|
+      next "Theorems.lean" if file == "Theorems.lean"
       lines = File.readlines(File.join(@root, "theorems", file)).first(line.to_i)
       lines.reverse.find { |text| text.start_with?("theorem ") }.to_s.split[1].to_s.delete_suffix(":")
     end.uniq

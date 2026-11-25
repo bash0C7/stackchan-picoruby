@@ -33,7 +33,8 @@ jobs:
                    --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
           if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null &&
              git diff --quiet "$last" HEAD -- theorems apps mrbgems/picoruby-stackchan-robot \
-               mrbgems/picoruby-stackchan-controller acceptance/runner.rb acceptance/lock.yml lib/theorem_mutants.rb Rakefile; then
+               mrbgems/picoruby-stackchan-controller mrbgems/picoruby-stackchan-protocol mrbgems/picoruby-drb-ble \
+               acceptance/runner.rb acceptance/lock.yml lib/theorem_mutants.rb Rakefile; then
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -46,10 +47,16 @@ jobs:
         github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'schedule' && needs.changed.outputs.run == 'true'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/theorem-env
 
       - run: bundle exec rake theorem:mutants
+        env:
+          SHARD: ${{ matrix.shard }}/16

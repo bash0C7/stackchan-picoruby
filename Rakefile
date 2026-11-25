@@ -174,7 +174,8 @@ namespace :theorem do
   desc "Break the code one mutation at a time; every mutation must fail the theorem that guards it"
   task :mutants => "picotest:ensure_vm" do
     require_relative "lib/theorem_mutants"
-    exit TheoremMutants.new(root: __dir__, vm: PICORUBY_VM).run
+    mutants = TheoremMutants.new(root: __dir__, vm: PICORUBY_VM, only: ENV["ONLY"], shard: ENV["SHARD"])
+    exit(ENV["LIST"] ? mutants.list : ENV["PROBE"] ? mutants.probe : mutants.run)
   end
 end
 
