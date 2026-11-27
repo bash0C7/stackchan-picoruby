@@ -1,25 +1,45 @@
 ---
 name: stackchan-device-acceptance
-description: Put the one firmware pinned in acceptance/lock.yml on the robot once (acceptance:deploy), send the app separately (acceptance:app, any number of times, each behind a QEMU gate), and check the board from the Mac without writing flash (acceptance:check, run once start to finish by the owner in a TTY terminal), writing acceptance/results/<stamp>.{md,json}. Required before merging anything that changes firmware, gems, app or the BLE link.
+description: Run the pre-merge CoreS3 acceptance gate (acceptance:deploy, acceptance:app, acceptance:check, optional acceptance:darwin) pinned by acceptance/lock.yml and writing acceptance/results/<stamp>.{md,json}. Manual invocation only.
+argument-hint: "[deploy|app|check|darwin] [STAMP=...]"
+disable-model-invocation: true
+effort: medium
 ---
 
-Needs the CoreS3 on USB, the Mac's Bluetooth granted to `~/Applications/StackchanPico.app`, and ESP-IDF (`ESP_IDF_EXPORT` if not at `~/esp/esp-idf/export.sh`). Everything runs from this checkout. The board is the one `bundle exec rake r2p2:boards` marks CoreS3, and each serial step waits on the shared esp32 lock. Nothing else may hold the serial port.
+# Pre-Merge Device Acceptance Gate
 
-Run `acceptance:deploy` and `acceptance:app` in a haiku subagent (foreground). Tell it to report the exit status of `rake` itself and the `[acceptance] verdict:` line:
+Required before merging any branch that changes firmware, gems, app, or the BLE link.
+Prerequisites: CoreS3 connected on USB, Mac Bluetooth granted to `~/Applications/StackchanPico.app`, ESP-IDF available (`ESP_IDF_EXPORT` if not `~/esp/esp-idf/export.sh`), no serial monitor open.
 
-    bundle exec rake acceptance:<task> 2>&1 | tee /tmp/stackchan-picoruby-debug/acceptance-<task>.log; echo "rake exit=${PIPESTATUS[0]}"
+## Step-by-Step Procedure
 
-1. `bundle exec rake r2p2:boards`: the CoreS3 is on USB and the lock is free.
-2. `acceptance:deploy` (3600000 ms), only for a report that has no firmware on the board yet. It pins every tree, runs `r2p2:setup` and `r2p2:build_flash` (QEMU gate first), sends the app, reads the flash identity and boots. This is the only firmware write of the report.
-3. `acceptance:check`: the owner runs it once, start to finish, in a terminal with a TTY (Terminal.app) at the robot, because the head touch and the questions (servo moved, subtitle intact, audio without gaps, audio without distortion) need a person; a head nobody touches within 30 s is recorded as not touched and neither stops the run nor blocks `pass`. A TTY can also be a tmux session that Claude drives, with the owner answering in chat. It stops before touching anything if the `firmware:` pins of `acceptance/lock.yml`, the firmware inputs or the app inputs differ from what the board runs, and it never writes flash. `chat` runs last and needs a reply from the real sidecar.
-4. The app changed: `acceptance:app` checks the pins, boots the app under QEMU, and only on a PASS sends it and boots the board again. It never touches the firmware. Then `acceptance:check` again.
-5. Optional, with a paired iPhone that is unlocked (a locked phone refuses the launch: `the device was not, or could not be, unlocked`) and a valid signing certificate: `DEVELOPMENT_TEAM=<team> bundle exec rake acceptance:darwin` builds both Apple apps for the device, runs the iPhone batch and hands the robot Mac → iPhone → Mac. The Apple Watch app is built but never run (a watch nobody has woken does not run an app in the foreground). The verdict does not need it.
-6. Commit `acceptance/results/<stamp>.md` and `.json`. Merge only on `verdict: pass`.
+1. **Check board & lock**: run `bundle exec rake r2p2:boards` and verify the CoreS3 serial is present and unlocked.
+2. **`acceptance:deploy`** (firmware write — run ONCE per report when the pinned firmware is not yet on the board):
+   Delegate to a **haiku subagent (foreground)** so main context stays clean and `device_guard.sh` allows it:
+   ```sh
+   mkdir -p /tmp/stackchan-picoruby-debug
+   bundle exec rake acceptance:deploy 2>&1 | tee /tmp/stackchan-picoruby-debug/acceptance-deploy.log; echo "rake exit=${PIPESTATUS[0]}"
+   ```
+   Require the subagent to report `rake exit` and the `[acceptance] verdict:` line verbatim. This pins every tree, runs `r2p2:setup` and `r2p2:build_flash` (behind `r2p2:qemu_check`), sends the app, verifies flash identity, and boots.
+3. **`acceptance:app`** (when only the app changed — never touches firmware):
+   Delegate to a **haiku subagent (foreground)**:
+   ```sh
+   mkdir -p /tmp/stackchan-picoruby-debug
+   bundle exec rake acceptance:app 2>&1 | tee /tmp/stackchan-picoruby-debug/acceptance-app.log; echo "rake exit=${PIPESTATUS[0]}"
+   ```
+   Checks pins, boots under QEMU, and only on PASS uploads and resets. Follow with `acceptance:check`.
+4. **`acceptance:check`** (read-only verification from Mac; never writes flash):
+   Run once start to finish by the owner in a TTY terminal at the robot (or in a tmux session driven by Claude with the owner answering in chat), because head touch and physical observations (servo movement, subtitle integrity, audio gaps/distortion) require a person.
+   - Untouched head within 30 s is recorded as not touched and does not block `pass`.
+   - Stops before touching the board if `acceptance/lock.yml` firmware pins, firmware inputs, or app inputs diverge from what the board runs.
+   - `chat` runs last and requires a live reply from `pc/sidecar`.
+5. **`acceptance:darwin`** (optional — not required for merge verdict):
+   Read `references/apple-device.md` in this skill directory before running. Requires an unlocked paired iPhone and a valid signing certificate (`DEVELOPMENT_TEAM=<team>`).
+6. **Commit & Verdict**: commit `acceptance/results/<stamp>.md` and `.json`. Pass `STAMP=<stamp>` to target a specific report. Merge only on `verdict: pass`.
 
-`STAMP=` picks a report other than the most recent.
+## On Failure
 
-When a step FAILs, the run stops. Its detail names the tree, marker or command.
-
-- `pins hold ...`: something moved a checkout. Fix the tree; do not edit the lock to match it.
-- `flash identity` / `boot`: the board is not running the deployed firmware, or it faulted. Read the boot log it names with `stackchan-device-crash-analyze`, then reproduce under QEMU (`r2p2:qemu_check`) or on the host before anything touches the robot again. Do not deploy again to find out.
-- Firmware or app faults are fixed off the robot. Whether a fix goes onto the robot, and when, is the owner's call.
+The run stops at the failing step and names the tree, marker, or command:
+- `pins hold ...`: a checkout moved. Fix the checkout; do not edit `acceptance/lock.yml` to match drift.
+- `flash identity` / `boot`: board is running different firmware or faulted. Analyze the named boot log with `stackchan-device-diagnose` (`crash-analyze`), then reproduce under `r2p2:qemu_check` or host tests before touching the robot again.
+- Fix firmware/app faults off the robot. Whether and when a fix goes onto the robot is the owner's decision.

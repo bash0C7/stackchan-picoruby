@@ -1,22 +1,44 @@
 ---
 name: stackchan-apple-simulator
-description: The "I changed apps/ios, apps/watchos, the controller gem or a darwin build_config, does the app still build and start?" check — cross-build the VM with rake, then build, start in a Simulator with batch arguments and read the console through Xcode MCP.
+description: Cross-build the iOS or watchOS PicoRuby VM with rake, then build and run the app in Simulator with -StackchanBatch "actions;status" via Xcode MCP. Use after changing apps/ios, apps/watchos, picoruby-stackchan-controller, or darwin build_config.
+argument-hint: "<ios|watchos>"
+effort: medium
 ---
 
-Needs Xcode running, and the `xcode` server of `.mcp.json` approved for this project (Claude Code asks at start; `claude mcp list` shows `Pending approval` until then, and the `mcp__xcode__*` tools exist only in a session started after the approval). No robot and no signing certificate.
+# Apple Simulator Batch Verification
 
-rake makes the PicoRuby VM and the Xcode project; Xcode MCP does everything Xcode does. `<platform>` is `ios` or `watchos`.
+Verify that `apps/<platform>` (`ios` or `watchos`, from `$ARGUMENTS`) builds and runs its controller inside the real Darwin PicoRuby VM without a robot or signing certificate.
 
-1. `bundle exec rake <platform>:lib <platform>:gen` — `libmruby.a` for the Simulator under `apps/<platform>/Vendor`, and the project (`apps/ios/Stackchan.xcodeproj`, `apps/watchos/WatchStackchan.xcodeproj`). Log to `/tmp/stackchan-picoruby-debug/` and report the exit status of `rake` itself.
-2. `XcodeOpenWorkspace` with `path` = the absolute path of the `.xcodeproj`. It returns `workspaceIdentifier` (pass it to every later call), `activeScheme` and `activeRunDestination`. The destination Xcode picks is a Simulator; if it names a physical device, `XcodeListRunDestinations` and `XcodeSwitchRunDestination` with a Simulator's `displayTitle`.
-3. `BuildProject`. Success is `errors: []`. A failure comes back as structured errors; fix those, not the log. One failure is Xcode's, not the project's: `module file '…/DerivedData/SDKExplicitPrecompiledModules/….pcm' not found` on the first build after Xcode's shared module cache was emptied — run `BuildProject` once more.
-4. `DeviceInteractionStartWorkspaceSession` with a `sessionIdentifier` of your choosing; it boots the Simulator and returns `interactionSessionKey`. Its reply tells you to spawn a subagent for UI interaction; this check sends no UI event, so skip that.
-5. `DeviceInteractionInstallAndRun` with that `interactionSessionKey` and `commandLineArguments` `["-StackchanBatch", "actions;status"]`.
-6. `GetConsoleOutput` with `pattern` `\[batch\]|Error`. The batch lines are the units of `kind: stdio`; the bridge's own log (`VM opened`, `actions() ->`) is `kind: oslog`. An empty result right after the launch means the app has not printed yet: ask again. The session reads `State: expired` once the app has exited, which is how a finished batch looks.
-7. `DeviceInteractionEndSession`, then `XcodeCloseWorkspace` before the next `<platform>:gen`. Regenerating a project Xcode holds open leaves it with no scheme.
+## Prerequisites
 
-Pass: the console shows one `[batch] <name><TAB><label>` line per action, then `[batch] link=released …` (the answer of `status`), then `[batch] end`. `actions` only lists; `status` is the first call that builds the BLE central inside this VM, so it is what catches a method the controller uses and this VM does not have (`[batch] vm_call:1: undefined method …`): these VMs list their gems one by one (`build_config/darwin-stackchan-*.rb`) and must carry the language extension gems the host test VM has. A method missing further in (an action that needs the robot) shows only on a device. Batches that reach the robot (`"connect;joy"`) belong to `acceptance:darwin`, which runs them on the iPhone only; the Watch app's batch is run here, in the Simulator.
+- Xcode running with `.mcp.json`'s `xcode` server approved for this project (`mcp__xcode__*` tools appear only in a session started after approval).
+- Ensure Xcode's `/usr/bin/swift` precedes `~/.swiftly/bin` in `PATH` (Swiftly's `swift` fails with `unknown argument: '-target-arch-variant'`).
 
-- `<platform>:lib` and `<platform>:device:lib` write the same `Vendor/lib/libmruby.a`. After a device build, run `<platform>:lib` again before a Simulator build; a wrong-arch archive still reports `BUILD SUCCEEDED` and the app dies in dyld at start.
-- A `rake <platform>:lib` failure is a VM build failure (a gem, a build_config, the picoruby under `vendor/R2P2-darwin`), not an Xcode one.
-- A physical iPhone or Watch needs a valid signing certificate and is not part of this check.
+## Procedure
+
+1. **Build VM & generate Xcode project**:
+   ```sh
+   mkdir -p /tmp/stackchan-picoruby-debug
+   set -o pipefail
+   PATH="/usr/bin:$PATH" bundle exec rake <platform>:lib <platform>:gen 2>&1 | tee /tmp/stackchan-picoruby-debug/<platform>-sim-gen.log
+   ```
+   - Produces Simulator `libmruby.a` under `apps/<platform>/Vendor` and `apps/ios/Stackchan.xcodeproj` or `apps/watchos/WatchStackchan.xcodeproj`.
+   - Failure here is a VM/gem/`build_config`/`vendor/R2P2-darwin` failure, not an Xcode failure.
+   - `<platform>:lib` and `<platform>:device:lib` overwrite the same `Vendor/lib/libmruby.a`. After any device build, re-run `<platform>:lib` before a Simulator build (wrong-arch archive still reports `BUILD SUCCEEDED` and crashes in `dyld`).
+2. **Open workspace**: call `XcodeOpenWorkspace` with the absolute `.xcodeproj` path. Save `workspaceIdentifier`. Confirm `activeRunDestination` is a Simulator; if it points to a physical device, call `XcodeListRunDestinations` and `XcodeSwitchRunDestination` to a Simulator `displayTitle`.
+3. **Build**: call `BuildProject`. Success is `errors: []`. Fix structured errors directly. Exception: if Xcode reports `module file '…/DerivedData/SDKExplicitPrecompiledModules/….pcm' not found` after a clean shared module cache, invoke `BuildProject` once more.
+4. **Boot Simulator session**: call `DeviceInteractionStartWorkspaceSession` with a chosen `sessionIdentifier` to get `interactionSessionKey`. Skip any UI-interaction subagent suggestion (no UI events are sent).
+5. **Install & run batch**: call `DeviceInteractionInstallAndRun` with `interactionSessionKey` and `commandLineArguments: ["-StackchanBatch", "actions;status"]`.
+6. **Read console**: call `GetConsoleOutput` with `pattern: "\\[batch\\]|Error"`.
+   - Batch output appears as `kind: stdio`; bridge logs (`VM opened`, `actions() ->`) appear as `kind: oslog`.
+   - Empty result immediately after launch means the app has not printed yet — query again. `State: expired` indicates normal batch exit.
+7. **Clean up**: call `DeviceInteractionEndSession`, then `XcodeCloseWorkspace` before any future `<platform>:gen` (regenerating a project Xcode holds open leaves it without a scheme).
+
+## Pass Criteria
+
+Console shows:
+1. One `[batch] <name><TAB><label>` line per declared action
+2. `[batch] link=released …` (output of `status` — the first call that instantiates the BLE central inside the Darwin VM, catching missing language-extension gems such as `mruby-hash-ext`/`mruby-numeric-ext`/`mruby-method` that produce `[batch] vm_call:1: undefined method …`)
+3. `[batch] end`
+
+Do not run `rake ios:run` or `rake ios:all` (they block on `open -a Simulator`). Batches reaching a physical robot (`"connect;joy"`) belong to `/stackchan-device-acceptance` (`darwin`).

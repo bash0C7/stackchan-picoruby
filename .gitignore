@@ -5,6 +5,7 @@
 /build/
 pc/*/tmp/
 .claude/settings.local.json
+CLAUDE.local.md
 .suppify-tmp/
 
 /vendor/
